@@ -1,12 +1,12 @@
-use actix_web::{get, post, web, Responder};
+use actix_web::{Responder, get, post, web};
 use actix_web_grants::proc_macro::protect;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
-use super::{check_uuid, prune_uuids, SseAuthState, UuidData};
+use super::{SseAuthState, UuidData, check_uuid, prune_uuids};
 use crate::db::models::Role;
 use crate::player::controller::ChannelController;
-use crate::sse::{broadcast::Broadcaster, Endpoint};
+use crate::sse::{Endpoint, broadcast::Broadcaster};
 use crate::utils::errors::ServiceError;
 
 #[derive(Deserialize, Serialize)]
@@ -73,18 +73,17 @@ async fn event_stream(
     data: web::Data<SseAuthState>,
     id: web::Path<i32>,
     user: web::Query<User>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
     let mut uuids = data.uuids.lock().await;
 
     check_uuid(&mut uuids, user.uuid.as_str())?;
 
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
     Ok(broadcaster
         .new_client(manager.clone(), user.endpoint.clone())

@@ -1,6 +1,6 @@
 use log::*;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as};
 use tokio::process;
 
 use crate::utils::errors::ProcessError;

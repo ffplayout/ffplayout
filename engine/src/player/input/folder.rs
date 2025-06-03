@@ -3,12 +3,12 @@ use std::sync::atomic::Ordering;
 use async_walkdir::WalkDir;
 
 use log::*;
-use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 use tokio_stream::StreamExt;
 
 use crate::player::{
     controller::ChannelManager,
-    utils::{include_file_extension, time_in_seconds, Media},
+    utils::{Media, include_file_extension, time_in_seconds},
 };
 use crate::utils::{config::PlayoutConfig, logging::Target};
 
@@ -118,7 +118,7 @@ impl FolderSource {
 /// Create iterator for folder source
 impl FolderSource {
     pub async fn next(&mut self) -> Option<Media> {
-        let config = self.manager.config.lock().await.clone();
+        let config = self.manager.config.read().await.clone();
         let id = config.general.id;
 
         if self.manager.current_index.load(Ordering::SeqCst)

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use log::*;
 use sqlx::{Pool, Sqlite};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::db::{
     handles,
@@ -59,7 +59,7 @@ const OUTPUT_NULL: &str = "-f null -";
 
 pub async fn create_channel(
     conn: &Pool<Sqlite>,
-    controllers: Arc<Mutex<ChannelController>>,
+    controllers: Arc<RwLock<ChannelController>>,
     queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
@@ -154,11 +154,11 @@ pub async fn create_channel(
     let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
     let manager = ChannelManager::new(conn.clone(), channel.clone(), config).await;
 
-    if let Err(e) = manager.storage.lock().await.copy_assets().await {
+    if let Err(e) = manager.storage.copy_assets().await {
         error!("{e}");
     };
 
-    controllers.lock().await.add(manager);
+    controllers.write().await.add(manager);
     queue.lock().await.push(m_queue);
 
     map_global_admins(conn).await?;
@@ -169,12 +169,12 @@ pub async fn create_channel(
 pub async fn delete_channel(
     conn: &Pool<Sqlite>,
     id: i32,
-    controllers: Arc<Mutex<ChannelController>>,
+    controllers: Arc<RwLock<ChannelController>>,
     queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<(), ServiceError> {
     let channel = handles::select_channel(conn, &id).await?;
     handles::delete_channel(conn, &channel.id).await?;
-    controllers.lock().await.remove(id).await;
+    controllers.write().await.remove(id);
     let mut queue_guard = queue.lock().await;
     let mut new_queue = Vec::with_capacity(queue_guard.len());
 

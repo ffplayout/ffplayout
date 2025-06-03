@@ -1,10 +1,10 @@
 use std::{
     collections::HashSet,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
     thread,
 };
 
-use actix_web::{middleware::Logger, web, App, HttpServer};
+use actix_web::{App, HttpServer, middleware::Logger, web};
 use actix_web_httpauth::middleware::HttpAuthentication;
 
 #[cfg(any(debug_assertions, not(feature = "embed_frontend")))]
@@ -14,16 +14,21 @@ use actix_files::Files;
 use actix_web_static_files::ResourceFiles;
 
 use log::*;
-use tokio::{fs::File, io::AsyncReadExt, sync::Mutex};
+use tokio::{
+    fs::File,
+    io::AsyncReadExt,
+    sync::{Mutex, RwLock},
+};
 
 use ffplayout::{
+    ARGS,
     api::routes::*,
     db::{db_drop, db_pool, handles, init_globales},
     player::{
         controller::{ChannelController, ChannelManager},
-        utils::{get_date, is_remote, json_validate::validate_playlist, JsonPlaylist},
+        utils::{JsonPlaylist, get_date, is_remote, json_validate::validate_playlist},
     },
-    sse::{broadcast::Broadcaster, routes::*, SseAuthState},
+    sse::{SseAuthState, broadcast::Broadcaster, routes::*},
     utils::{
         args_parse::init_args,
         config::get_config,
@@ -33,7 +38,7 @@ use ffplayout::{
         playlist::generate_playlist,
         time_machine::set_mock_time,
     },
-    validator, ARGS,
+    validator,
 };
 
 #[cfg(any(debug_assertions, not(feature = "embed_frontend")))]
@@ -67,7 +72,7 @@ async fn main() -> Result<(), ProcessError> {
     // logger handle should be kept alive until the end
     let _logger = init_logging(mail_queues.clone());
 
-    let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
+    let channel_controllers = Arc::new(RwLock::new(ChannelController::new()));
 
     if let Some(conn) = &ARGS.listen {
         let channels = handles::select_related_channels(&pool, None).await?;
@@ -79,7 +84,7 @@ async fn main() -> Result<(), ProcessError> {
             let manager = ChannelManager::new(pool.clone(), channel, config).await;
 
             if init {
-                if let Err(e) = manager.storage.lock().await.copy_assets().await {
+                if let Err(e) = manager.storage.copy_assets().await {
                     error!("{e}");
                 };
 
@@ -92,7 +97,7 @@ async fn main() -> Result<(), ProcessError> {
                 manager.start().await?;
             }
 
-            channel_controllers.lock().await.add(manager);
+            channel_controllers.write().await.add(manager);
         }
 
         let (addr, port) = conn
@@ -212,7 +217,7 @@ async fn main() -> Result<(), ProcessError> {
             if ARGS.foreground {
                 let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));
 
-                channel_controllers.lock().await.add(manager.clone());
+                channel_controllers.write().await.add(manager.clone());
                 mail_queues.lock().await.push(m_queue);
 
                 manager.foreground_start(index).await?;
@@ -267,7 +272,9 @@ async fn main() -> Result<(), ProcessError> {
         );
     }
 
-    for manager in &channel_controllers.lock().await.managers {
+    let managers = channel_controllers.read().await.managers.clone();
+
+    for manager in &managers {
         manager.channel.lock().await.active = false;
         manager.stop_all(false).await;
     }

@@ -11,21 +11,21 @@
 use std::{
     env,
     path::{Path, PathBuf},
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
 };
 
 use actix_files;
 use actix_multipart::Multipart;
 use actix_web::{
-    delete, get,
+    HttpRequest, HttpResponse, Responder, delete, get,
     http::header::{ContentDisposition, DispositionType},
-    patch, post, put, web, HttpRequest, HttpResponse, Responder,
+    patch, post, put, web,
 };
 use actix_web_grants::{authorities::AuthDetails, proc_macro::protect};
 
 use argon2::{
-    password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHasher,
+    password_hash::{SaltString, rand_core::OsRng},
 };
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeDelta, TimeZone, Utc};
 use chrono_tz::Tz;
@@ -34,7 +34,10 @@ use path_clean::PathClean;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
-use tokio::{fs, sync::Mutex};
+use tokio::{
+    fs,
+    sync::{Mutex, RwLock},
+};
 
 use crate::{
     api::auth::{self, Credentials, TokenRefreshRequest},
@@ -42,25 +45,26 @@ use crate::{
         handles,
         models::{Channel, Role, TextPreset, User, UserMeta},
     },
-    file::{norm_abs_path, MoveObject, PathObject},
+    file::{MoveObject, PathObject, norm_abs_path},
     player::{
         controller::ChannelController,
         utils::{
-            get_data_map, get_date_range, import::import_file, sec_to_time, time_to_sec,
-            JsonPlaylist,
+            JsonPlaylist, get_data_map, get_date_range, import::import_file, sec_to_time,
+            time_to_sec,
         },
     },
     sse::broadcast::Broadcaster,
     utils::{
+        TextFilter,
         advanced_config::AdvancedConfig,
         channels::{create_channel, delete_channel},
-        config::{get_config, PlayoutConfig, Template},
-        control::{control_state, send_message, ControlParams, Process, ProcessCtl},
+        config::{PlayoutConfig, Template, get_config},
+        control::{ControlParams, Process, ProcessCtl, control_state, send_message},
         errors::ServiceError,
         mail::MailQueue,
         naive_date_time_from_str,
         playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-        public_path, read_log_file, TextFilter,
+        public_path, read_log_file,
     },
     vec_strings,
 };
@@ -299,11 +303,9 @@ async fn update_user(
         let password_hash = web::block(move || {
             let salt = SaltString::generate(&mut OsRng);
 
-            let argon = Argon2::default()
+            Argon2::default()
                 .hash_password(data.password.clone().as_bytes(), &salt)
-                .map(|p| p.to_string());
-
-            argon
+                .map(|p| p.to_string())
         })
         .await?
         .map_err(|e| ServiceError::Conflict(e.to_string()))?;
@@ -445,16 +447,16 @@ async fn patch_channel(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<Channel>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
     let mut data = data.into_inner();
 
     if !role.has_authority(&Role::GlobalAdmin) {
@@ -486,7 +488,7 @@ async fn patch_channel(
 async fn add_channel(
     pool: web::Data<Pool<Sqlite>>,
     data: web::Json<Channel>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     queue: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
     match create_channel(
@@ -512,7 +514,7 @@ async fn add_channel(
 async fn remove_channel(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     queue: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
     delete_channel(&pool, *id, controllers.into_inner(), queue.into_inner()).await?;
@@ -537,17 +539,17 @@ async fn remove_channel(
 )]
 async fn get_advanced_config(
     id: web::Path<i32>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or_else(|| ServiceError::BadRequest(format!("Channel ({id}) not exists!")))?;
-    let config = manager.config.lock().await.advanced.clone();
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    let config = manager.config.read().await.advanced.clone();
 
     Ok(web::Json(config))
 }
@@ -602,18 +604,16 @@ async fn get_related_advanced_config(
 async fn remove_related_advanced_config(
     pool: web::Data<Pool<Sqlite>>,
     path: web::Path<(i32, i32)>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let (_, id) = path.into_inner();
-
-    let manager = controllers
-        .lock()
-        .await
-        .get(id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
     if handles::delete_advanced_configuration(&pool, id)
         .await
@@ -645,16 +645,15 @@ async fn update_advanced_config(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<AdvancedConfig>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
     handles::update_advanced_configuration(&pool, *id, data.into_inner()).await?;
     let new_config = get_config(&pool, *id).await?;
@@ -681,16 +680,15 @@ async fn add_advanced_config(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<AdvancedConfig>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
     handles::insert_advanced_configuration(&pool, *id, None, data.into_inner()).await?;
     let new_config = get_config(&pool, *id).await?;
@@ -715,17 +713,17 @@ async fn add_advanced_config(
 )]
 async fn get_playout_config(
     id: web::Path<i32>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or_else(|| ServiceError::BadRequest(format!("Channel ({id}) not exists!")))?;
-    let config = manager.config.lock().await.clone();
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    let config = manager.config.read().await.clone();
 
     Ok(web::Json(config))
 }
@@ -747,20 +745,19 @@ async fn update_playout_config(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     mut data: web::Json<PlayoutConfig>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
     mail_queues: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
     let p = manager.channel.lock().await.storage.clone();
     let storage = Path::new(&p);
-    let config_id = manager.config.lock().await.general.id;
+    let config_id = manager.config.read().await.general.id;
 
     let (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
     let (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
@@ -961,16 +958,15 @@ async fn delete_preset(
 pub async fn send_text_message(
     id: web::Path<i32>,
     data: web::Json<TextFilter>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
     match send_message(manager, data.into_inner()).await {
         Ok(res) => Ok(web::Json(res)),
@@ -998,16 +994,15 @@ pub async fn control_playout(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     control: web::Json<ControlParams>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
     if manager.is_processing.load(Ordering::SeqCst) {
         return Err(ServiceError::Conflict(
@@ -1059,16 +1054,16 @@ pub async fn control_playout(
 )]
 pub async fn media_current(
     id: web::Path<i32>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
     let media_map = get_data_map(&manager).await;
 
     Ok(web::Json(media_map))
@@ -1096,16 +1091,16 @@ pub async fn media_current(
 pub async fn process_control(
     id: web::Path<i32>,
     proc: web::Json<Process>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
     manager.list_init.store(true, Ordering::SeqCst);
 
     if manager.is_processing.load(Ordering::SeqCst) {
@@ -1168,17 +1163,17 @@ pub async fn process_control(
 pub async fn get_playlist(
     id: web::Path<i32>,
     obj: web::Query<DateObj>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let config = manager.config.lock().await.clone();
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    let config = manager.config.read().await.clone();
 
     match read_playlist(&config, obj.date.clone()).await {
         Ok(playlist) => Ok(web::Json(playlist)),
@@ -1202,17 +1197,17 @@ pub async fn get_playlist(
 pub async fn save_playlist(
     id: web::Path<i32>,
     data: web::Json<JsonPlaylist>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let config = manager.config.lock().await.clone();
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    let config = manager.config.read().await.clone();
 
     match write_playlist(&config, data.into_inner()).await {
         Ok(res) => Ok(web::Json(res)),
@@ -1247,40 +1242,38 @@ pub async fn save_playlist(
 pub async fn gen_playlist(
     params: web::Path<(i32, String)>,
     data: Option<web::Json<PathsObj>>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let (id, date) = params.into_inner();
-    let manager = controllers
-        .lock()
-        .await
-        .get(id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    manager.config.lock().await.general.generate = Some(vec![date.clone()]);
-    let storage = manager.config.lock().await.channel.storage.clone();
 
-    if let Some(obj) = data {
-        if let Some(paths) = &obj.paths {
-            let mut path_list = vec![];
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
-            for path in paths {
-                let (p, _, _) = norm_abs_path(&storage, path)?;
+    {
+        let mut config = manager.config.write().await;
 
-                path_list.push(p);
+        config.general.generate = Some(vec![date.clone()]);
+
+        if let Some(obj) = &data {
+            if let Some(paths) = &obj.paths {
+                let mut path_list = Vec::with_capacity(paths.len());
+                let storage_root = config.channel.storage.clone();
+
+                for path in paths {
+                    let (p, _, _) = norm_abs_path(&storage_root, path)?;
+                    path_list.push(p);
+                }
+
+                config.storage.paths = path_list;
             }
 
-            manager.config.lock().await.storage.paths = path_list;
+            config.general.template = obj.template.clone();
         }
-
-        manager
-            .config
-            .lock()
-            .await
-            .general
-            .template
-            .clone_from(&obj.template);
     }
 
     match generate_playlist(manager).await {
@@ -1303,18 +1296,18 @@ pub async fn gen_playlist(
 )]
 pub async fn del_playlist(
     params: web::Path<(i32, String)>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let (id, date) = params.into_inner();
-    let manager = controllers
-        .lock()
-        .await
-        .get(id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let config = manager.config.lock().await.clone();
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    let config = manager.config.read().await.clone();
 
     match delete_playlist(&config, &date).await {
         Ok(m) => Ok(web::Json(m)),
@@ -1362,19 +1355,17 @@ pub async fn get_log(
 pub async fn file_browser(
     id: web::Path<i32>,
     data: web::Json<PathObject>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let storage = manager.storage.lock().await.clone();
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
-    match storage.browser(&data.into_inner()).await {
+    match manager.storage.browser(&data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1395,19 +1386,17 @@ pub async fn file_browser(
 pub async fn add_dir(
     id: web::Path<i32>,
     data: web::Json<PathObject>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let storage = manager.storage.lock().await;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
-    storage.mkdir(&data.into_inner()).await?;
+    manager.storage.mkdir(&data.into_inner()).await?;
 
     Ok(HttpResponse::Ok().into())
 }
@@ -1427,19 +1416,17 @@ pub async fn add_dir(
 pub async fn move_rename(
     id: web::Path<i32>,
     data: web::Json<MoveObject>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let storage = manager.storage.lock().await;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
-    match storage.rename(&data.into_inner()).await {
+    match manager.storage.rename(&data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1460,20 +1447,23 @@ pub async fn move_rename(
 pub async fn remove(
     id: web::Path<i32>,
     data: web::Json<PathObject>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let storage = manager.storage.lock().await;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
     let recursive = data.recursive;
 
-    match storage.remove(&data.into_inner().source, recursive).await {
+    match manager
+        .storage
+        .remove(&data.into_inner().source, recursive)
+        .await
+    {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1497,17 +1487,15 @@ async fn save_file(
     _req: HttpRequest,
     payload: Multipart,
     obj: web::Query<FileObj>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let storage = manager.storage.lock().await.clone();
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
     // let size: u64 = req
     //     .headers()
@@ -1516,7 +1504,7 @@ async fn save_file(
     //     .and_then(|cls| cls.parse().ok())
     //     .unwrap_or(0);
 
-    storage.upload(payload, &obj.path, false).await?;
+    manager.storage.upload(payload, &obj.path, false).await?;
 
     Ok(HttpResponse::Ok().into())
 }
@@ -1531,16 +1519,16 @@ async fn save_file(
 #[get("/file/{id}/{filename:.*}")]
 async fn get_file(
     req: HttpRequest,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
 ) -> Result<actix_files::NamedFile, ServiceError> {
     let id: i32 = req.match_info().query("id").parse()?;
-    let manager = controllers
-        .lock()
-        .await
-        .get(id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let config = manager.config.lock().await;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    let config = manager.config.read().await;
     let storage = config.channel.storage.clone();
     let file_path = req.match_info().query("filename");
     let (path, _, _) = norm_abs_path(&storage, file_path)?;
@@ -1564,7 +1552,7 @@ async fn get_file(
 #[get("/{id}/{public:live|preview|public}/{file_stem:.*}")]
 async fn get_public(
     path: web::Path<(i32, String, String)>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
 ) -> Result<actix_files::NamedFile, ServiceError> {
     let (id, public, file_stem) = path.into_inner();
 
@@ -1572,13 +1560,13 @@ async fn get_public(
         || file_stem.ends_with(".m3u8")
         || file_stem.ends_with(".vtt")
     {
-        let manager = controllers
-            .lock()
-            .await
-            .get(id)
-            .await
-            .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-        let config = manager.config.lock().await;
+        let manager = {
+            let guard = controllers.read().await;
+            guard.get(id)
+        }
+        .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+        let config = manager.config.read().await;
         config.channel.public.join(public)
     } else {
         public_path()
@@ -1615,24 +1603,23 @@ async fn import_playlist(
     id: web::Path<i32>,
     payload: Multipart,
     obj: web::Query<ImportObj>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
     let channel_name = manager.channel.lock().await.name.clone();
-    let playlists = manager.config.lock().await.channel.playlists.clone();
-    let storage = manager.storage.lock().await;
+    let playlists = manager.config.read().await.channel.playlists.clone();
     let file = obj.file.file_name().unwrap_or_default();
     let path = env::temp_dir().join(file);
     let path_clone = path.clone();
 
-    storage.upload(payload, &path, true).await?;
+    manager.storage.upload(payload, &path, true).await?;
 
     let response = import_file(&playlists, &obj.date, Some(channel_name), &path_clone).await?;
 
@@ -1672,17 +1659,17 @@ async fn import_playlist(
 async fn get_program(
     id: web::Path<i32>,
     obj: web::Query<ProgramObj>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let config = manager.config.lock().await.clone();
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    let config = manager.config.read().await.clone();
     let id = config.general.channel_id;
     let start_sec = config.playlist.start_sec.unwrap();
     let mut days = 0;
@@ -1780,17 +1767,17 @@ async fn get_program(
 pub async fn get_system_stat(
     id: web::Path<i32>,
     broadcaster: web::Data<Broadcaster>,
-    controllers: web::Data<Mutex<ChannelController>>,
+    controllers: web::Data<RwLock<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let config = manager.config.lock().await.clone();
+    let manager = {
+        let guard = controllers.read().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    let config = manager.config.read().await.clone();
 
     let stat = broadcaster.system.stat(&config).await;
 

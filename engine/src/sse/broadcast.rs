@@ -1,5 +1,5 @@
 use std::{
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
     time::Duration,
 };
 
@@ -8,7 +8,7 @@ use actix_web_lab::{
     util::InfallibleStream,
 };
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{Mutex, mpsc},
     time::interval,
 };
 use tokio_stream::wrappers::ReceiverStream;
@@ -113,7 +113,7 @@ impl Broadcaster {
                     };
                 }
                 Endpoint::System => {
-                    let config = client.manager.config.lock().await.clone();
+                    let config = client.manager.config.read().await.clone();
                     let stat = self.system.stat(&config).await;
 
                     if client

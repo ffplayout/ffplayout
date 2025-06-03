@@ -12,8 +12,8 @@ use regex::Regex;
 use tokio::{fs, net::TcpListener, process::Command};
 
 use serde::{
-    de::{self, Visitor},
     Deserialize, Deserializer, Serialize,
+    de::{self, Visitor},
 };
 
 pub mod advanced_config;
@@ -30,13 +30,13 @@ pub mod system;
 pub mod task_runner;
 pub mod time_machine;
 
+use crate::ARGS;
 use crate::db::GLOBAL_SETTINGS;
 use crate::player::utils::time_to_sec;
 use crate::utils::{
     errors::ServiceError,
     logging::{log_file_path, remove_html, timestamps_to_timezone},
 };
-use crate::ARGS;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct TextFilter {
@@ -211,7 +211,10 @@ pub async fn read_log_file(
         }
     } else {
         error!("Log file to big: {}", sizeof_fmt(file_size));
-        format!("The log file is larger ({}) than the hard limit of 5MB, the probability is very high that something is wrong with the playout.\nCheck this on the server with `less {log_path:?}`.", sizeof_fmt(file_size))
+        format!(
+            "The log file is larger ({}) than the hard limit of 5MB, the probability is very high that something is wrong with the playout.\nCheck this on the server with `less {log_path:?}`.",
+            sizeof_fmt(file_size)
+        )
     };
 
     Ok(log_content)

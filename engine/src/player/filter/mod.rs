@@ -10,7 +10,7 @@ pub mod v_drawtext;
 
 use crate::player::{
     controller::ProcessUnit::{self, *},
-    utils::{calc_aspect, custom_format, fps_calc, fraction, is_close, Media},
+    utils::{Media, calc_aspect, custom_format, fps_calc, fraction, is_close},
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig},
@@ -493,9 +493,10 @@ fn overlay(config: &PlayoutConfig, chain: &mut Filters, node: &mut Media) {
             .replace(':', "\\\\:");
 
         let movie = match &config.advanced.filter.logo {
-            Some(logo) => {
-                custom_format(logo, &[logo_path, config.processing.logo_opacity.to_string()])
-        },
+            Some(logo) => custom_format(
+                logo,
+                &[logo_path, config.processing.logo_opacity.to_string()],
+            ),
             None => format!(
                 "movie={logo_path}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}",
                 config.processing.logo_opacity,
@@ -713,7 +714,9 @@ pub async fn filter_chains(
 ) -> Filters {
     let mut filters = Filters::new(config.clone(), node.unit, 0);
 
-    if config.processing.override_filter {
+    // When the 'custom_filter' value is empty and the 'override_filter' value is active,
+    // the filter command becomes corrupt. This is why we need to check both values.
+    if config.processing.override_filter && !config.processing.custom_filter.is_empty() {
         //override hole filtering
         if node.unit == Ingest && !config.ingest.custom_filter.is_empty() {
             filters.output_chain = split(&config.ingest.custom_filter).unwrap_or_default();

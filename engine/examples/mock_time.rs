@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{prelude::*, TimeDelta};
+use chrono::{TimeDelta, prelude::*};
 use chrono_tz::Tz;
 use clap::Parser;
 

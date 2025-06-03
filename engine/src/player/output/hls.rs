@@ -32,19 +32,19 @@ use crate::{
         controller::{ChannelManager, ProcessUnit::*},
         input::source_generator,
         utils::{
-            get_delta, insert_readrate, is_free_tcp_port, prepare_output_cmd, sec_to_time,
-            stderr_reader, valid_stream, Media,
+            Media, get_delta, insert_readrate, is_free_tcp_port, prepare_output_cmd, sec_to_time,
+            stderr_reader, valid_stream,
         },
     },
     utils::{
         errors::ServiceError,
-        logging::{fmt_cmd, Target},
+        logging::{Target, fmt_cmd},
     },
 };
 
 /// Ingest Server for HLS
 async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
     let id = config.general.channel_id;
     let playlist_init = manager.list_init.clone();
     let chain = manager.filter_chain.clone();
@@ -158,7 +158,7 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
 }
 
 async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), ServiceError> {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
     let get_source = source_generator(manager.clone());
     let ingest_is_alive = manager.ingest_is_alive.clone();
     let id = config.general.channel_id;
@@ -260,7 +260,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
 ///
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(), ServiceError> {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
 
     let manager2 = manager.clone();
 

@@ -10,6 +10,7 @@ use sqlx::{Pool, Sqlite};
 #[cfg(target_family = "unix")]
 use tokio::fs;
 
+use crate::ARGS;
 use crate::db::{
     handles,
     models::{Channel, User},
@@ -18,7 +19,6 @@ use crate::utils::{
     advanced_config::AdvancedConfig,
     config::{OutputMode, PlayoutConfig},
 };
-use crate::ARGS;
 
 use super::errors::ProcessError;
 
@@ -311,7 +311,7 @@ pub async fn init_args(pool: &Pool<Sqlite>) -> Result<bool, ProcessError> {
                 _ => {
                     return Err(ProcessError::Input(
                         "--smtp-starttls accept true or false".to_string(),
-                    ))
+                    ));
                 }
             },
             None => {

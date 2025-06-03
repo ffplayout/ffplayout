@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, NoneAsEmptyString};
+use serde_with::{NoneAsEmptyString, serde_as};
 use shlex::split;
 use sqlx::{Pool, Sqlite};
 use tokio::io::AsyncReadExt;

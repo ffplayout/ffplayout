@@ -7,7 +7,7 @@ use crate::player::filter::v_drawtext;
 use crate::utils::errors::ServiceError;
 use crate::utils::{
     config::PlayoutConfig,
-    logging::{fmt_cmd, Target},
+    logging::{Target, fmt_cmd},
 };
 use crate::vec_strings;
 

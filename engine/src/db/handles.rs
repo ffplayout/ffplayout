@@ -1,10 +1,10 @@
 use actix_web::web;
 use argon2::{
-    password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHasher,
+    password_hash::{SaltString, rand_core::OsRng},
 };
-use rand::{distr::Alphanumeric, Rng};
-use sqlx::{sqlite::SqliteQueryResult, Pool, Row, Sqlite};
+use rand::{Rng, distr::Alphanumeric};
+use sqlx::{Pool, Row, Sqlite, sqlite::SqliteQueryResult};
 
 use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Output, Role, TextPreset, User};
@@ -48,8 +48,7 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<bool, ProcessError> {
 }
 
 pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, ProcessError> {
-    const QUERY: &str =
-        "SELECT id, secret, logs, playlists, public, storage, shared, smtp_server, smtp_user, smtp_password, smtp_starttls, smtp_port FROM global WHERE id = 1";
+    const QUERY: &str = "SELECT id, secret, logs, playlists, public, storage, shared, smtp_server, smtp_user, smtp_password, smtp_starttls, smtp_port FROM global WHERE id = 1";
 
     let result = sqlx::query_as(QUERY).fetch_one(conn).await?;
 
@@ -129,8 +128,7 @@ pub async fn update_channel(
     id: i32,
     channel: Channel,
 ) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str =
-        "UPDATE channels SET name = $2, preview_url = $3, extra_extensions = $4, public = $5, playlists = $6, storage = $7, timezone = $8 WHERE id = $1";
+    const QUERY: &str = "UPDATE channels SET name = $2, preview_url = $3, extra_extensions = $4, public = $5, playlists = $6, storage = $7, timezone = $8 WHERE id = $1";
 
     let result = sqlx::query(QUERY)
         .bind(id)

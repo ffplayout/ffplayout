@@ -1,23 +1,23 @@
 use std::{
     path::Path,
     sync::{
+        Arc,
         atomic::{AtomicBool, Ordering},
         mpsc::channel,
-        Arc,
     },
     time::Duration,
 };
 
 use log::*;
 use notify::{
-    event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
     EventKind::{Create, Modify, Remove},
     RecursiveMode,
+    event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
 };
 use notify_debouncer_full::new_debouncer;
 use tokio::sync::Mutex;
 
-use crate::player::utils::{include_file_extension, Media};
+use crate::player::utils::{Media, include_file_extension};
 use crate::utils::{config::PlayoutConfig, logging::Target};
 
 /// Create a watcher, which monitor file changes.

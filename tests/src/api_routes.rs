@@ -1,7 +1,7 @@
-use actix_web::{get, web, App, Error, HttpResponse, Responder};
+use actix_web::{App, Error, HttpResponse, Responder, get, web};
 
 use serde_json::json;
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
+use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 
 use ffplayout::api::routes::login;
 use ffplayout::db::{handles, init_globales, models::User};

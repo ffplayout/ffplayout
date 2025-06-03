@@ -35,7 +35,7 @@ impl MultiFileLogger {
             )
             .print_message()
             .try_build()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
             writers.insert(channel.to_string(), Arc::new(Mutex::new(writer)));
         }
         Ok(writers.get(channel).unwrap().clone())
@@ -50,9 +50,8 @@ impl LogWriter for MultiFileLogger {
             .unwrap_or(Value::null())
             .to_string();
         let writer = self.get_writer(&channel);
-        let w = writer?.lock().unwrap().write(now, record);
 
-        w
+        writer?.lock().unwrap().write(now, record)
     }
 
     fn flush(&self) -> io::Result<()> {

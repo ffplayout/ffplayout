@@ -19,7 +19,7 @@ use crate::player::{
 use crate::utils::{
     config::OutputMode::*,
     errors::ServiceError,
-    logging::{fmt_cmd, Target},
+    logging::{Target, fmt_cmd},
     task_runner,
 };
 use crate::vec_strings;
@@ -29,7 +29,7 @@ async fn play(
     mut enc_writer: ChildStdin,
     ff_log_format: &str,
 ) -> Result<(), ServiceError> {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
     let id = config.general.channel_id;
     let playlist_init = manager.list_init.clone();
     let is_alive = manager.is_alive.clone();
@@ -151,17 +151,21 @@ async fn play(
                     live_on = true;
                 }
 
-                let mut ingest_reader_guard = manager.ingest_reader.lock().await;
-                if let Some(ref mut ingest_stdout) = *ingest_reader_guard {
-                    let num = ingest_stdout.read(&mut buffer[..]).await?;
-
-                    if num == 0 {
-                        enc_writer.flush().await?;
-                        continue;
+                let num = {
+                    let mut ingest_reader_guard = manager.ingest_reader.lock().await;
+                    if let Some(ref mut ingest_stdout) = *ingest_reader_guard {
+                        ingest_stdout.read(&mut buffer[..]).await?
+                    } else {
+                        0
                     }
+                };
 
-                    enc_writer.write_all(&buffer[..num]).await?;
+                if num == 0 {
+                    enc_writer.flush().await?;
+                    continue;
                 }
+
+                enc_writer.write_all(&buffer[..num]).await?;
             } else {
                 // read from decoder instance
                 if live_on {
@@ -201,7 +205,7 @@ async fn play(
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
 pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let ignore_enc = config.logging.ignore_lines.clone();

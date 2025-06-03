@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 
 use crate::player::{
     controller::ProcessUnit::*,
-    utils::{custom_format, Media},
+    utils::{Media, custom_format},
 };
 use crate::utils::config::PlayoutConfig;
 

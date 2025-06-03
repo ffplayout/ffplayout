@@ -5,11 +5,11 @@ resolver = "2"
 [workspace.package]
 description = "24/7 playout based on rust and ffmpeg"
 readme = "README.md"
-version = "0.25.2"
+version = "0.25.3"
 license = "GPL-3.0"
 repository = "https://github.com/ffplayout/ffplayout"
 authors = ["Jonathan Baecker <jonbae77@gmail.com>"]
-edition = "2021"
+edition = "2024"
 
 [profile.release]
 opt-level = 3

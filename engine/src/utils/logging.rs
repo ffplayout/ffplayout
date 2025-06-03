@@ -1,7 +1,7 @@
 use std::{
-    collections::{hash_map, HashMap, VecDeque},
+    collections::{HashMap, VecDeque, hash_map},
     env,
-    io::{self, ErrorKind, Write},
+    io::{self, Write},
     path::PathBuf,
     sync::{Arc, RwLock},
 };
@@ -9,9 +9,9 @@ use std::{
 use chrono::{DateTime, FixedOffset};
 use chrono_tz::Tz;
 use flexi_logger::{
-    writers::{FileLogWriter, LogWriter},
     Age, Cleanup, Criterion, DeferredNow, FileSpec, Level, LogSpecification, Logger, Naming,
     WriteMode,
+    writers::{FileLogWriter, LogWriter},
 };
 
 use log::{kv::Value, *};
@@ -22,10 +22,10 @@ use super::ARGS;
 
 use crate::db::GLOBAL_SETTINGS;
 use crate::utils::{
-    config::FFMPEG_UNRECOVERABLE_ERRORS,
-    mail::{mail_queue, MailQueue},
-    time_machine::time_now,
     ServiceError,
+    config::FFMPEG_UNRECOVERABLE_ERRORS,
+    mail::{MailQueue, mail_queue},
+    time_machine::time_now,
 };
 
 use crate::player::controller::ProcessUnit;
@@ -112,7 +112,7 @@ impl MultiFileLogger {
                 Cleanup::KeepLogFiles(ARGS.log_backup_count.unwrap_or(14)),
             )
             .try_build()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
             let arc_writer = Arc::new(writer);
             entry.insert(arc_writer.clone());
@@ -172,26 +172,27 @@ impl LogWriter for LogMailer {
         let level = record.level();
         let mail_queues = self.mail_queues.clone();
         let now = now.now().format("%Y-%m-%d %H:%M:%S");
+        let msg = strip_tags(&message);
 
-        tokio::spawn(async move {
-            let mut queues = mail_queues.lock().await;
+        tokio::spawn({
+            async move {
+                let mut queues_guard = mail_queues.lock().await;
 
-            for queue in queues.iter_mut() {
-                let mut q_lock = queue.lock().await;
+                for queue_arc in queues_guard.iter_mut() {
+                    let mut queue = queue_arc.lock().await;
 
-                let msg = strip_tags(&message);
+                    if queue.id == id && queue.level_eq(level) && !queue.raw_lines.contains(&msg) {
+                        queue.push_raw(msg.clone());
+                        queue.push(format!("[{now}] [{:>5}] {}", level, msg));
 
-                if q_lock.id == id && q_lock.level_eq(level) && !q_lock.raw_lines.contains(&msg) {
-                    q_lock.push_raw(msg.clone());
-                    q_lock.push(format!("[{now}] [{:>5}] {}", level, msg));
+                        if queue.raw_lines.len() > 1000 {
+                            let last = queue.raw_lines.pop().unwrap();
+                            queue.clear_raw();
+                            queue.push_raw(last);
+                        }
 
-                    break;
-                }
-
-                if q_lock.raw_lines.len() > 1000 {
-                    let last = q_lock.raw_lines.pop().unwrap();
-                    q_lock.clear_raw();
-                    q_lock.push_raw(last);
+                        break;
+                    }
                 }
             }
         });
@@ -419,7 +420,7 @@ pub fn init_logging(
         .add_writer("file", file_logger())
         .add_writer("mail", Box::new(LogMailer::new(mail_queues)))
         .start()
-        .map_err(|e| io::Error::new(ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| io::Error::other(e.to_string()))?;
 
     Ok(logger)
 }

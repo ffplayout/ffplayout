@@ -11,8 +11,8 @@ use crate::player::{controller::ChannelManager, input::folder::FolderSource, uti
 use crate::utils::{config::ProcessMode::*, logging::Target};
 
 pub enum SourceIterator {
-    Folder(FolderSource),
-    Playlist(CurrentProgram),
+    Folder(Box<FolderSource>),
+    Playlist(Box<CurrentProgram>),
 }
 
 impl SourceIterator {
@@ -26,7 +26,7 @@ impl SourceIterator {
 
 /// Create a source iterator from playlist, or from folder.
 pub async fn source_generator(manager: ChannelManager) -> SourceIterator {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
     let id = config.general.channel_id;
     let is_alive = manager.is_alive.clone();
     let current_list = manager.current_list.clone();
@@ -36,21 +36,20 @@ pub async fn source_generator(manager: ChannelManager) -> SourceIterator {
             info!(target: Target::file_mail(), channel = id; "Playout in folder mode");
             let config_clone = config.clone();
 
-            // Spawn a task to monitor folder for file changes.
-            {
-                let mut storage = manager.storage.lock().await;
-                storage.watchman(config_clone, is_alive, current_list).await;
-            }
+            manager
+                .storage
+                .watchman(config_clone, is_alive, current_list)
+                .await;
 
             let folder_source = FolderSource::new(&config, manager);
 
-            SourceIterator::Folder(folder_source.await)
+            SourceIterator::Folder(Box::new(folder_source.await))
         }
         Playlist => {
             info!(target: Target::file_mail(), channel = id; "Playout in playlist mode");
             let program = CurrentProgram::new(manager);
 
-            SourceIterator::Playlist(program.await)
+            SourceIterator::Playlist(Box::new(program.await))
         }
     }
 }

@@ -2,7 +2,7 @@ use std::{error::Error, fmt, str::FromStr, sync::atomic::Ordering};
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use sqlx::{Pool, Sqlite};
 use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
 
@@ -11,7 +11,7 @@ use crate::player::{
     controller::{ChannelManager, ProcessUnit::*},
     utils::{get_delta, get_media_map},
 };
-use crate::utils::{config::OutputMode::*, errors::ServiceError, logging::Target, TextFilter};
+use crate::utils::{TextFilter, config::OutputMode::*, errors::ServiceError, logging::Target};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct TextParams {
@@ -117,10 +117,10 @@ pub async fn send_message(
 ) -> Result<Map<String, Value>, ServiceError> {
     let filter = message.to_string();
     let mut data_map = Map::new();
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
 
     if config.text.zmq_stream_socket.is_some() {
-        if let Some(clips_filter) = manager.filter_chain.clone() {
+        if let Some(ref clips_filter) = manager.filter_chain {
             *clips_filter.lock().await = vec![filter.clone()];
         }
 
@@ -167,7 +167,7 @@ pub async fn control_state(
     manager: &ChannelManager,
     command: &PlayerCtl,
 ) -> Result<Map<String, Value>, ServiceError> {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
     let id = config.general.channel_id;
     let current_date = manager.current_date.lock().await.clone();
     let current_list = manager.current_list.lock().await.clone();

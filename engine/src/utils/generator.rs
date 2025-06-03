@@ -8,9 +8,9 @@ use std::io::Error;
 
 use async_walkdir::WalkDir;
 use chrono::Timelike;
-use lexical_sort::{natural_lexical_cmp, StringSort};
+use lexical_sort::{StringSort, natural_lexical_cmp};
 use log::*;
-use rand::{rng, seq::SliceRandom, Rng};
+use rand::{Rng, rng, seq::SliceRandom};
 use tokio::fs;
 use tokio_stream::StreamExt;
 
@@ -18,7 +18,7 @@ use crate::player::{
     controller::ChannelManager,
     input::folder::FolderSource,
     utils::{
-        get_date_range, include_file_extension, json_serializer::JsonPlaylist, sum_durations, Media,
+        Media, get_date_range, include_file_extension, json_serializer::JsonPlaylist, sum_durations,
     },
 };
 use crate::utils::{
@@ -96,12 +96,7 @@ pub async fn filler_list(
     manager: &ChannelManager,
     total_length: f64,
 ) -> Vec<Media> {
-    let filler_list = manager
-        .storage
-        .lock()
-        .await
-        .fill_filler_list(config, None)
-        .await;
+    let filler_list = manager.storage.fill_filler_list(config, None).await;
     let mut index = 0;
     let mut filler_clip_list: Vec<Media> = vec![];
     let mut target_duration = 0.0;
@@ -200,7 +195,7 @@ pub async fn generate_from_template(
 
 /// Generate playlists
 pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>, Error> {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
     let id = config.general.channel_id;
     let channel_name = manager.channel.lock().await.name.clone();
 

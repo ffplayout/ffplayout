@@ -4,22 +4,22 @@ use std::{
     io::Error,
     net::TcpListener,
     path::{Path, PathBuf},
-    process::{exit, Stdio},
+    process::{Stdio, exit},
     str::FromStr,
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
 };
 
-use chrono::{prelude::*, TimeDelta};
+use chrono::{TimeDelta, prelude::*};
 use chrono_tz::Tz;
 use log::*;
 use probe::MediaProbe;
 use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
-use serde::{de::Deserializer, Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde::{Deserialize, Serialize, de::Deserializer};
+use serde_json::{Map, Value, json};
 use tokio::{
-    fs::{metadata, File},
+    fs::{File, metadata},
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{ChildStderr, Command},
     sync::Mutex,
@@ -35,15 +35,15 @@ use crate::player::{
         ChannelManager,
         ProcessUnit::{self, *},
     },
-    filter::{filter_chains, Filters},
+    filter::{Filters, filter_chains},
 };
 use crate::utils::{
-    config::{OutputMode::*, PlayoutConfig, FFMPEG_IGNORE_ERRORS},
+    config::{FFMPEG_IGNORE_ERRORS, OutputMode::*, PlayoutConfig},
     errors::ServiceError,
     logging::{LogDedup, Target},
     time_machine::time_now,
 };
-pub use json_serializer::{read_json, JsonPlaylist};
+pub use json_serializer::{JsonPlaylist, read_json};
 
 use crate::vec_strings;
 
@@ -163,7 +163,7 @@ pub async fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
         .clone()
         .unwrap_or_else(Media::default);
     let channel = manager.channel.lock().await.clone();
-    let config = manager.config.lock().await.processing.clone();
+    let config = manager.config.read().await.processing.clone();
     let ingest_is_alive = manager.ingest_is_alive.load(Ordering::SeqCst);
 
     let mut data_map = Map::new();
@@ -647,7 +647,10 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     let mut source_cmd = vec![];
 
     if loop_count > 1 {
-        info!("Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>", node.source, node.out);
+        info!(
+            "Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>",
+            node.source, node.out
+        );
 
         source_cmd.append(&mut vec_strings![
             "-stream_loop",
@@ -1191,11 +1194,7 @@ pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
 }
 
 fn gcd(a: u32, b: u32) -> u32 {
-    if b == 0 {
-        a
-    } else {
-        gcd(b, a % b)
-    }
+    if b == 0 { a } else { gcd(b, a % b) }
 }
 
 pub fn fraction(d: f64, max_denominator: u32) -> (u32, u32) {

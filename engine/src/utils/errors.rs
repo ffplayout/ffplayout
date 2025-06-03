@@ -1,6 +1,6 @@
 use std::io;
 
-use actix_web::{error::ResponseError, Error, HttpResponse};
+use actix_web::{Error, HttpResponse, error::ResponseError};
 use derive_more::Display;
 
 use crate::player::utils::probe::FfProbeError;

@@ -8,12 +8,12 @@ use std::{
 use faccess::PathExt;
 use inquire::Confirm;
 use log::*;
-use sqlx::{migrate::MigrateDatabase, Pool, Sqlite, SqlitePool};
+use sqlx::{Pool, Sqlite, SqlitePool, migrate::MigrateDatabase};
 
 pub mod handles;
 pub mod models;
 
-use crate::{utils::errors::ProcessError, ARGS};
+use crate::{ARGS, utils::errors::ProcessError};
 use models::GlobalSettings;
 
 pub static DB_PATH: LazyLock<Result<Cow<'static, Path>, io::Error>> = LazyLock::new(|| {

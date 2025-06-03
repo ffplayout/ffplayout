@@ -46,7 +46,7 @@ notify-debouncer-full = { version = "*", default-features = false }
 path-clean = "1.0"
 rand = "0.9"
 regex = "1"
-relative-path = "1.8"
+relative-path = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sanitize-filename = "0.6"
 serde = { version = "1.0", features = ["derive"] }

@@ -1,5 +1,5 @@
-use actix_web::{error::ErrorUnauthorized, http::StatusCode, web, Error};
-use argon2::{password_hash::PasswordHash, Argon2, PasswordVerifier};
+use actix_web::{Error, error::ErrorUnauthorized, http::StatusCode, web};
+use argon2::{Argon2, PasswordVerifier, password_hash::PasswordHash};
 use chrono::{TimeDelta, Utc};
 use jsonwebtoken::{self, DecodingKey, EncodingKey, Header, Validation};
 use log::*;
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 
 use crate::{
-    db::{handles, models::Role, models::User, GLOBAL_SETTINGS},
+    db::{GLOBAL_SETTINGS, handles, models::Role, models::User},
     utils::errors::ServiceError,
 };
 

@@ -23,7 +23,25 @@ for target in "${targets[@]}"; do
     echo "compile static for $target"
     echo ""
 
-    if [[ $target == "x86_64-pc-windows-gnu" ]]; then
+    if [[ $target == "debian" ]]; then
+        rm -f ffplayout_${version}-1_amd64.deb
+        rm -f "ffplayout-v${version}_debian.tar.gz"
+
+        docker build -t rust-debian -f ./docker/debian.Dockerfile .
+        docker run -dit --name build-ffplayout -v "$(pwd)":/src rust-debian
+
+        docker exec -it build-ffplayout cargo build --release --target=x86_64-unknown-linux-gnu
+        docker exec -it build-ffplayout cargo deb --no-build \
+            --target=x86_64-unknown-linux-gnu \
+            -p ffplayout --manifest-path=/src/engine/Cargo.toml \
+            -o /src/ffplayout_${version}-1_amd64.deb
+
+        docker stop build-ffplayout
+        docker rm build-ffplayout
+
+        tar --transform 's/\.\/target\/.*\///g' -czvf "ffplayout-v${version}_debian.tar.gz" --exclude='*.db' --exclude='*.db-shm' \
+            --exclude='*.db-wal' assets docker docs LICENSE README.md ./target/x86_64-unknown-linux-gnu/release/ffplayout
+    elif [[ $target == "x86_64-pc-windows-gnu" ]]; then
         if [[ -f "ffplayout-v${version}_${target}.zip" ]]; then
             rm -f "ffplayout-v${version}_${target}.zip"
         fi
@@ -31,7 +49,7 @@ for target in "${targets[@]}"; do
         cross build --release --target=$target
 
         cp ./target/${target}/release/ffplayout.exe .
-        zip -r "ffplayout-v${version}_${target}.zip" assets docker docs LICENSE README.md CHANGELOG.md ffplayout.exe -x *.db -x *.db-shm -x *.db-wal -x *.service
+        zip -r "ffplayout-v${version}_${target}.zip" assets docker docs LICENSE README.md ffplayout.exe -x *.db -x *.db-shm -x *.db-wal -x *.service
         rm -f ffplayout.exe
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -40,7 +58,7 @@ for target in "${targets[@]}"; do
 
         cross build --release --target=$target
 
-        tar --transform 's/\.\/target\/.*\///g' -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docker docs LICENSE README.md CHANGELOG.md ./target/${target}/release/ffplayout
+        tar --transform 's/\.\/target\/.*\///g' -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docker docs LICENSE README.md ./target/${target}/release/ffplayout
     fi
 
     echo ""
