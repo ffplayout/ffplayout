@@ -444,6 +444,8 @@ pub fn log_line(id: i32, line: &str, level: &str) {
         error!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[error] ", ""));
     } else if line.contains("[fatal]") {
         error!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[fatal] ", ""));
+    } else {
+        warn!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {line}");
     }
 }
 
@@ -565,6 +567,10 @@ pub fn stderr_log(line: &str, suffix: ProcessUnit, channel_id: i32) -> Result<()
                 "Hit unrecoverable error!".to_string(),
             ));
         }
+    } else {
+        warn!(target: Target::file_mail(), channel = channel_id;
+            "<span class=\"log-gray\">[{suffix}]</span> {line}"
+        );
     }
 
     Ok(())
