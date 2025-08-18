@@ -358,15 +358,15 @@ fn hw_upload(config: &PlayoutConfig, chain: &str, f: &str) -> String {
 }
 
 fn deinterlace(config: &PlayoutConfig, chain: &mut Filters, field_order: &Option<String>) {
-    if let Some(order) = field_order {
-        if order != "progressive" {
-            let deinterlace = match config.advanced.filter.deinterlace.clone() {
-                Some(deinterlace) => deinterlace,
-                None => "yadif=0:-1:0".to_string(),
-            };
+    if let Some(order) = field_order
+        && order != "progressive"
+    {
+        let deinterlace = match config.advanced.filter.deinterlace.clone() {
+            Some(deinterlace) => deinterlace,
+            None => "yadif=0:-1:0".to_string(),
+        };
 
-            chain.add(&deinterlace, 0, Video);
-        }
+        chain.add(&deinterlace, 0, Video);
     }
 }
 
@@ -549,17 +549,17 @@ fn extend_video(config: &PlayoutConfig, chain: &mut Filters, node: &mut Media) {
         .as_ref()
         .and_then(|p| p.video.first())
         .and_then(|v| v.duration.as_ref())
+        && node.out - node.seek > video_duration - node.seek + 0.1
+        && node.duration >= node.out
     {
-        if node.out - node.seek > video_duration - node.seek + 0.1 && node.duration >= node.out {
-            let duration = (node.out - node.seek) - (video_duration - node.seek);
+        let duration = (node.out - node.seek) - (video_duration - node.seek);
 
-            let tpad = match config.advanced.filter.tpad.clone() {
-                Some(pad) => custom_format(&pad, &[duration]),
-                None => format!("tpad=stop_mode=add:stop_duration={duration}"),
-            };
+        let tpad = match config.advanced.filter.tpad.clone() {
+            Some(pad) => custom_format(&pad, &[duration]),
+            None => format!("tpad=stop_mode=add:stop_duration={duration}"),
+        };
 
-            chain.add(&tpad, 0, Video);
-        }
+        chain.add(&tpad, 0, Video);
     }
 }
 
@@ -592,23 +592,21 @@ fn add_audio(config: &PlayoutConfig, chain: &mut Filters, node: &Media, nr: i32)
 }
 
 fn extend_audio(config: &PlayoutConfig, chain: &mut Filters, node: &mut Media, nr: i32) {
-    if !Path::new(&node.audio).is_file() {
-        if let Some(audio_duration) = node
+    if !Path::new(&node.audio).is_file()
+        && let Some(audio_duration) = node
             .probe
             .as_ref()
             .and_then(|p| p.audio.first())
             .and_then(|a| a.duration)
-        {
-            if node.out - node.seek > audio_duration - node.seek + 0.1 && node.duration >= node.out
-            {
-                let apad = match config.advanced.filter.apad.clone() {
-                    Some(apad) => custom_format(&apad, &[node.out - node.seek]),
-                    None => format!("apad=whole_dur={}", node.out - node.seek),
-                };
+        && node.out - node.seek > audio_duration - node.seek + 0.1
+        && node.duration >= node.out
+    {
+        let apad = match config.advanced.filter.apad.clone() {
+            Some(apad) => custom_format(&apad, &[node.out - node.seek]),
+            None => format!("apad=whole_dur={}", node.out - node.seek),
+        };
 
-                chain.add(&apad, nr, Audio);
-            }
-        }
+        chain.add(&apad, nr, Audio);
     }
 }
 
@@ -831,10 +829,10 @@ pub async fn filter_chains(
         error!(target: Target::file_mail(), channel = config.general.channel_id; "Setting 'audio_track_index' other than '-1' is not allowed in audio copy mode!");
     }
 
-    if config.output.mode == HLS {
-        if let Some(f) = config.output.output_filter.clone() {
-            process_output_filters(config, &mut filters, &f);
-        }
+    if config.output.mode == HLS
+        && let Some(f) = config.output.output_filter.clone()
+    {
+        process_output_filters(config, &mut filters, &f);
     }
 
     filters.build();

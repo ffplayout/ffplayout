@@ -52,10 +52,10 @@ pub async fn filter_node(
     } else if let Some(socket) = zmq_socket {
         let mut filter_cmd = format!("text=''{font}");
 
-        if let Some(chain) = filter_chain {
-            if let Some(link) = chain.lock().await.iter().find(|&l| l.contains("text")) {
-                filter_cmd = link.to_string();
-            }
+        if let Some(chain) = filter_chain
+            && let Some(link) = chain.lock().await.iter().find(|&l| l.contains("text"))
+        {
+            filter_cmd = link.to_string();
         }
 
         filter = match config.advanced.filter.drawtext_from_zmq.clone() {

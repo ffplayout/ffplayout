@@ -108,50 +108,50 @@ impl fmt::Display for TextFilter {
 
         let mut s = format!("text='{escaped_text}'");
 
-        if let Some(v) = &self.x {
-            if !v.is_empty() {
-                s.push_str(&format!(":x='{v}'"));
-            }
+        if let Some(v) = &self.x
+            && !v.is_empty()
+        {
+            s.push_str(&format!(":x='{v}'"));
         }
-        if let Some(v) = &self.y {
-            if !v.is_empty() {
-                s.push_str(&format!(":y='{v}'"));
-            }
+        if let Some(v) = &self.y
+            && !v.is_empty()
+        {
+            s.push_str(&format!(":y='{v}'"));
         }
-        if let Some(v) = &self.fontsize {
-            if !v.is_empty() {
-                s.push_str(&format!(":fontsize={v}"));
-            }
+        if let Some(v) = &self.fontsize
+            && !v.is_empty()
+        {
+            s.push_str(&format!(":fontsize={v}"));
         }
-        if let Some(v) = &self.line_spacing {
-            if !v.is_empty() {
-                s.push_str(&format!(":line_spacing={v}"));
-            }
+        if let Some(v) = &self.line_spacing
+            && !v.is_empty()
+        {
+            s.push_str(&format!(":line_spacing={v}"));
         }
-        if let Some(v) = &self.fontcolor {
-            if !v.is_empty() {
-                s.push_str(&format!(":fontcolor={v}"));
-            }
+        if let Some(v) = &self.fontcolor
+            && !v.is_empty()
+        {
+            s.push_str(&format!(":fontcolor={v}"));
         }
-        if let Some(v) = &self.alpha {
-            if !v.is_empty() {
-                s.push_str(&format!(":alpha='{v}'"));
-            }
+        if let Some(v) = &self.alpha
+            && !v.is_empty()
+        {
+            s.push_str(&format!(":alpha='{v}'"));
         }
-        if let Some(v) = &self.r#box {
-            if !v.is_empty() {
-                s.push_str(&format!(":box={v}"));
-            }
+        if let Some(v) = &self.r#box
+            && !v.is_empty()
+        {
+            s.push_str(&format!(":box={v}"));
         }
-        if let Some(v) = &self.boxcolor {
-            if !v.is_empty() {
-                s.push_str(&format!(":boxcolor={v}"));
-            }
+        if let Some(v) = &self.boxcolor
+            && !v.is_empty()
+        {
+            s.push_str(&format!(":boxcolor={v}"));
         }
-        if let Some(v) = &self.boxborderw {
-            if !v.is_empty() {
-                s.push_str(&format!(":boxborderw={v}"));
-            }
+        if let Some(v) = &self.boxborderw
+            && !v.is_empty()
+        {
+            s.push_str(&format!(":boxborderw={v}"));
         }
 
         write!(f, "{s}")

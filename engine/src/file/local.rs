@@ -119,17 +119,16 @@ impl LocalStorage {
                         .to_string_lossy()
                         .to_string(),
                 );
-            } else if f_meta.is_file() && !path_obj.folders_only {
-                if let Some(ext) = file_extension(&child.path()) {
-                    if self
-                        .extensions
-                        .read()
-                        .await
-                        .contains(&ext.to_string().to_lowercase())
-                    {
-                        files.push(child.path());
-                    }
-                }
+            } else if f_meta.is_file()
+                && !path_obj.folders_only
+                && let Some(ext) = file_extension(&child.path())
+                && self
+                    .extensions
+                    .read()
+                    .await
+                    .contains(&ext.to_string().to_lowercase())
+            {
+                files.push(child.path());
             }
         }
 
@@ -341,11 +340,11 @@ impl LocalStorage {
                 if entry.path().is_file() && include_file_extension(config, &entry.path()) {
                     let mut media = Media::new(index, &entry.path().to_string_lossy(), false).await;
 
-                    if fillers.is_none() {
-                        if let Err(e) = media.add_probe(false).await {
-                            error!(target: Target::file_mail(), channel = id; "{e:?}");
-                        };
-                    }
+                    if fillers.is_none()
+                        && let Err(e) = media.add_probe(false).await
+                    {
+                        error!(target: Target::file_mail(), channel = id; "{e:?}");
+                    };
 
                     filler_list.push(media);
                     index += 1;
@@ -371,11 +370,11 @@ impl LocalStorage {
             let mut media =
                 Media::new(0, &config.storage.filler_path.to_string_lossy(), false).await;
 
-            if fillers.is_none() {
-                if let Err(e) = media.add_probe(false).await {
-                    error!(target: Target::file_mail(), channel = id; "{e:?}");
-                };
-            }
+            if fillers.is_none()
+                && let Err(e) = media.add_probe(false).await
+            {
+                error!(target: Target::file_mail(), channel = id; "{e:?}");
+            };
 
             filler_list.push(media);
 

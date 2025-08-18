@@ -31,7 +31,7 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 14] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 15] = [
     "ac-tex damaged",
     "codec s302m, is muxed as a private data stream",
     "corrupt decoded frame in stream",
@@ -46,6 +46,7 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 14] = [
     "Warning MVs not available",
     "frame size not set",
     "Error parsing Opus packet header.",
+    "Resumed reading at pts",
 ];
 
 pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 9] = [
@@ -615,12 +616,20 @@ fn default_track_index() -> i32 {
 }
 
 impl PlayoutConfig {
-    pub async fn new(pool: &Pool<Sqlite>, channel_id: i32) -> Result<Self, ServiceError> {
+    pub async fn new(
+        pool: &Pool<Sqlite>,
+        channel_id: i32,
+        output_id: Option<i32>,
+    ) -> Result<Self, ServiceError> {
         let global = handles::select_global(pool).await?;
         let channel = handles::select_channel(pool, &channel_id).await?;
-        let config = handles::select_configuration(pool, channel_id).await?;
+        let mut config = handles::select_configuration(pool, channel_id).await?;
         let adv_config = handles::select_advanced_configuration(pool, channel_id).await?;
         let outputs = handles::select_outputs(pool, channel_id).await?;
+
+        if let Some(id) = output_id {
+            config.output_id = id;
+        }
 
         let channel = Channel::new(&global, channel);
         let advanced = AdvancedConfig::new(adv_config);
@@ -841,7 +850,7 @@ impl PlayoutConfig {
     }
 
     pub async fn dump(pool: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
-        let config = Self::new(pool, id).await?;
+        let config = Self::new(pool, id, None).await?;
 
         let toml_string = toml_edit::ser::to_string_pretty(&config)?;
         tokio::fs::write(&format!("ffplayout_{id}.toml"), toml_string).await?;
@@ -904,11 +913,20 @@ pub async fn get_config(
     pool: &Pool<Sqlite>,
     channel_id: i32,
 ) -> Result<PlayoutConfig, ServiceError> {
-    let mut config = PlayoutConfig::new(pool, channel_id).await?;
+    let args = ARGS.clone();
+    let output_id = if let Some(output_name) = &args.output {
+        let outputs = handles::select_outputs(pool, channel_id).await?;
+        outputs
+            .iter()
+            .find(|out| out.name == output_name.to_string())
+            .map(|out| out.id)
+    } else {
+        None
+    };
+
+    let mut config = PlayoutConfig::new(pool, channel_id, output_id).await?;
 
     validate_ffmpeg(&mut config).await?;
-
-    let args = ARGS.clone();
 
     config.general.generate = args.generate;
     config.general.validate = args.validate;

@@ -53,17 +53,19 @@ pub async fn output(config: &PlayoutConfig, log_format: &str) -> Result<Child, S
         }
     }
 
-    if config.text.add_text && !config.text.text_from_filename && !config.processing.audio_only {
-        if let Some(socket) = config.text.zmq_stream_socket.clone() {
-            debug!(target: Target::file_mail(), channel = config.general.channel_id;
-                "Using drawtext filter, listening on address: <span class=\"log-number\">{}</span>",
-                socket
-            );
+    if config.text.add_text
+        && !config.text.text_from_filename
+        && !config.processing.audio_only
+        && let Some(socket) = config.text.zmq_stream_socket.clone()
+    {
+        debug!(target: Target::file_mail(), channel = config.general.channel_id;
+            "Using drawtext filter, listening on address: <span class=\"log-number\">{}</span>",
+            socket
+        );
 
-            let mut filter: String = "null,".to_string();
-            filter.push_str(v_drawtext::filter_node(config, None, &None).await.as_str());
-            enc_filter = vec!["-vf".to_string(), filter];
-        }
+        let mut filter: String = "null,".to_string();
+        filter.push_str(v_drawtext::filter_node(config, None, &None).await.as_str());
+        enc_filter = vec!["-vf".to_string(), filter];
     }
 
     enc_cmd.append(&mut enc_filter);

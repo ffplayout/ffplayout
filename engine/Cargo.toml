@@ -54,11 +54,11 @@ serde_json = "1.0"
 serde_with = "3.12"
 shlex = "1.3"
 static-files = "0.2"
-sysinfo = { version = "0.35", features = ["linux-netdevs", "linux-tmpfs"] }
+sysinfo = { version = "0.37", features = ["linux-netdevs", "linux-tmpfs"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.44", features = ["full"] }
 tokio-stream = "0.1"
-toml_edit = {version = "0.22", features = ["serde"]}
+toml_edit = {version = "0.23", features = ["serde"]}
 ts-rs = { version = "11", features = ["chrono-impl", "no-serde-warnings"] }
 uuid = "1.16"
 zeromq = { version = "0.4", default-features = false, features = [

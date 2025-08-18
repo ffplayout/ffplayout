@@ -21,15 +21,16 @@ use tokio::{
 };
 use tokio_stream::StreamExt;
 
-use crate::ARGS;
-use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 use crate::{
+    ARGS,
     db::{handles, models::Channel},
-    utils::logging::Target,
-};
-use crate::{
     file::{init_storage, local::LocalStorage},
     player::{output::player, utils::Media},
+    utils::{
+        config::{OutputMode, PlayoutConfig},
+        errors::ServiceError,
+        logging::Target,
+    },
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -182,9 +183,9 @@ impl ChannelManager {
                 if let Err(e) = run_channel(self_clone.clone()).await {
                     self_clone.stop_all(false).await;
 
-                    let active = {
+                    let (active, public_path) = {
                         let channel = self_clone.channel.lock().await;
-                        channel.active
+                        (channel.active, channel.public.clone())
                     };
 
                     if !active {
@@ -212,6 +213,12 @@ impl ChannelManager {
                             .metrics()
                             .num_alive_tasks()
                     );
+
+                    if self_clone.config.read().await.output.mode == OutputMode::HLS
+                        && let Err(d_e) = delete_segments(public_path, &[], true).await
+                    {
+                        error!(target: Target::all(), channel = channel_id; "{d_e}");
+                    };
 
                     sleep(retry_delay).await;
                 }
@@ -258,12 +265,11 @@ impl ChannelManager {
             Ingest => &self.ingest,
         };
 
-        if let Some(p) = child.lock().await.as_mut() {
-            if let Err(e) = p.kill().await {
-                if !e.to_string().contains("exited process") {
-                    error!("Failed to kill {unit} process: {e}");
-                }
-            }
+        if let Some(p) = child.lock().await.as_mut()
+            && let Err(e) = p.kill().await
+            && !e.to_string().contains("exited process")
+        {
+            error!("Failed to kill {unit} process: {e}");
         }
 
         self.wait(unit).await;
@@ -423,7 +429,7 @@ pub async fn drain_hls_path(path: &Path) -> io::Result<()> {
         };
     }
 
-    delete_old_segments(path, &pl_segments).await
+    delete_segments(path, &pl_segments, false).await
 }
 
 /// Recursively searches for all files with the .m3u8 extension in the specified path.
@@ -441,9 +447,10 @@ async fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
 }
 
 /// Check if segment is in playlist, if not, delete it.
-async fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
+async fn delete_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
     path: P,
     pl_segments: &[String],
+    all: bool,
 ) -> io::Result<()> {
     let mut entries = WalkDir::new(path);
 
@@ -452,11 +459,11 @@ async fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
             && entry
                 .path()
                 .extension()
-                .is_some_and(|ext| ext == "ts" || ext == "vtt")
+                .is_some_and(|ext| ext == "ts" || ext == "vtt" || (all && ext == "m3u8"))
         {
             let filename = entry.file_name().to_string_lossy().to_string();
 
-            if !pl_segments.contains(&filename) {
+            if !pl_segments.contains(&filename) || all {
                 fs::remove_file(entry.path()).await?;
             }
         }

@@ -60,12 +60,12 @@ pub async fn write_playlist(
 
     if playlist_path.is_file() {
         file_exists = true;
-        if let Ok(existing_data) = json_reader(&playlist_path).await {
-            if json_data == existing_data {
-                return Err(ServiceError::Conflict(format!(
-                    "Playlist from {date}, already exists!"
-                )));
-            }
+        if let Ok(existing_data) = json_reader(&playlist_path).await
+            && json_data == existing_data
+        {
+            return Err(ServiceError::Conflict(format!(
+                "Playlist from {date}, already exists!"
+            )));
         }
     }
 

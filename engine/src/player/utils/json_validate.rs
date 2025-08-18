@@ -278,19 +278,18 @@ pub async fn validate_playlist(
 
                             if let Some(probe_duration) =
                                 item.probe.as_ref().and_then(|f| f.format.duration)
+                                && !is_close(o.duration, probe_duration, 1.2)
                             {
-                                if !is_close(o.duration, probe_duration, 1.2) {
-                                    error!(
-                                        target: Target::file_mail(),
-                                        channel = id;
-                                        "<span class=\"log-gray\">[Validation]</span> File duration (at: <span class=\"log-number\">{}</span>) differs from playlist value. File duration: <span class=\"log-number\">{}</span>, playlist value: <span class=\"log-number\">{}</span>, source <span class=\"log-addr\">{}</span>",
-                                        sec_to_time(o.begin.unwrap_or_default()),
-                                        sec_to_time(probe_duration),
-                                        sec_to_time(o.duration),
-                                        o.source
-                                    );
-                                    o.duration = probe_duration;
-                                }
+                                error!(
+                                    target: Target::file_mail(),
+                                    channel = id;
+                                    "<span class=\"log-gray\">[Validation]</span> File duration (at: <span class=\"log-number\">{}</span>) differs from playlist value. File duration: <span class=\"log-number\">{}</span>, playlist value: <span class=\"log-number\">{}</span>, source <span class=\"log-addr\">{}</span>",
+                                    sec_to_time(o.begin.unwrap_or_default()),
+                                    sec_to_time(probe_duration),
+                                    sec_to_time(o.duration),
+                                    o.source
+                                );
+                                o.duration = probe_duration;
                             }
 
                             if o.audio == item.audio && item.probe_audio.is_some() {
@@ -302,10 +301,10 @@ pub async fn validate_playlist(
                 }
             }
 
-            if config.processing.vtt_enable {
-                if let Err(e) = check_vtt(&item.source, item.duration, id).await {
-                    error!(target: Target::file_mail(), channel = id; "{e}");
-                }
+            if config.processing.vtt_enable
+                && let Err(e) = check_vtt(&item.source, item.duration, id).await
+            {
+                error!(target: Target::file_mail(), channel = id; "{e}");
             }
         }
 
