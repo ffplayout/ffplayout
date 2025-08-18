@@ -26,7 +26,7 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     .await
     .unwrap();
 
-    let config = PlayoutConfig::new(&pool, 1).await.unwrap();
+    let config = PlayoutConfig::new(&pool, 1, None).await.unwrap();
     let channel = handles::select_channel(&pool, &1).await.unwrap();
     let manager = ChannelManager::new(pool, channel, config.clone()).await;
 
