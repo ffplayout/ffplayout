@@ -89,11 +89,6 @@ assets = [
         "755",
     ],
     [
-        "../assets/ffplayout.service",
-        "/lib/systemd/system/",
-        "644",
-    ],
-    [
         "../assets/dummy.vtt",
         "/usr/share/ffplayout/",
         "644",
@@ -138,11 +133,6 @@ assets = [
         "target/release/ffplayout",
         "/usr/bin/",
         "755",
-    ],
-    [
-        "../assets/ffplayout.service",
-        "/lib/systemd/system/",
-        "644",
     ],
     [
         "../assets/dummy.vtt",
