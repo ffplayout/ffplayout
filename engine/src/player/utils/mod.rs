@@ -583,10 +583,19 @@ pub fn insert_readrate(options: &[String], args: &mut Vec<String>, rate: f64) {
             if options.contains(&"-readrate_catchup".to_string()) {
                 args.insert(i, 1.5.to_string());
                 args.insert(i, "-readrate_catchup".to_string());
-                i += 2;
             }
 
-            i += 2;
+            /*
+            Note: normally, each input should have a readrate parameter.
+            However, due to a bug in ffmpeg, we only add the parameter to the first (video) input.
+
+            The ffmpeg bug drops FPS when there is a long period of silence (no text) at the current position.
+
+            In theory, if not every input has a readrate parameter, it could flush some caching.
+            However, a test with a 1.5-hour-long video could not simulate this.
+             */
+
+            break;
         }
 
         i += 1;
