@@ -33,12 +33,12 @@ jobs:
           cargo test --all-features
           cargo clippy --all-features --all-targets -- --deny warnings
           cargo fmt --all -- --check
-          cargo build --all-features --verbose
+          cargo build --all-features
 
       - name: Run build on macOS
         if: ${{ matrix.os == 'macos-latest' }}
-        run: cargo build --all-features --verbose
+        run: cargo build --all-features
 
       - name: Run build on Windows (with MSVC fixes)
         if: ${{ matrix.os == 'windows-latest' }}
-        run: cargo build --release --all-features --verbose
+        run: cargo build --release --all-features
