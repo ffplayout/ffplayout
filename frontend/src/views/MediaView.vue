@@ -376,8 +376,8 @@ const xhr = ref(new XMLHttpRequest())
 document.title = `${t('button.media')} | ffplayout`
 
 onMounted(async () => {
-    let config_extensions = configStore.playout.storage.extensions
-    let extra_extensions = configStore.channels[configStore.i].extra_extensions
+    const config_extensions = configStore.playout.storage.extensions
+    let extra_extensions = configStore.channels[configStore.i]?.extra_extensions || []
 
     if (typeof extra_extensions === 'string') {
         extra_extensions = extra_extensions.split(',')
@@ -458,7 +458,7 @@ async function handleDrop(event: any, targetFolder: any, isParent: boolean | nul
     }
 
     if (source !== target) {
-        await fetch(`/api/file/${configStore.channels[configStore.i].id}/rename/`, {
+        await fetch(`/api/file/${configStore.channels[configStore.i]?.id}/rename/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source, target }),
@@ -485,13 +485,13 @@ function setPreviewData(path: string) {
         fullPath = `/${mediaStore.folderTree.parent}/${mediaStore.folderTree.source}/${path}`.replace(/\/[/]+/g, '/')
     }
 
-    previewName.value = fullPath.split('/').slice(-1)[0]
-    previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.i].id}${fullPath}`).replace(
+    previewName.value = fullPath.split('/').slice(-1)[0] || ''
+    previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.i]?.id}${fullPath}`).replace(
         /%2F/g,
         '/'
     )
 
-    const ext = previewName.value.split('.').slice(-1)[0].toLowerCase()
+    const ext = previewName.value.split('.').slice(-1)[0]?.toLowerCase()
     const fileType =
         mediaType(previewName.value) === 'audio'
             ? `audio/${ext}`
@@ -526,7 +526,7 @@ async function deleteFileOrFolder(del: boolean) {
     showDeleteModal.value = false
 
     if (del) {
-        await fetch(`/api/file/${configStore.channels[configStore.i].id}/remove/`, {
+        await fetch(`/api/file/${configStore.channels[configStore.i]?.id}/remove/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source: deleteName.value, recursive: recursive.value }),
@@ -562,7 +562,7 @@ async function renameFile(ren: boolean) {
     showRenameModal.value = false
 
     if (ren && renameOldName.value !== renameNewName.value) {
-        await fetch(`/api/file/${configStore.channels[configStore.i].id}/rename/`, {
+        await fetch(`/api/file/${configStore.channels[configStore.i]?.id}/rename/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({
@@ -605,7 +605,7 @@ async function createFolder(create: boolean) {
             return
         }
 
-        await fetch(`/api/file/${configStore.channels[configStore.i].id}/create-folder/`, {
+        await fetch(`/api/file/${configStore.channels[configStore.i]?.id}/create-folder/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source: path }),
@@ -642,8 +642,8 @@ async function upload(file: any): Promise<null | undefined> {
     return new Promise((resolve) => {
         xhr.value.open(
             'PUT',
-            `/api/file/${configStore.channels[configStore.i].id}/upload/?path=${encodeURIComponent(
-                mediaStore.crumbs[mediaStore.crumbs.length - 1].path
+            `/api/file/${configStore.channels[configStore.i]?.id}/upload/?path=${encodeURIComponent(
+                mediaStore.crumbs[mediaStore.crumbs.length - 1]?.path ?? ''
             )}`
         )
 
@@ -676,6 +676,7 @@ async function uploadFiles(upl: boolean) {
 
         for (let i = 0; i < inputFiles.value.length; i++) {
             const file = inputFiles.value[i]
+            if (!file) continue
             uploadTask.value = file.name
             currentProgress.value = 0
             currentNumber.value = i + 1

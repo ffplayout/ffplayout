@@ -226,7 +226,7 @@ watch([i], () => {
 })
 
 async function getPreset(index: number) {
-    fetch(`/api/presets/${configStore.channels[configStore.i].id}`, {
+    fetch(`/api/presets/${configStore.channels[configStore.i]?.id}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })
@@ -307,10 +307,10 @@ async function savePreset() {
                     : form.value.boxColor + '@' + numberToHex(form.value.boxAlpha),
             boxborderw: form.value.border,
             alpha: form.value.overallAlpha,
-            channel_id: configStore.channels[configStore.i].id,
+            channel_id: configStore.channels[configStore.i]?.id,
         }
 
-        const response = await fetch(`/api/presets/${configStore.channels[configStore.i].id}/${form.value.id}`, {
+        const response = await fetch(`/api/presets/${configStore.channels[configStore.i]?.id}/${form.value.id}`, {
             method: 'PUT',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify(preset),
@@ -346,10 +346,10 @@ async function createNewPreset(create: boolean) {
                     : form.value.boxColor + '@' + numberToHex(form.value.boxAlpha),
             boxborderw: form.value.border.toString(),
             alpha: form.value.overallAlpha.toString(),
-            channel_id: configStore.channels[configStore.i].id,
+            channel_id: configStore.channels[configStore.i]?.id,
         }
 
-        const response = await fetch(`/api/presets/${configStore.channels[configStore.i].id}/`, {
+        const response = await fetch(`/api/presets/${configStore.channels[configStore.i]?.id}/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify(preset),
@@ -370,7 +370,7 @@ async function deletePreset(del: boolean) {
     showDeleteModal.value = false
 
     if (del && selected.value && selected.value !== '') {
-        await fetch(`/api/presets/${configStore.channels[configStore.i].id}/${form.value.id}`, {
+        await fetch(`/api/presets/${configStore.channels[configStore.i]?.id}/${form.value.id}`, {
             method: 'DELETE',
             headers: authStore.authHeader,
         })
@@ -393,7 +393,7 @@ async function submitMessage() {
         boxborderw: form.value.border.toString(),
     }
 
-    const response = await fetch(`/api/control/${configStore.channels[configStore.i].id}/text/`, {
+    const response = await fetch(`/api/control/${configStore.channels[configStore.i]?.id}/text/`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify(obj),

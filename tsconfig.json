@@ -1,4 +1,9 @@
 {
+  "compilerOptions": {
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true
+  },
   "files": [],
   "references": [
     {

@@ -442,7 +442,7 @@ onBeforeMount(async () => {
 })
 
 async function fetchRelatedConfigs() {
-    const id = configStore.channels[configStore.i].id
+    const id = configStore.channels[configStore.i]?.id ?? 0
 
     await fetch(`/api/playout/advanced/${id}/`, {
         method: 'GET',
@@ -455,7 +455,7 @@ async function fetchRelatedConfigs() {
 
             return response.json()
         })
-        .then((response: any) => {
+        .then((response) => {
             relatedConfigs.value = response
         })
         .catch((e) => {
@@ -468,7 +468,7 @@ function addAdvancedConfig() {
 }
 
 async function removeAdvancedConfig() {
-    const id = configStore.channels[configStore.i].id
+    const id = configStore.channels[configStore.i]?.id ?? 0
 
     await fetch(`/api/playout/advanced/${id}/${configStore.advanced.id}`, {
         method: 'DELETE',
@@ -488,7 +488,7 @@ async function onSubmitAdvanced() {
     configStore.onetimeInfo = true
 
     if (update.status === 200) {
-        const id = configStore.channels[configStore.i].id
+        const id = configStore.channels[configStore.i]?.id ?? 0
         indexStore.msgAlert('success', t('advanced.updateSuccess'), 2)
 
         await fetchRelatedConfigs()
@@ -505,7 +505,7 @@ async function onSubmitAdvanced() {
 
             return response.json()
         })
-        .then((response: any) => {
+        .then((response) => {
             if (response === 'active') {
                 showModal.value = true
             }
@@ -517,9 +517,9 @@ async function onSubmitAdvanced() {
 
 async function restart(res: boolean) {
     if (res) {
-        const channel = configStore.channels[configStore.i].id
+        const id = configStore.channels[configStore.i]?.id ?? 0
 
-        await fetch(`/api/control/${channel}/process/`, {
+        await fetch(`/api/control/${id}/process/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'restart' }),

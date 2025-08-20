@@ -32,7 +32,7 @@ export const stringFormatter = () => {
 
     function timeToSeconds(time: string): number {
         const t = time.split(':')
-        return parseInt(t[0]) * 3600 + parseInt(t[1]) * 60 + parseInt(t[2])
+        return parseInt(t[0] ?? '0') * 3600 + parseInt(t[1] ?? '0') * 60 + parseInt(t[2] ?? '0')
     }
 
     function secToHMS(sec: number): string {

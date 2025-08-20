@@ -108,9 +108,9 @@ export const useConfig = defineStore('config', {
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
             const indexStore = useIndex()
-            const channel = this.channels[this.i].id
+            const id = this.channels[this.i]?.id
 
-            await fetch(`/api/playout/config/${channel}`, {
+            await fetch(`/api/playout/config/${id}`, {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
@@ -129,9 +129,9 @@ export const useConfig = defineStore('config', {
         async getPlayoutOutputs() {
             const authStore = useAuth()
             const indexStore = useIndex()
-            const channel = this.channels[this.i].id
+            const id = this.channels[this.i]?.id
 
-            await fetch(`/api/playout/outputs/${channel}`, {
+            await fetch(`/api/playout/outputs/${id}`, {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
@@ -148,9 +148,9 @@ export const useConfig = defineStore('config', {
         async getAdvancedConfig() {
             const authStore = useAuth()
             const indexStore = useIndex()
-            const channel = this.channels[this.i].id
+            const id = this.channels[this.i]?.id
 
-            await fetch(`/api/playout/advanced/${channel}`, {
+            await fetch(`/api/playout/advanced/${id}`, {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
@@ -166,13 +166,13 @@ export const useConfig = defineStore('config', {
         async setPlayoutConfig(obj: any) {
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
-            const channel = this.channels[this.i].id
+            const id = this.channels[this.i]?.id
 
             this.playlistLength = timeToSeconds(obj.playlist.length)
             this.playout.playlist.startInSec = timeToSeconds(obj.playlist.day_start)
             this.playout.playlist.lengthInSec = timeToSeconds(obj.playlist.length)
 
-            const update = await fetch(`/api/playout/config/${channel}`, {
+            const update = await fetch(`/api/playout/config/${id}`, {
                 method: 'PUT',
                 headers: { ...this.contentType, ...authStore.authHeader },
                 body: JSON.stringify(obj),
@@ -183,10 +183,10 @@ export const useConfig = defineStore('config', {
 
         async setAdvancedConfig() {
             const authStore = useAuth()
-            const channel = this.channels[this.i].id
+            const id = this.channels[this.i]?.id
 
             if (this.advanced?.id > 0) {
-                const update = await fetch(`/api/playout/advanced/${channel}`, {
+                const update = await fetch(`/api/playout/advanced/${id}`, {
                     method: 'PUT',
                     headers: { ...this.contentType, ...authStore.authHeader },
                     body: JSON.stringify(this.advanced),
@@ -194,7 +194,7 @@ export const useConfig = defineStore('config', {
 
                 return update
             } else {
-                const update = await fetch(`/api/playout/advanced/${channel}/`, {
+                const update = await fetch(`/api/playout/advanced/${id}/`, {
                     method: 'POST',
                     headers: { ...this.contentType, ...authStore.authHeader },
                     body: JSON.stringify(this.advanced),
@@ -252,9 +252,9 @@ export const useConfig = defineStore('config', {
             if (res) {
                 const authStore = useAuth()
                 const indexStore = useIndex()
-                const channel = this.channels[this.i].id
+                const id = this.channels[this.i]?.id
 
-                await fetch(`/api/control/${channel}/process/`, {
+                await fetch(`/api/control/${id}/process/`, {
                     method: 'POST',
                     headers: { ...this.contentType, ...authStore.authHeader },
                     body: JSON.stringify({ command: 'restart' }),

@@ -29,11 +29,11 @@ export const useMedia = defineStore('media', {
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
-            const channel = configStore.channels[configStore.i].id
+            const id = configStore.channels[configStore.i]?.id
             const crumbs: Crumb[] = []
             let root = '/'
 
-            await fetch(`/api/file/${channel}/browse/`, {
+            await fetch(`/api/file/${id}/browse/`, {
                 method: 'POST',
                 headers: { ...configStore.contentType, ...authStore.authHeader },
                 body: JSON.stringify({ source: path, folders_only: foldersOnly }),

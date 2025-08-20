@@ -591,9 +591,9 @@ async function onSubmitPlayout() {
     if (update.status === 200) {
         indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
 
-        const channel = configStore.channels[configStore.i].id
+        const id = configStore.channels[configStore.i]?.id
 
-        await fetch(`/api/control/${channel}/process/`, {
+        await fetch(`/api/control/${id}/process/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'status' }),
@@ -605,7 +605,7 @@ async function onSubmitPlayout() {
 
                 return response.json()
             })
-            .then(async (response: any) => {
+            .then(async (response) => {
                 if (response === 'active') {
                     configStore.showRestartModal = true
                 }

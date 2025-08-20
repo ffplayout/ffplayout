@@ -161,7 +161,7 @@
                         type="text"
                         name="source"
                         class="input input-sm w-full"
-                        :disabled="newSource.source.includes(configStore.channels[configStore.i].storage)"
+                        :disabled="newSource.source.includes(configStore.channels[configStore.i]?.storage ?? 'xyz123')"
                     />
                 </fieldset>
                 <fieldset class="fieldset">
@@ -365,7 +365,7 @@ function closePlayer() {
 
 function setPreviewData(path: string) {
     let fullPath = path
-    const storagePath = configStore.channels[configStore.i].storage
+    const storagePath = configStore.channels[configStore.i]?.storage ?? ''
     const lastIndex = storagePath.lastIndexOf('/')
 
     if (!path.includes('/')) {
@@ -375,19 +375,19 @@ function setPreviewData(path: string) {
         fullPath = path.replace(storagePath.substring(0, lastIndex), '')
     }
 
-    previewName.value = fullPath.split('/').slice(-1)[0]
+    previewName.value = fullPath.split('/').slice(-1)[0] ?? ''
     showPreviewModal.value = true
 
     if (path.match(/^http/)) {
         previewUrl.value = path
     } else {
-        previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.i].id}${fullPath}`).replace(
+        previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.i]?.id}${fullPath}`).replace(
             /%2F/g,
             '/'
         )
     }
 
-    const ext = previewName.value.split('.').slice(-1)[0].toLowerCase()
+    const ext = previewName.value.split('.').slice(-1)[0]?.toLowerCase()
 
     const fileType =
         mediaType(previewName.value) === 'audio'
@@ -425,11 +425,11 @@ function splitClip() {
 
 function splitSource(pos: number) {
     for (let i = 0; i < splitTimes.value.length; i++) {
-        let source = cloneDeep(newSource.value)
-        source.out = splitTimes.value[i].val
+        const source = cloneDeep(newSource.value)
+        source.out = splitTimes.value[i]?.val ?? 0
 
         if (i > 0) {
-            source.in = splitTimes.value[i - 1].val
+            source.in = splitTimes.value[i - 1]?.val ?? 0
         }
 
         if (pos === -1) {
@@ -441,8 +441,8 @@ function splitSource(pos: number) {
         }
     }
 
-    let source = cloneDeep(newSource.value)
-    source.in = splitTimes.value[splitCount.value - 1].val
+    const source = cloneDeep(newSource.value)
+    source.in = splitTimes.value[splitCount.value - 1]?.val ?? 0
 
     if (pos === -1) {
         playlistStore.playlist.push(source)
@@ -489,16 +489,16 @@ function editPlaylistItem(i: number) {
     showSourceModal.value = true
 
     newSource.value = {
-        begin: playlistStore.playlist[i].begin,
-        title: playlistStore.playlist[i].title,
-        in: playlistStore.playlist[i].in,
-        out: playlistStore.playlist[i].out,
-        duration: playlistStore.playlist[i].duration,
-        category: playlistStore.playlist[i].category,
-        custom_filter: playlistStore.playlist[i].custom_filter,
-        source: playlistStore.playlist[i].source,
-        audio: playlistStore.playlist[i].audio,
-        uid: playlistStore.playlist[i].uid,
+        begin: playlistStore.playlist[i]?.begin ?? 0,
+        title: playlistStore.playlist[i]?.title,
+        in: playlistStore.playlist[i]?.in ?? 0,
+        out: playlistStore.playlist[i]?.out ?? 0,
+        duration: playlistStore.playlist[i]?.duration ?? 0,
+        category: playlistStore.playlist[i]?.category,
+        custom_filter: playlistStore.playlist[i]?.custom_filter,
+        source: playlistStore.playlist[i]?.source ?? '',
+        audio: playlistStore.playlist[i]?.audio,
+        uid: playlistStore.playlist[i]?.uid ?? '',
     }
 }
 
@@ -552,7 +552,7 @@ async function importPlaylist(imp: boolean) {
 
         playlistStore.isLoading = true
         await fetch(
-            `/api/file/${configStore.channels[configStore.i].id}/import/?file=${textFile.value[0].name}&date=${
+            `/api/file/${configStore.channels[configStore.i]?.id}/import/?file=${textFile.value[0].name}&date=${
                 listDate.value
             }`,
             {
@@ -591,11 +591,11 @@ async function savePlaylist(save: boolean) {
 
         const saveList = processPlaylist(listDate.value, cloneDeep(playlistStore.playlist), true)
 
-        await fetch(`/api/playlist/${configStore.channels[configStore.i].id}/`, {
+        await fetch(`/api/playlist/${configStore.channels[configStore.i]?.id}/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({
-                channel: configStore.channels[configStore.i].name,
+                channel: configStore.channels[configStore.i]?.name,
                 date: targetDate.value,
                 program: saveList,
             }),
@@ -624,7 +624,7 @@ async function deletePlaylist(del: boolean) {
     showDeleteModal.value = false
 
     if (del) {
-        await fetch(`/api/playlist/${configStore.channels[configStore.i].id}/${listDate.value}`, {
+        await fetch(`/api/playlist/${configStore.channels[configStore.i]?.id}/${listDate.value}`, {
             method: 'DELETE',
             headers: { ...configStore.contentType, ...authStore.authHeader },
         }).then(() => {
