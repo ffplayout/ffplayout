@@ -93,7 +93,7 @@ pub async fn hls_watchdog(
 
             if age > hls_time * 3 {
                 error!(target: Target::file_mail(), channel = channel_id;
-                    "HLS segment write timeout!",
+                    "HLS segment write timeout! Last update: <span class=\"log-number\">{:.3}s</span>", age.as_secs_f32()
                 );
                 return Err(ServiceError::Conflict("Timeout".to_string()));
             }
