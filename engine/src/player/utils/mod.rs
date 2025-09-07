@@ -255,12 +255,13 @@ impl Media {
         let mut duration = 0.0;
         let mut probe = None;
 
-        if do_probe && (is_remote(src) || Path::new(src).is_file()) {
-            if let Ok(p) = MediaProbe::new(src).await {
-                probe = Some(p.clone());
+        if do_probe
+            && (is_remote(src) || Path::new(src).is_file())
+            && let Ok(p) = MediaProbe::new(src).await
+        {
+            probe = Some(p.clone());
 
-                duration = p.format.duration.unwrap_or_default();
-            }
+            duration = p.format.duration.unwrap_or_default();
         }
 
         Self {
@@ -395,10 +396,10 @@ fn is_empty_string(st: &String) -> bool {
 
 /// Calculate fps from rate/factor string
 pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
-    if let Some((r, f)) = r_frame_rate.split_once('/') {
-        if let (Ok(r_value), Ok(f_value)) = (r.parse::<f64>(), f.parse::<f64>()) {
-            return r_value / f_value;
-        }
+    if let Some((r, f)) = r_frame_rate.split_once('/')
+        && let (Ok(r_value), Ok(f_value)) = (r.parse::<f64>(), f.parse::<f64>())
+    {
+        return r_value / f_value;
     }
 
     default
@@ -457,13 +458,13 @@ pub fn get_date(seek: bool, start: f64, get_next: bool, timezone: &Option<Tz>) -
 }
 
 pub fn time_from_header(headers: &header::HeaderMap) -> Option<DateTime<Local>> {
-    if let Some(time) = headers.get(header::LAST_MODIFIED) {
-        if let Ok(t) = time.to_str() {
-            let time = DateTime::parse_from_rfc2822(t);
-            let date_time: DateTime<Local> = time.unwrap().into();
-            return Some(date_time);
-        };
-    }
+    if let Some(time) = headers.get(header::LAST_MODIFIED)
+        && let Ok(t) = time.to_str()
+    {
+        let time = DateTime::parse_from_rfc2822(t);
+        let date_time: DateTime<Local> = time.unwrap().into();
+        return Some(date_time);
+    };
 
     None
 }
@@ -473,12 +474,11 @@ pub async fn modified_time(path: &str) -> Option<String> {
     if is_remote(path) {
         let response = reqwest::Client::new().head(path).send().await;
 
-        if let Ok(resp) = response {
-            if resp.status().is_success() {
-                if let Some(time) = time_from_header(resp.headers()) {
-                    return Some(time.to_string());
-                }
-            }
+        if let Ok(resp) = response
+            && resp.status().is_success()
+            && let Some(time) = time_from_header(resp.headers())
+        {
+            return Some(time.to_string());
         }
 
         return None;
@@ -583,10 +583,19 @@ pub fn insert_readrate(options: &[String], args: &mut Vec<String>, rate: f64) {
             if options.contains(&"-readrate_catchup".to_string()) {
                 args.insert(i, 1.5.to_string());
                 args.insert(i, "-readrate_catchup".to_string());
-                i += 2;
             }
 
-            i += 2;
+            /*
+            Note: normally, each input should have a readrate parameter.
+            However, due to a bug in ffmpeg, we only add the parameter to the first (video) input.
+
+            The ffmpeg bug drops FPS when there is a long period of silence (no text) at the current position.
+
+            In theory, if not every input has a readrate parameter, it could flush some caching.
+            However, a test with a 1.5-hour-long video could not simulate this.
+             */
+
+            break;
         }
 
         i += 1;
@@ -835,10 +844,10 @@ pub fn is_remote(path: &str) -> bool {
 pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool {
     let mut include = false;
 
-    if let Some(ext) = file_extension(file_path) {
-        if config.storage.extensions.contains(&ext.to_lowercase()) {
-            include = true;
-        }
+    if let Some(ext) = file_extension(file_path)
+        && config.storage.extensions.contains(&ext.to_lowercase())
+    {
+        include = true;
     }
 
     if config.output.mode == HLS {
@@ -849,12 +858,10 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
             .unwrap_or_else(|| vec![String::new()])
             .iter()
             .find(|s| s.contains(".ts"))
+            && let Some(p) = Path::new(ts_path).parent()
+            && file_path.starts_with(p)
         {
-            if let Some(p) = Path::new(ts_path).parent() {
-                if file_path.starts_with(p) {
-                    include = false;
-                }
-            }
+            include = false;
         }
 
         if let Some(m3u8_path) = config
@@ -864,12 +871,10 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
             .unwrap_or_else(|| vec![String::new()])
             .iter()
             .find(|s| s.contains(".m3u8") && !s.contains("master.m3u8"))
+            && let Some(p) = Path::new(m3u8_path).parent()
+            && file_path.starts_with(p)
         {
-            if let Some(p) = Path::new(m3u8_path).parent() {
-                if file_path.starts_with(p) {
-                    include = false;
-                }
-            }
+            include = false;
         }
     }
 
@@ -1006,10 +1011,10 @@ async fn ffmpeg_info(config: &mut PlayoutConfig) -> Result<(), String> {
     // get options
     let mut lines = out_buffer.lines();
     while let Ok(Some(line)) = lines.next_line().await {
-        if line.starts_with('-') {
-            if let Some((opt, _)) = line.split_once([' ', '[']) {
-                config.general.ffmpeg_options.push(opt.to_string());
-            }
+        if line.starts_with('-')
+            && let Some((opt, _)) = line.split_once([' ', '['])
+        {
+            config.general.ffmpeg_options.push(opt.to_string());
         }
     }
 
@@ -1094,15 +1099,14 @@ pub fn is_free_tcp_port(url: &str) -> bool {
         addr = base_url.as_str().to_string();
     }
 
-    if let Some(socket) = addr.split_once(':') {
-        if TcpListener::bind((
+    if let Some(socket) = addr.split_once(':')
+        && TcpListener::bind((
             socket.0,
             socket.1.to_string().parse::<u16>().unwrap_or_default(),
         ))
         .is_ok()
-        {
-            return true;
-        }
+    {
+        return true;
     };
 
     false

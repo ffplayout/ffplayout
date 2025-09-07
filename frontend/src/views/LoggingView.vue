@@ -115,7 +115,7 @@ function scrollTo() {
 }
 
 function filterLogsBySeverity(logString: string, minSeverity: string): string {
-    const minLevel = indexStore.severityLevels[minSeverity]
+    const minLevel = indexStore.severityLevels[minSeverity] || 0
     const logLines = logString.trim().split(/\r?\n/)
 
     const filteredLogs = logLines.filter((log) => {
@@ -123,7 +123,10 @@ function filterLogsBySeverity(logString: string, minSeverity: string): string {
 
         if (match) {
             const logLevel = match[1]
-            return indexStore.severityLevels[logLevel] >= minLevel
+            if (logLevel && indexStore.severityLevels[logLevel] !== undefined) {
+                return indexStore.severityLevels[logLevel] >= minLevel
+            }
+            return true
         }
         return true
     })
@@ -137,7 +140,7 @@ async function getLog() {
         date = ''
     }
 
-    await fetch(`/api/log/${configStore.channels[configStore.i].id}?date=${date}&timezone=${encodeURIComponent(configStore.timezone)}`, {
+    await fetch(`/api/log/${configStore.channels[configStore.i]?.id}?date=${date}&timezone=${encodeURIComponent(configStore.timezone)}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })
@@ -160,14 +163,14 @@ async function getLog() {
 }
 
 async function downloadLog() {
+    const id = configStore.channels[configStore.i]?.id
     let date = listDate.value
-    let channel_id = configStore.channels[configStore.i].id
 
     if (date === dayjs().tz(configStore.timezone).format('YYYY-MM-DD')) {
         date = ''
     }
 
-    const response = await fetch(`/api/log/${channel_id}?date=${date}&timezone=${encodeURIComponent(configStore.timezone)}&download=true`, {
+    const response = await fetch(`/api/log/${id}?date=${date}&timezone=${encodeURIComponent(configStore.timezone)}&download=true`, {
         method: 'GET',
         headers: authStore.authHeader,
     })
@@ -186,7 +189,7 @@ async function downloadLog() {
     const link = document.createElement('a')
 
     link.href = url
-    link.download = `ffplayout_${channel_id}${date}.log`
+    link.download = `ffplayout_${id}${date}.log`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

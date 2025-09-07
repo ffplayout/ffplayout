@@ -19,7 +19,7 @@
                                 sources: [
                                     {
                                         type: 'application/x-mpegURL',
-                                        src: configStore.channels[configStore.i].preview_url,
+                                        src: configStore.channels[configStore.i]?.preview_url,
                                     },
                                 ],
                             }"
@@ -234,19 +234,19 @@ playlistStore.current = currentDefault
 const timeStr = ref('00:00:00')
 const timer = ref()
 const errorCounter = ref(0)
-const streamExtension = ref(configStore.channels[configStore.i].preview_url.split('.').pop())
+const streamExtension = ref(configStore.channels[configStore.i]?.preview_url.split('.').pop())
 const httpStreamFlv = ref(null)
 const httpFlvSource = ref({
     type: 'flv',
     isLive: true,
-    url: configStore.channels[configStore.i].preview_url,
+    url: configStore.channels[configStore.i]?.preview_url,
 })
 const mpegtsOptions = ref({
     lazyLoadMaxDuration: 3 * 60,
     liveBufferLatencyChasing: true,
 })
 
-const streamUrl = ref(`/data/event/${configStore.channels[configStore.i].id}?endpoint=playout&uuid=${authStore.uuid}`)
+const streamUrl = ref(`/data/event/${configStore.channels[configStore.i]?.id}?endpoint=playout&uuid=${authStore.uuid}`)
 
 // 'http://127.0.0.1:8787/data/event/1?endpoint=playout&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
 const { status, data, error, close } = useEventSource(streamUrl, [], {
@@ -297,7 +297,7 @@ watch([status, error], async () => {
 
         if (errorCounter.value > 11) {
             await authStore.obtainUuid()
-            streamUrl.value = `/data/event/${configStore.channels[configStore.i].id}?endpoint=playout&uuid=${
+            streamUrl.value = `/data/event/${configStore.channels[configStore.i]?.id}?endpoint=playout&uuid=${
                 authStore.uuid
             }`
             errorCounter.value = 0
@@ -321,7 +321,7 @@ watch([data], () => {
 watch([i], () => {
     resetStatus()
 
-    streamUrl.value = `/data/event/${configStore.channels[configStore.i].id}?endpoint=playout&uuid=${authStore.uuid}`
+    streamUrl.value = `/data/event/${configStore.channels[configStore.i]?.id}?endpoint=playout&uuid=${authStore.uuid}`
 
     if (timer.value) {
         clearTimeout(timer.value)
@@ -356,8 +356,8 @@ const controlProcess = throttle(async (state: string) => {
     /*
         Control playout (start, stop, restart)
     */
-    const channel = configStore.channels[configStore.i].id
-    await fetch(`/api/control/${channel}/process/`, {
+    const id = configStore.channels[configStore.i]?.id
+    await fetch(`/api/control/${id}/process/`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ command: state }),
@@ -379,9 +379,9 @@ const controlPlayout = throttle(async (state: string) => {
         - jump to last clip
         - reset playout state
     */
-    const channel = configStore.channels[configStore.i].id
+    const id = configStore.channels[configStore.i]?.id
 
-    await fetch(`/api/control/${channel}/playout/`, {
+    await fetch(`/api/control/${id}/playout/`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ control: state }),

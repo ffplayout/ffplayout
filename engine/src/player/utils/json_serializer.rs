@@ -122,41 +122,41 @@ pub async fn read_json(
     }
 
     if is_remote(&current_file) {
-        if let Ok(resp) = reqwest::Client::new().get(&current_file).send().await {
-            if resp.status().is_success() {
-                let headers = resp.headers().clone();
+        if let Ok(resp) = reqwest::Client::new().get(&current_file).send().await
+            && resp.status().is_success()
+        {
+            let headers = resp.headers().clone();
 
-                if let Ok(body) = resp.text().await {
-                    let mut playlist: JsonPlaylist = match serde_json::from_str(&body) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            error!(target: Target::file_mail(), channel = id; "Could't read remote json playlist. {e:?}");
-                            JsonPlaylist::new(date, start_sec)
-                        }
-                    };
-
-                    playlist.path = Some(current_file);
-                    playlist.start_sec = Some(start_sec);
-
-                    if let Some(time) = time_from_header(&headers) {
-                        playlist.modified = Some(time.to_string());
+            if let Ok(body) = resp.text().await {
+                let mut playlist: JsonPlaylist = match serde_json::from_str(&body) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        error!(target: Target::file_mail(), channel = id; "Could't read remote json playlist. {e:?}");
+                        JsonPlaylist::new(date, start_sec)
                     }
+                };
 
-                    let list_clone = playlist.clone();
+                playlist.path = Some(current_file);
+                playlist.start_sec = Some(start_sec);
 
-                    if !config.general.skip_validation {
-                        tokio::spawn(validate_playlist(
-                            config_clone,
-                            current_list,
-                            list_clone,
-                            is_alive,
-                        ));
-                    }
-
-                    set_defaults(&mut playlist);
-
-                    return playlist;
+                if let Some(time) = time_from_header(&headers) {
+                    playlist.modified = Some(time.to_string());
                 }
+
+                let list_clone = playlist.clone();
+
+                if !config.general.skip_validation {
+                    tokio::spawn(validate_playlist(
+                        config_clone,
+                        current_list,
+                        list_clone,
+                        is_alive,
+                    ));
+                }
+
+                set_defaults(&mut playlist);
+
+                return playlist;
             }
         }
     } else if playlist_path.is_file() {

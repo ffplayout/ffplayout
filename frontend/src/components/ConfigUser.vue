@@ -162,8 +162,9 @@ async function getUsers() {
         })
 }
 
-function onChange(event: any) {
-    selected.value = event.target.value
+function onChange(event: Event) {
+    const target = event.target as HTMLSelectElement
+    selected.value = Number(target.value)
 
     getUserConfig()
 }

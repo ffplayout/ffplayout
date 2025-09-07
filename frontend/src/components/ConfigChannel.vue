@@ -152,13 +152,13 @@ const channel = ref({} as Channel)
 const channelOrig = ref({} as Channel)
 
 onMounted(() => {
-    channel.value = cloneDeep(configStore.channels[i.value])
-    channelOrig.value = cloneDeep(configStore.channels[i.value])
+    channel.value = cloneDeep(configStore.channels[i.value] ?? {} as Channel)
+    channelOrig.value = cloneDeep(configStore.channels[i.value] ?? {} as Channel)
 })
 
 watch([i], () => {
     if (configStore.channels[i.value]) {
-        channel.value = cloneDeep(configStore.channels[i.value])
+        channel.value = cloneDeep(configStore.channels[i.value] ?? {} as Channel)
     }
 })
 
@@ -224,7 +224,7 @@ async function updateChannel() {
             const currentTimezone = channel.value.timezone
 
             for (let i = 0; i < configStore.channels.length; i++) {
-                if (configStore.channels[i].id === channel.value.id) {
+                if (configStore.channels[i]?.id === channel.value.id) {
                     configStore.channels[i] = cloneDeep(channel.value)
                     configStore.timezone = channel.value.timezone || 'UTC'
                     break
@@ -232,14 +232,14 @@ async function updateChannel() {
             }
 
             for (let i = 0; i < configStore.channelsRaw.length; i++) {
-                if (configStore.channelsRaw[i].id === channel.value.id) {
+                if (configStore.channelsRaw[i]?.id === channel.value.id) {
                     configStore.channelsRaw[i] = cloneDeep(channel.value)
                     break
                 }
             }
 
-            channel.value = cloneDeep(configStore.channels[i.value])
-            channelOrig.value = cloneDeep(configStore.channels[i.value])
+            channel.value = cloneDeep(configStore.channels[i.value] ?? {} as Channel)
+            channelOrig.value = cloneDeep(configStore.channels[i.value] ?? {} as Channel)
 
             if (oldTimezone !== currentTimezone) {
                 configStore.showRestartModal = true
@@ -259,7 +259,7 @@ async function addUpdateChannel() {
     if (!saved.value) {
         saved.value = true
 
-        if (configStore.channels[i.value].id !== channel.value.id) {
+        if (configStore.channels[i.value]?.id !== channel.value.id) {
             await addNewChannel()
         } else {
             await updateChannel()
@@ -277,7 +277,7 @@ async function addUpdateChannel() {
 }
 
 function resetChannel() {
-    channel.value = cloneDeep(configStore.channels[i.value])
+    channel.value = cloneDeep(configStore.channels[i.value] ?? {} as Channel)
     saved.value = true
 }
 

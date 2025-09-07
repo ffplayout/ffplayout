@@ -43,7 +43,7 @@
                         <details tabindex="0" @focusout="closeDropdown">
                             <summary>
                                 <div class="h-[19px] text-base cursor-pointer">
-                                    <span> {{ configStore.channels[configStore.i].name }} </span>
+                                    <span> {{ configStore.channels[configStore.i]?.name }} </span>
                                 </div>
                             </summary>
                             <ul class="p-2">
@@ -108,7 +108,7 @@
                     <details tabindex="0" @focusout="closeDropdown">
                         <summary>
                             <div class="h-[19px] text-base cursor-pointer">
-                                <span> {{ configStore.channels[configStore.i].name }} </span>
+                                <span> {{ configStore.channels[configStore.i]?.name }} </span>
                             </div>
                         </summary>
                         <ul class="p-2 bg-base-100 rounded-md !mt-1 w-36" tabindex="0">
@@ -208,9 +208,12 @@ function blurMenu() {
     }
 }
 
-function closeDropdown($event: any) {
+function closeDropdown($event: FocusEvent) {
     setTimeout(() => {
-        $event.target.parentNode?.removeAttribute('open')
+        const parent = ($event.target as HTMLElement).parentNode;
+        if (parent && parent instanceof HTMLElement) {
+            parent.removeAttribute('open');
+        }
     }, 200)
 }
 

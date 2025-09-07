@@ -39,7 +39,7 @@ export const usePlaylist = defineStore('playlist', {
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
-            const channel = configStore.channels[configStore.i].id
+            const channel = configStore.channels[configStore.i]?.id
 
             await fetch(`/api/playlist/${channel}?date=${date}`, {
                 method: 'GET',
@@ -60,7 +60,7 @@ export const usePlaylist = defineStore('playlist', {
                             channel === this.last_channel &&
                             this.playlist.length > 0 &&
                             programData.length > 0 &&
-                            (this.playlist[0].date === date || configStore.playout.playlist.infinit) &&
+                            (this.playlist[0]?.date === date || configStore.playout.playlist.infinit) &&
                             differenceWith(this.playlist, programData, (a, b) => {
                                 return isEqual(omit(a, ['uid']), omit(b, ['uid']))
                             }).length > 0
@@ -77,7 +77,7 @@ export const usePlaylist = defineStore('playlist', {
                     } else if (
                         channel === this.last_channel &&
                         this.playlist.length > 0 &&
-                        this.playlist[0].date === date
+                        this.playlist[0]?.date === date
                     ) {
                         indexStore.msgAlert('warning', i18n.t('player.unsavedProgram'), 3)
                     } else {
@@ -85,7 +85,7 @@ export const usePlaylist = defineStore('playlist', {
                     }
                 })
 
-            this.last_channel = channel
+            this.last_channel = channel ?? 0
         },
 
         setStatus(item: PlayoutStatus) {

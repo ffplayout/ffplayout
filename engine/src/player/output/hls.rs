@@ -17,12 +17,22 @@ out:
 
 */
 
-use std::{process::Stdio, sync::atomic::Ordering};
+use std::{
+    path::PathBuf,
+    process::Stdio,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::SystemTime,
+};
 
 use log::*;
 use tokio::{
+    fs,
     io::{AsyncBufReadExt, BufReader},
     process::Command,
+    time::{Duration, sleep},
 };
 
 use crate::utils::{logging::log_line, task_runner};
@@ -41,6 +51,57 @@ use crate::{
         logging::{Target, fmt_cmd},
     },
 };
+
+/// Periodically checks if HLS segments are still being updated.
+/// If no new segment is written for longer than `hls_time * 3`, returns an error.
+pub async fn hls_watchdog(
+    channel_id: i32,
+    segment_dir: PathBuf,
+    hls_time: Duration,
+    is_alive: Arc<AtomicBool>,
+) -> Result<(), ServiceError> {
+    let mut init = true;
+
+    loop {
+        if init {
+            sleep(hls_time * 3).await;
+            init = false;
+        } else {
+            sleep(hls_time).await;
+        }
+
+        if !is_alive.load(Ordering::SeqCst) {
+            break;
+        }
+
+        let mut newest: Option<SystemTime> = None;
+        let mut entries = fs::read_dir(&segment_dir).await?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            if let Ok(meta) = entry.metadata().await
+                && let Ok(modified) = meta.modified()
+                && newest.map(|t| modified > t).unwrap_or(true)
+            {
+                newest = Some(modified);
+            }
+        }
+
+        if let Some(last_mod) = newest {
+            let age = SystemTime::now()
+                .duration_since(last_mod)
+                .unwrap_or_default();
+
+            if age > hls_time * 3 {
+                error!(target: Target::file_mail(), channel = channel_id;
+                    "HLS segment write timeout! Last update: <span class=\"log-number\">{:.3}s</span>", age.as_secs_f32()
+                );
+                return Err(ServiceError::Conflict("Timeout".to_string()));
+            }
+        }
+    }
+
+    Ok(())
+}
 
 /// Ingest Server for HLS
 async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
@@ -261,8 +322,19 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
-
     let manager2 = manager.clone();
+    let is_alive = manager.is_alive.clone();
+    let output_cmd = config.output.output_cmd.unwrap_or_default();
+    let hls_duration = output_cmd
+        .windows(2)
+        .find_map(|pair| {
+            if pair[0] == "-hls_time" {
+                pair[1].parse::<u64>().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or(10);
 
     let handle_ingest = if config.ingest.enable {
         // spawn a thread for ffmpeg ingest server
@@ -270,6 +342,13 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
     } else {
         None
     };
+
+    let watchdog_hls = tokio::spawn(hls_watchdog(
+        config.general.channel_id,
+        config.channel.public.clone(),
+        Duration::from_secs(hls_duration),
+        is_alive,
+    ));
 
     tokio::select! {
         result = async {
@@ -280,6 +359,10 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
             }
         }, if handle_ingest.is_some() => {
             result?;
+        }
+
+        result = watchdog_hls => {
+            result??;
         }
 
         result = write(manager, ff_log_format) => {

@@ -269,12 +269,12 @@ impl CurrentProgram {
 
         let playlist_len_opt = self.json_playlist.length;
 
-        if self.config.playlist.infinit {
-            if let Some(playlist_len) = playlist_len_opt {
-                if playlist_len < 86400.0 && time_sec > playlist_len + self.start_sec {
-                    self.recalculate_begin(true).await;
-                }
-            }
+        if self.config.playlist.infinit
+            && let Some(playlist_len) = playlist_len_opt
+            && playlist_len < 86400.0
+            && time_sec > playlist_len + self.start_sec
+        {
+            self.recalculate_begin(true).await;
         }
 
         let playlist = self.manager.current_list.lock().await;
@@ -540,11 +540,12 @@ impl CurrentProgram {
 
         trace!("Clip length: {duration}, duration: {}", node.duration);
 
-        if node.probe.is_none() && !node.source.is_empty() {
-            if let Err(e) = node.add_probe(true).await {
-                trace!("{e:?}");
-            };
-        }
+        if node.probe.is_none()
+            && !node.source.is_empty()
+            && let Err(e) = node.add_probe(true).await
+        {
+            trace!("{e:?}");
+        };
 
         // separate if condition, because of node.add_probe() in last condition
         if node.probe.is_some() {
@@ -594,11 +595,11 @@ impl CurrentProgram {
             };
 
             if let Some(mut filler_media) = filler {
-                if filler_media.probe.is_none() {
-                    if let Err(e) = filler_media.add_probe(false).await {
-                        error!(target: Target::file_mail(), channel = self.channel_id; "{e:?}");
-                    };
-                }
+                if filler_media.probe.is_none()
+                    && let Err(e) = filler_media.add_probe(false).await
+                {
+                    error!(target: Target::file_mail(), channel = self.channel_id; "{e:?}");
+                };
 
                 if node.duration > 0.0 && filler_media.duration > duration {
                     filler_media.out = duration;

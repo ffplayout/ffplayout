@@ -104,7 +104,7 @@ const configStore = useConfig()
 const indexStore = useIndex()
 
 const streamUrl = ref(
-    `/data/event/${configStore.channels[configStore.i].id}?endpoint=system&uuid=${authStore.uuid}`
+    `/data/event/${configStore.channels[configStore.i]?.id}?endpoint=system&uuid=${authStore.uuid}`
 )
 
 // 'http://127.0.0.1:8787/data/event/1?endpoint=system&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
@@ -147,7 +147,7 @@ watch([status, error], async () => {
 
         if (errorCounter.value > 15) {
             await authStore.obtainUuid()
-            streamUrl.value = `/data/event/${configStore.channels[configStore.i].id}?endpoint=system&uuid=${
+            streamUrl.value = `/data/event/${configStore.channels[configStore.i]?.id}?endpoint=system&uuid=${
                 authStore.uuid
             }`
             errorCounter.value = 0
