@@ -1517,7 +1517,7 @@ dependencies = [
  "serde_with",
  "shlex",
  "sqlx",
- "static-files 0.3.1",
+ "static-files 0.2.5",
  "sysinfo",
  "tokio",
  "tokio-stream",
