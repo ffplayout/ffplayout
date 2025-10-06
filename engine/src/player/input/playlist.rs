@@ -425,7 +425,7 @@ impl CurrentProgram {
         {
             node.out = out;
         } else if total_delta > node.out - node.seek {
-            warn!(target: Target::file_mail(), channel = self.channel_id; "Playlist is not long enough: <span class=\"log-number\">{:.2}</span> seconds needed", total_delta - node.out - node.seek);
+            warn!(target: Target::file_mail(), channel = self.channel_id; "Playlist is not long enough: <span class=\"log-number\">{:.2}</span> seconds needed", total_delta - (node.out - node.seek));
         }
 
         node.skip = false;
