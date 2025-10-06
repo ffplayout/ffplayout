@@ -33,8 +33,8 @@ faccess = "0.2"
 flexi_logger = { version = "0.31", features = ["async", "colors", "kv"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 iana-time-zone = "0.1"
-inquire = "0.7"
-jsonwebtoken = "9"
+inquire = "0.9"
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 lettre = { version = "0.11", features = ["builder", "rustls-tls", "smtp-transport", "tokio1", "tokio1-rustls-tls"], default-features = false }
 lexical-sort = "0.3"
 local-ip-address = "0.6"
@@ -53,7 +53,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = "3.12"
 shlex = "1.3"
-static-files = "0.2"
+static-files = "0.3"
 sysinfo = { version = "0.37", features = ["linux-netdevs", "linux-tmpfs"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.44", features = ["full"] }
@@ -67,7 +67,7 @@ zeromq = { version = "0.4", default-features = false, features = [
 ] }
 
 [build-dependencies]
-static-files = "0.2"
+static-files = "0.3"
 
 [[bin]]
 name = "ffplayout"

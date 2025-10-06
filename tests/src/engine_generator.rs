@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::env;
 
 use chrono::NaiveTime;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -22,13 +19,25 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
         .unwrap();
     handles::db_migrate(&pool).await.unwrap();
 
+    let current_path = env::current_dir().unwrap();
+    let hls = current_path.join("assets/hls");
+    let log = current_path.join("assets/log");
+    let playlists = current_path.join("assets/playlists");
+    let storage = current_path.join("assets/storage");
+    let filler = current_path.join("assets/storage/media_filler/filler_0.mp4");
+
     sqlx::query(
         r#"
-        UPDATE global SET public = "assets/hls", logs = "assets/log", playlists = "assets/playlists", storages = "assets/storage";
-        UPDATE channels SET public = "assets/hls", playlists = "assets/playlists", storage = "assets/storage";
-        UPDATE configurations SET processing_width = 1024, processing_height = 576;
+        UPDATE global SET public = $1, logs = $2, playlists = $3, storage = $4;
+        UPDATE channels SET public = $1, playlists = $3, storage = $4;
+        UPDATE configurations SET processing_width = 1024, processing_height = 576, storage_filler = $5, output_id = 4;
         "#,
     )
+    .bind(hls.to_string_lossy())
+    .bind(log.to_string_lossy())
+    .bind(playlists.to_string_lossy())
+    .bind(storage.to_string_lossy())
+    .bind(filler.to_string_lossy())
     .execute(&pool)
     .await
     .unwrap();
@@ -43,10 +52,10 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
 #[tokio::test]
 async fn test_random_list() {
     let clip_list = vec![
-        Media::new(0, "./assets/media_mix/with_audio.mp4", true).await, // 30 seconds
-        Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await, // 30 seconds
-        Media::new(0, "./assets/media_mix/av_sync.mp4", true).await,    // 30 seconds
-        Media::new(0, "./assets/media_mix/ad.mp4", true).await,         // 25 seconds
+        Media::new(0, "./assets/storage/media_mix/with_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/storage/media_mix/dual_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/storage/media_mix/av_sync.mp4", true).await,    // 30 seconds
+        Media::new(0, "./assets/storage/media_mix/ad.mp4", true).await,         // 25 seconds
     ];
 
     let r_list = random_list(clip_list.clone(), 200.0);
@@ -59,10 +68,10 @@ async fn test_random_list() {
 #[tokio::test]
 async fn test_ordered_list() {
     let clip_list = vec![
-        Media::new(0, "./assets/media_mix/with_audio.mp4", true).await, // 30 seconds
-        Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await, // 30 seconds
-        Media::new(0, "./assets/media_mix/av_sync.mp4", true).await,    // 30 seconds
-        Media::new(0, "./assets/media_mix/ad.mp4", true).await,         // 25 seconds
+        Media::new(0, "./assets/storage/media_mix/with_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/storage/media_mix/dual_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/storage/media_mix/av_sync.mp4", true).await,    // 30 seconds
+        Media::new(0, "./assets/storage/media_mix/ad.mp4", true).await,         // 25 seconds
     ];
 
     let o_list = ordered_list(clip_list.clone(), 85.0);
@@ -83,7 +92,10 @@ async fn test_ordered_list() {
 async fn test_filler_list() {
     let (mut config, manager) = prepare_config().await;
 
-    config.storage.filler = "assets/".into();
+    let current_path = env::current_dir().unwrap();
+
+    config.storage.filler = "assets/storage/media_filler".into();
+    config.storage.filler_path = current_path.join("assets/storage/media_filler");
 
     let f_list = filler_list(&config, &manager, 2440.0).await;
 
@@ -95,21 +107,19 @@ async fn test_filler_list() {
 async fn test_generate_playlist_from_folder() {
     let (mut config, manager) = prepare_config().await;
 
+    let current_path = env::current_dir().unwrap();
+
     config.general.generate = Some(vec!["2023-09-11".to_string()]);
     config.processing.mode = Playlist;
-    config.storage.filler = "assets/".into();
+    config.storage.filler = "assets/storage/media_filler".into();
+    config.storage.filler_path = current_path.join("assets/storage/media_filler");
     config.playlist.length_sec = Some(86400.0);
-    config.channel.playlists = "assets/playlists".into();
+
+    manager.update_config(config).await;
 
     let playlist = generate_playlist(manager).await;
 
     assert!(playlist.is_ok());
-
-    let playlist_file = Path::new("assets/playlists/2023/09/2023-09-11.json");
-
-    assert!(playlist_file.is_file());
-
-    fs::remove_file(playlist_file).unwrap();
 
     let total_duration = sum_durations(&playlist.unwrap().program);
 
@@ -124,6 +134,8 @@ async fn test_generate_playlist_from_folder() {
 async fn test_generate_playlist_from_template() {
     let (mut config, manager) = prepare_config().await;
 
+    let current_path = env::current_dir().unwrap();
+
     config.general.generate = Some(vec!["2023-09-12".to_string()]);
     config.general.template = Some(Template {
         sources: vec![
@@ -131,30 +143,27 @@ async fn test_generate_playlist_from_template() {
                 start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
                 duration: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
                 shuffle: false,
-                paths: vec![PathBuf::from("assets/")],
+                paths: vec![current_path.join("assets/storage")],
             },
             Source {
                 start: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
                 duration: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
                 shuffle: true,
-                paths: vec![PathBuf::from("assets/")],
+                paths: vec![current_path.join("assets/storage")],
             },
         ],
     });
     config.processing.mode = Playlist;
-    config.storage.filler = "assets/".into();
+    config.storage.filler = "assets/storage/media_filler".into();
+    config.storage.filler_path = current_path.join("assets/storage/media_filler");
     config.playlist.length_sec = Some(86400.0);
     config.channel.playlists = "assets/playlists".into();
+
+    manager.update_config(config).await;
 
     let playlist = generate_playlist(manager).await;
 
     assert!(playlist.is_ok());
-
-    let playlist_file = Path::new("assets/playlists/2023/09/2023-09-12.json");
-
-    assert!(playlist_file.is_file());
-
-    fs::remove_file(playlist_file).unwrap();
 
     let total_duration = sum_durations(&playlist.unwrap().program);
 

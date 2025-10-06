@@ -952,8 +952,21 @@ pub async fn get_config(
         config.storage.paths = paths;
     }
 
+    if let Some(storage) = args.storage {
+        config.channel.storage = PathBuf::from(&storage);
+        config.storage.path = PathBuf::from(&storage);
+    }
+
+    if let Some(log) = args.logs {
+        config.channel.logs = PathBuf::from(&log);
+    }
+
     if let Some(playlist) = args.playlists {
         config.channel.playlists = PathBuf::from(&playlist);
+    }
+
+    if let Some(public) = args.public {
+        config.channel.public = PathBuf::from(&public);
     }
 
     if let Some(folder) = args.folder {

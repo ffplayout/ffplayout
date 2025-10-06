@@ -68,7 +68,7 @@ fn default_channel() -> String {
     "Channel 1".to_string()
 }
 
-pub fn set_defaults(playlist: &mut JsonPlaylist) {
+pub fn set_defaults(config: &PlayoutConfig, playlist: &mut JsonPlaylist) {
     let mut start_sec = playlist.start_sec.unwrap();
     let mut length = 0.0;
 
@@ -80,6 +80,12 @@ pub fn set_defaults(playlist: &mut JsonPlaylist) {
         item.next_ad = false;
         item.skip = false;
         item.filter = None;
+
+        let source_path = Path::new(&item.source);
+        if source_path.is_relative() {
+            let new_path = config.storage.path.join(source_path);
+            item.source = new_path.to_string_lossy().to_string();
+        }
 
         let dur = item.out - item.seek;
         start_sec += dur;
@@ -154,7 +160,7 @@ pub async fn read_json(
                     ));
                 }
 
-                set_defaults(&mut playlist);
+                set_defaults(config, &mut playlist);
 
                 return playlist;
             }
@@ -200,7 +206,7 @@ pub async fn read_json(
             ));
         }
 
-        set_defaults(&mut playlist);
+        set_defaults(config, &mut playlist);
 
         return playlist;
     }

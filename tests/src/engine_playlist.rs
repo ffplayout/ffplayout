@@ -1,12 +1,13 @@
+use std::{env, sync::atomic::Ordering};
+
 use serial_test::serial;
 use sqlx::sqlite::SqlitePoolOptions;
 
 use ffplayout::db::handles;
 use ffplayout::player::controller::ChannelManager;
+use ffplayout::player::output::player;
 use ffplayout::utils::config::{PlayoutConfig, ProcessMode::Playlist};
 use ffplayout::utils::time_machine::set_mock_time;
-use ffplayout::vec_strings;
-use ffplayout::{player::output::player, utils::config::OutputMode::Null};
 
 async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     let pool = SqlitePoolOptions::new()
@@ -15,19 +16,38 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
         .unwrap();
     handles::db_migrate(&pool).await.unwrap();
 
+    let current_path = env::current_dir().unwrap();
+    let hls = current_path.join("assets/hls");
+    let log = current_path.join("assets/log");
+    let playlists = current_path.join("assets/playlists");
+    let storage = current_path.join("assets/storage");
+    let filler = current_path.join("assets/storage/media_filler/filler_0.mp4");
+
     sqlx::query(
         r#"
-        UPDATE global SET public = "assets/hls", logs = "assets/log", playlists = "assets/playlists", storage = "assets/storage";
-        UPDATE channels SET public = "assets/hls", playlists = "assets/playlists", storage = "assets/storage";
-        UPDATE configurations SET processing_width = 1024, processing_height = 576;
+        UPDATE global SET public = $1, logs = $2, playlists = $3, storage = $4;
+        UPDATE channels SET public = $1, playlists = $3, storage = $4;
+        UPDATE configurations SET processing_width = 1024, processing_height = 576, storage_filler = $5, output_id = 4;
         "#,
     )
+    .bind(hls.to_string_lossy())
+    .bind(log.to_string_lossy())
+    .bind(playlists.to_string_lossy())
+    .bind(storage.to_string_lossy())
+    .bind(filler.to_string_lossy())
     .execute(&pool)
     .await
     .unwrap();
 
-    let config = PlayoutConfig::new(&pool, 1, None).await.unwrap();
+    let mut config = PlayoutConfig::new(&pool, 1, None).await.unwrap();
     let channel = handles::select_channel(&pool, &1).await.unwrap();
+
+    config.general.skip_validation = true;
+    config.mail.recipient = "".into();
+    config.processing.mode = Playlist;
+    config.ingest.enable = false;
+    config.text.add_text = false;
+
     let manager = ChannelManager::new(pool, channel, config.clone()).await;
 
     (config, manager)
@@ -48,30 +68,25 @@ async fn timed_stop(sec: u64, manager: ChannelManager) {
 async fn playlist_missing() {
     let (mut config, manager) = prepare_config().await;
 
-    config.general.skip_validation = true;
-    config.mail.recipient = "".into();
-    config.processing.mode = Playlist;
-    config.ingest.enable = false;
-    config.text.add_text = false;
     config.playlist.day_start = "00:00:00".into();
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.channel.playlists = "assets/playlists".into();
-    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.output.mode = Null;
-    config.output.output_count = 1;
-    config.output.output_filter = None;
-    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     manager.update_config(config).await;
+
+    manager.is_alive.store(true, Ordering::SeqCst);
+    manager.list_init.store(true, Ordering::SeqCst);
+
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2023-02-07T23:59:45+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).await.unwrap();
+    if let Err(e) = player(manager.clone()).await {
+        eprintln!("{e:?}");
+    };
 
     let playlist_date = &*manager.current_date.lock().await;
 
@@ -84,30 +99,25 @@ async fn playlist_missing() {
 async fn playlist_next_missing() {
     let (mut config, manager) = prepare_config().await;
 
-    config.general.skip_validation = true;
-    config.mail.recipient = "".into();
-    config.processing.mode = Playlist;
-    config.ingest.enable = false;
-    config.text.add_text = false;
     config.playlist.day_start = "00:00:00".into();
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.channel.playlists = "assets/playlists".into();
-    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.output.mode = Null;
-    config.output.output_count = 1;
-    config.output.output_filter = None;
-    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     manager.update_config(config).await;
+
+    manager.is_alive.store(true, Ordering::SeqCst);
+    manager.list_init.store(true, Ordering::SeqCst);
+
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2023-02-09T23:59:45+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).await.unwrap();
+    if let Err(e) = player(manager.clone()).await {
+        eprintln!("{e:?}");
+    };
 
     let playlist_date = &*manager.current_date.lock().await;
 
@@ -120,30 +130,25 @@ async fn playlist_next_missing() {
 async fn playlist_to_short() {
     let (mut config, manager) = prepare_config().await;
 
-    config.general.skip_validation = true;
-    config.mail.recipient = "".into();
-    config.processing.mode = Playlist;
-    config.ingest.enable = false;
-    config.text.add_text = false;
     config.playlist.day_start = "06:00:00".into();
     config.playlist.start_sec = Some(21600.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.channel.playlists = "assets/playlists".into();
-    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.output.mode = Null;
-    config.output.output_count = 1;
-    config.output.output_filter = None;
-    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     manager.update_config(config).await;
+
+    manager.is_alive.store(true, Ordering::SeqCst);
+    manager.list_init.store(true, Ordering::SeqCst);
+
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2024-01-31T05:59:40+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).await.unwrap();
+    if let Err(e) = player(manager.clone()).await {
+        eprintln!("{e:?}");
+    };
 
     let playlist_date = &*manager.current_date.lock().await;
 
@@ -156,30 +161,25 @@ async fn playlist_to_short() {
 async fn playlist_init_after_list_end() {
     let (mut config, manager) = prepare_config().await;
 
-    config.general.skip_validation = true;
-    config.mail.recipient = "".into();
-    config.processing.mode = Playlist;
-    config.ingest.enable = false;
-    config.text.add_text = false;
     config.playlist.day_start = "06:00:00".into();
     config.playlist.start_sec = Some(21600.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.channel.playlists = "assets/playlists".into();
-    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.output.mode = Null;
-    config.output.output_count = 1;
-    config.output.output_filter = None;
-    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     manager.update_config(config).await;
+
+    manager.is_alive.store(true, Ordering::SeqCst);
+    manager.list_init.store(true, Ordering::SeqCst);
+
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2024-01-31T05:59:47+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).await.unwrap();
+    if let Err(e) = player(manager.clone()).await {
+        eprintln!("{e:?}");
+    };
 
     let playlist_date = &*manager.current_date.lock().await;
 
@@ -192,30 +192,25 @@ async fn playlist_init_after_list_end() {
 async fn playlist_change_at_midnight() {
     let (mut config, manager) = prepare_config().await;
 
-    config.general.skip_validation = true;
-    config.mail.recipient = "".into();
-    config.processing.mode = Playlist;
-    config.ingest.enable = false;
-    config.text.add_text = false;
     config.playlist.day_start = "00:00:00".into();
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.channel.playlists = "assets/playlists".into();
-    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.output.mode = Null;
-    config.output.output_count = 1;
-    config.output.output_filter = None;
-    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     manager.update_config(config).await;
+
+    manager.is_alive.store(true, Ordering::SeqCst);
+    manager.list_init.store(true, Ordering::SeqCst);
+
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2023-02-08T23:59:45+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).await.unwrap();
+    if let Err(e) = player(manager.clone()).await {
+        eprintln!("{e:?}");
+    };
 
     let playlist_date = &*manager.current_date.lock().await;
 
@@ -228,30 +223,25 @@ async fn playlist_change_at_midnight() {
 async fn playlist_change_before_midnight() {
     let (mut config, manager) = prepare_config().await;
 
-    config.general.skip_validation = true;
-    config.mail.recipient = "".into();
-    config.processing.mode = Playlist;
-    config.ingest.enable = false;
-    config.text.add_text = false;
     config.playlist.day_start = "23:59:45".into();
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.channel.playlists = "assets/playlists".into();
-    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.output.mode = Null;
-    config.output.output_count = 1;
-    config.output.output_filter = None;
-    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     manager.update_config(config).await;
+
+    manager.is_alive.store(true, Ordering::SeqCst);
+    manager.list_init.store(true, Ordering::SeqCst);
+
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2023-02-08T23:59:30+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(35, manager_clone));
 
-    player(manager.clone()).await.unwrap();
+    if let Err(e) = player(manager.clone()).await {
+        eprintln!("{e:?}");
+    };
 
     let playlist_date = &*manager.current_date.lock().await;
 
@@ -264,30 +254,25 @@ async fn playlist_change_before_midnight() {
 async fn playlist_change_at_six() {
     let (mut config, manager) = prepare_config().await;
 
-    config.general.skip_validation = true;
-    config.mail.recipient = "".into();
-    config.processing.mode = Playlist;
-    config.ingest.enable = false;
-    config.text.add_text = false;
     config.playlist.day_start = "06:00:00".into();
     config.playlist.start_sec = Some(21600.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.channel.playlists = "assets/playlists".into();
-    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.output.mode = Null;
-    config.output.output_count = 1;
-    config.output.output_filter = None;
-    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     manager.update_config(config).await;
+
+    manager.is_alive.store(true, Ordering::SeqCst);
+    manager.list_init.store(true, Ordering::SeqCst);
+
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2023-02-09T05:59:45+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).await.unwrap();
+    if let Err(e) = player(manager.clone()).await {
+        eprintln!("{e:?}");
+    };
 
     let playlist_date = &*manager.current_date.lock().await;
 

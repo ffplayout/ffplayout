@@ -51,9 +51,6 @@ pub struct Args {
     #[clap(short, long, help_heading = Some("Initial Setup"), help = "Admin password")]
     pub password: Option<String>,
 
-    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Storage root path")]
-    pub storage: Option<String>,
-
     #[clap(long, env, help_heading = Some("Initial Setup"), help = "SMTP server for system mails")]
     pub smtp_server: Option<String>,
 
@@ -68,6 +65,9 @@ pub struct Args {
 
     #[clap(long, env, help_heading = Some("Initial Setup"), help = "SMTP port for system mail")]
     pub smtp_port: Option<u16>,
+
+    #[clap(long, env, help_heading = Some("Initial Setup / General"), help = "Storage root path")]
+    pub storage: Option<String>,
 
     #[clap(long, env, help_heading = Some("Initial Setup / General"), help = "Logging path")]
     pub logs: Option<String>,

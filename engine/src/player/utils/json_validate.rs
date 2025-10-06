@@ -242,6 +242,12 @@ pub async fn validate_playlist(
         }
 
         if !is_remote(&item.source) {
+            let source_path = Path::new(&item.source);
+            if source_path.is_relative() {
+                let new_path = config.storage.path.join(source_path);
+                item.source = new_path.to_string_lossy().to_string();
+            }
+
             if item.audio.is_empty() {
                 if let Err(e) = item.add_probe(false).await {
                     error!(target: Target::file_mail(), channel = id;
