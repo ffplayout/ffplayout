@@ -6,289 +6,289 @@
             "in": 0,
             "out": 10.0,
             "duration": 10.0,
-            "source": "tests/assets/media_sorted/DarkGray_00-00-10.mp4"
+            "source": "media_sorted/DarkGray_00-00-10.mp4"
         },
         {
             "in": 0,
             "out": 30.0,
             "duration": 30.0,
-            "source": "tests/assets/media_sorted/Olive_00-00-30.mp4"
+            "source": "media_sorted/Olive_00-00-30.mp4"
         },
         {
             "in": 0,
             "out": 15.0,
             "duration": 15.0,
-            "source": "tests/assets/media_sorted/Indigo_00-00-15.mp4"
+            "source": "media_sorted/Indigo_00-00-15.mp4"
         },
         {
             "in": 0,
             "out": 25.0,
             "duration": 25.0,
-            "source": "tests/assets/media_sorted/DarkOrchid_00-00-25.mp4"
+            "source": "media_sorted/DarkOrchid_00-00-25.mp4"
         },
         {
             "in": 0,
             "out": 45.0,
             "duration": 45.0,
-            "source": "tests/assets/media_sorted/Orange_00-00-45.mp4"
+            "source": "media_sorted/Orange_00-00-45.mp4"
         },
         {
             "in": 0,
             "out": 20.0,
             "duration": 20.0,
-            "source": "tests/assets/media_sorted/LightGoldenRodYellow_00-00-20.mp4"
+            "source": "media_sorted/LightGoldenRodYellow_00-00-20.mp4"
         },
         {
             "in": 0,
             "out": 30.0,
             "duration": 30.0,
-            "source": "tests/assets/media_sorted/Cyan_00-00-30.mp4"
+            "source": "media_sorted/Cyan_00-00-30.mp4"
         },
         {
             "in": 0,
             "out": 50.0,
             "duration": 50.0,
-            "source": "tests/assets/media_sorted/Cornsilk_00-00-50.mp4"
+            "source": "media_sorted/Cornsilk_00-00-50.mp4"
         },
         {
             "in": 0,
             "out": 15.0,
             "duration": 15.0,
-            "source": "tests/assets/media_sorted/LightSeaGreen_00-00-15.mp4"
+            "source": "media_sorted/LightSeaGreen_00-00-15.mp4"
         },
         {
             "in": 0,
             "out": 30.0,
             "duration": 30.0,
-            "source": "tests/assets/media_sorted/Yellow_00-00-30.mp4"
+            "source": "media_sorted/Yellow_00-00-30.mp4"
         },
         {
             "in": 0,
             "out": 30.0,
             "duration": 30.0,
-            "source": "tests/assets/media_sorted/Aqua_00-00-30.mp4"
+            "source": "media_sorted/Aqua_00-00-30.mp4"
         },
         {
             "in": 0,
             "out": 1500.0,
             "duration": 1500.0,
-            "source": "tests/assets/media_sorted/MediumSeaGreen_00-25-00.mp4"
+            "source": "media_sorted/MediumSeaGreen_00-25-00.mp4"
         },
         {
             "in": 0,
             "out": 1800.0,
             "duration": 1800.0,
-            "source": "tests/assets/media_sorted/MediumOrchid_00-30-00.mp4"
+            "source": "media_sorted/MediumOrchid_00-30-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/IndianRed_01-00-00.mp4"
+            "source": "media_sorted/IndianRed_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/ForestGreen_01-00-00.mp4"
+            "source": "media_sorted/ForestGreen_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/Plum_01-00-00.mp4"
+            "source": "media_sorted/Plum_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/IndianRed_01-00-00.mp4"
+            "source": "media_sorted/IndianRed_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/ForestGreen_01-00-00.mp4"
+            "source": "media_sorted/ForestGreen_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/Plum_01-00-00.mp4"
+            "source": "media_sorted/Plum_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/IndianRed_01-00-00.mp4"
+            "source": "media_sorted/IndianRed_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/ForestGreen_01-00-00.mp4"
+            "source": "media_sorted/ForestGreen_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/Plum_01-00-00.mp4"
+            "source": "media_sorted/Plum_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/IndianRed_01-00-00.mp4"
+            "source": "media_sorted/IndianRed_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/ForestGreen_01-00-00.mp4"
+            "source": "media_sorted/ForestGreen_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/Plum_01-00-00.mp4"
+            "source": "media_sorted/Plum_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/IndianRed_01-00-00.mp4"
+            "source": "media_sorted/IndianRed_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/ForestGreen_01-00-00.mp4"
+            "source": "media_sorted/ForestGreen_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/Plum_01-00-00.mp4"
+            "source": "media_sorted/Plum_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/IndianRed_01-00-00.mp4"
+            "source": "media_sorted/IndianRed_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/ForestGreen_01-00-00.mp4"
+            "source": "media_sorted/ForestGreen_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/Plum_01-00-00.mp4"
+            "source": "media_sorted/Plum_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/IndianRed_01-00-00.mp4"
+            "source": "media_sorted/IndianRed_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/ForestGreen_01-00-00.mp4"
+            "source": "media_sorted/ForestGreen_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/Plum_01-00-00.mp4"
+            "source": "media_sorted/Plum_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 3600.0,
             "duration": 3600.0,
-            "source": "tests/assets/media_sorted/IndianRed_01-00-00.mp4"
+            "source": "media_sorted/IndianRed_01-00-00.mp4"
         },
         {
             "in": 0,
             "out": 1800.0,
             "duration": 1800.0,
-            "source": "tests/assets/media_sorted/MediumOrchid_00-30-00.mp4"
+            "source": "media_sorted/MediumOrchid_00-30-00.mp4"
         },
         {
             "in": 0,
             "out": 10.0,
             "duration": 10.0,
-            "source": "tests/assets/media_sorted/DarkGray_00-00-10.mp4"
+            "source": "media_sorted/DarkGray_00-00-10.mp4"
         },
         {
             "in": 0,
             "out": 30.0,
             "duration": 30.0,
-            "source": "tests/assets/media_sorted/Olive_00-00-30.mp4"
+            "source": "media_sorted/Olive_00-00-30.mp4"
         },
         {
             "in": 0,
             "out": 15.0,
             "duration": 15.0,
-            "source": "tests/assets/media_sorted/Indigo_00-00-15.mp4"
+            "source": "media_sorted/Indigo_00-00-15.mp4"
         },
         {
             "in": 0,
             "out": 25.0,
             "duration": 25.0,
-            "source": "tests/assets/media_sorted/DarkOrchid_00-00-25.mp4"
+            "source": "media_sorted/DarkOrchid_00-00-25.mp4"
         },
         {
             "in": 0,
             "out": 45.0,
             "duration": 45.0,
-            "source": "tests/assets/media_sorted/Orange_00-00-45.mp4"
+            "source": "media_sorted/Orange_00-00-45.mp4"
         },
         {
             "in": 0,
             "out": 20.0,
             "duration": 20.0,
-            "source": "tests/assets/media_sorted/LightGoldenRodYellow_00-00-20.mp4"
+            "source": "media_sorted/LightGoldenRodYellow_00-00-20.mp4"
         },
         {
             "in": 0,
             "out": 30.0,
             "duration": 30.0,
-            "source": "tests/assets/media_sorted/Cyan_00-00-30.mp4"
+            "source": "media_sorted/Cyan_00-00-30.mp4"
         },
         {
             "in": 0,
             "out": 50.0,
             "duration": 50.0,
-            "source": "tests/assets/media_sorted/Cornsilk_00-00-50.mp4"
+            "source": "media_sorted/Cornsilk_00-00-50.mp4"
         },
         {
             "in": 0,
             "out": 15.0,
             "duration": 15.0,
-            "source": "tests/assets/media_sorted/LightSeaGreen_00-00-15.mp4"
+            "source": "media_sorted/LightSeaGreen_00-00-15.mp4"
         },
         {
             "in": 0,
             "out": 30.0,
             "duration": 30.0,
-            "source": "tests/assets/media_sorted/Yellow_00-00-30.mp4"
+            "source": "media_sorted/Yellow_00-00-30.mp4"
         },
         {
             "in": 0,
             "out": 30.0,
             "duration": 30.0,
-            "source": "tests/assets/media_sorted/Aqua_00-00-30.mp4"
+            "source": "media_sorted/Aqua_00-00-30.mp4"
         },
         {
             "in": 0,
             "out": 1500.0,
             "duration": 1500.0,
-            "source": "tests/assets/media_sorted/MediumSeaGreen_00-25-00.mp4"
+            "source": "media_sorted/MediumSeaGreen_00-25-00.mp4"
         }
     ]
 }

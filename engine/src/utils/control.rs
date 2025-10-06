@@ -14,19 +14,8 @@ use crate::player::{
 use crate::utils::{TextFilter, config::OutputMode::*, errors::ServiceError, logging::Target};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-struct TextParams {
-    control: String,
-    message: TextFilter,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ControlParams {
     pub control: PlayerCtl,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-struct MediaParams {
-    media: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone, Eq, PartialEq)]

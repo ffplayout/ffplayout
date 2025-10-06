@@ -665,12 +665,14 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
             "-stream_loop",
             loop_count,
             "-i",
-            node.source,
-            "-t",
-            node.out
+            node.source
         ]);
     } else {
         source_cmd.append(&mut vec_strings!["-i", node.source]);
+    }
+
+    if node.duration != node.out {
+        source_cmd.append(&mut vec_strings!["-t", node.out]);
     }
 
     if config.processing.vtt_enable {

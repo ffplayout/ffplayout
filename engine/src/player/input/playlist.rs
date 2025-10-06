@@ -382,7 +382,7 @@ impl CurrentProgram {
         }
 
         self.json_playlist.start_sec = Some(time_sec);
-        set_defaults(&mut self.json_playlist);
+        set_defaults(&self.config, &mut self.json_playlist);
         self.manager
             .current_list
             .lock()
@@ -424,8 +424,8 @@ impl CurrentProgram {
             && total_delta > 1.0
         {
             node.out = out;
-        } else if total_delta > node.duration {
-            warn!(target: Target::file_mail(), channel = self.channel_id; "Playlist is not long enough: <span class=\"log-number\">{total_delta:.2}</span> seconds needed");
+        } else if total_delta > node.out - node.seek {
+            warn!(target: Target::file_mail(), channel = self.channel_id; "Playlist is not long enough: <span class=\"log-number\">{:.2}</span> seconds needed", total_delta - (node.out - node.seek));
         }
 
         node.skip = false;
@@ -576,8 +576,11 @@ impl CurrentProgram {
             }
 
             let filler = {
-                self.manager.list_init.store(true, Ordering::SeqCst);
                 let fillers = self.manager.filler_list.lock().await;
+
+                if self.manager.current_list.lock().await.len() - 1 < last_index {
+                    self.manager.list_init.store(true, Ordering::SeqCst);
+                }
 
                 if self.config.storage.filler_path.is_dir() && !fillers.is_empty() {
                     let index = self

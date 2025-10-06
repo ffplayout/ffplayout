@@ -37,10 +37,10 @@ async fn simple_filtering() {
 
     config.output.mode = Stream;
     config.processing.add_logo = true;
-    let logo_path = fs::canonicalize("./assets/logo.png").unwrap();
+    let logo_path = fs::canonicalize("./assets/storage/logo.png").unwrap();
     config.processing.logo_path = logo_path.to_string_lossy().to_string();
 
-    let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
+    let mut media = Media::new(0, "./assets/storage/media_mix/with_audio.mp4", true).await;
     media.add_filter(&config, &None).await;
 
     let _f = media.filter.unwrap().cmd();
