@@ -308,7 +308,6 @@ async fn playlist_change_before_midnight() {
     let playlist_date = &*manager.current_date.lock().await;
 
     let (delta, _) = get_delta(&config, &time_in_seconds(&config.channel.timezone));
-    println!("delta: {delta:?}");
     assert!(is_close(delta, 0.0, 2.0));
 
     assert_eq!(playlist_date, "2023-02-09");
