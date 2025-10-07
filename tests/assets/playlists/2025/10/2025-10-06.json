@@ -1,0 +1,150 @@
+{
+  "channel": "Channel 1",
+  "date": "2025-10-06",
+  "program": [
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    }
+  ]
+}

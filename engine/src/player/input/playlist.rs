@@ -149,7 +149,7 @@ impl CurrentProgram {
                 duration = self.current_node.duration;
             }
 
-            next_start += self.config.general.stop_threshold;
+            next_start += 1.5;
         }
 
         next_start += duration;

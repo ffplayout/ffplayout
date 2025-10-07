@@ -65,6 +65,7 @@
         "boxcolor",
         "canonicalize",
         "cgop",
+        "clippy",
         "coeffs",
         "colorspace",
         "cuda",
