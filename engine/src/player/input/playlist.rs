@@ -24,6 +24,9 @@ use crate::utils::{
     logging::Target,
 };
 
+const NEXT_START_THRESHOLD: f64 = 1.5;
+const IS_CLOSE_THRESHOLD: f64 = 2.0;
+
 /// Struct for current playlist.
 ///
 /// Here we prepare the init clip and build a iterator where we pull our clips.
@@ -149,7 +152,7 @@ impl CurrentProgram {
                 duration = self.current_node.duration;
             }
 
-            next_start += self.config.general.stop_threshold;
+            next_start += NEXT_START_THRESHOLD;
         }
 
         next_start += duration;
@@ -164,8 +167,8 @@ impl CurrentProgram {
         // Check if we over the target length or we are close to it, if so we load the next playlist.
         if !self.config.playlist.infinit
             && (next_start >= self.length_sec
-                || is_close(total_delta, 0.0, 2.0)
-                || is_close(total_delta, self.length_sec, 2.0))
+                || is_close(total_delta, 0.0, IS_CLOSE_THRESHOLD)
+                || is_close(total_delta, self.length_sec, IS_CLOSE_THRESHOLD))
         {
             trace!("get next day");
             next = true;

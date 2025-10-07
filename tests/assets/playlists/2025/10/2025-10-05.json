@@ -1,0 +1,186 @@
+{
+  "channel": "Channel 1",
+  "date": "2025-10-05",
+  "program": [
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/Plum_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/ForestGreen_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3600.0,
+      "duration": 3600.0,
+      "source": "media_sorted/IndianRed_01-00-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 1800.0,
+      "duration": 1800.0,
+      "source": "media_sorted/MediumOrchid_00-30-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 1500.0,
+      "duration": 1500.0,
+      "source": "media_sorted/MediumSeaGreen_00-25-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 30.0,
+      "duration": 30.0,
+      "source": "media_sorted/Aqua_00-00-30.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 30.0,
+      "duration": 30.0,
+      "source": "media_sorted/Cyan_00-00-30.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 180.0,
+      "duration": 1500.0,
+      "source": "media_sorted/MediumSeaGreen_00-25-00.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 30.0,
+      "duration": 30.0,
+      "source": "media_sorted/Olive_00-00-30.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 3.0,
+      "duration": 25.0,
+      "source": "media_sorted/DarkOrchid_00-00-25.mp4"
+    }
+  ]
+}
