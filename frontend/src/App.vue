@@ -12,7 +12,7 @@
     </div>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onBeforeMount } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useHead } from '@unhead/vue'
@@ -33,17 +33,26 @@ const language = localStorage.getItem('language')
 locale.value = language || 'en'
 
 const darkThemeMq = window.matchMedia('(prefers-color-scheme: dark)')
-const theme = localStorage.getItem('theme')
+const theme = ref(localStorage.getItem('theme'))
 
-const preferDark = () => {
-    if ((theme && theme === 'dark') || (!theme && darkThemeMq.matches)) {
-        return true
-    } else {
-        return false
-    }
-}
+const preferDark = computed(() => {
+    return theme.value === 'dark' || (!theme.value && darkThemeMq.matches)
+})
 
-indexStore.darkMode = preferDark()
+onBeforeMount(() => {
+    indexStore.darkMode = preferDark.value
+
+    darkThemeMq.addEventListener('change', (e) => {
+        indexStore.darkMode = e.matches
+    })
+
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'theme') {
+            theme.value = e.newValue
+            indexStore.darkMode = preferDark.value
+        }
+    })
+})
 
 useHead({
     htmlAttrs: {
