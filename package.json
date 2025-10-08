@@ -15,7 +15,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
     "@types/lodash-es": "^4.17.12",
-    "@unhead/vue": "^2.0.18",
+    "@unhead/vue": "^2.0.19",
     "@vueform/multiselect": "^2.6.11",
     "@vuepic/vue-datepicker": "^11.0.2",
     "@vueuse/core": "^13.9.0",
@@ -39,7 +39,7 @@
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/eslint-config-typescript": "^14.6.0",
     "@vue/tsconfig": "^0.8.1",
-    "daisyui": "^5.1.27",
+    "daisyui": "^5.1.29",
     "eslint": "^9.37.0",
     "eslint-plugin-vue": "~10.5.0",
     "jiti": "^2.6.1",
