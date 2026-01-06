@@ -1,6 +1,6 @@
 <template>
-    <div class="navbar bg-base-100 min-h-[52px] p-0 shadow-md">
-        <RouterLink class="navbar-brand min-w-[46px] p-2" to="/">
+    <div class="navbar bg-base-100 min-h-13 p-0 shadow-md">
+        <RouterLink class="navbar-brand min-w-11.5 p-2" to="/">
             <img src="@/assets/images/ffplayout-small.png" class="img-fluid" alt="Logo" width="30" height="30" />
         </RouterLink>
         <div class="navbar-end w-1/5 grow">
@@ -8,7 +8,7 @@
                 <input
                     type="checkbox"
                     :checked="indexStore.darkMode"
-                    class="focus-within:!outline-0"
+                    class="focus-within:outline-0!"
                     @change="toggleTheme"
                 />
                 <i class="swap-on bi bi-brightness-high text-[18px]"></i>
@@ -18,7 +18,7 @@
                 <summary class="btn btn-ghost 2sm:hidden" @click="clickMenu()" @blur="blurMenu()">
                     <SvgIcon name="burger" classes="w-5 h-5" />
                 </summary>
-                <ul class="menu menu-sm dropdown-content mt-1 z-[1] p-2 shadow-sm bg-base-100 rounded-box w-52">
+                <ul class="menu menu-sm dropdown-content mt-1 z-1 p-2 shadow-sm bg-base-100 rounded-box w-52">
                     <template v-for="item in menuItems" :key="item.name">
                         <li
                             v-if="
@@ -29,7 +29,7 @@
                         >
                             <RouterLink
                                 :to="item.link"
-                                class="h-[27px] text-base"
+                                class="h-6.75 text-base"
                                 exact-active-class="is-active"
                                 @click="closeMenu()"
                             >
@@ -42,7 +42,7 @@
                     <li v-if="configStore.channels.length > 1" class="bg-base-100 rounded-md py-1">
                         <details tabindex="0" @focusout="closeDropdown">
                             <summary>
-                                <div class="h-[19px] text-base cursor-pointer">
+                                <div class="h-4.75 text-base cursor-pointer">
                                     <span> {{ configStore.channels[configStore.i]?.name }} </span>
                                 </div>
                             </summary>
@@ -60,7 +60,7 @@
                     <li class="bg-base-100 rounded-md">
                         <RouterLink
                             to="/configure"
-                            class="h-[27px] leading-5"
+                            class="h-6.75 leading-5"
                             active-class="is-active"
                             :title="t('button.configure')"
                         >
@@ -71,7 +71,7 @@
                     </li>
                     <li class="bg-base-100 rounded-md">
                         <button
-                            class="h-[27px] text-base cursor-pointer"
+                            class="h-6.75 text-base cursor-pointer"
                             exactActiveClass="is-active"
                             @click="logout()"
                             :title="t('button.logout')"
@@ -82,7 +82,7 @@
                 </ul>
             </details>
         </div>
-        <div class="navbar-end hidden 2sm:flex w-4/5 min-w-[750px]">
+        <div class="navbar-end hidden 2sm:flex w-4/5 min-w-187.5">
             <ul class="menu menu-sm menu-horizontal px-1">
                 <template v-for="item in menuItems" :key="item.name">
                     <li
@@ -94,7 +94,7 @@
                     >
                         <RouterLink
                             :to="item.link"
-                            class="px-2 h-[27px] relative text-base text-base-content"
+                            class="px-2 h-6.75 relative text-base text-base-content"
                             active-class="is-active"
                         >
                             <span>
@@ -107,11 +107,11 @@
                 <li v-if="configStore.channels.length > 1">
                     <details tabindex="0" @focusout="closeDropdown">
                         <summary>
-                            <div class="h-[19px] text-base cursor-pointer">
+                            <div class="h-4.75 text-base cursor-pointer">
                                 <span> {{ configStore.channels[configStore.i]?.name }} </span>
                             </div>
                         </summary>
-                        <ul class="p-2 bg-base-100 rounded-md !mt-1 w-36" tabindex="0">
+                        <ul class="p-2 bg-base-100 rounded-md mt-1! w-36" tabindex="0">
                             <li v-for="(channel, index) in configStore.channels" :key="index">
                                 <a class="dropdown-item cursor-pointer" @click="selectChannel(index)">
                                     {{ channel.name }}
@@ -123,7 +123,7 @@
                 <li class="bg-base-100 rounded-md p-0">
                     <RouterLink
                         to="/configure"
-                        class="h-[27px] leading-5"
+                        class="h-6.75 leading-5"
                         active-class="is-active"
                         :title="t('button.configure')"
                     >
@@ -133,19 +133,19 @@
                     </RouterLink>
                 </li>
                 <li class="p-0">
-                    <label class="swap swap-rotate h-[27px] leading-5">
+                    <label class="swap swap-rotate h-6.75 leading-5">
                         <input
                             type="checkbox"
                             :checked="indexStore.darkMode"
                             @change="toggleTheme"
-                            class="focus-within:!outline-0"
+                            class="focus-within:outline-0!"
                         />
                         <i class="swap-on bi bi-brightness-high text-[18px]"></i>
                         <i class="swap-off bi bi-moon text-[18px]"></i>
                     </label>
                 </li>
                 <li class="bg-base-100 rounded-md p-0">
-                    <button class="h-[27px] leading-5 cursor-pointer" @click="logout()" :title="t('button.logout')">
+                    <button class="h-6.75 leading-5 cursor-pointer" @click="logout()" :title="t('button.logout')">
                         <i class="bi bi-door-closed text-[18px]" />
                     </button>
                 </li>

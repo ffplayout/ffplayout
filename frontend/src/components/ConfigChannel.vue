@@ -1,5 +1,5 @@
 <template>
-    <div v-if="channel" class="w-full max-w-[800px]">
+    <div v-if="channel" class="w-full max-w-200">
         <h2 class="pt-3 text-3xl">{{ t('config.channelConf') }} ({{ channel.id }})</h2>
         <div class="w-full flex justify-end my-4">
             <button v-if="authStore.role === 'global_admin'" class="btn btn-sm btn-primary" @click="newChannel()">

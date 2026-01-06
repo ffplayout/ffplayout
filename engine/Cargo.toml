@@ -25,7 +25,11 @@ actix-web-lab = "0.24"
 actix-web-static-files = "4.0"
 argon2 = "0.5"
 async-walkdir = "2"
-chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+chrono = { version = "0.4", default-features = false, features = [
+    "clock",
+    "std",
+    "serde",
+] }
 chrono-tz = { version = "0.10", features = ["serde"] }
 clap = { version = "4.3", features = ["derive", "env"] }
 derive_more = { version = "2", features = ["display"] }
@@ -35,10 +39,23 @@ futures-util = { version = "0.3", default-features = false, features = ["std"] }
 iana-time-zone = "0.1"
 inquire = "0.9"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
-lettre = { version = "0.11", features = ["builder", "rustls-tls", "smtp-transport", "tokio1", "tokio1-rustls-tls"], default-features = false }
+lettre = { version = "0.11", features = [
+    "builder",
+    "rustls-tls",
+    "smtp-transport",
+    "tokio1",
+    "tokio1-rustls-tls",
+], default-features = false }
 lexical-sort = "0.3"
 local-ip-address = "0.6"
-log = { version = "0.4", features = ["std", "serde", "kv", "kv_std", "kv_sval", "kv_serde"] }
+log = { version = "0.4", features = [
+    "std",
+    "serde",
+    "kv",
+    "kv_std",
+    "kv_sval",
+    "kv_serde",
+] }
 m3u8-rs = "6"
 nix = { version = "0.30", features = ["user", "fs"] }
 notify = "8.0"
@@ -47,7 +64,7 @@ path-clean = "1.0"
 rand = "0.9"
 regex = "1"
 relative-path = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
 sanitize-filename = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -58,9 +75,9 @@ sysinfo = { version = "0.37", features = ["linux-netdevs", "linux-tmpfs"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.44", features = ["full"] }
 tokio-stream = "0.1"
-toml_edit = {version = "0.23", features = ["serde"]}
+toml_edit = { version = "0.24", features = ["serde"] }
 ts-rs = { version = "11", features = ["chrono-impl", "no-serde-warnings"] }
-uuid = "1.16"
+uuid = { version = "1.18", features = ["v4"] }
 zeromq = { version = "0.4", default-features = false, features = [
     "tokio-runtime",
     "tcp-transport",

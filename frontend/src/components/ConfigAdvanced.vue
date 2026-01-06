@@ -1,11 +1,11 @@
 <template>
-    <div class="max-w-[1200px] xs:pe-8">
+    <div class="max-w-300 xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('advanced.title') }}</h2>
         <p class="mt-5 font-bold text-orange-500">{{ t('advanced.warning') }}</p>
         <div class="mt-4">
             <label class="form-control">
                 <div class="label w-full">
-                    <span class="label-text !text-md font-bold">Preset</span>
+                    <span class="label-text text-md! font-bold">Preset</span>
                 </div>
                 <div class="flex-none join">
                     <select

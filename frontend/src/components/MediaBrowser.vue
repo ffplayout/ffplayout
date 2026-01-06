@@ -5,7 +5,7 @@
         </div>
         <div class="bg-base-100 border-b border-base-content/30">
             <div v-if="mediaStore.folderTree.parent && mediaStore.crumbs">
-                <nav class="breadcrumbs px-2 py-[6px]">
+                <nav class="breadcrumbs px-2 py-1.5">
                     <ul>
                         <li v-for="(crumb, index) in mediaStore.crumbs" :key="index">
                             <button

@@ -39,7 +39,7 @@
                     <input
                         type="checkbox"
                         :checked="indexStore.darkMode"
-                        class="focus-within:!outline-0"
+                        class="focus-within:outline-0!"
                         @change="toggleTheme"
                     />
                     <i class="swap-on bi bi-brightness-high text-[18px]"></i>

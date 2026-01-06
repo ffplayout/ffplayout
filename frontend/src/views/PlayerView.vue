@@ -2,7 +2,7 @@
     <div class="h-full">
         <PlayerControl />
         <div class="flex justify-end p-1">
-            <div class="h-[32px] flex">
+            <div class="h-8 flex">
                 <div class="text-warning flex-none flex justify-end p-2">
                     <div
                         v-if="firstLoad && beforeDayStart"
@@ -18,10 +18,11 @@
                     :clearable="false"
                     :hide-navigation="['time']"
                     :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
-                    :format="calendarFormat"
+                    :formats="{ day: 'dd', input: 'EEEE dd. LLL yyyy' }"
+                    :time-config="{ enableTimePicker: false }"
                     model-type="yyyy-MM-dd"
                     auto-apply
-                    :locale="locale"
+                    :locale="lang"
                     :dark="indexStore.darkMode"
                     :ui="{ input: 'input input-sm !!w-[300px] text-right !pe-3' }"
                     required
@@ -29,14 +30,14 @@
                 />
             </div>
         </div>
-        <div class="p-1 min-h-[260px] h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
+        <div class="p-1 min-h-65 h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
             <Splitpanes
                 v-if="configStore.playout.processing.mode === 'playlist'"
                 class="border border-base-content/30 rounded-sm shadow"
             >
                 <Pane
                     v-if="width > 739"
-                    class="relative h-full !bg-base-300 rounded-s"
+                    class="relative h-full bg-base-300! rounded-s"
                     min-size="0"
                     max-size="80"
                     size="20"
@@ -114,7 +115,7 @@
             :hide-buttons="true"
             :modal-action="closePlayer"
         >
-            <div class="w-[1024px] max-w-full aspect-video">
+            <div class="w-5xl max-w-full aspect-video">
                 <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
                 <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
             </div>
@@ -126,10 +127,11 @@
                 :clearable="false"
                 :hide-navigation="['time']"
                 :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
-                :format="calendarFormat"
+                :formats="{ day: 'dd', input: 'EEEE dd. LLL yyyy' }"
+                :time-config="{ enableTimePicker: false }"
                 model-type="yyyy-MM-dd"
                 auto-apply
-                :locale="locale"
+                :locale="lang"
                 :dark="indexStore.darkMode"
                 :ui="{ input: 'input input-sm !!w-[full text-right !pe-3' }"
                 required
@@ -221,10 +223,7 @@
             </span>
         </GenericModal>
 
-        <PlaylistGenerator
-            v-if="showPlaylistGenerator"
-            :close="closeGenerator"
-        />
+        <PlaylistGenerator v-if="showPlaylistGenerator" :close="closeGenerator" />
     </div>
 </template>
 
@@ -240,7 +239,8 @@ import 'dayjs/locale/es'
 import 'dayjs/locale/pt-br'
 import 'dayjs/locale/ru'
 
-import VueDatePicker from '@vuepic/vue-datepicker'
+import { VueDatePicker } from '@vuepic/vue-datepicker'
+import { de, enUS, ptBR, ru } from 'date-fns/locale'
 import '@vuepic/vue-datepicker/dist/main.css'
 
 // @ts-ignore
@@ -292,6 +292,7 @@ const targetDate = ref(dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
 const playlistTable = ref()
 const editId = ref(-1)
 const textFile = ref()
+const lang = ref()
 
 const showPreviewModal = ref(false)
 const showSourceModal = ref(false)
@@ -319,6 +320,20 @@ const newSource = ref({
     audio: '',
     uid: '',
 } as PlaylistItem)
+
+switch (locale.value) {
+    case 'de':
+        lang.value = de
+        break
+    case 'pt-br':
+        lang.value = ptBR
+        break
+    case 'ru':
+        lang.value = ru
+        break
+    default:
+        lang.value = enUS
+}
 
 useHead({
     title: computed(() => t('button.player')),
@@ -349,10 +364,6 @@ onBeforeMount(() => {
         configStore.onetimeInfo = false
     }
 })
-
-const calendarFormat = (date: Date) => {
-    return dayjs(date).locale(locale.value).format('dddd - LL')
-}
 
 function closeGenerator() {
     showPlaylistGenerator.value = false

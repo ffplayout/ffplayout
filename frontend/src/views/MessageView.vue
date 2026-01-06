@@ -67,7 +67,7 @@
                                 <input v-model="form.boxColor" type="color" class="input input-sm w-full cursor-pointer" />
                             </fieldset>
                         </div>
-                        <fieldset class="fieldset mt-1 xs:mt-[70px]">
+                        <fieldset class="fieldset mt-1 xs:mt-17.5">
                             <legend class="fieldset-legend">{{ t('message.boxAlpha') }}</legend>
                             <input
                                 v-model="form.boxAlpha"

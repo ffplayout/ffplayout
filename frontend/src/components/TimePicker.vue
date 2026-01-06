@@ -13,15 +13,15 @@
         </div>
 
         <div class="w-auto">
-            <div class="flex flex-col text-xs py-[2px]">
+            <div class="flex flex-col text-xs py-0.5">
                 <button
-                    class="bg-base-300 hover:bg-base-300/50 px-1 text-[9px] h-[13px] rounded-t"
+                    class="bg-base-300 hover:bg-base-300/50 px-1 text-[9px] h-3.25 rounded-t"
                     tabindex="0"
                     @click="countUp"
                 >
                     <i class="bi-chevron-up" />
                 </button>
-                <button class="bg-base-300 hover:bg-base-300/50 px-1 text-[9px] h-[13px] rounded-b" @click="countDown">
+                <button class="bg-base-300 hover:bg-base-300/50 px-1 text-[9px] h-3.25 rounded-b" @click="countDown">
                     <i class="bi-chevron-down" />
                 </button>
             </div>
