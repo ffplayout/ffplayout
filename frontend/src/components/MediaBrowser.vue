@@ -102,7 +102,7 @@
     </div>
 </template>
 <script setup lang="ts">
-import VirtualList from 'vue-virtual-draglist'
+import VirtualList from 'vue-virtual-sortable'
 
 import { ref, onMounted, watch } from 'vue'
 import { useWindowSize } from '@vueuse/core'

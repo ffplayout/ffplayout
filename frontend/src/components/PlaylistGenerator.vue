@@ -270,7 +270,7 @@
     </div>
 </template>
 <script setup lang="ts">
-import VirtualList from 'vue-virtual-draglist'
+import VirtualList from 'vue-virtual-sortable'
 import dayjs from 'dayjs'
 
 import { ref, nextTick } from 'vue'

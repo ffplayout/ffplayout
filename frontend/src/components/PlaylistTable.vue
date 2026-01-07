@@ -130,7 +130,7 @@ import 'dayjs/locale/es'
 import 'dayjs/locale/pt-br'
 import 'dayjs/locale/ru'
 
-import VirtualList from 'vue-virtual-draglist'
+import VirtualList from 'vue-virtual-sortable'
 
 import { ref, nextTick, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
