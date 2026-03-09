@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use async_walkdir::WalkDir;
 
 use log::*;
-use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
+use rand::{SeedableRng, rngs::SmallRng, seq::SliceRandom};
 use tokio_stream::StreamExt;
 
 use crate::player::{
@@ -64,7 +64,7 @@ impl FolderSource {
 
         if config.storage.shuffle {
             info!(target: Target::file_mail(), channel = id; "Shuffle files");
-            let mut rng = StdRng::from_os_rng();
+            let mut rng = SmallRng::from_rng(&mut rand::rng());
             media_list.shuffle(&mut rng);
         } else {
             media_list.sort_by(|d1, d2| d1.source.cmp(&d2.source));
@@ -94,8 +94,8 @@ impl FolderSource {
     }
 
     async fn shuffle(&mut self) {
-        let mut rng = StdRng::from_os_rng();
         let mut nodes = self.manager.current_list.lock().await;
+        let mut rng = SmallRng::from_rng(&mut rand::rng());
 
         nodes.shuffle(&mut rng);
 

@@ -11,7 +11,7 @@ use async_walkdir::WalkDir;
 // use futures_util::TryStreamExt as _;
 use lexical_sort::{PathSort, natural_lexical_cmp};
 use log::*;
-use rand::{Rng, SeedableRng, distr::Alphanumeric, rngs::StdRng, seq::SliceRandom};
+use rand::{RngExt, distr::Alphanumeric, seq::SliceRandom};
 use tokio::{
     fs,
     io::AsyncWriteExt,
@@ -352,7 +352,7 @@ impl LocalStorage {
             }
 
             if config.storage.shuffle {
-                let mut rng = StdRng::from_os_rng();
+                let mut rng = rand::rng();
 
                 filler_list.shuffle(&mut rng);
             } else {

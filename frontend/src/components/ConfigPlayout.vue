@@ -1,5 +1,5 @@
 <template>
-    <div class="max-w-[1200px] xs:pe-8">
+    <div class="max-w-300 xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('config.playoutConf') }}</h2>
         <form
             v-if="configStore.playout"

@@ -1,7 +1,7 @@
 <template>
     <div class="z-50 fixed inset-0 flex justify-center bg-black/30 overflow-auto py-5">
         <div
-            class="relative flex flex-col bg-base-100 w-[800px] min-w-[300px] max-w-[90vw] h-[680px] my-auto rounded-md p-5 shadow-xl"
+            class="relative flex flex-col bg-base-100 w-200 min-w-75 max-w-[90vw] h-170 my-auto rounded-md p-5 shadow-xl"
         >
             <div class="font-bold text-lg">{{ t('player.generateProgram') }}</div>
 
@@ -38,7 +38,7 @@
                                 </nav>
                             </div>
 
-                            <ul class="h-[475px] border border-base-content/30 rounded-sm overflow-auto bg-base-300 m-1 py-1">
+                            <ul class="h-118.75 border border-base-content/30 rounded-sm overflow-auto bg-base-300 m-1 py-1">
                                 <li
                                     v-for="folder in mediaStore.folderList.folders"
                                     :key="folder.uid"
@@ -124,7 +124,7 @@
                                 </div>
                             </div>
                             <div
-                                class="h-[475px] border border-base-content/30 rounded-sm grid bg-base-300 m-1"
+                                class="h-118.75 border border-base-content/30 rounded-sm grid bg-base-300 m-1"
                                 :class="width < 740 ? 'grid-cols-1' : 'grid-cols-[300px_auto]'"
                             >
                                 <VirtualList
@@ -133,7 +133,7 @@
                                     class="h-full py-1 border-base-content/30"
                                     :group="genGroup"
                                     :data-key="'uid'"
-                                    :class="width < 740 ? 'h-[240px] border-b' : 'border-e'"
+                                    :class="width < 740 ? 'h-60 border-b' : 'border-e'"
                                     chosen-class="cursor-grabbing"
                                     wrap-tag="ul"
                                     :sortable="false"
@@ -270,7 +270,7 @@
     </div>
 </template>
 <script setup lang="ts">
-import VirtualList from 'vue-virtual-draglist'
+import VirtualList from 'vue-virtual-sortable'
 import dayjs from 'dayjs'
 
 import { ref, nextTick } from 'vue'

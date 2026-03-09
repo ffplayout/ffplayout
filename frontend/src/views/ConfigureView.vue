@@ -1,6 +1,6 @@
 <template>
     <div class="flex flex-wrap xs:flex-nowrap w-full xs:h-[calc(100vh-60px)] xs:max-h-[calc(100vh-60px)] ps-1">
-        <div class="xs:flex-none w-full xs:w-[68px] join join-horizontal xs:join-vertical me-1 pt-7">
+        <div class="xs:flex-none w-full xs:w-17 join join-horizontal xs:join-vertical me-1 pt-7">
             <button
                 class="join-item btn btn-sm btn-primary duration-500"
                 :class="activeConf === 1 && 'bg-base-100/40'"

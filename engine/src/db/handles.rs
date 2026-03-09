@@ -3,7 +3,7 @@ use argon2::{
     Argon2, PasswordHasher,
     password_hash::{SaltString, rand_core::OsRng},
 };
-use rand::{Rng, distr::Alphanumeric};
+use rand::{RngExt, distr::Alphanumeric};
 use sqlx::{Pool, Row, Sqlite, sqlite::SqliteQueryResult};
 
 use super::models::{AdvancedConfiguration, Configuration};

@@ -22,7 +22,7 @@
                 </ul>
             </nav>
 
-            <div class="relative h-[calc(100%-34px)] min-h-[300px] bg-base-100">
+            <div class="relative h-[calc(100%-34px)] min-h-75 bg-base-100">
                 <div v-if="mediaStore.isLoading" class="w-full h-full absolute z-10 flex justify-center bg-base-100/70">
                     <span class="loading loading-spinner loading-lg" />
                 </div>
@@ -48,7 +48,7 @@
                                             class="grid grid-cols-[auto_30px] border-b border-base-content/20"
                                             :class="
                                                 filename(mediaStore.folderTree.source) === folder.name &&
-                                                '!bg-secondary text-black'
+                                                'bg-secondary! text-black'
                                             "
                                             @drop="handleDrop($event, folder, true)"
                                             @dragover="handleDragOver"
@@ -94,7 +94,7 @@
                             </table>
                         </div>
                     </Pane>
-                    <Pane class="h-full !bg-base-300" :class="horizontal ? 'rounded-b' : 'rounded-e'">
+                    <Pane class="h-full bg-base-300!" :class="horizontal ? 'rounded-b' : 'rounded-e'">
                         <div class="relative h-full overflow-y-auto">
                             <table
                                 v-if="mediaStore.folderTree.parent"
@@ -123,7 +123,7 @@
                                                 {{ folder.name }}
                                             </a>
                                         </td>
-                                        <td class="ps-2 pe-[14px] py-1.5 text-right">
+                                        <td class="ps-2 pe-3.5 py-1.5 text-right">
                                             <button
                                                 class="opacity-30 hover:opacity-100 cursor-pointer"
                                                 @click="
@@ -169,7 +169,7 @@
                                                 <i class="bi-play-fill" />
                                             </button>
 
-                                            <div class="inline-block w-[82px]">{{ toMin(element.duration) }}</div>
+                                            <div class="inline-block w-20.5">{{ toMin(element.duration) }}</div>
 
                                             <button
                                                 class="w-7 cursor-pointer"
@@ -238,7 +238,7 @@
         >
             <div>
                 <input
-                    class="input input-sm w-full !text-base-content/80"
+                    class="input input-sm w-full text-base-content/80!"
                     type="text"
                     :value="dir_file(deleteName).file"
                     disabled
@@ -260,7 +260,7 @@
             :modal-action="closePlayer"
             :hide-buttons="true"
         >
-            <div class="w-[1024px] max-w-full aspect-video">
+            <div class="w-5xl max-w-full aspect-video">
                 <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
                 <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
             </div>
@@ -281,7 +281,7 @@
         </GenericModal>
 
         <GenericModal :show="showUploadModal" :title="t('media.upload')" :modal-action="uploadFiles">
-            <div class="w-[700px] max-w-full">
+            <div class="w-175 max-w-full">
                 <input
                     ref="fileInputName"
                     type="file"

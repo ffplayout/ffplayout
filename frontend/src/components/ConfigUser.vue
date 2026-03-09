@@ -1,5 +1,5 @@
 <template>
-    <div class="w-full max-w-[800px] xs:pe-8">
+    <div class="w-full max-w-200 xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('user.title') }}</h2>
         <div v-if="authStore.role === 'global_admin'" class="w-full join max-w-md mt-10">
             <select v-model="selected" class="join-item select w-full" @change="onChange($event)">
@@ -27,7 +27,7 @@
                     v-model="configStore.configUser.username"
                     type="text"
                     name="username"
-                    class="input w-full !bg-base-100"
+                    class="input w-full bg-base-100!"
                     disabled
                 />
             </fieldset>
@@ -66,7 +66,7 @@
     </div>
 
     <GenericModal :show="showUserModal" title="Add user" :modal-action="addUser">
-        <div class="w-full max-w-[500px] h-[360px]">
+        <div class="w-full max-w-125 h-90">
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">{{ t('user.name') }}</legend>
                 <input v-model="user.username" type="text" name="username" class="input w-full" />

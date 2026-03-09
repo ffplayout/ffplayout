@@ -7,7 +7,7 @@ use chrono::{format::ParseErrorKind, prelude::*};
 use chrono_tz::Tz;
 use log::*;
 use path_clean::PathClean;
-use rand::Rng;
+use rand::RngExt;
 use regex::Regex;
 use tokio::{fs, net::TcpListener, process::Command};
 

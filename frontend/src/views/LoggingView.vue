@@ -17,13 +17,14 @@
                     :clearable="false"
                     :hide-navigation="['time']"
                     :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
-                    :format="calendarFormat"
+                    :formats="{ day: 'dd', input: 'EEEE dd. LLL yyyy' }"
+                    :time-config="{ enableTimePicker: false }"
                     model-type="yyyy-MM-dd"
                     auto-apply
-                    class="max-w-[170px]"
-                    :locale="locale"
+                    class="max-w-42.5"
+                    :locale="lang"
                     :dark="indexStore.darkMode"
-                    :ui="{ input: 'join-item input !input-sm !max-w-[170px] text-right !pe-3' }"
+                    :ui="{ input: 'join-item input !input-sm !max-w-42.5 text-right !pe-3' }"
                     required
                 />
                 <button class="btn btn-sm btn-primary join-item" :title="t('log.reload')" @click="getLog()">
@@ -36,11 +37,7 @@
         </div>
         <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
             <div id="log-container" class="bg-base-300 h-full font-mono overflow-auto p-3">
-                <div
-                    id="log-content"
-                    class="whitespace-pre"
-                    v-html="filterLogsBySeverity(currentLog, errorLevel)"
-                />
+                <div id="log-content" class="whitespace-pre" v-html="filterLogsBySeverity(currentLog, errorLevel)" />
             </div>
         </div>
     </div>
@@ -56,7 +53,8 @@ import { computed, nextTick, ref, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useHead } from '@unhead/vue'
-import VueDatePicker from '@vuepic/vue-datepicker'
+import { VueDatePicker } from '@vuepic/vue-datepicker'
+import { de, enUS, ptBR, ru } from 'date-fns/locale'
 import '@vuepic/vue-datepicker/dist/main.css'
 
 import 'dayjs/locale/de'
@@ -86,8 +84,23 @@ const authStore = useAuth()
 const configStore = useConfig()
 const currentLog = ref('')
 const listDate = ref(dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
+const lang = ref()
 
 const errorLevel = ref(localStorage.getItem('error_level') || 'INFO')
+
+switch (locale.value) {
+    case 'de':
+        lang.value = de
+        break
+    case 'pt-br':
+        lang.value = ptBR
+        break
+    case 'ru':
+        lang.value = ru
+        break
+    default:
+        lang.value = enUS
+}
 
 onMounted(async () => {
     await getLog()
@@ -100,10 +113,6 @@ watch([listDate, i], () => {
 watch(errorLevel, (newValue) => {
     localStorage.setItem('error_level', newValue)
 })
-
-const calendarFormat = (date: Date) => {
-    return dayjs(date).locale(locale.value).format('ddd L')
-}
 
 function scrollTo() {
     const parent = document.getElementById('log-container')
@@ -140,10 +149,15 @@ async function getLog() {
         date = ''
     }
 
-    await fetch(`/api/log/${configStore.channels[configStore.i]?.id}?date=${date}&timezone=${encodeURIComponent(configStore.timezone)}`, {
-        method: 'GET',
-        headers: authStore.authHeader,
-    })
+    await fetch(
+        `/api/log/${configStore.channels[configStore.i]?.id}?date=${date}&timezone=${encodeURIComponent(
+            configStore.timezone
+        )}`,
+        {
+            method: 'GET',
+            headers: authStore.authHeader,
+        }
+    )
         .then(async (response) => {
             if (!response.ok) {
                 throw new Error(await response.text())
@@ -170,10 +184,13 @@ async function downloadLog() {
         date = ''
     }
 
-    const response = await fetch(`/api/log/${id}?date=${date}&timezone=${encodeURIComponent(configStore.timezone)}&download=true`, {
-        method: 'GET',
-        headers: authStore.authHeader,
-    })
+    const response = await fetch(
+        `/api/log/${id}?date=${date}&timezone=${encodeURIComponent(configStore.timezone)}&download=true`,
+        {
+            method: 'GET',
+            headers: authStore.authHeader,
+        }
+    )
 
     if (!response.ok) {
         indexStore.msgAlert('error', await response.text(), 7)

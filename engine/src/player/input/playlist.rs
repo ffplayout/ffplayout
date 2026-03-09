@@ -12,7 +12,7 @@ use crate::db::handles;
 use crate::player::{
     controller::ChannelManager,
     utils::{
-        JsonPlaylist, Media, gen_dummy, get_delta, is_close, is_remote,
+        JsonPlaylist, Media, gen_dummy, get_date, get_delta, is_close, is_remote,
         json_serializer::{read_json, set_defaults},
         loop_filler, loop_image, modified_time,
         probe::MediaProbe,
@@ -35,6 +35,7 @@ pub struct CurrentProgram {
     channel_id: i32,
     config: PlayoutConfig,
     manager: ChannelManager,
+    date: String,
     start_sec: f64,
     length_sec: f64,
     json_playlist: JsonPlaylist,
@@ -49,17 +50,21 @@ impl CurrentProgram {
     pub async fn new(manager: ChannelManager) -> Self {
         let config = manager.config.read().await.clone();
         let is_alive = manager.is_alive.clone();
+        let date = get_date(
+            true,
+            config.playlist.start_sec.unwrap(),
+            true,
+            &config.channel.timezone,
+        );
 
         Self {
             channel_id: config.general.channel_id,
             config: config.clone(),
             manager,
+            date: date.clone(),
             start_sec: config.playlist.start_sec.unwrap(),
             length_sec: config.playlist.length_sec.unwrap(),
-            json_playlist: JsonPlaylist::new(
-                "1970-01-01".to_string(),
-                config.playlist.start_sec.unwrap(),
-            ),
+            json_playlist: JsonPlaylist::new(date, config.playlist.start_sec.unwrap()),
             current_node: Media::default(),
             is_alive,
             last_json_path: None,
@@ -69,7 +74,7 @@ impl CurrentProgram {
 
     // Check if there is no current playlist or file got updated,
     // and when is so load/reload it.
-    async fn load_or_update_playlist(&mut self, seek: bool) {
+    async fn load_or_update_playlist(&mut self) {
         let mut get_current = false;
         let mut reload = false;
 
@@ -92,8 +97,7 @@ impl CurrentProgram {
                 self.manager.current_list.clone(),
                 self.json_playlist.path.clone(),
                 self.is_alive.clone(),
-                seek,
-                false,
+                self.date.clone(),
             )
             .await;
 
@@ -168,18 +172,19 @@ impl CurrentProgram {
         if !self.config.playlist.infinit
             && (next_start >= self.length_sec
                 || is_close(total_delta, 0.0, IS_CLOSE_THRESHOLD)
-                || is_close(total_delta, self.length_sec, IS_CLOSE_THRESHOLD))
+                || is_close(total_delta, self.length_sec, IS_CLOSE_THRESHOLD)
+                || self.date != self.json_playlist.date)
         {
             trace!("get next day");
             next = true;
+            self.date = get_date(seek, self.start_sec, true, &self.config.channel.timezone);
 
             self.json_playlist = read_json(
                 &mut self.config,
                 self.manager.current_list.clone(),
                 None,
                 self.is_alive.clone(),
-                false,
-                true,
+                self.date.clone(),
             )
             .await;
 
@@ -198,7 +203,11 @@ impl CurrentProgram {
                 .clone_from(&self.json_playlist.program);
             self.manager.current_index.store(0, Ordering::SeqCst);
         } else {
-            self.load_or_update_playlist(seek).await;
+            if is_close(next_start, self.length_sec, IS_CLOSE_THRESHOLD) {
+                self.date = get_date(seek, self.start_sec, true, &self.config.channel.timezone);
+            }
+
+            self.load_or_update_playlist().await;
         }
 
         next

@@ -1,5 +1,5 @@
 <template>
-    <div class="relative w-full h-full !bg-base-300 rounded-e">
+    <div class="relative w-full h-full bg-base-300! rounded-e">
         <div v-if="playlistStore.isLoading" class="w-full h-full absolute z-2 flex justify-center bg-base-100/70">
             <span class="loading loading-spinner loading-lg" />
         </div>
@@ -68,9 +68,9 @@
                         :key="record.uid"
                         class="grid grid-cols-[85px_auto_85px_85px] 2md:grid-cols-[85px_auto_85px_85px_85px_85px_85px_85px_85px] odd:bg-base-200 border-b border-base-content/20 duration-500 transition-colors py-2"
                         :class="{
-                            '!bg-lime-500/30':
+                            'bg-lime-500/30!':
                                 playlistStore.playoutIsRunning && listDate === todayDate && index === currentIndex,
-                            '!bg-amber-600/40': record.overtime,
+                            'bg-amber-600/40!': record.overtime,
                             'text-base-content/60': record.category === 'advertisement',
                         }"
                     >
@@ -130,7 +130,7 @@ import 'dayjs/locale/es'
 import 'dayjs/locale/pt-br'
 import 'dayjs/locale/ru'
 
-import VirtualList from 'vue-virtual-draglist'
+import VirtualList from 'vue-virtual-sortable'
 
 import { ref, nextTick, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'

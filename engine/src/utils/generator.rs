@@ -10,7 +10,7 @@ use async_walkdir::WalkDir;
 use chrono::Timelike;
 use lexical_sort::{StringSort, natural_lexical_cmp};
 use log::*;
-use rand::{Rng, rng, seq::SliceRandom};
+use rand::{RngExt, rng, seq::SliceRandom};
 use tokio::fs;
 use tokio_stream::StreamExt;
 
