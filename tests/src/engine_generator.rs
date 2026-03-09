@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, fs};
 
 use chrono::NaiveTime;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -118,8 +118,10 @@ async fn test_generate_playlist_from_folder() {
     manager.update_config(config).await;
 
     let playlist = generate_playlist(manager).await;
+    let path_1 = current_path.join("assets/playlists/2023/09/2023-09-11.json");
 
     assert!(playlist.is_ok());
+    assert!(path_1.is_file());
 
     let total_duration = sum_durations(&playlist.unwrap().program);
 
@@ -127,6 +129,8 @@ async fn test_generate_playlist_from_folder() {
         total_duration > 86399.0 && total_duration < 86401.0,
         "total_duration is {total_duration}"
     );
+
+    fs::remove_file(path_1).expect("Delete test playlist");
 }
 
 #[tokio::test]
@@ -163,6 +167,10 @@ async fn test_generate_playlist_from_template() {
 
     let playlist = generate_playlist(manager).await;
 
+    let path_1 = current_path.join("assets/playlists/2023/09/2023-09-12.json");
+
+    assert!(path_1.is_file());
+
     assert!(playlist.is_ok());
 
     let total_duration = sum_durations(&playlist.unwrap().program);
@@ -171,4 +179,6 @@ async fn test_generate_playlist_from_template() {
         total_duration > 86399.0 && total_duration < 86401.0,
         "total_duration is {total_duration}"
     );
+
+    fs::remove_file(path_1).expect("Delete test playlist");
 }

@@ -641,7 +641,12 @@ pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
                 node.out
             ]);
         } else if vtt_dummy.is_file() {
-            source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+            source_cmd.append(&mut vec_strings![
+                "-i",
+                vtt_dummy.to_string_lossy(),
+                "-t",
+                node.out
+            ]);
         } else {
             error!("WebVTT enabled, but no vtt or dummy file found!");
         }
@@ -690,7 +695,12 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
                 node.out
             ]);
         } else if vtt_dummy.is_file() {
-            source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+            source_cmd.append(&mut vec_strings![
+                "-i",
+                vtt_dummy.to_string_lossy(),
+                "-t",
+                node.out
+            ]);
         } else {
             error!("WebVTT enabled, but no vtt or dummy file found!");
         }

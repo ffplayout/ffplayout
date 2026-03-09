@@ -110,7 +110,14 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
     let playlist_init = manager.list_init.clone();
     let chain = manager.filter_chain.clone();
     let stream_input = config.ingest.input_cmd.clone().unwrap();
-    let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
+    let mut server_prefix = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+info",
+        "-timeout",
+        "0"
+    ];
     let mut dummy_media = Media::new(0, "Live Stream", false).await;
 
     dummy_media.unit = Ingest;

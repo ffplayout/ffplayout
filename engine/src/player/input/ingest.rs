@@ -72,7 +72,14 @@ pub async fn ingest_server(
     manager: ChannelManager,
 ) -> Result<(), ServiceError> {
     let id = config.general.channel_id;
-    let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
+    let mut server_cmd = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+info",
+        "-timeout",
+        "0"
+    ];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     let mut dummy_media = Media::new(0, "Live Stream", false).await;
     dummy_media.unit = Ingest;

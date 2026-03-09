@@ -1521,7 +1521,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "0.25.7"
+version = "1.0.0"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -4271,7 +4271,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "0.25.7"
+version = "1.0.0"
 dependencies = [
  "actix-test",
  "actix-web",
