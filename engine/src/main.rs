@@ -53,11 +53,16 @@ where
 }
 
 pub static MAX_BLOCKING_THREADS: LazyLock<usize> =
-    LazyLock::new(|| env_parse_or("MAX_BLOCKING_THREADS", 24));
+    LazyLock::new(|| env_parse_or("MAX_BLOCKING_THREADS", 16));
 
 fn main() -> Result<(), ProcessError> {
+    #[cfg(feature = "tokio-console")]
+    console_subscriber::init();
+
     tokio::runtime::Builder::new_multi_thread()
         .max_blocking_threads(*MAX_BLOCKING_THREADS)
+        .name("ff-tokio-runtime")
+        .thread_name("ff-tokio-worker")
         .enable_all()
         .build()?
         .block_on(async_main())

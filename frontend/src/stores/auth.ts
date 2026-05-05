@@ -182,7 +182,16 @@ export const useAuth = defineStore('auth', {
                 method: 'POST',
                 headers: this.authHeader,
             })
-                .then((resp) => resp.json())
+                .then(async (resp) => {
+                    if (!resp.ok) {
+                        if (resp.status === 401) {
+                            this.removeToken()
+                        }
+                        this.uuid = null
+                    }
+
+                    return resp.json()
+                })
                 .then((response: any) => {
                     this.uuid = response.uuid
                 })

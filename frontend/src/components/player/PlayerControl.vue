@@ -6,11 +6,11 @@ import timezone from 'dayjs/plugin/timezone.js'
 import utc from 'dayjs/plugin/utc.js'
 import mpegts from 'mpegts.js'
 
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, useTemplateRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { throttle } from 'es-toolkit/function'
 import { storeToRefs } from 'pinia'
-import { useEventSource } from '@vueuse/core'
+import { useEventSource, useElementSize } from '@vueuse/core'
 
 import { stringFormatter } from '@/composables/helper'
 import { useAuth } from '@/stores/auth'
@@ -64,6 +64,8 @@ const mpegtsOptions = ref({
     lazyLoadMaxDuration: 3 * 60,
     liveBufferLatencyChasing: true,
 })
+const timeDiv = useTemplateRef('timeDiv')
+const { width } = useElementSize(timeDiv)
 
 const streamUrl = ref(`/data/event/${configStore.channels[configStore.i]?.id}?endpoint=playout&uuid=${authStore.uuid}`)
 
@@ -244,7 +246,9 @@ const controlPlayout = throttle(async (state: string) => {
             >
                 <div class="col-span-1 p-1">
                     <div
-                        class="w-full h-full bg-base-100 rounded-sm font-['DigitalNumbers'] p-6 text-3xl md:text-2xl 2xl:text-5xl 3xl:text-7xl tracking-tighter flex justify-center items-center shadow"
+                        ref="timeDiv"
+                        class="w-full h-full bg-base-100 rounded-sm font-['DigitalNumbers'] p-6 tracking-tighter flex justify-center items-center shadow"
+                        :style="{ 'font-size': `${width / 6.5}px` }"
                     >
                         {{ timeStr }}
                     </div>
@@ -253,6 +257,7 @@ const controlPlayout = throttle(async (state: string) => {
                 <div class="col-span-1 p-1 min-h-[50%]">
                     <div
                         class="w-full h-full bg-base-100 rounded-sm font-['DigitalNumbers'] p-6 text-3xl md:text-2xl 2xl:text-5xl 3xl:text-7xl tracking-tighter flex justify-center items-center shadow"
+                        :style="{ 'font-size': `${width / 6.5}px` }"
                     >
                         {{ secToHMS(timeRemaining()) }}
                     </div>
@@ -267,7 +272,9 @@ const controlPlayout = throttle(async (state: string) => {
                             <div
                                 v-else
                                 class="h-1/4 font-bold text truncate content-center leading-5"
-                                :class="{ 'text-base-content/60': playlistStore.current.category === 'advertisement' }"
+                                :class="{
+                                    'text-base-content/60': playlistStore.current.category === 'advertisement',
+                                }"
                                 :title="playlistStore.current.title || filename(playlistStore.current.source)"
                             >
                                 {{
@@ -285,7 +292,8 @@ const controlPlayout = throttle(async (state: string) => {
                                 {{ secToHMS(playlistStore.current.out) }}
 
                                 <template v-if="playlistStore.shift !== 0">
-                                    | <strong>{{ t('player.shift') }}:</strong> {{ secToHMS(playlistStore.shift) }}
+                                    | <strong>{{ t('player.shift') }}:</strong>
+                                    {{ secToHMS(playlistStore.shift) }}
                                 </template>
                             </div>
                             <div class="h-1/4 content-center leading-5 text-sm md:text-base">
@@ -294,8 +302,8 @@ const controlPlayout = throttle(async (state: string) => {
                                     secToHMS(
                                         playlistStore.playlist.reduce(
                                             (total, { in: seek, out }) => total + (out - seek),
-                                            0
-                                        )
+                                            0,
+                                        ),
                                     )
                                 }}
                             </div>

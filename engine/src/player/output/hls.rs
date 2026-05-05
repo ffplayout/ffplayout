@@ -29,7 +29,6 @@ use std::{
 
 use log::*;
 use tokio::{
-    fs,
     io::{AsyncBufReadExt, BufReader},
     process::Command,
     time::{Duration, sleep},
@@ -63,12 +62,13 @@ fn log_dev_task(enabled: bool, channel_id: i32, task: &str, event: &str) {
 /// If no new segment is written for longer than `hls_time * 3`, returns an error.
 pub async fn hls_watchdog(
     channel_id: i32,
-    segment_dir: PathBuf,
+    m3u8_path: PathBuf,
     hls_time: Duration,
     is_alive: Arc<AtomicBool>,
     cancel_token: CancellationToken,
 ) -> Result<(), ServiceError> {
     let mut init = true;
+    let timeout = hls_time * 3;
 
     loop {
         if cancel_token.is_cancelled() {
@@ -76,7 +76,7 @@ pub async fn hls_watchdog(
         }
         let sleep_time = if init {
             init = false;
-            hls_time * 3
+            timeout
         } else {
             hls_time
         };
@@ -90,24 +90,12 @@ pub async fn hls_watchdog(
             break;
         }
 
-        let mut newest: Option<SystemTime> = None;
-        let mut entries = fs::read_dir(&segment_dir).await?;
-
-        while let Some(entry) = entries.next_entry().await? {
-            if let Ok(meta) = entry.metadata().await
-                && let Ok(modified) = meta.modified()
-                && newest.map(|t| modified > t).unwrap_or(true)
-            {
-                newest = Some(modified);
-            }
-        }
-
-        if let Some(last_mod) = newest {
+        if let Ok(last_mod) = m3u8_path.metadata().and_then(|m| m.modified()) {
             let age = SystemTime::now()
                 .duration_since(last_mod)
                 .unwrap_or_default();
 
-            if age > hls_time * 3 {
+            if age > timeout {
                 error!(target: Target::file_mail(), channel = channel_id;
                     "HLS segment write timeout! Last update: <span class=\"log-number\">{:.3}s</span>", age.as_secs_f32()
                 );
@@ -381,6 +369,12 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
         })
         .unwrap_or(10);
 
+    let m3u8_path = output_cmd
+        .iter()
+        .find(|s| s.ends_with(".m3u8") && !s.contains("master.m3u8"))
+        .map(|s| PathBuf::from(s))
+        .unwrap_or(config.channel.public.clone());
+
     let ingest_token = CancellationToken::new();
     let watchdog_token = CancellationToken::new();
 
@@ -405,7 +399,7 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
     );
     let mut watchdog_hls = tokio::spawn(hls_watchdog(
         config.general.channel_id,
-        config.channel.public.clone(),
+        m3u8_path,
         Duration::from_secs(hls_duration),
         is_alive,
         watchdog_token.clone(),
