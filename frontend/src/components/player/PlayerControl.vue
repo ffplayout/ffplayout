@@ -248,7 +248,7 @@ const controlPlayout = throttle(async (state: string) => {
                     <div
                         ref="timeDiv"
                         class="w-full h-full bg-base-100 rounded-sm font-['DigitalNumbers'] p-6 tracking-tighter flex justify-center items-center shadow"
-                        :style="{ 'font-size': `${width / 6.5}px` }"
+                        :style="{ 'font-size': `${width / 6}px` }"
                     >
                         {{ timeStr }}
                     </div>
@@ -257,7 +257,7 @@ const controlPlayout = throttle(async (state: string) => {
                 <div class="col-span-1 p-1 min-h-[50%]">
                     <div
                         class="w-full h-full bg-base-100 rounded-sm font-['DigitalNumbers'] p-6 text-3xl md:text-2xl 2xl:text-5xl 3xl:text-7xl tracking-tighter flex justify-center items-center shadow"
-                        :style="{ 'font-size': `${width / 6.5}px` }"
+                        :style="{ 'font-size': `${width / 6}px` }"
                     >
                         {{ secToHMS(timeRemaining()) }}
                     </div>
