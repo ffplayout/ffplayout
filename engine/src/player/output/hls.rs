@@ -372,7 +372,7 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
     let m3u8_path = output_cmd
         .iter()
         .find(|s| s.ends_with(".m3u8") && !s.contains("master.m3u8"))
-        .map(|s| PathBuf::from(s))
+        .map(PathBuf::from)
         .unwrap_or(config.channel.public.clone());
 
     let ingest_token = CancellationToken::new();
