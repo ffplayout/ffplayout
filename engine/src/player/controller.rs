@@ -190,86 +190,9 @@ impl ChannelManager {
 
         handles::update_player(&self.db_pool, channel_id, true).await?;
 
-        let handle = tokio::spawn(async move {
-            const MAX_DELAY: Duration = Duration::from_secs(180);
-            let mut elapsed = Duration::from_secs(5);
-            let mut retry_delay = Duration::from_millis(500);
-
-            loop {
-                if token.is_cancelled() {
-                    break;
-                }
-                let active = {
-                    let channel = self_clone.channel.lock().await;
-                    channel.active
-                };
-
-                if !active {
-                    break;
-                }
-
-                self_clone.is_alive.store(true, Ordering::SeqCst);
-                self_clone.list_init.store(true, Ordering::SeqCst);
-
-                let timer = Instant::now();
-
-                if let Err(e) = run_channel(self_clone.clone()).await {
-                    self_clone.stop_all(false).await;
-
-                    let (active, public_path) = {
-                        let channel = self_clone.channel.lock().await;
-                        (channel.active, channel.public.clone())
-                    };
-
-                    if !active {
-                        break;
-                    }
-
-                    if timer.elapsed() < elapsed {
-                        elapsed += retry_delay;
-                        retry_delay = cmp::min(retry_delay * 2, MAX_DELAY);
-                    } else {
-                        elapsed = Duration::from_secs(5);
-                        retry_delay = Duration::from_secs(1);
-                    }
-
-                    let retry_msg = format!(
-                        "Retry in <span class=\"log-number\">{}</span> seconds",
-                        retry_delay.as_secs()
-                    );
-
-                    error!(target: Target::all(), channel = channel_id; "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e} | {retry_msg}");
-
-                    trace!(
-                        "Runtime has <span class=\"log-number\">{}</span> active tasks",
-                        tokio::runtime::Handle::current()
-                            .metrics()
-                            .num_alive_tasks()
-                    );
-
-                    if self_clone.config.read().await.output.mode == OutputMode::HLS
-                        && let Err(d_e) = delete_segments(public_path, &[], true).await
-                    {
-                        error!(target: Target::all(), channel = channel_id; "{d_e}");
-                    };
-
-                    tokio::select! {
-                        _ = token.cancelled() => break,
-                        _ = sleep(retry_delay) => {}
-                    }
-                }
-            }
-
-            let event = if token.is_cancelled() {
-                "done_cancelled"
-            } else {
-                "done"
-            };
-            self_clone
-                .log_dev_task("supervisor", event, generation)
-                .await;
-            trace!("Async start done");
-        });
+        let handle = tokio::spawn(Box::pin(supervisor_loop(
+            self_clone, token, channel_id, generation,
+        )));
 
         *self.supervisor_handle.lock().await = Some(handle);
 
@@ -352,43 +275,9 @@ impl ChannelManager {
         let token = Self::replace_token(&self.metrics_token).await;
         let manager = self.clone();
         let system = self.system.clone();
-        let handle = tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    _ = token.cancelled() => break,
-                    _ = sleep(Duration::from_secs(180)) => {
-                        let metrics = tokio::runtime::Handle::current().metrics();
-                        let (thread_count, rss) = system.process_snapshot().await;
-                        #[cfg(tokio_unstable)]
-                        debug!(
-                            target: Target::file(),
-                            channel = manager.id;
-                            "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">runtime_snapshot</span> event=<span class=\"log-addr\">tick</span> generation=<span class=\"log-number\">{generation}</span> tokio_alive=<span class=\"log-number\">{}</span> tokio_workers=<span class=\"log-number\">{}</span> global_queue_depth=<span class=\"log-number\">{}</span> blocking_queue_depth=<span class=\"log-number\">{}</span> threads=<span class=\"log-number\">{thread_count}</span> rss=<span class=\"log-number\">{rss}</span>",
-                            metrics.num_alive_tasks(),
-                            metrics.num_workers(),
-                            metrics.global_queue_depth(),
-                            metrics.blocking_queue_depth(),
-                        );
-                        #[cfg(not(tokio_unstable))]
-                        debug!(
-                            target: Target::file(),
-                            channel = manager.id;
-                            "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">runtime_snapshot</span> event=<span class=\"log-addr\">tick</span> generation=<span class=\"log-number\">{generation}</span> tokio_alive=<span class=\"log-number\">{}</span> tokio_workers=<span class=\"log-number\">{}</span> global_queue_depth=<span class=\"log-number\">{}</span> threads=<span class=\"log-number\">{thread_count}</span> rss=<span class=\"log-number\">{rss}</span>",
-                            metrics.num_alive_tasks(),
-                            metrics.num_workers(),
-                            metrics.global_queue_depth(),
-                        );
-                    }
-                }
-            }
-
-            let event = if token.is_cancelled() {
-                "done_cancelled"
-            } else {
-                "done"
-            };
-            manager.log_dev_task("metrics", event, generation).await;
-        });
+        let handle = tokio::spawn(Box::pin(metrics_snapshot_loop(
+            manager, system, token, generation,
+        )));
 
         *self.metrics_handle.lock().await = Some(handle);
     }
@@ -603,6 +492,133 @@ impl ChannelController {
             .filter(|manager| manager.is_alive.load(Ordering::SeqCst))
             .count()
     }
+}
+
+async fn supervisor_loop(
+    manager: ChannelManager,
+    token: CancellationToken,
+    channel_id: i32,
+    generation: usize,
+) {
+    const MAX_DELAY: Duration = Duration::from_secs(180);
+    let mut elapsed = Duration::from_secs(5);
+    let mut retry_delay = Duration::from_millis(500);
+
+    loop {
+        if token.is_cancelled() {
+            break;
+        }
+        let active = {
+            let channel = manager.channel.lock().await;
+            channel.active
+        };
+
+        if !active {
+            break;
+        }
+
+        manager.is_alive.store(true, Ordering::SeqCst);
+        manager.list_init.store(true, Ordering::SeqCst);
+
+        let timer = Instant::now();
+
+        if let Err(e) = run_channel(manager.clone()).await {
+            manager.stop_all(false).await;
+
+            let (active, public_path) = {
+                let channel = manager.channel.lock().await;
+                (channel.active, channel.public.clone())
+            };
+
+            if !active {
+                break;
+            }
+
+            if timer.elapsed() < elapsed {
+                elapsed += retry_delay;
+                retry_delay = cmp::min(retry_delay * 2, MAX_DELAY);
+            } else {
+                elapsed = Duration::from_secs(5);
+                retry_delay = Duration::from_secs(1);
+            }
+
+            let retry_msg = format!(
+                "Retry in <span class=\"log-number\">{}</span> seconds",
+                retry_delay.as_secs()
+            );
+
+            error!(target: Target::all(), channel = channel_id; "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e} | {retry_msg}");
+
+            trace!(
+                "Runtime has <span class=\"log-number\">{}</span> active tasks",
+                tokio::runtime::Handle::current()
+                    .metrics()
+                    .num_alive_tasks()
+            );
+
+            if manager.config.read().await.output.mode == OutputMode::HLS
+                && let Err(d_e) = delete_segments(public_path, &[], true).await
+            {
+                error!(target: Target::all(), channel = channel_id; "{d_e}");
+            };
+
+            tokio::select! {
+                _ = token.cancelled() => break,
+                _ = sleep(retry_delay) => {}
+            }
+        }
+    }
+
+    let event = if token.is_cancelled() {
+        "done_cancelled"
+    } else {
+        "done"
+    };
+    manager.log_dev_task("supervisor", event, generation).await;
+    trace!("Async start done");
+}
+
+async fn metrics_snapshot_loop(
+    manager: ChannelManager,
+    system: SystemStat,
+    token: CancellationToken,
+    generation: usize,
+) {
+    loop {
+        tokio::select! {
+            _ = token.cancelled() => break,
+            _ = sleep(Duration::from_secs(180)) => {
+                let metrics = tokio::runtime::Handle::current().metrics();
+                let (thread_count, rss) = system.process_snapshot().await;
+                #[cfg(tokio_unstable)]
+                debug!(
+                    target: Target::file(),
+                    channel = manager.id;
+                    "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">runtime_snapshot</span> event=<span class=\"log-addr\">tick</span> generation=<span class=\"log-number\">{generation}</span> tokio_alive=<span class=\"log-number\">{}</span> tokio_workers=<span class=\"log-number\">{}</span> global_queue_depth=<span class=\"log-number\">{}</span> blocking_queue_depth=<span class=\"log-number\">{}</span> threads=<span class=\"log-number\">{thread_count}</span> rss=<span class=\"log-number\">{rss}</span>",
+                    metrics.num_alive_tasks(),
+                    metrics.num_workers(),
+                    metrics.global_queue_depth(),
+                    metrics.blocking_queue_depth(),
+                );
+                #[cfg(not(tokio_unstable))]
+                debug!(
+                    target: Target::file(),
+                    channel = manager.id;
+                    "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">runtime_snapshot</span> event=<span class=\"log-addr\">tick</span> generation=<span class=\"log-number\">{generation}</span> tokio_alive=<span class=\"log-number\">{}</span> tokio_workers=<span class=\"log-number\">{}</span> global_queue_depth=<span class=\"log-number\">{}</span> threads=<span class=\"log-number\">{thread_count}</span> rss=<span class=\"log-number\">{rss}</span>",
+                    metrics.num_alive_tasks(),
+                    metrics.num_workers(),
+                    metrics.global_queue_depth(),
+                );
+            }
+        }
+    }
+
+    let event = if token.is_cancelled() {
+        "done_cancelled"
+    } else {
+        "done"
+    };
+    manager.log_dev_task("metrics", event, generation).await;
 }
 
 async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {

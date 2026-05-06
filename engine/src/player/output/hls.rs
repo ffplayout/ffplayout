@@ -386,7 +386,10 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
             "hls_ingest_writer",
             "start",
         );
-        Some(tokio::spawn(ingest_writer(manager2, ingest_token.clone())))
+        Some(tokio::spawn(Box::pin(ingest_writer(
+            manager2,
+            ingest_token.clone(),
+        ))))
     } else {
         None
     };

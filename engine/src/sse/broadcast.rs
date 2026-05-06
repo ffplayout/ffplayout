@@ -68,7 +68,7 @@ impl Broadcaster {
     /// Pings clients every 10 seconds to see if they are alive and remove them from the broadcast
     /// list if not.
     fn spawn_ping(this: Arc<Self>) {
-        tokio::spawn(async move {
+        tokio::spawn(Box::pin(async move {
             let mut interval = interval(Duration::from_secs(1));
 
             loop {
@@ -76,7 +76,7 @@ impl Broadcaster {
 
                 this.broadcast().await;
             }
-        });
+        }));
     }
 
     /// Registers client with broadcaster, returning an SSE response body.
@@ -98,11 +98,14 @@ impl Broadcaster {
     }
 
     pub async fn broadcast(&self) {
-        let mut inner = self.inner.lock().await;
+        let clients = {
+            let inner = self.inner.lock().await;
+            inner.clients.clone()
+        };
         let mut failed_clients = Vec::new();
 
         // every client needs its own stats
-        for (index, client) in inner.clients.iter().enumerate() {
+        for client in &clients {
             match client.endpoint {
                 Endpoint::Playout => {
                     let media_map = get_data_map(&client.manager).await;
@@ -119,7 +122,7 @@ impl Broadcaster {
                         .await
                         .is_err()
                     {
-                        failed_clients.push(index);
+                        failed_clients.push(client.sender.clone());
                     };
                 }
                 Endpoint::System => {
@@ -132,14 +135,21 @@ impl Broadcaster {
                         .await
                         .is_err()
                     {
-                        failed_clients.push(index);
+                        failed_clients.push(client.sender.clone());
                     };
                 }
             }
         }
 
-        for &index in failed_clients.iter().rev() {
-            inner.clients.remove(index);
+        if failed_clients.is_empty() {
+            return;
         }
+
+        let mut inner = self.inner.lock().await;
+        inner.clients.retain(|client| {
+            !failed_clients
+                .iter()
+                .any(|failed| failed.same_channel(&client.sender))
+        });
     }
 }
