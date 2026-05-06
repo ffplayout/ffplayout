@@ -13,23 +13,23 @@
     "lint": "eslint . --fix"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.2.2",
-    "@unhead/vue": "^3.0.4",
+    "@tailwindcss/vite": "=4.2.2",
+    "@unhead/vue": "^3.1.0",
     "@vueform/multiselect": "^2.6.11",
     "@vuepic/vue-datepicker": "^12.1.0",
-    "@vueuse/core": "^14.2.1",
+    "@vueuse/core": "^14.3.0",
     "bootstrap-icons": "^1.13.1",
     "dayjs": "^1.11.20",
-    "es-toolkit": "^1.45.1",
+    "es-toolkit": "^1.46.1",
     "jwt-decode": "^4.0.0",
     "mpegts.js": "^1.8.0",
     "pinia": "^3.0.4",
     "splitpanes": "^4.0.4",
-    "tailwindcss": "^4.2.2",
+    "tailwindcss": "=4.2.2",
     "video.js": "^8.23.7",
-    "vue": "^3.5.32",
-    "vue-i18n": "^11.3.2",
-    "vue-router": "^5.0.4",
+    "vue": "^3.5.34",
+    "vue-i18n": "^11.4.0",
+    "vue-router": "^5.0.6",
     "vue-virtual-sortable": "^3.1.0"
   },
   "devDependencies": {
@@ -39,13 +39,13 @@
     "@vue/eslint-config-typescript": "^14.7.0",
     "@vue/tsconfig": "^0.9.1",
     "daisyui": "^5.5.19",
-    "eslint": "^10.2.0",
-    "eslint-plugin-vue": "~10.8.0",
-    "jiti": "^2.6.1",
+    "eslint": "^10.3.0",
+    "eslint-plugin-vue": "~10.9.1",
+    "jiti": "^2.7.0",
     "npm-run-all2": "^8.0.4",
     "typescript": "~5.9.3",
-    "vite": "^8.0.8",
+    "vite": "^8.0.10",
     "vite-plugin-vue-devtools": "^8.1.1",
-    "vue-tsc": "^3.2.6"
+    "vue-tsc": "^3.2.8"
   }
 }

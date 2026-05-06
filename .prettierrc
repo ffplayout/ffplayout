@@ -3,5 +3,13 @@
     "printWidth": 120,
     "semi": false,
     "singleQuote": true,
-    "jsxSingleQuote": true
+    "jsxSingleQuote": true,
+    "overrides": [
+        {
+            "files": "package*.json",
+            "options": {
+                "tabWidth": 2
+            }
+        }
+    ]
 }

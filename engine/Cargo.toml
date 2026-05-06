@@ -78,7 +78,7 @@ tokio-util = "0.7"
 toml_edit = { version = "0.25", features = ["serde"] }
 ts-rs = { version = "12", features = ["chrono-impl", "no-serde-warnings"] }
 uuid = { version = "1.18", features = ["v4"] }
-zeromq = { version = "0.5", default-features = false, features = [
+zeromq = { version = "0.6", default-features = false, features = [
     "tokio-runtime",
     "tcp-transport",
 ] }

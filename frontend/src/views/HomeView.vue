@@ -22,7 +22,7 @@ const selectedLang = ref()
 const formError = ref('')
 
 onMounted(() => {
-    selectedLang.value = locales.find((loc: any) => loc.language === locale.value)
+    selectedLang.value = locales.find((loc: any) => loc.code === locale.value || loc.language === locale.value)
 })
 
 useHead({
