@@ -10,17 +10,18 @@ use sqlx::{Pool, Sqlite};
 #[cfg(target_family = "unix")]
 use tokio::fs;
 
-use crate::ARGS;
-use crate::db::{
-    handles,
-    models::{Channel, User},
+use crate::{
+    ARGS,
+    db::{
+        handles,
+        models::{Channel, User},
+    },
+    utils::{
+        advanced_config::AdvancedConfig,
+        config::{OutputMode, PlayoutConfig},
+        errors::ProcessError,
+    },
 };
-use crate::utils::{
-    advanced_config::AdvancedConfig,
-    config::{OutputMode, PlayoutConfig},
-};
-
-use super::errors::ProcessError;
 
 #[derive(Parser, Debug, Default, Clone)]
 #[clap(version,
@@ -80,6 +81,9 @@ pub struct Args {
 
     #[clap(long, help_heading = Some("General"), help = "Add or update a global admin user")]
     pub user_set: bool,
+
+    #[clap(long, help_heading = Some("General"), help = "Disabling two-factor authentication")]
+    pub disable_two_factor: bool,
 
     #[clap(long, env, help_heading = Some("General"), help = "Path to database file")]
     pub db: Option<PathBuf>,

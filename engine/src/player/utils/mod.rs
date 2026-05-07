@@ -24,28 +24,30 @@ use tokio::{
     process::{ChildStderr, Command},
     sync::Mutex,
 };
+use tokio_util::sync::CancellationToken;
 
 pub mod import;
 pub mod json_serializer;
 pub mod json_validate;
 pub mod probe;
 
-use crate::player::{
-    controller::{
-        ChannelManager,
-        ProcessUnit::{self, *},
+use crate::{
+    player::{
+        controller::{
+            ChannelManager,
+            ProcessUnit::{self, *},
+        },
+        filter::{Filters, filter_chains},
     },
-    filter::{Filters, filter_chains},
-};
-use crate::utils::{
-    config::{FFMPEG_IGNORE_ERRORS, OutputMode::*, PlayoutConfig},
-    errors::ServiceError,
-    logging::{LogDedup, Target},
-    time_machine::time_now,
+    utils::{
+        config::{FFMPEG_IGNORE_ERRORS, OutputMode::*, PlayoutConfig},
+        errors::ServiceError,
+        logging::{LogDedup, Target},
+        time_machine::time_now,
+    },
+    vec_strings,
 };
 pub use json_serializer::{JsonPlaylist, read_json};
-
-use crate::vec_strings;
 
 /// Compare incoming stream name with expecting name, but ignore question mark.
 pub fn valid_stream(msg: &str) -> bool {
@@ -900,11 +902,21 @@ pub async fn stderr_reader(
     ignore: Vec<String>,
     suffix: ProcessUnit,
     channel_id: i32,
+    cancel_token: CancellationToken,
 ) -> Result<(), ServiceError> {
     let mut lines = buffer.lines();
     let mut debup = LogDedup::new(suffix, channel_id);
 
-    while let Some(line) = lines.next_line().await? {
+    loop {
+        let line = tokio::select! {
+            _ = cancel_token.cancelled() => break,
+            line = lines.next_line() => line,
+        };
+
+        let Some(line) = line? else {
+            break;
+        };
+
         if FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
             || ignore.iter().any(|i| line.contains(i))
         {

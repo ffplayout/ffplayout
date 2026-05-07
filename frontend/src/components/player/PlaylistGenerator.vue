@@ -1,3 +1,173 @@
+<script setup lang="ts">
+import VirtualList from 'vue-virtual-sortable'
+import dayjs from 'dayjs'
+
+import { ref, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useWindowSize } from '@vueuse/core'
+import { isEqual } from 'es-toolkit/predicate'
+
+import { playlistOperations } from '@/composables/helper'
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+import { useMedia } from '@/stores/media'
+import { usePlaylist } from '@/stores/playlist'
+
+const { t } = useI18n()
+const { width } = useWindowSize({ initialWidth: 800 })
+const authStore = useAuth()
+const configStore = useConfig()
+const indexStore = useIndex()
+const mediaStore = useMedia()
+const playlistStore = usePlaylist()
+
+const { processPlaylist } = playlistOperations()
+
+const genGroup = ref({ name: 'genGroup', pull: 'clone', put: false })
+const targetGroup = ref({ name: 'genGroup', pull: true, put: true })
+
+defineProps({
+    close: {
+        type: Function,
+        default() {
+            return ''
+        },
+    },
+})
+
+const advancedGenerator = ref(false)
+const selectedFolders = ref([] as string[])
+const generateFromAll = ref(false)
+const template = ref({
+    sources: [
+        {
+            start: configStore.playout.playlist.day_start,
+            duration: '02:00:00',
+            shuffle: false,
+            paths: [],
+        },
+    ],
+} as Template)
+
+function setSelectedFolder(event: any, folder: string) {
+    if (event.target.checked) {
+        selectedFolders.value.push(folder)
+    } else {
+        const index = selectedFolders.value.indexOf(folder)
+
+        if (index > -1) {
+            selectedFolders.value.splice(index, 1)
+        }
+    }
+}
+
+function resetCheckboxes() {
+    selectedFolders.value = []
+    const checkboxes = document.getElementsByClassName('folder-check') as HTMLCollectionOf<HTMLInputElement>
+
+    if (checkboxes) {
+        for (const box of checkboxes) {
+            box.checked = false
+        }
+    }
+}
+
+function addFolderToTemplate(event: any) {
+    const n = event.newIndex
+
+    const media = event.item
+    const storagePath = configStore.channels[configStore.i]?.storage
+    const navPath = mediaStore.folderCrumbs[mediaStore.folderCrumbs.length - 1]?.path
+    const sourcePath = `${storagePath}/${navPath}/${media.name}`.replace(/\/[/]+/g, '/')
+    event.item.path = sourcePath
+
+    nextTick(() => {
+        if (event.list.filter((item: any) => isEqual(item, event.item)).length > 1) {
+            event.list.splice(n, 1)
+        }
+    })
+}
+
+function resetTemplate() {
+    template.value.sources = []
+}
+
+function removeTemplate(item: TemplateItem) {
+    const index = template.value.sources.indexOf(item)
+
+    template.value.sources.splice(index, 1)
+}
+
+function addTemplate() {
+    const last = template.value.sources[template.value.sources.length - 1]
+    let start = dayjs('2000-01-01T00:00:00')
+
+    if (last) {
+        const t = dayjs(`2000-01-01T${last.duration}`)
+        start = dayjs(`2000-01-01T${last.start}`)
+            .add(t.hour(), 'hour')
+            .add(t.minute(), 'minute')
+            .add(t.second(), 'second')
+    }
+
+    template.value.sources.push({
+        start: start.format('HH:mm:ss'),
+        duration: '02:00:00',
+        shuffle: false,
+        paths: [],
+    })
+}
+
+async function generatePlaylist() {
+    playlistStore.isLoading = true
+    let body = null as BodyObject | null
+
+    if (selectedFolders.value.length > 0 && !generateFromAll.value) {
+        body = { paths: selectedFolders.value }
+    }
+
+    if (advancedGenerator.value) {
+        template.value.sources.forEach((item) => {
+            item.paths = item.paths = item.paths
+                .map((p) => (typeof p === 'string' ? p : p?.path))
+                .filter((p) => typeof p === 'string')
+        })
+        if (body) {
+            body.template = template.value
+        } else {
+            body = { template: template.value }
+        }
+    }
+
+    await fetch(`/api/playlist/${configStore.channels[configStore.i]?.id}/generate/${playlistStore.listDate}`, {
+        method: 'POST',
+        headers: { ...configStore.contentType, ...authStore.authHeader },
+        body: JSON.stringify(body),
+    })
+        .then(async (response) => {
+            if (!response.ok) {
+                throw new Error(await response.text())
+            }
+
+            return response.json()
+        })
+        .then((response: any) => {
+            playlistStore.playlist = processPlaylist(playlistStore.listDate, response.program, false)
+            indexStore.msgAlert('success', t('player.generateDone'), 2)
+        })
+        .catch((e: any) => {
+            indexStore.msgAlert('error', e.data ? e.data : e, 4)
+        })
+
+    // reset selections
+    resetCheckboxes()
+    resetTemplate()
+
+    playlistStore.scrollToItem = true
+    playlistStore.isLoading = false
+}
+</script>
 <template>
     <div class="z-50 fixed inset-0 flex justify-center bg-black/30 overflow-auto py-5">
         <div
@@ -38,7 +208,9 @@
                                 </nav>
                             </div>
 
-                            <ul class="h-118.75 border border-base-content/30 rounded-sm overflow-auto bg-base-300 m-1 py-1">
+                            <ul
+                                class="h-118.75 border border-base-content/30 rounded-sm overflow-auto bg-base-300 m-1 py-1"
+                            >
                                 <li
                                     v-for="folder in mediaStore.folderList.folders"
                                     :key="folder.uid"
@@ -53,9 +225,9 @@
                                                     mediaStore.getTree(
                                                         `/${mediaStore.folderList.source}/${folder.name}`.replace(
                                                             /\/[/]+/g,
-                                                            '/'
+                                                            '/',
                                                         ),
-                                                        true
+                                                        true,
                                                     ),
                                                 ]
                                             "
@@ -72,8 +244,8 @@
                                                         $event,
                                                         `/${mediaStore.folderList.source}/${folder.name}`.replace(
                                                             /\/[/]+/g,
-                                                            '/'
-                                                        )
+                                                            '/',
+                                                        ),
                                                     )
                                                 "
                                             />
@@ -90,7 +262,7 @@
                         role="tab"
                         class="tab"
                         :aria-label="t('player.advanced')"
-                        @change=";(advancedGenerator = true), resetCheckboxes()"
+                        @change=";((advancedGenerator = true), resetCheckboxes())"
                     />
                     <div role="tabpanel" class="tab-content pt-3">
                         <div class="w-full">
@@ -152,9 +324,9 @@
                                                         mediaStore.getTree(
                                                             `/${mediaStore.folderList.source}/${record.name}`.replace(
                                                                 /\/[/]+/g,
-                                                                '/'
+                                                                '/',
                                                             ),
-                                                            true
+                                                            true,
                                                         ),
                                                     ]
                                                 "
@@ -257,11 +429,15 @@
                     <button
                         type="button"
                         class="btn btn-sm btn-primary join-item"
-                        @click="resetCheckboxes(), resetTemplate(), close()"
+                        @click="(resetCheckboxes(), resetTemplate(), close())"
                     >
                         {{ t('cancel') }}
                     </button>
-                    <button type="button" class="btn btn-sm btn-primary join-item" @click="generatePlaylist(), close()">
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-primary join-item"
+                        @click="(generatePlaylist(), close())"
+                    >
                         {{ t('ok') }}
                     </button>
                 </div>
@@ -269,169 +445,3 @@
         </div>
     </div>
 </template>
-<script setup lang="ts">
-import VirtualList from 'vue-virtual-sortable'
-import dayjs from 'dayjs'
-
-import { ref, nextTick } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useWindowSize } from '@vueuse/core'
-import { filter, isEqual, map } from 'lodash-es'
-
-import { playlistOperations } from '@/composables/helper'
-import { useAuth } from '@/stores/auth'
-import { useIndex } from '@/stores/index'
-import { useConfig } from '@/stores/config'
-import { useMedia } from '@/stores/media'
-import { usePlaylist } from '@/stores/playlist'
-
-const { t } = useI18n()
-const { width } = useWindowSize({ initialWidth: 800 })
-const authStore = useAuth()
-const configStore = useConfig()
-const indexStore = useIndex()
-const mediaStore = useMedia()
-const playlistStore = usePlaylist()
-
-const { processPlaylist } = playlistOperations()
-
-const genGroup = ref({ name: 'genGroup', pull: 'clone', put: false })
-const targetGroup = ref({ name: 'genGroup', pull: true, put: true })
-
-defineProps({
-    close: {
-        type: Function,
-        default() {
-            return ''
-        },
-    },
-})
-
-const advancedGenerator = ref(false)
-const selectedFolders = ref([] as string[])
-const generateFromAll = ref(false)
-const template = ref({
-    sources: [
-        {
-            start: configStore.playout.playlist.day_start,
-            duration: '02:00:00',
-            shuffle: false,
-            paths: [],
-        },
-    ],
-} as Template)
-
-function setSelectedFolder(event: any, folder: string) {
-    if (event.target.checked) {
-        selectedFolders.value.push(folder)
-    } else {
-        const index = selectedFolders.value.indexOf(folder)
-
-        if (index > -1) {
-            selectedFolders.value.splice(index, 1)
-        }
-    }
-}
-
-function resetCheckboxes() {
-    selectedFolders.value = []
-    const checkboxes = document.getElementsByClassName('folder-check') as HTMLCollectionOf<HTMLInputElement>
-
-    if (checkboxes) {
-        for (const box of checkboxes) {
-            box.checked = false
-        }
-    }
-}
-
-function addFolderToTemplate(event: any) {
-    const n = event.newIndex
-
-    const media = event.item
-    const storagePath = configStore.channels[configStore.i]?.storage
-    const navPath = mediaStore.folderCrumbs[mediaStore.folderCrumbs.length - 1]?.path
-    const sourcePath = `${storagePath}/${navPath}/${media.name}`.replace(/\/[/]+/g, '/')
-    event.item.path = sourcePath
-
-    nextTick(() => {
-        if (filter(event.list, (item) => isEqual(item, event.item)).length > 1) {
-            event.list.splice(n, 1)
-        }
-    })
-}
-
-function resetTemplate() {
-    template.value.sources = []
-}
-
-function removeTemplate(item: TemplateItem) {
-    const index = template.value.sources.indexOf(item)
-
-    template.value.sources.splice(index, 1)
-}
-
-function addTemplate() {
-    const last = template.value.sources[template.value.sources.length - 1]
-    let start = dayjs('2000-01-01T00:00:00')
-
-    if (last) {
-        const t = dayjs(`2000-01-01T${last.duration}`)
-        start = dayjs(`2000-01-01T${last.start}`)
-            .add(t.hour(), 'hour')
-            .add(t.minute(), 'minute')
-            .add(t.second(), 'second')
-    }
-
-    template.value.sources.push({
-        start: start.format('HH:mm:ss'),
-        duration: '02:00:00',
-        shuffle: false,
-        paths: [],
-    })
-}
-
-async function generatePlaylist() {
-    playlistStore.isLoading = true
-    let body = null as BodyObject | null
-
-    if (selectedFolders.value.length > 0 && !generateFromAll.value) {
-        body = { paths: selectedFolders.value }
-    }
-
-    if (advancedGenerator.value) {
-        template.value.sources.forEach((item) => (item.paths = map(item.paths, 'path')))
-        if (body) {
-            body.template = template.value
-        } else {
-            body = { template: template.value }
-        }
-    }
-
-    await fetch(`/api/playlist/${configStore.channels[configStore.i]?.id}/generate/${playlistStore.listDate}`, {
-        method: 'POST',
-        headers: { ...configStore.contentType, ...authStore.authHeader },
-        body: JSON.stringify(body),
-    })
-        .then(async (response) => {
-            if (!response.ok) {
-                throw new Error(await response.text())
-            }
-
-            return response.json()
-        })
-        .then((response: any) => {
-            playlistStore.playlist = processPlaylist(playlistStore.listDate, response.program, false)
-            indexStore.msgAlert('success', t('player.generateDone'), 2)
-        })
-        .catch((e: any) => {
-            indexStore.msgAlert('error', e.data ? e.data : e, 4)
-        })
-
-    // reset selections
-    resetCheckboxes()
-    resetTemplate()
-
-    playlistStore.scrollToItem = true
-    playlistStore.isLoading = false
-}
-</script>

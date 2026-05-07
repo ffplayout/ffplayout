@@ -14,15 +14,14 @@ use sqlx::{Pool, Sqlite};
 use tokio::{fs, io::AsyncReadExt};
 use ts_rs::TS;
 
-use crate::ARGS;
-use crate::AdvancedConfig;
-use crate::db::{handles, models};
-use crate::file::norm_abs_path;
-use crate::player::utils::validate_ffmpeg;
-use crate::utils::{gen_tcp_socket, time_to_sec};
-use crate::vec_strings;
-
-use super::errors::ServiceError;
+use crate::{
+    ARGS, AdvancedConfig,
+    db::{handles, models},
+    file::norm_abs_path,
+    player::utils::validate_ffmpeg,
+    utils::{errors::ServiceError, gen_tcp_socket, time_to_sec},
+    vec_strings,
+};
 
 pub const DUMMY_LEN: f64 = 60.0;
 pub const IMAGE_FORMAT: [&str; 21] = [
@@ -943,7 +942,7 @@ pub async fn get_config(
 
         let mut template: Template = serde_json::from_slice(&buffer)?;
 
-        template.sources.sort_by(|d1, d2| d1.start.cmp(&d2.start));
+        template.sources.sort_by_key(|d1| d1.start);
 
         config.general.template = Some(template);
     }

@@ -1,5 +1,7 @@
 import dayjs from 'dayjs'
-import { differenceWith, isEqual, omit } from 'lodash-es'
+import { isEqual } from 'es-toolkit/predicate'
+import { differenceWith } from 'es-toolkit/array'
+import { omit } from 'es-toolkit/object'
 import utc from 'dayjs/plugin/utc.js'
 import timezone from 'dayjs/plugin/timezone.js'
 

@@ -26,6 +26,7 @@ export default defineConfig({
             '/data': { target: 'http://127.0.0.1:8787', changeOrigin: true },
             '/live': { target: 'http://127.0.0.1:8787', changeOrigin: true },
             '/1/live': { target: 'http://127.0.0.1:8787', changeOrigin: true },
+            '/public': { target: 'http://127.0.0.1:8787', changeOrigin: true },
             '/file': { target: 'http://127.0.0.1:8787', changeOrigin: true },
             '/hls': { target: 'http://127.0.0.1:8787', changeOrigin: true },
         },

@@ -6,6 +6,30 @@ dayjs.extend(timezone)
 
 import { useConfig } from '@/stores/config'
 
+export const useHelper = () => {
+    async function errMsg(resp: Response): Promise<string> {
+        const text = await resp.text()
+        let msg: string
+
+        try {
+            const json = JSON.parse(text)
+            msg = json?.error ?? (typeof json === 'string' ? json : JSON.stringify(json))
+        } catch {
+            msg = text
+        }
+
+        if (!msg) {
+            msg = resp.statusText
+        }
+
+        return msg
+    }
+
+    return {
+        errMsg,
+    }
+}
+
 export const stringFormatter = () => {
     function fileSize(bytes: number | undefined, dp = 2) {
         if (!bytes) {

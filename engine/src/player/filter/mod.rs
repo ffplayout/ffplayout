@@ -8,15 +8,17 @@ use tokio::sync::Mutex;
 mod custom;
 pub mod v_drawtext;
 
-use crate::player::{
-    controller::ProcessUnit::{self, *},
-    utils::{Media, calc_aspect, custom_format, fps_calc, fraction, is_close},
+use crate::{
+    player::{
+        controller::ProcessUnit::{self, *},
+        utils::{Media, calc_aspect, custom_format, fps_calc, fraction, is_close},
+    },
+    utils::{
+        config::{OutputMode::*, PlayoutConfig},
+        logging::Target,
+    },
+    vec_strings,
 };
-use crate::utils::{
-    config::{OutputMode::*, PlayoutConfig},
-    logging::Target,
-};
-use crate::vec_strings;
 
 #[derive(Clone, Debug, Copy, Eq, PartialEq)]
 pub enum FilterType {

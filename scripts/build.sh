@@ -2,6 +2,40 @@
 
 source $(dirname "$0")/man_create.sh
 target=$1
+env_file=".env"
+env_names=()
+
+if [[ -f $env_file ]]; then
+    while IFS='=' read -r name _; do
+        [[ $name =~ ^[[:space:]]*# ]] && continue
+        [[ -z ${name//[[:space:]]/} ]] && continue
+
+        name=${name%%[[:space:]]*}
+        env_names+=("$name")
+    done < "$env_file"
+
+    set -a
+    source "$env_file"
+    set +a
+fi
+
+docker_exec_env() {
+    local args=()
+
+    for name in "${env_names[@]}"; do
+        if [[ -v $name ]]; then
+            args+=("-e" "$name=${!name}")
+        fi
+    done
+
+    docker exec -it "${args[@]}" build-ffplayout "$@"
+}
+
+cargo_features_args=()
+
+if [[ -n ${CARGO_FEATURES:-} ]]; then
+    cargo_features_args=(--features "$CARGO_FEATURES")
+fi
 
 if [[ -n $target ]]; then
     targets=($target)
@@ -28,9 +62,9 @@ for target in "${targets[@]}"; do
         rm -f "ffplayout-v${version}_debian.tar.gz"
 
         docker build -t rust-debian -f ./docker/debian.Dockerfile .
-        docker run -dit --name build-ffplayout -v "$(pwd)":/src rust-debian
+        docker run -dit --name build-ffplayout -v "$(pwd)":/src:z rust-debian
 
-        docker exec -it build-ffplayout cargo build --release --target=x86_64-unknown-linux-gnu
+        docker_exec_env cargo build --release --target=x86_64-unknown-linux-gnu "${cargo_features_args[@]}"
         docker exec -it build-ffplayout cargo deb --no-build \
             --target=x86_64-unknown-linux-gnu \
             -p ffplayout --manifest-path=/src/engine/Cargo.toml \
@@ -46,7 +80,7 @@ for target in "${targets[@]}"; do
             rm -f "ffplayout-v${version}_${target}.zip"
         fi
 
-        cross build --release --target=$target
+        cross build --release --target=$target "${cargo_features_args[@]}"
 
         cp ./target/${target}/release/ffplayout.exe .
         zip -r "ffplayout-v${version}_${target}.zip" assets docker docs LICENSE README.md ffplayout.exe -x *.db -x *.db-shm -x *.db-wal -x *.service
@@ -56,7 +90,7 @@ for target in "${targets[@]}"; do
             rm -f "ffplayout-v${version}_${target}.tar.gz"
         fi
 
-        cross build --release --target=$target
+        cross build --release --target=$target "${cargo_features_args[@]}"
 
         tar --transform 's/\.\/target\/.*\///g' -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docker docs LICENSE README.md ./target/${target}/release/ffplayout
     fi

@@ -64,7 +64,7 @@ impl MailQueue {
 }
 
 /// send log messages to mail recipient
-pub async fn send_mail(config: &Mail, msg: String) -> Result<(), ProcessError> {
+pub async fn send_mail(config: &Mail, msg: String, html: bool) -> Result<(), ProcessError> {
     let recipient = config
         .recipient
         .split_terminator([',', ';', ' '])
@@ -74,8 +74,12 @@ pub async fn send_mail(config: &Mail, msg: String) -> Result<(), ProcessError> {
 
     let mut message = Message::builder()
         .from(config.smtp_user.parse()?)
-        .subject(&config.subject)
-        .header(header::ContentType::TEXT_PLAIN);
+        .subject(&config.subject);
+
+    message = match html {
+        true => message.header(header::ContentType::TEXT_HTML),
+        false => message.header(header::ContentType::TEXT_PLAIN),
+    };
 
     for r in recipient {
         message = message.to(r.parse()?);
@@ -140,7 +144,7 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
             }
 
             for (config, text, id) in tasks {
-                if let Err(e) = send_mail(&config, text).await {
+                if let Err(e) = send_mail(&config, text, false).await {
                     error!(target: "{file}", channel = id; "Failed to send mail: {e}");
                 }
             }

@@ -7,8 +7,10 @@ use sqlx::{Pool, Sqlite};
 use tokio::io::AsyncReadExt;
 use ts_rs::TS;
 
-use crate::db::{handles, models::AdvancedConfiguration};
-use crate::utils::ServiceError;
+use crate::{
+    db::{handles, models::AdvancedConfiguration},
+    utils::ServiceError,
+};
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone, TS)]
 #[ts(export, export_to = "advanced_config.d.ts")]

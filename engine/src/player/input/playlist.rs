@@ -8,20 +8,22 @@ use std::{
 
 use log::*;
 
-use crate::db::handles;
-use crate::player::{
-    controller::ChannelManager,
-    utils::{
-        JsonPlaylist, Media, gen_dummy, get_date, get_delta, is_close, is_remote,
-        json_serializer::{read_json, set_defaults},
-        loop_filler, loop_image, modified_time,
-        probe::MediaProbe,
-        seek_and_length, time_in_seconds,
+use crate::{
+    db::handles,
+    player::{
+        controller::ChannelManager,
+        utils::{
+            JsonPlaylist, Media, gen_dummy, get_date, get_delta, is_close, is_remote,
+            json_serializer::{read_json, set_defaults},
+            loop_filler, loop_image, modified_time,
+            probe::MediaProbe,
+            seek_and_length, time_in_seconds,
+        },
     },
-};
-use crate::utils::{
-    config::{IMAGE_FORMAT, PlayoutConfig},
-    logging::Target,
+    utils::{
+        config::{IMAGE_FORMAT, PlayoutConfig},
+        logging::Target,
+    },
 };
 
 const NEXT_START_THRESHOLD: f64 = 1.5;
@@ -93,6 +95,7 @@ impl CurrentProgram {
 
         if get_current {
             self.json_playlist = read_json(
+                &self.manager,
                 &mut self.config,
                 self.manager.current_list.clone(),
                 self.json_playlist.path.clone(),
@@ -180,6 +183,7 @@ impl CurrentProgram {
             self.date = get_date(seek, self.start_sec, true, &self.config.channel.timezone);
 
             self.json_playlist = read_json(
+                &self.manager,
                 &mut self.config,
                 self.manager.current_list.clone(),
                 None,
@@ -587,12 +591,10 @@ impl CurrentProgram {
                 );
             }
 
+            self.manager.list_init.store(true, Ordering::SeqCst);
+
             let filler = {
                 let fillers = self.manager.filler_list.lock().await;
-
-                if self.manager.current_list.lock().await.len() - 1 < last_index {
-                    self.manager.list_init.store(true, Ordering::SeqCst);
-                }
 
                 if self.config.storage.filler_path.is_dir() && !fillers.is_empty() {
                     let index = self

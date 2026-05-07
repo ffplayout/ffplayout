@@ -4,7 +4,7 @@
 @plugin "daisyui";
 
 @plugin "daisyui/theme" {
-    name: 'light';
+    name: 'ffp-light';
     default: false;
     color-scheme: light;
 
@@ -34,7 +34,7 @@
 }
 
 @plugin "daisyui/theme" {
-    name: 'dark';
+    name: 'ffp-dark';
     default: true;
     color-scheme: dark;
 
@@ -91,6 +91,10 @@
         outline-offset: 2px;
         isolation: isolate;
     }
+}
+
+.dp--clear-btn {
+    display: none !important;
 }
 
 .alert-info {

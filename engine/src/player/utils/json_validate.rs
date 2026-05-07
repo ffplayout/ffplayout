@@ -16,18 +16,23 @@ use tokio::{
     process::Command,
     sync::Mutex,
 };
+use tokio_util::sync::CancellationToken;
 
-use crate::player::filter::FilterType::Audio;
-use crate::player::utils::{
-    JsonPlaylist, Media, is_close, is_remote, loop_image, sec_to_time, seek_and_length,
-    time_in_seconds, time_to_sec,
+use crate::{
+    player::{
+        filter::FilterType::Audio,
+        utils::{
+            JsonPlaylist, Media, is_close, is_remote, loop_image, sec_to_time, seek_and_length,
+            time_in_seconds, time_to_sec,
+        },
+    },
+    utils::{
+        config::{FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT, OutputMode::Null, PlayoutConfig},
+        errors::ProcessError,
+        logging::Target,
+    },
+    vec_strings,
 };
-use crate::utils::{
-    config::{FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT, OutputMode::Null, PlayoutConfig},
-    errors::ProcessError,
-    logging::Target,
-};
-use crate::vec_strings;
 
 /// Validate a single media file.
 ///
@@ -40,6 +45,7 @@ async fn check_media(
     mut node: Media,
     pos: usize,
     begin: f64,
+    cancel_token: CancellationToken,
 ) -> Result<(), ProcessError> {
     let id = config.general.channel_id;
     let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
@@ -109,7 +115,19 @@ async fn check_media(
     let re_start = Regex::new(r"silence_start: ([0-9]+:)?([0-9.]+)")?;
     let re_end = Regex::new(r"silence_end: ([0-9]+:)?([0-9.]+)")?;
 
-    while let Some(line) = lines.next_line().await? {
+    loop {
+        let line = tokio::select! {
+            _ = cancel_token.cancelled() => {
+                let _ = enc_proc.kill().await;
+                let _ = enc_proc.wait().await;
+                return Ok(());
+            }
+            line = lines.next_line() => line,
+        };
+
+        let Some(line) = line? else {
+            break;
+        };
         if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
             && !config.logging.ignore_lines.iter().any(|i| line.contains(i))
             && (line.contains("[error]") || line.contains("[fatal]"))
@@ -147,7 +165,15 @@ async fn check_media(
 
     error_list.clear();
 
-    if let Err(e) = enc_proc.wait().await {
+    let wait_result = tokio::select! {
+        _ = cancel_token.cancelled() => {
+            let _ = enc_proc.kill().await;
+            enc_proc.wait().await
+        }
+        result = enc_proc.wait() => result,
+    };
+
+    if let Err(e) = wait_result {
         error!(target: Target::file_mail(), channel = id; "Validation process: {e:?}");
     }
 
@@ -206,6 +232,7 @@ pub async fn validate_playlist(
     current_list: Arc<Mutex<Vec<Media>>>,
     mut playlist: JsonPlaylist,
     is_alive: Arc<AtomicBool>,
+    cancel_token: CancellationToken,
 ) {
     let id = config.general.channel_id;
     let date = playlist.date;
@@ -229,7 +256,7 @@ pub async fn validate_playlist(
     let timer = Instant::now();
 
     for (index, item) in playlist.program.iter_mut().enumerate() {
-        if !is_alive.load(Ordering::SeqCst) {
+        if cancel_token.is_cancelled() || !is_alive.load(Ordering::SeqCst) {
             return;
         }
 
@@ -264,7 +291,7 @@ pub async fn validate_playlist(
         }
 
         if item.probe.is_some() {
-            match check_media(&config, item.clone(), pos, begin).await {
+            match check_media(&config, item.clone(), pos, begin, cancel_token.clone()).await {
                 Err(e) => {
                     error!(target: Target::file_mail(), channel = id; "{e}");
                 }

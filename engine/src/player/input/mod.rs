@@ -7,8 +7,10 @@ pub mod playlist;
 pub use ingest::ingest_server;
 pub use playlist::CurrentProgram;
 
-use crate::player::{controller::ChannelManager, input::folder::FolderSource, utils::Media};
-use crate::utils::{config::ProcessMode::*, logging::Target};
+use crate::{
+    player::{controller::ChannelManager, input::folder::FolderSource, utils::Media},
+    utils::{config::ProcessMode::*, logging::Target},
+};
 
 pub enum SourceIterator {
     Folder(Box<FolderSource>),

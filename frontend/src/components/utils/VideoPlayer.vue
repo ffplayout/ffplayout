@@ -1,16 +1,3 @@
-<template>
-    <div>
-        <div v-if="options.sources">
-            <video
-                :id="reference"
-                class="video-js vjs-default-skin vjs-big-play-centered vjs-16-9"
-                width="1024"
-                height="576"
-            />
-        </div>
-    </div>
-</template>
-
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import videojs from 'video.js'
@@ -65,7 +52,18 @@ onBeforeUnmount(() => {
     }
 })
 </script>
-
+<template>
+    <div>
+        <div v-if="options.sources">
+            <video
+                :id="reference"
+                class="video-js vjs-default-skin vjs-big-play-centered vjs-16-9"
+                width="1024"
+                height="576"
+            />
+        </div>
+    </div>
+</template>
 <style>
 .video-js .vjs-volume-panel.vjs-volume-panel-horizontal {
     width: 10em;

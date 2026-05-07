@@ -1,33 +1,3 @@
-<template>
-    <div id="timeField" class="input input-sm flex px-3 py-0">
-        <div class="grow">
-            <input
-                ref="timeInput"
-                :value="secToTime(props.modelValue)"
-                type="text"
-                pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,3})?"
-                class="w-full px-1 py-0"
-                @click="setCursorPos"
-                @change="$emit('update:modelValue', timeToSec($event))"
-            />
-        </div>
-
-        <div class="w-auto">
-            <div class="flex flex-col text-xs py-0.5">
-                <button
-                    class="bg-base-300 hover:bg-base-300/50 px-1 text-[9px] h-3.25 rounded-t"
-                    tabindex="0"
-                    @click="countUp"
-                >
-                    <i class="bi-chevron-up" />
-                </button>
-                <button class="bg-base-300 hover:bg-base-300/50 px-1 text-[9px] h-3.25 rounded-b" @click="countDown">
-                    <i class="bi-chevron-down" />
-                </button>
-            </div>
-        </div>
-    </div>
-</template>
 <script setup lang="ts">
 import { ref, nextTick } from "vue"
 const emit = defineEmits(['update:modelValue'])
@@ -114,6 +84,36 @@ function countDown() {
     })
 }
 </script>
+<template>
+    <div id="timeField" class="input input-sm flex px-3 py-0">
+        <div class="grow">
+            <input
+                ref="timeInput"
+                :value="secToTime(props.modelValue)"
+                type="text"
+                pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,3})?"
+                class="w-full px-1 py-0"
+                @click="setCursorPos"
+                @change="$emit('update:modelValue', timeToSec($event))"
+            />
+        </div>
+
+        <div class="w-auto">
+            <div class="flex flex-col text-xs py-0.5">
+                <button
+                    class="bg-base-300 hover:bg-base-300/50 px-1 text-[9px] h-3.25 rounded-t"
+                    tabindex="0"
+                    @click="countUp"
+                >
+                    <i class="bi-chevron-up" />
+                </button>
+                <button class="bg-base-300 hover:bg-base-300/50 px-1 text-[9px] h-3.25 rounded-b" @click="countDown">
+                    <i class="bi-chevron-down" />
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
 <style scoped>
 #timeField:has(> div > input:invalid) {
     border: red solid 1px;

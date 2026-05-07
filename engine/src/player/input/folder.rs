@@ -6,11 +6,13 @@ use log::*;
 use rand::{SeedableRng, rngs::SmallRng, seq::SliceRandom};
 use tokio_stream::StreamExt;
 
-use crate::player::{
-    controller::ChannelManager,
-    utils::{Media, include_file_extension, time_in_seconds},
+use crate::{
+    player::{
+        controller::ChannelManager,
+        utils::{Media, include_file_extension, time_in_seconds},
+    },
+    utils::{config::PlayoutConfig, logging::Target},
 };
-use crate::utils::{config::PlayoutConfig, logging::Target};
 
 /// Folder Sources
 ///

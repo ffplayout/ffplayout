@@ -1,91 +1,123 @@
-use actix_web::{Responder, get, post, web};
-use actix_web_grants::proc_macro::protect;
+use axum::{
+    Json, Router,
+    extract::{Path, Query, State},
+    response::IntoResponse,
+    routing::{get, post},
+};
+use protect_axum::authorities::AuthDetails;
+use real::RealIp;
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 
-use super::{SseAuthState, UuidData, check_uuid, prune_uuids};
-use crate::db::models::Role;
-use crate::player::controller::ChannelController;
-use crate::sse::{Endpoint, broadcast::Broadcaster};
-use crate::utils::errors::ServiceError;
+use crate::{
+    api::{
+        routes::{AuthUser, ensure_any_authority},
+        state::AppState,
+    },
+    db::models::Role,
+    sse::{Endpoint, UuidData, check_uuid, prune_uuids},
+    utils::errors::ServiceError,
+};
 
 #[derive(Deserialize, Serialize)]
-struct User {
+pub struct User {
     #[serde(default, skip_serializing)]
     endpoint: Endpoint,
     uuid: String,
 }
 
 impl User {
-    fn new(endpoint: Endpoint, uuid: String) -> Self {
-        Self { endpoint, uuid }
+    fn new(uuid: String) -> Self {
+        Self {
+            endpoint: Endpoint::default(),
+            uuid,
+        }
     }
 }
 
-/// **Get generated UUID**
-///
-/// ```BASH
-/// curl -X GET 'http://127.0.0.1:8787/api/generate-uuid' -H 'Authorization: Bearer <TOKEN>'
-/// ```
-#[post("/generate-uuid")]
-#[protect(
-    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
-    ty = "Role"
-)]
-async fn generate_uuid(data: web::Data<SseAuthState>) -> Result<impl Responder, ServiceError> {
-    let mut uuids = data.uuids.lock().await;
-    let new_uuid = UuidData::new();
-    let user_auth = User::new(Endpoint::default(), new_uuid.uuid.to_string());
+pub fn api_routes() -> Router<AppState> {
+    Router::new().route("/generate-uuid", post(generate_uuid))
+}
+
+pub fn data_routes() -> Router<AppState> {
+    Router::new()
+        .route("/validate", get(validate_uuid))
+        .route("/event/{id}", get(event_stream))
+}
+
+pub async fn generate_uuid(
+    real_ip: RealIp,
+    State(state): State<AppState>,
+    user: AuthUser,
+    details: AuthDetails<Role>,
+) -> Result<Json<User>, ServiceError> {
+    ensure_any_authority(
+        &details,
+        &[&Role::GlobalAdmin, &Role::ChannelAdmin, &Role::User],
+    )?;
+
+    let mut uuids = state.auth_state.uuids.lock().await;
+    let ip_address = real_ip.ip().to_string();
+    let user_id = (user.id > 0).then_some(user.id);
+    let new_uuid = UuidData::new(ip_address, user_id);
+    let user_auth = User::new(new_uuid.uuid.to_string());
 
     prune_uuids(&mut uuids);
-
     uuids.insert(new_uuid);
 
-    Ok(web::Json(user_auth))
+    Ok(Json(user_auth))
 }
 
-/// **Validate UUID**
-///
-/// ```BASH
-/// curl -X GET 'http://127.0.0.1:8787/data/validate?uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
-/// ```
-#[get("/validate")]
-async fn validate_uuid(
-    data: web::Data<SseAuthState>,
-    user: web::Query<User>,
-) -> Result<impl Responder, ServiceError> {
-    let mut uuids = data.uuids.lock().await;
+pub async fn validate_uuid(
+    real_ip: RealIp,
+    State(state): State<AppState>,
+    Query(user): Query<User>,
+) -> Result<Json<&'static str>, ServiceError> {
+    let mut uuids = state.auth_state.uuids.lock().await;
+    let ip_address = real_ip.ip().to_string();
 
-    match check_uuid(&mut uuids, user.uuid.as_str()) {
-        Ok(s) => Ok(web::Json(s)),
-        Err(e) => Err(e),
+    match check_uuid(&mut uuids, user.uuid.as_str(), &ip_address) {
+        Ok(status) => Ok(Json(status)),
+        Err(error) => Err(error),
     }
 }
 
-/// **Connect to event handler**
-///
-/// ```BASH
-/// curl -X GET 'http://127.0.0.1:8787/data/event/1?endpoint=system&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
-/// ```
-#[get("/event/{id}")]
-async fn event_stream(
-    broadcaster: web::Data<Broadcaster>,
-    data: web::Data<SseAuthState>,
-    id: web::Path<i32>,
-    user: web::Query<User>,
-    controllers: web::Data<RwLock<ChannelController>>,
-) -> Result<impl Responder, ServiceError> {
-    let mut uuids = data.uuids.lock().await;
+pub async fn event_stream(
+    real_ip: RealIp,
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    Query(user): Query<User>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let mut uuids = state.auth_state.uuids.lock().await;
+    let ip_address = real_ip.ip().to_string();
 
-    check_uuid(&mut uuids, user.uuid.as_str())?;
+    check_uuid(&mut uuids, user.uuid.as_str(), &ip_address)?;
 
     let manager = {
-        let guard = controllers.read().await;
-        guard.get(*id)
+        let guard = state.controller.read().await;
+        guard.get(id)
     }
     .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
-    Ok(broadcaster
+    let mut response = state
+        .broadcaster
         .new_client(manager.clone(), user.endpoint.clone())
-        .await)
+        .await
+        .into_response();
+
+    response.headers_mut().insert(
+        "X-Accel-Buffering",
+        "no".parse()
+            .map_err(|_| ServiceError::InternalServerError)?,
+    );
+    response
+        .headers_mut()
+        .insert("Cache-Control", "no-cache".parse().unwrap());
+    response.headers_mut().insert(
+        "Content-Type",
+        "text/event-stream"
+            .parse()
+            .map_err(|_| ServiceError::InternalServerError)?,
+    );
+
+    Ok(response)
 }

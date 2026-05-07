@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 description = "24/7 playout based on rust and ffmpeg"
 readme = "README.md"
-version = "1.0.0"
+version = "1.1.0"
 license = "GPL-3.0"
 repository = "https://github.com/ffplayout/ffplayout"
 authors = ["Jonathan Baecker <jonbae77@gmail.com>"]
@@ -28,3 +28,6 @@ redundant_closure_for_method_calls = "warn"
 explicit_iter_loop = "warn"
 flat_map_option = "warn"
 redundant_else = "warn"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }

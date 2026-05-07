@@ -4,6 +4,7 @@ use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 
 pub mod local;
+pub mod upload;
 mod watcher;
 
 use crate::utils::errors::ServiceError;

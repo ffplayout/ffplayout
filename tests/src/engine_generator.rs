@@ -3,13 +3,15 @@ use std::{env, fs};
 use chrono::NaiveTime;
 use sqlx::sqlite::SqlitePoolOptions;
 
-use ffplayout::db::handles;
-use ffplayout::player::{controller::ChannelManager, utils::*};
-use ffplayout::utils::config::ProcessMode::Playlist;
-use ffplayout::utils::playlist::generate_playlist;
-use ffplayout::utils::{
-    config::{PlayoutConfig, Source, Template},
-    generator::*,
+use ffplayout::{
+    db::handles,
+    player::{controller::ChannelManager, utils::*},
+    utils::{
+        config::{PlayoutConfig, ProcessMode::Playlist, Source, Template},
+        generator::*,
+        playlist::generate_playlist,
+        system::SystemStat,
+    },
 };
 
 async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
@@ -44,7 +46,7 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
 
     let config = PlayoutConfig::new(&pool, 1, None).await.unwrap();
     let channel = handles::select_channel(&pool, &1).await.unwrap();
-    let manager = ChannelManager::new(pool, channel, config.clone()).await;
+    let manager = ChannelManager::new(pool, channel, config.clone(), SystemStat::new()).await;
 
     (config, manager)
 }

@@ -3,17 +3,17 @@ use std::process::Stdio;
 use log::*;
 use tokio::process::{Child, Command};
 
-use crate::utils::{
-    config::PlayoutConfig,
-    logging::{Target, fmt_cmd},
-};
-use crate::vec_strings;
 use crate::{
     player::{
         controller::ProcessUnit::*,
         utils::{Media, insert_readrate, prepare_output_cmd},
     },
-    utils::errors::ServiceError,
+    utils::{
+        config::PlayoutConfig,
+        errors::ServiceError,
+        logging::{Target, fmt_cmd},
+    },
+    vec_strings,
 };
 
 /// Streaming Output

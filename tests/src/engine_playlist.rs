@@ -12,6 +12,7 @@ use ffplayout::{
     },
     utils::{
         config::{PlayoutConfig, ProcessMode::Playlist},
+        system::SystemStat,
         time_machine::set_mock_time,
     },
 };
@@ -55,7 +56,7 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     config.ingest.enable = false;
     config.text.add_text = false;
 
-    let manager = ChannelManager::new(pool, channel, config.clone()).await;
+    let manager = ChannelManager::new(pool, channel, config.clone(), SystemStat::new()).await;
 
     (config, manager)
 }

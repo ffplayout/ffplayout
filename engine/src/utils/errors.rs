@@ -1,6 +1,10 @@
 use std::io;
 
-use actix_web::{Error, HttpResponse, error::ResponseError};
+use axum::{
+    Json,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
 use derive_more::Display;
 
 use crate::player::utils::probe::FfProbeError;
@@ -30,22 +34,47 @@ pub enum ServiceError {
 
     #[display("ServiceUnavailable: {_0}")]
     ServiceUnavailable(String),
+
+    // 429 Too Many Requests
+    #[display("ToManyRequests")]
+    ToManyRequests,
 }
 
-// impl ResponseError trait allows to convert our errors into http responses with appropriate data
-impl ResponseError for ServiceError {
-    fn error_response(&self) -> HttpResponse {
+impl IntoResponse for ServiceError {
+    fn into_response(self) -> Response {
         match self {
-            Self::InternalServerError => {
-                HttpResponse::InternalServerError().json("Internal Server Error.")
+            Self::InternalServerError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!("Internal Server Error.")),
+            )
+                .into_response(),
+            Self::BadRequest(message) => {
+                (StatusCode::BAD_REQUEST, Json(serde_json::json!(message))).into_response()
             }
-            Self::BadRequest(message) => HttpResponse::BadRequest().json(message),
-            Self::Conflict(message) => HttpResponse::Conflict().json(message),
-            Self::Forbidden(message) => HttpResponse::Forbidden().json(message),
-            Self::Unauthorized(message) => HttpResponse::Unauthorized().json(message),
-            Self::NoContent() => HttpResponse::NoContent().into(),
-            Self::NotFound(message) => HttpResponse::NotFound().json(message),
-            Self::ServiceUnavailable(message) => HttpResponse::ServiceUnavailable().json(message),
+            Self::Conflict(message) => {
+                (StatusCode::CONFLICT, Json(serde_json::json!(message))).into_response()
+            }
+            Self::Forbidden(message) => {
+                (StatusCode::FORBIDDEN, Json(serde_json::json!(message))).into_response()
+            }
+            Self::Unauthorized(message) => {
+                (StatusCode::UNAUTHORIZED, Json(serde_json::json!(message))).into_response()
+            }
+            Self::NoContent() => StatusCode::NO_CONTENT.into_response(),
+            Self::NotFound(message) => {
+                (StatusCode::NOT_FOUND, Json(serde_json::json!(message))).into_response()
+            }
+            Self::ServiceUnavailable(message) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!(message)),
+            )
+                .into_response(),
+
+            Self::ToManyRequests => (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!("Too Many Requests.")),
+            )
+                .into_response(),
         }
     }
 }
@@ -56,14 +85,8 @@ impl From<String> for ServiceError {
     }
 }
 
-impl From<Error> for ServiceError {
-    fn from(err: Error) -> Self {
-        Self::BadRequest(err.to_string())
-    }
-}
-
-impl From<actix_multipart::MultipartError> for ServiceError {
-    fn from(err: actix_multipart::MultipartError) -> Self {
+impl From<axum::extract::multipart::MultipartError> for ServiceError {
+    fn from(err: axum::extract::multipart::MultipartError) -> Self {
         Self::BadRequest(err.to_string())
     }
 }
@@ -88,12 +111,6 @@ impl From<std::num::ParseIntError> for ServiceError {
 impl From<jsonwebtoken::errors::Error> for ServiceError {
     fn from(err: jsonwebtoken::errors::Error) -> Self {
         Self::Unauthorized(err.to_string())
-    }
-}
-
-impl From<actix_web::error::BlockingError> for ServiceError {
-    fn from(err: actix_web::error::BlockingError) -> Self {
-        Self::BadRequest(err.to_string())
     }
 }
 

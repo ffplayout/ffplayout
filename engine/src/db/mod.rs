@@ -2,19 +2,31 @@ use std::{
     borrow::Cow,
     io,
     path::Path,
+    str::FromStr,
     sync::{LazyLock, OnceLock},
+    time::Duration,
 };
 
 use faccess::PathExt;
 use inquire::Confirm;
 use log::*;
-use sqlx::{Pool, Sqlite, SqlitePool, migrate::MigrateDatabase};
+use sqlx::{
+    Pool, Sqlite,
+    migrate::MigrateDatabase,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
+};
 
 pub mod handles;
 pub mod models;
 
 use crate::{ARGS, utils::errors::ProcessError};
 use models::GlobalSettings;
+
+const SQLITE_MAX_CONNECTIONS: u32 = 3;
+const SQLITE_MIN_CONNECTIONS: u32 = 1;
+const SQLITE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
+const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+const SQLITE_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub static DB_PATH: LazyLock<Result<Cow<'static, Path>, io::Error>> = LazyLock::new(|| {
     const DEFAULT_DIR: &str = "/usr/share/ffplayout/db/";
@@ -73,7 +85,18 @@ pub async fn db_pool() -> Result<Pool<Sqlite>, ProcessError> {
         Sqlite::create_database(&db_path).await?;
     }
 
-    let conn = SqlitePool::connect(&db_path).await?;
+    let options = SqliteConnectOptions::from_str(&db_path)?
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(SQLITE_BUSY_TIMEOUT);
+
+    let conn = SqlitePoolOptions::new()
+        .max_connections(SQLITE_MAX_CONNECTIONS)
+        .min_connections(SQLITE_MIN_CONNECTIONS)
+        .acquire_timeout(SQLITE_ACQUIRE_TIMEOUT)
+        .idle_timeout(SQLITE_IDLE_TIMEOUT)
+        .connect_with(options)
+        .await?;
 
     Ok(conn)
 }

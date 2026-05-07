@@ -5,6 +5,7 @@ export default {
     socketDisconnected: 'Message-Stream nicht verbunden',
     alert: {
         wrongLogin: 'Falsche Anmeldedaten!',
+        verificationSent: 'Ein Verifizierungscode wurde an deine E-Mail gesendet.',
     },
     button: {
         login: 'Anmelden',
@@ -24,6 +25,11 @@ export default {
     input: {
         username: 'Benutzername',
         password: 'Passwort',
+    },
+    verification: {
+        codePlaceholder: 'Verifizierungscode',
+        verify: 'Verifizieren',
+        wrongCode: 'Falscher Verifizierungscode!',
     },
     system: {
         cpu: 'CPU',

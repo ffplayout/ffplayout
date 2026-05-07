@@ -4,25 +4,35 @@ use log::*;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, BufReader},
     process::{ChildStdin, Command},
+    time::{Duration, sleep},
 };
+use tokio_util::sync::CancellationToken;
 
 mod desktop;
 mod hls;
 mod null;
 mod stream;
 
-use crate::player::{
-    controller::{ChannelManager, ProcessUnit::*},
-    input::{ingest_server, source_generator},
-    utils::{sec_to_time, stderr_reader},
+use crate::{
+    player::{
+        controller::{ChannelManager, ProcessUnit::*},
+        input::{ingest_server, source_generator},
+        utils::{sec_to_time, stderr_reader},
+    },
+    utils::{
+        config::OutputMode::*,
+        errors::ServiceError,
+        logging::{Target, fmt_cmd},
+        task_runner,
+    },
+    vec_strings,
 };
-use crate::utils::{
-    config::OutputMode::*,
-    errors::ServiceError,
-    logging::{Target, fmt_cmd},
-    task_runner,
-};
-use crate::vec_strings;
+
+fn log_dev_task(channel_id: i32, task: &str, event: &str) {
+    if cfg!(feature = "dev-metrics") {
+        debug!(target: Target::file(), channel = channel_id; "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">{task}</span> event=<span class=\"log-addr\">{event}</span>");
+    }
+}
 
 async fn play(
     manager: ChannelManager,
@@ -138,7 +148,14 @@ async fn play(
 
         *manager.clone().decoder.lock().await = Some(dec_proc);
 
-        let error_decoder_task = tokio::spawn(stderr_reader(dec_err, ignore_dec, Decoder, id));
+        let decoder_log_token = CancellationToken::new();
+        let error_decoder_task = tokio::spawn(stderr_reader(
+            dec_err,
+            ignore_dec,
+            Decoder,
+            id,
+            decoder_log_token.clone(),
+        ));
 
         loop {
             if ingest_is_alive.load(Ordering::SeqCst) {
@@ -189,6 +206,7 @@ async fn play(
         drop(decoder_stdout);
 
         manager.wait(Decoder).await;
+        decoder_log_token.cancel();
         error_decoder_task.await??;
     }
 
@@ -231,34 +249,74 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let mgr_clone2 = manager.clone();
 
     // spawn a task to log ffmpeg output error messages
-    let handle_enc_stderr = tokio::spawn(stderr_reader(enc_err, ignore_enc, Encoder, channel_id));
+    let enc_log_token = CancellationToken::new();
+    log_dev_task(channel_id, "encoder_stderr", "start");
+    let handle_enc_stderr = tokio::spawn(stderr_reader(
+        enc_err,
+        ignore_enc,
+        Encoder,
+        channel_id,
+        enc_log_token.clone(),
+    ));
 
     // spawn a task for a ffmpeg ingest server
-    let handle_ingest = if config.ingest.enable {
-        Some(tokio::spawn(ingest_server(config_clone, mgr_clone2)))
+    let ingest_token = CancellationToken::new();
+    let mut handle_ingest = if config.ingest.enable {
+        log_dev_task(channel_id, "ingest_server", "start");
+        Some(tokio::spawn(ingest_server(
+            config_clone,
+            mgr_clone2,
+            ingest_token.clone(),
+        )))
     } else {
         None
     };
 
-    tokio::select! {
+    let result: Result<(), ServiceError> = tokio::select! {
         result = handle_enc_stderr => {
             result??;
+            Ok(())
         }
 
         result = async {
-            if let Some(f) = handle_ingest {
+            if let Some(f) = &mut handle_ingest {
                 f.await?
             } else {
                 Ok(())
             }
         }, if handle_ingest.is_some() => {
             result?;
+            Ok(())
         }
 
         result = play(manager, enc_writer, &ff_log_format) => {
             result?;
+            Ok(())
+        }
+    };
+
+    ingest_token.cancel();
+    enc_log_token.cancel();
+    log_dev_task(channel_id, "encoder_stderr", "cancel_requested");
+    if handle_ingest.is_some() {
+        log_dev_task(channel_id, "ingest_server", "cancel_requested");
+    }
+
+    if let Some(mut handle_ingest) = handle_ingest {
+        tokio::select! {
+            _ = &mut handle_ingest => {
+                log_dev_task(channel_id, "ingest_server", "done");
+            }
+            _ = sleep(Duration::from_secs(2)) => {
+                log_dev_task(channel_id, "ingest_server", "abort_fallback");
+                handle_ingest.abort();
+                let _ = handle_ingest.await;
+            }
         }
     }
+
+    log_dev_task(channel_id, "encoder_stderr", "done");
+    result?;
 
     trace!("Out of source loop");
 

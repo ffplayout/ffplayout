@@ -6,21 +6,27 @@ use std::{
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::MetadataExt;
 
-use actix_multipart::Multipart;
 use async_walkdir::WalkDir;
-// use futures_util::TryStreamExt as _;
+use axum::extract::Multipart;
 use lexical_sort::{PathSort, natural_lexical_cmp};
 use log::*;
-use rand::{RngExt, distr::Alphanumeric, seq::SliceRandom};
+use rand::seq::SliceRandom;
 use tokio::{
     fs,
-    io::AsyncWriteExt,
+    io::{AsyncSeekExt, AsyncWriteExt, SeekFrom},
     sync::{Mutex, RwLock},
     task::JoinHandle,
 };
 use tokio_stream::StreamExt;
 
-use crate::file::{MoveObject, PathObject, VideoFile, norm_abs_path, watcher::watch};
+use crate::file::{
+    MoveObject, PathObject, VideoFile, norm_abs_path,
+    upload::{
+        MAX_CHUNK_SIZE, MAX_UPLOAD_SIZE, Meta, UPLOADS, file_ranges, is_upload_complete,
+        merge_ranges, validate_mime_type,
+    },
+    watcher::watch,
+};
 use crate::player::utils::{Media, file_extension, include_file_extension, probe::MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, logging::Target};
 
@@ -44,20 +50,6 @@ impl LocalStorage {
             extensions: Arc::new(RwLock::new(extensions)),
             watch_handler: Arc::new(Mutex::new(None)),
         }
-    }
-}
-
-impl Drop for LocalStorage {
-    fn drop(&mut self) {
-        let watch_handler = self.watch_handler.clone();
-
-        tokio::spawn(async move {
-            let mut watch_handler = watch_handler.lock().await;
-
-            if let Some(handler) = watch_handler.as_mut() {
-                handler.abort();
-            }
-        });
     }
 }
 
@@ -248,56 +240,84 @@ impl LocalStorage {
         path: &Path,
         is_abs: bool,
     ) -> Result<(), ServiceError> {
-        while let Some(mut field) = data.try_next().await? {
-            let content_disposition = field.content_disposition().ok_or("No content")?;
-            debug!("{content_disposition}");
-            let rand_string: String = rand::rng()
-                .sample_iter(&Alphanumeric)
-                .take(20)
-                .map(char::from)
-                .collect();
-            let filename = content_disposition
-                .get_filename()
-                .map_or_else(|| rand_string.to_string(), sanitize_filename::sanitize);
+        let mut file_name: Option<String> = None;
+        let mut start: Option<u64> = None;
+        let mut end: Option<u64> = None;
+        let mut size: u64 = 0;
+        let mut chunk_data: Option<Vec<u8>> = None;
+        let mut batch_id = String::new();
 
-            let filepath = if is_abs {
-                path.to_path_buf()
-            } else {
-                let (target_path, _, _) =
-                    norm_abs_path(&self.root.read().await, &path.to_string_lossy())?;
-
-                target_path.join(filename)
-            };
-
-            // INFO: File exist check should be enough because file size and content length are different.
-            // The error catching in the loop should normally prevent unfinished files from existing on disk.
-            // If this is not enough, a second check can be implemented: is_close(file_size as i64, size as i64, 1000)
-            if filepath.is_file() {
-                return Err(ServiceError::Conflict("Target already exists!".into()));
-            }
-
-            let mut f = fs::File::create(&filepath).await?;
-
-            loop {
-                match field.try_next().await {
-                    Ok(Some(chunk)) => {
-                        f = f.write_all(&chunk).await.map(|_| f)?;
-                    }
-
-                    Ok(None) => break,
-
-                    Err(e) => {
-                        if e.to_string().contains("stream is incomplete") {
-                            info!("Delete non finished file: {filepath:?}");
-
-                            tokio::fs::remove_file(filepath).await?;
-                        }
-
-                        return Err(e.into());
-                    }
-                }
+        while let Some(field) = data.next_field().await? {
+            match field.name().unwrap_or_default() {
+                "fileName" => file_name = Some(sanitize_filename::sanitize(&field.text().await?)),
+                "start" => start = Some(field.text().await?.parse::<u64>().unwrap_or(0)),
+                "end" => end = Some(field.text().await?.parse::<u64>().unwrap_or(0)),
+                "size" => size = field.text().await?.parse::<u64>().unwrap_or(0),
+                "chunk" => chunk_data = Some(field.bytes().await?.to_vec()),
+                "batch_id" => batch_id = field.text().await?,
+                _ => {}
             }
         }
+
+        let file_name =
+            file_name.ok_or_else(|| ServiceError::BadRequest("Missing filename".into()))?;
+
+        validate_mime_type(&file_name)?;
+
+        let start = start.ok_or_else(|| ServiceError::BadRequest("Missing start offset".into()))?;
+        let end = end.ok_or_else(|| ServiceError::BadRequest("Missing end offset".into()))?;
+        let chunk_data =
+            chunk_data.ok_or_else(|| ServiceError::BadRequest("Missing chunk".into()))?;
+
+        if size > MAX_UPLOAD_SIZE {
+            return Err(ServiceError::BadRequest(format!(
+                "File size exceeds maximum allowed size of {MAX_UPLOAD_SIZE} bytes"
+            )));
+        }
+
+        if chunk_data.len() as u64 > MAX_CHUNK_SIZE {
+            return Err(ServiceError::BadRequest(format!(
+                "Chunk size exceeds maximum allowed chunk size of {MAX_CHUNK_SIZE} bytes"
+            )));
+        }
+
+        if end <= start || chunk_data.len() as u64 != end - start || end > size {
+            return Err(ServiceError::BadRequest("Invalid chunk range".into()));
+        }
+
+        let filepath = if is_abs {
+            path.join(&file_name)
+        } else {
+            let (target_path, _, _) =
+                norm_abs_path(&self.root.read().await, &path.to_string_lossy())?;
+            target_path.join(&file_name)
+        };
+
+        let meta = Arc::new(Mutex::new(Meta::default()));
+        let upload_value = file_ranges(start, size, &file_name, &filepath, &batch_id, meta).await?;
+
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&filepath)
+            .await?;
+        file.seek(SeekFrom::Start(start)).await?;
+        file.write_all(&chunk_data).await?;
+        file.flush().await?;
+
+        let mut ranges = upload_value.ranges.lock().await;
+        ranges.push(start..end);
+        merge_ranges(&mut ranges);
+
+        if is_upload_complete(&ranges, size) {
+            info!("Upload complete: {file_name}");
+            UPLOADS
+                .lock()
+                .await
+                .remove(&filepath.to_string_lossy().to_string());
+        }
+
         Ok(())
     }
 

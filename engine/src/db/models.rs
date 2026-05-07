@@ -8,8 +8,10 @@ use serde::{
 };
 use sqlx::{FromRow, Pool, Row, Sqlite, sqlite::SqliteRow};
 
-use crate::utils::config::PlayoutConfig;
-use crate::{db::handles, utils::config::OutputMode};
+use crate::{
+    db::handles,
+    utils::config::{OutputMode, PlayoutConfig},
+};
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct GlobalSettings {

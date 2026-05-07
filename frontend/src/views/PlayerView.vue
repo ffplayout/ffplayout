@@ -1,232 +1,3 @@
-<template>
-    <div class="h-full">
-        <PlayerControl />
-        <div class="flex justify-end p-1">
-            <div class="h-8 flex">
-                <div class="text-warning flex-none flex justify-end p-2">
-                    <div
-                        v-if="firstLoad && beforeDayStart"
-                        class="tooltip tooltip-right tooltip-warning"
-                        :data-tip="t('player.dateYesterday')"
-                    >
-                        <SvgIcon name="warning" />
-                    </div>
-                </div>
-                <VueDatePicker
-                    v-if="!configStore.playout.playlist.infinit && configStore.playout.processing.mode !== 'folder'"
-                    v-model="listDate"
-                    :clearable="false"
-                    :hide-navigation="['time']"
-                    :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
-                    :formats="{ day: 'dd', input: 'EEEE dd. LLL yyyy' }"
-                    :time-config="{ enableTimePicker: false }"
-                    model-type="yyyy-MM-dd"
-                    auto-apply
-                    :locale="lang"
-                    :dark="indexStore.darkMode"
-                    :ui="{ input: 'input input-sm !!w-[300px] text-right !pe-3' }"
-                    required
-                    @update:model-value=";(beforeDayStart = false), (firstLoad = false)"
-                />
-            </div>
-        </div>
-        <div class="p-1 min-h-65 h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
-            <Splitpanes
-                v-if="configStore.playout.processing.mode === 'playlist'"
-                class="border border-base-content/30 rounded-sm shadow"
-            >
-                <Pane
-                    v-if="width > 739"
-                    class="relative h-full bg-base-300! rounded-s"
-                    min-size="0"
-                    max-size="80"
-                    size="20"
-                >
-                    <MediaBrowser :preview="setPreviewData" />
-                </Pane>
-                <pane>
-                    <PlaylistTable ref="playlistTable" :edit-item="editPlaylistItem" :preview="setPreviewData" />
-                </pane>
-            </Splitpanes>
-            <div v-else class="h-full border border-b-2 border-base-content/30 rounded-sm shadow">
-                <MediaBrowser :preview="setPreviewData" />
-            </div>
-        </div>
-
-        <div v-if="configStore.playout.processing.mode === 'playlist'" class="h-16 join flex justify-end p-3">
-            <button class="btn btn-sm btn-primary join-item" :title="t('player.copy')" @click="showCopyModal = true">
-                <i class="bi-files" />
-            </button>
-            <button
-                v-if="!configStore.playout.playlist.infinit"
-                class="btn btn-sm btn-primary join-item"
-                :title="t('player.loop')"
-                @click="loopClips()"
-            >
-                <i class="bi-view-stacked" />
-            </button>
-            <button
-                class="btn btn-sm btn-primary join-item"
-                :title="t('player.remote')"
-                @click="showSourceModal = true"
-            >
-                <i class="bi-file-earmark-plus" />
-            </button>
-            <button
-                class="btn btn-sm btn-primary join-item"
-                :title="t('player.import')"
-                @click="showImportModal = true"
-            >
-                <i class="bi-file-text" />
-            </button>
-            <button
-                class="btn btn-sm btn-primary join-item"
-                :title="t('player.generate')"
-                @click="mediaStore.getTree('', true), (showPlaylistGenerator = true)"
-            >
-                <i class="bi-sort-down-alt" />
-            </button>
-            <button
-                class="btn btn-sm btn-primary join-item"
-                :title="t('player.reset')"
-                @click=";(playlistStore.playlist.length = 0), playlistTable.getPlaylist()"
-            >
-                <i class="bi-arrow-counterclockwise" />
-            </button>
-            <button
-                class="btn btn-sm btn-primary join-item"
-                :title="t('player.save')"
-                @click=";(targetDate = listDate), savePlaylist(true)"
-            >
-                <i class="bi-download" />
-            </button>
-            <button
-                class="btn btn-sm btn-primary join-item"
-                :title="t('player.deletePlaylist')"
-                @click="showDeleteModal = true"
-            >
-                <i class="bi-trash" />
-            </button>
-        </div>
-
-        <GenericModal
-            :show="showPreviewModal"
-            :title="`${t('media.preview')}: ${previewName}`"
-            :hide-buttons="true"
-            :modal-action="closePlayer"
-        >
-            <div class="w-5xl max-w-full aspect-video">
-                <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
-                <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
-            </div>
-        </GenericModal>
-
-        <GenericModal :show="showCopyModal" :title="t('player.copyTo')" :modal-action="savePlaylist">
-            <VueDatePicker
-                v-model="targetDate"
-                :clearable="false"
-                :hide-navigation="['time']"
-                :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
-                :formats="{ day: 'dd', input: 'EEEE dd. LLL yyyy' }"
-                :time-config="{ enableTimePicker: false }"
-                model-type="yyyy-MM-dd"
-                auto-apply
-                :locale="lang"
-                :dark="indexStore.darkMode"
-                :ui="{ input: 'input input-sm !!w-[full text-right !pe-3' }"
-                required
-            />
-        </GenericModal>
-
-        <GenericModal :show="showSourceModal" :title="t('player.addEdit')" :modal-action="processSource">
-            <div class="lg:w-96">
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.title') }}</legend>
-                    <input v-model="newSource.title" type="text" name="source" class="input input-sm w-full" />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.duration') }}</legend>
-                    <TimePicker v-model="newSource.duration" />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.in') }}</legend>
-                    <TimePicker v-model="newSource.in" />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.out') }}</legend>
-                    <TimePicker v-model="newSource.out" />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.file') }}</legend>
-                    <input
-                        v-model="newSource.source"
-                        type="text"
-                        name="source"
-                        class="input input-sm w-full"
-                        :disabled="newSource.source.includes(configStore.channels[configStore.i]?.storage ?? 'xyz123')"
-                    />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.audio') }}</legend>
-                    <input v-model="newSource.audio" type="text" name="audio" class="input input-sm w-full" />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.customFilter') }}</legend>
-                    <input
-                        v-model="newSource.custom_filter"
-                        type="text"
-                        name="custom_filter"
-                        class="input input-sm w-full"
-                    />
-                </fieldset>
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
-                        <input
-                            :checked="newSource.category === 'advertisement'"
-                            @click="isAd"
-                            type="checkbox"
-                            class="checkbox"
-                        />
-                        {{ t('player.ad') }}
-                    </label>
-                </fieldset>
-
-                <hr class="h-px my-2 bg-base-content/20 border-0" />
-
-                <h4 class="font-bold">{{ t('player.splitVideo') }}</h4>
-
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.cuts') }}</legend>
-                    <input
-                        v-model="splitCount"
-                        type="number"
-                        min="0"
-                        step="1"
-                        class="input input-sm w-full"
-                        @change="splitClip"
-                    />
-                </fieldset>
-
-                <div v-for="time in splitTimes" :key="time.id" class="form-control mt-2">
-                    <TimePicker v-model="time.val" />
-                </div>
-            </div>
-        </GenericModal>
-
-        <GenericModal :show="showImportModal" :title="t('player.import')" :modal-action="importPlaylist">
-            <input type="file" class="file-input file-input-sm w-full" multiple @change="onFileChange" />
-        </GenericModal>
-
-        <GenericModal :show="showDeleteModal" title="Delete Program" :modal-action="deletePlaylist">
-            <span>
-                {{ t('player.deleteFrom') }} <strong>{{ listDate }}</strong>
-            </span>
-        </GenericModal>
-
-        <PlaylistGenerator v-if="showPlaylistGenerator" :close="closeGenerator" />
-    </div>
-</template>
-
 <script setup lang="ts">
 import dayjs from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat.js'
@@ -247,7 +18,7 @@ import '@vuepic/vue-datepicker/dist/main.css'
 import { Splitpanes, Pane } from 'splitpanes'
 
 import { computed, ref, onBeforeMount } from 'vue'
-import { cloneDeep } from 'lodash-es'
+import { cloneDeep } from 'es-toolkit/object'
 import { useI18n } from 'vue-i18n'
 import { useWindowSize } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -258,14 +29,14 @@ dayjs.extend(LocalizedFormat)
 dayjs.extend(timezone)
 dayjs.extend(utc)
 
-import PlayerControl from '@/components/PlayerControl.vue'
+import PlayerControl from '@/components/player/PlayerControl.vue'
 import MediaBrowser from '@/components/MediaBrowser.vue'
-import PlaylistTable from '@/components/PlaylistTable.vue'
-import GenericModal from '@/components/GenericModal.vue'
-import PlaylistGenerator from '@/components/PlaylistGenerator.vue'
-import VideoPlayer from '@/components/VideoPlayer.vue'
-import TimePicker from '@/components/TimePicker.vue'
-import SvgIcon from '@/components/SvgIcon.vue'
+import PlaylistTable from '@/components/player/PlaylistTable.vue'
+import GenericModal from '@/components/utils/GenericModal.vue'
+import PlaylistGenerator from '@/components/player/PlaylistGenerator.vue'
+import VideoPlayer from '@/components/utils/VideoPlayer.vue'
+import TimePicker from '@/components/utils/TimePicker.vue'
+import SvgIcon from '@/components/utils/SvgIcon.vue'
 
 import { stringFormatter, playlistOperations } from '@/composables/helper'
 import { useAuth } from '@/stores/auth'
@@ -394,7 +165,7 @@ function setPreviewData(path: string) {
     } else {
         previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.i]?.id}${fullPath}`).replace(
             /%2F/g,
-            '/'
+            '/',
         )
     }
 
@@ -404,8 +175,8 @@ function setPreviewData(path: string) {
         mediaType(previewName.value) === 'audio'
             ? `audio/${ext}`
             : mediaType(previewName.value) === 'live'
-            ? 'application/x-mpegURL'
-            : `video/${ext}`
+              ? 'application/x-mpegURL'
+              : `video/${ext}`
 
     if (configStore.playout.storage.extensions.includes(`${ext}`)) {
         isVideo.value = true
@@ -563,24 +334,24 @@ async function importPlaylist(imp: boolean) {
 
         playlistStore.isLoading = true
         await fetch(
-            `/api/file/${configStore.channels[configStore.i]?.id}/import/?file=${textFile.value[0].name}&date=${
+            `/api/file/${configStore.channels[configStore.i]?.id}/import?file=${textFile.value[0].name}&date=${
                 listDate.value
             }`,
             {
                 method: 'PUT',
                 headers: authStore.authHeader,
                 body: formData,
-            }
+            },
         )
             .then(async (response) => {
-                if (!response.ok) {
+                if (response.status > 203) {
                     throw new Error(await response.text())
                 }
 
                 return response.json()
             })
             .then(async (response) => {
-                indexStore.msgAlert('success', String(response), 2)
+                indexStore.msgAlert('success', response, 2)
                 await playlistStore.getPlaylist(listDate.value)
             })
             .catch((e: string) => {
@@ -602,7 +373,7 @@ async function savePlaylist(save: boolean) {
 
         const saveList = processPlaylist(listDate.value, cloneDeep(playlistStore.playlist), true)
 
-        await fetch(`/api/playlist/${configStore.channels[configStore.i]?.id}/`, {
+        await fetch(`/api/playlist/${configStore.channels[configStore.i]?.id}`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({
@@ -645,3 +416,230 @@ async function deletePlaylist(del: boolean) {
     }
 }
 </script>
+<template>
+    <div class="h-full">
+        <PlayerControl />
+        <div class="flex justify-end p-1">
+            <div class="h-8 flex">
+                <div class="text-warning flex-none flex justify-end p-2">
+                    <div
+                        v-if="firstLoad && beforeDayStart"
+                        class="tooltip tooltip-right tooltip-warning"
+                        :data-tip="t('player.dateYesterday')"
+                    >
+                        <SvgIcon name="warning" />
+                    </div>
+                </div>
+                <VueDatePicker
+                    v-if="!configStore.playout.playlist.infinit && configStore.playout.processing.mode !== 'folder'"
+                    v-model="listDate"
+                    :hide-navigation="['time']"
+                    :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
+                    :formats="{ day: 'dd', input: 'EEEE dd. LLL yyyy' }"
+                    :time-config="{ enableTimePicker: false }"
+                    model-type="yyyy-MM-dd"
+                    auto-apply
+                    :locale="lang"
+                    :dark="indexStore.darkMode"
+                    :ui="{ input: 'input input-sm text-right pe-3!' }"
+                    required
+                    @update:model-value=";((beforeDayStart = false), (firstLoad = false))"
+                />
+            </div>
+        </div>
+        <div class="p-1 min-h-65 h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
+            <Splitpanes
+                v-if="configStore.playout.processing.mode === 'playlist'"
+                class="border border-base-content/30 rounded-sm shadow"
+            >
+                <Pane
+                    v-if="width > 739"
+                    class="relative h-full bg-base-300! rounded-s"
+                    min-size="0"
+                    max-size="80"
+                    size="20"
+                >
+                    <MediaBrowser :preview="setPreviewData" />
+                </Pane>
+                <pane>
+                    <PlaylistTable ref="playlistTable" :edit-item="editPlaylistItem" :preview="setPreviewData" />
+                </pane>
+            </Splitpanes>
+            <div v-else class="h-full border border-b-2 border-base-content/30 rounded-sm shadow">
+                <MediaBrowser :preview="setPreviewData" />
+            </div>
+        </div>
+
+        <div v-if="configStore.playout.processing.mode === 'playlist'" class="h-16 join flex justify-end p-3">
+            <button class="btn btn-sm btn-primary join-item" :title="t('player.copy')" @click="showCopyModal = true">
+                <i class="bi-files" />
+            </button>
+            <button
+                v-if="!configStore.playout.playlist.infinit"
+                class="btn btn-sm btn-primary join-item"
+                :title="t('player.loop')"
+                @click="loopClips()"
+            >
+                <i class="bi-view-stacked" />
+            </button>
+            <button
+                class="btn btn-sm btn-primary join-item"
+                :title="t('player.remote')"
+                @click="showSourceModal = true"
+            >
+                <i class="bi-file-earmark-plus" />
+            </button>
+            <button
+                class="btn btn-sm btn-primary join-item"
+                :title="t('player.import')"
+                @click="showImportModal = true"
+            >
+                <i class="bi-file-text" />
+            </button>
+            <button
+                class="btn btn-sm btn-primary join-item"
+                :title="t('player.generate')"
+                @click="(mediaStore.getTree('', true), (showPlaylistGenerator = true))"
+            >
+                <i class="bi-sort-down-alt" />
+            </button>
+            <button
+                class="btn btn-sm btn-primary join-item"
+                :title="t('player.reset')"
+                @click=";((playlistStore.playlist.length = 0), playlistTable.getPlaylist())"
+            >
+                <i class="bi-arrow-counterclockwise" />
+            </button>
+            <button
+                class="btn btn-sm btn-primary join-item"
+                :title="t('player.save')"
+                @click=";((targetDate = listDate), savePlaylist(true))"
+            >
+                <i class="bi-download" />
+            </button>
+            <button
+                class="btn btn-sm btn-primary join-item"
+                :title="t('player.deletePlaylist')"
+                @click="showDeleteModal = true"
+            >
+                <i class="bi-trash" />
+            </button>
+        </div>
+
+        <GenericModal
+            :show="showPreviewModal"
+            :title="`${t('media.preview')}: ${previewName}`"
+            :hide-buttons="true"
+            :modal-action="closePlayer"
+        >
+            <div class="w-5xl max-w-full aspect-video">
+                <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
+                <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
+            </div>
+        </GenericModal>
+
+        <GenericModal :show="showCopyModal" :title="t('player.copyTo')" :modal-action="savePlaylist">
+            <VueDatePicker
+                v-model="targetDate"
+                :clearable="false"
+                :hide-navigation="['time']"
+                :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
+                :formats="{ day: 'dd', input: 'EEEE dd. LLL yyyy' }"
+                :time-config="{ enableTimePicker: false }"
+                model-type="yyyy-MM-dd"
+                auto-apply
+                :locale="lang"
+                :dark="indexStore.darkMode"
+                :ui="{ input: 'input input-sm !!w-[full text-right !pe-3' }"
+                required
+            />
+        </GenericModal>
+
+        <GenericModal :show="showSourceModal" :title="t('player.addEdit')" :modal-action="processSource">
+            <div class="lg:w-96">
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.title') }}</legend>
+                    <input v-model="newSource.title" type="text" name="source" class="input input-sm w-full" />
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.duration') }}</legend>
+                    <TimePicker v-model="newSource.duration" />
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.in') }}</legend>
+                    <TimePicker v-model="newSource.in" />
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.out') }}</legend>
+                    <TimePicker v-model="newSource.out" />
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.file') }}</legend>
+                    <input
+                        v-model="newSource.source"
+                        type="text"
+                        name="source"
+                        class="input input-sm w-full"
+                        :disabled="newSource.source.includes(configStore.channels[configStore.i]?.storage ?? 'xyz123')"
+                    />
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.audio') }}</legend>
+                    <input v-model="newSource.audio" type="text" name="audio" class="input input-sm w-full" />
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.customFilter') }}</legend>
+                    <input
+                        v-model="newSource.custom_filter"
+                        type="text"
+                        name="custom_filter"
+                        class="input input-sm w-full"
+                    />
+                </fieldset>
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input
+                            :checked="newSource.category === 'advertisement'"
+                            @click="isAd"
+                            type="checkbox"
+                            class="checkbox"
+                        />
+                        {{ t('player.ad') }}
+                    </label>
+                </fieldset>
+
+                <hr class="h-px my-2 bg-base-content/20 border-0" />
+
+                <h4 class="font-bold">{{ t('player.splitVideo') }}</h4>
+
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.cuts') }}</legend>
+                    <input
+                        v-model="splitCount"
+                        type="number"
+                        min="0"
+                        step="1"
+                        class="input input-sm w-full"
+                        @change="splitClip"
+                    />
+                </fieldset>
+
+                <div v-for="time in splitTimes" :key="time.id" class="form-control mt-2">
+                    <TimePicker v-model="time.val" />
+                </div>
+            </div>
+        </GenericModal>
+
+        <GenericModal :show="showImportModal" :title="t('player.import')" :modal-action="importPlaylist">
+            <input type="file" class="file-input file-input-sm w-full" multiple @change="onFileChange" />
+        </GenericModal>
+
+        <GenericModal :show="showDeleteModal" title="Delete Program" :modal-action="deletePlaylist">
+            <span>
+                {{ t('player.deleteFrom') }} <strong>{{ listDate }}</strong>
+            </span>
+        </GenericModal>
+
+        <PlaylistGenerator v-if="showPlaylistGenerator" :close="closeGenerator" />
+    </div>
+</template>

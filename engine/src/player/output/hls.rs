@@ -29,14 +29,12 @@ use std::{
 
 use log::*;
 use tokio::{
-    fs,
     io::{AsyncBufReadExt, BufReader},
     process::Command,
     time::{Duration, sleep},
 };
+use tokio_util::sync::CancellationToken;
 
-use crate::utils::{logging::log_line, task_runner};
-use crate::vec_strings;
 use crate::{
     player::{
         controller::{ChannelManager, ProcessUnit::*},
@@ -48,50 +46,56 @@ use crate::{
     },
     utils::{
         errors::ServiceError,
-        logging::{Target, fmt_cmd},
+        logging::{Target, fmt_cmd, log_line},
+        task_runner,
     },
+    vec_strings,
 };
+
+fn log_dev_task(channel_id: i32, task: &str, event: &str) {
+    if cfg!(feature = "dev-metrics") {
+        debug!(target: Target::file(), channel = channel_id; "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">{task}</span> event=<span class=\"log-addr\">{event}</span>");
+    }
+}
 
 /// Periodically checks if HLS segments are still being updated.
 /// If no new segment is written for longer than `hls_time * 3`, returns an error.
 pub async fn hls_watchdog(
     channel_id: i32,
-    segment_dir: PathBuf,
+    m3u8_path: PathBuf,
     hls_time: Duration,
     is_alive: Arc<AtomicBool>,
+    cancel_token: CancellationToken,
 ) -> Result<(), ServiceError> {
     let mut init = true;
+    let timeout = hls_time * 3;
 
     loop {
-        if init {
-            sleep(hls_time * 3).await;
+        if cancel_token.is_cancelled() {
+            break;
+        }
+        let sleep_time = if init {
             init = false;
+            timeout
         } else {
-            sleep(hls_time).await;
+            hls_time
+        };
+
+        tokio::select! {
+            _ = cancel_token.cancelled() => break,
+            _ = sleep(sleep_time) => {}
         }
 
-        if !is_alive.load(Ordering::SeqCst) {
+        if cancel_token.is_cancelled() || !is_alive.load(Ordering::SeqCst) {
             break;
         }
 
-        let mut newest: Option<SystemTime> = None;
-        let mut entries = fs::read_dir(&segment_dir).await?;
-
-        while let Some(entry) = entries.next_entry().await? {
-            if let Ok(meta) = entry.metadata().await
-                && let Ok(modified) = meta.modified()
-                && newest.map(|t| modified > t).unwrap_or(true)
-            {
-                newest = Some(modified);
-            }
-        }
-
-        if let Some(last_mod) = newest {
+        if let Ok(last_mod) = m3u8_path.metadata().and_then(|m| m.modified()) {
             let age = SystemTime::now()
                 .duration_since(last_mod)
                 .unwrap_or_default();
 
-            if age > hls_time * 3 {
+            if age > timeout {
                 error!(target: Target::file_mail(), channel = channel_id;
                     "HLS segment write timeout! Last update: <span class=\"log-number\">{:.3}s</span>", age.as_secs_f32()
                 );
@@ -104,7 +108,10 @@ pub async fn hls_watchdog(
 }
 
 /// Ingest Server for HLS
-async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
+async fn ingest_writer(
+    manager: ChannelManager,
+    cancel_token: CancellationToken,
+) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
     let id = config.general.channel_id;
     let playlist_init = manager.list_init.clone();
@@ -162,7 +169,10 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
                 ));
             }
 
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            tokio::select! {
+                _ = cancel_token.cancelled() => return Ok(()),
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {}
+            }
         }
 
         info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <span class=\"log-addr\">{url}</span>");
@@ -187,7 +197,15 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
         *manager.ingest.lock().await = Some(server_proc);
         is_running = false;
 
-        while let Some(line) = lines.next_line().await? {
+        loop {
+            let line = tokio::select! {
+                _ = cancel_token.cancelled() => break,
+                line = lines.next_line() => line?,
+            };
+
+            let Some(line) = line else {
+                break;
+            };
             if line.contains("rtmp")
                 && (line.contains("Unexpected stream") || line.contains("App field don't match up"))
                 && !valid_stream(&line)
@@ -217,7 +235,7 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
 
         manager.wait(Ingest).await;
 
-        if !is_alive.load(Ordering::SeqCst) {
+        if cancel_token.is_cancelled() || !is_alive.load(Ordering::SeqCst) {
             break;
         }
     }
@@ -225,7 +243,11 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
     Ok(())
 }
 
-async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), ServiceError> {
+async fn write(
+    manager: &ChannelManager,
+    ff_log_format: &str,
+    cancel_token: CancellationToken,
+) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
     let get_source = source_generator(manager.clone());
     let ingest_is_alive = manager.ingest_is_alive.clone();
@@ -239,7 +261,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
         *current_media.lock().await = Some(node.clone());
         let ignore = config.logging.ignore_lines.clone();
 
-        if !is_alive.load(Ordering::SeqCst) {
+        if cancel_token.is_cancelled() || !is_alive.load(Ordering::SeqCst) {
             break;
         }
 
@@ -312,12 +334,15 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
         *manager.decoder.lock().await = Some(dec_proc);
 
-        stderr_reader(dec_err, ignore, Decoder, id).await?;
+        stderr_reader(dec_err, ignore, Decoder, id, cancel_token.clone()).await?;
 
         manager.wait(Decoder).await;
 
         while ingest_is_alive.load(Ordering::SeqCst) {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            tokio::select! {
+                _ = cancel_token.cancelled() => return Ok(()),
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {}
+            }
         }
     }
 
@@ -343,39 +368,98 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
         })
         .unwrap_or(10);
 
-    let handle_ingest = if config.ingest.enable {
+    let m3u8_path = output_cmd
+        .iter()
+        .find(|s| s.ends_with(".m3u8") && !s.contains("master.m3u8"))
+        .map(PathBuf::from)
+        .unwrap_or(config.channel.public.clone());
+
+    let ingest_token = CancellationToken::new();
+    let watchdog_token = CancellationToken::new();
+
+    let mut handle_ingest = if config.ingest.enable {
         // spawn a thread for ffmpeg ingest server
-        Some(tokio::spawn(ingest_writer(manager2)))
+        log_dev_task(config.general.channel_id, "hls_ingest_writer", "start");
+        Some(tokio::spawn(Box::pin(ingest_writer(
+            manager2,
+            ingest_token.clone(),
+        ))))
     } else {
         None
     };
 
-    let watchdog_hls = tokio::spawn(hls_watchdog(
+    log_dev_task(config.general.channel_id, "hls_watchdog", "start");
+    let mut watchdog_hls = tokio::spawn(hls_watchdog(
         config.general.channel_id,
-        config.channel.public.clone(),
+        m3u8_path,
         Duration::from_secs(hls_duration),
         is_alive,
+        watchdog_token.clone(),
     ));
 
-    tokio::select! {
+    let result: Result<(), ServiceError> = tokio::select! {
         result = async {
-            if let Some(f) = handle_ingest {
+            if let Some(f) = &mut handle_ingest {
                 f.await?
             } else {
                 Ok(())
             }
         }, if handle_ingest.is_some() => {
             result?;
+            Ok(())
         }
 
-        result = watchdog_hls => {
+        result = &mut watchdog_hls => {
             result??;
+            Ok(())
         }
 
-        result = write(manager, ff_log_format) => {
+        result = write(manager, ff_log_format, watchdog_token.clone()) => {
             result?;
+            Ok(())
+        }
+    };
+
+    watchdog_token.cancel();
+    ingest_token.cancel();
+    log_dev_task(
+        config.general.channel_id,
+        "hls_watchdog",
+        "cancel_requested",
+    );
+    if handle_ingest.is_some() {
+        log_dev_task(
+            config.general.channel_id,
+            "hls_ingest_writer",
+            "cancel_requested",
+        );
+    }
+
+    tokio::select! {
+        _ = &mut watchdog_hls => {
+            log_dev_task(config.general.channel_id, "hls_watchdog", "done");
+        }
+        _ = sleep(Duration::from_secs(2)) => {
+            log_dev_task(config.general.channel_id, "hls_watchdog", "abort_fallback");
+            watchdog_hls.abort();
+            let _ = watchdog_hls.await;
         }
     }
+
+    if let Some(mut handle_ingest) = handle_ingest {
+        tokio::select! {
+            _ = &mut handle_ingest => {
+                log_dev_task(config.general.channel_id, "hls_ingest_writer", "done");
+            }
+            _ = sleep(Duration::from_secs(2)) => {
+                log_dev_task(config.general.channel_id, "hls_ingest_writer", "abort_fallback");
+                handle_ingest.abort();
+                let _ = handle_ingest.await;
+            }
+        }
+    }
+
+    result?;
 
     Ok(())
 }

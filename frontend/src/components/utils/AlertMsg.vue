@@ -1,3 +1,10 @@
+<script setup lang="ts">
+import { useIndex } from '@/stores/index'
+
+import SvgIcon from '@/components/utils/SvgIcon.vue'
+
+const indexStore = useIndex()
+</script>
 <template>
     <div
         v-if="indexStore.showAlert"
@@ -9,11 +16,3 @@
         {{ indexStore.alertMsg }}
     </div>
 </template>
-
-<script setup lang="ts">
-import { useIndex } from '@/stores/index'
-
-import SvgIcon from '@/components/SvgIcon.vue'
-
-const indexStore = useIndex()
-</script>

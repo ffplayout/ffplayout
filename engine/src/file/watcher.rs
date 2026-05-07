@@ -17,8 +17,10 @@ use notify::{
 use notify_debouncer_full::new_debouncer;
 use tokio::sync::Mutex;
 
-use crate::player::utils::{Media, include_file_extension};
-use crate::utils::{config::PlayoutConfig, logging::Target};
+use crate::{
+    player::utils::{Media, include_file_extension},
+    utils::{config::PlayoutConfig, logging::Target},
+};
 
 /// Create a watcher, which monitor file changes.
 /// When a change is register, update the current file list.

@@ -1,3 +1,90 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+import GenericModal from '@/components/utils/GenericModal.vue'
+
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+
+const { t } = useI18n()
+const authStore = useAuth()
+const configStore = useConfig()
+const indexStore = useIndex()
+
+const logLevels = ['INFO', 'WARNING', 'ERROR']
+const processingMode = ['folder', 'playlist']
+
+const extensions = computed({
+    get() {
+        return configStore.playout.storage.extensions.join(',')
+    },
+
+    set(value: string) {
+        configStore.playout.storage.extensions = value.replace(' ', '').split(/,|;/)
+    },
+})
+
+const output = computed({
+    get() {
+        return configStore.outputs.find(o => o.id === configStore.playout.output.id)?.name
+    },
+
+    set(value: string) {
+        const output = configStore.outputs.find(o => o.name === value)
+        configStore.playout.output.output_param = output?.parameters ?? ''
+        configStore.playout.output.id = output?.id ?? 0
+    },
+})
+
+const formatIgnoreLines = computed({
+    get() {
+        return configStore.playout.logging.ignore_lines.join(';')
+    },
+
+    set(value) {
+        configStore.playout.logging.ignore_lines = value.split(';')
+    },
+})
+
+async function onSubmitPlayout() {
+    const update = await configStore.setPlayoutConfig(configStore.playout)
+    configStore.onetimeInfo = true
+
+    if (update.status === 200) {
+        indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
+
+        const id = configStore.channels[configStore.i]?.id
+
+        await fetch(`/api/control/${id}/process`, {
+            method: 'POST',
+            headers: { ...configStore.contentType, ...authStore.authHeader },
+            body: JSON.stringify({ command: 'status' }),
+        })
+            .then(async (response) => {
+                if (!response.ok) {
+                    throw new Error(await response.text())
+                }
+
+                return response.json()
+            })
+            .then(async (response) => {
+                if (response === 'active') {
+                    configStore.showRestartModal = true
+                }
+
+                await configStore.getPlayoutConfig()
+                await configStore.getPlayoutOutputs()
+            })
+            .catch((e) => {
+                indexStore.msgAlert('error', e.data, 3)
+            })
+    } else {
+        indexStore.msgAlert('error', t('config.updatePlayoutFailed'), 2)
+    }
+}
+</script>
 <template>
     <div class="max-w-300 xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('config.playoutConf') }}</h2>
@@ -533,91 +620,3 @@
         :modal-action="configStore.restart"
     />
 </template>
-
-<script setup lang="ts">
-import { computed } from 'vue'
-import { useI18n } from 'vue-i18n'
-
-import GenericModal from '@/components/GenericModal.vue'
-
-import { useAuth } from '@/stores/auth'
-import { useIndex } from '@/stores/index'
-import { useConfig } from '@/stores/config'
-
-const { t } = useI18n()
-const authStore = useAuth()
-const configStore = useConfig()
-const indexStore = useIndex()
-
-const logLevels = ['INFO', 'WARNING', 'ERROR']
-const processingMode = ['folder', 'playlist']
-
-const extensions = computed({
-    get() {
-        return configStore.playout.storage.extensions.join(',')
-    },
-
-    set(value: string) {
-        configStore.playout.storage.extensions = value.replace(' ', '').split(/,|;/)
-    },
-})
-
-const output = computed({
-    get() {
-        return configStore.outputs.find(o => o.id === configStore.playout.output.id)?.name
-    },
-
-    set(value: string) {
-        const output = configStore.outputs.find(o => o.name === value)
-        configStore.playout.output.output_param = output?.parameters ?? ''
-        configStore.playout.output.id = output?.id ?? 0
-    },
-})
-
-const formatIgnoreLines = computed({
-    get() {
-        return configStore.playout.logging.ignore_lines.join(';')
-    },
-
-    set(value) {
-        configStore.playout.logging.ignore_lines = value.split(';')
-    },
-})
-
-async function onSubmitPlayout() {
-    const update = await configStore.setPlayoutConfig(configStore.playout)
-    configStore.onetimeInfo = true
-
-    if (update.status === 200) {
-        indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
-
-        const id = configStore.channels[configStore.i]?.id
-
-        await fetch(`/api/control/${id}/process/`, {
-            method: 'POST',
-            headers: { ...configStore.contentType, ...authStore.authHeader },
-            body: JSON.stringify({ command: 'status' }),
-        })
-            .then(async (response) => {
-                if (!response.ok) {
-                    throw new Error(await response.text())
-                }
-
-                return response.json()
-            })
-            .then(async (response) => {
-                if (response === 'active') {
-                    configStore.showRestartModal = true
-                }
-
-                await configStore.getPlayoutConfig()
-                await configStore.getPlayoutOutputs()
-            })
-            .catch((e) => {
-                indexStore.msgAlert('error', e.data, 3)
-            })
-    } else {
-        indexStore.msgAlert('error', t('config.updatePlayoutFailed'), 2)
-    }
-}
-</script>

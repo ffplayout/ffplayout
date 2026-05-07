@@ -33,7 +33,7 @@ export const useMedia = defineStore('media', {
             const crumbs: Crumb[] = []
             let root = '/'
 
-            await fetch(`/api/file/${id}/browse/`, {
+            await fetch(`/api/file/${id}/browse`, {
                 method: 'POST',
                 headers: { ...configStore.contentType, ...authStore.authHeader },
                 body: JSON.stringify({ source: path, folders_only: foldersOnly }),

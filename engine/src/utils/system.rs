@@ -1,15 +1,18 @@
-use std::{fmt, sync::Arc};
+use std::{
+    collections::HashSet,
+    fmt,
+    sync::{Arc, Mutex, PoisonError},
+};
 
 use local_ip_address::list_afinet_netifas;
 use serde::Serialize;
-use sysinfo::{Disks, Networks, System};
-use tokio::sync::Mutex;
+use sysinfo::{Disks, Networks, ProcessRefreshKind, ProcessesToUpdate, System, get_current_pid};
 
-use crate::utils::config::PlayoutConfig;
+use crate::utils::{config::PlayoutConfig, sizeof_fmt};
 
 const IGNORE_INTERFACES: [&str; 7] = ["docker", "lxdbr", "tab", "tun", "virbr", "veth", "vnet"];
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct SystemStat {
     pub cpu: Cpu,
     pub load: Load,
@@ -26,34 +29,34 @@ pub struct SystemStat {
     info_sys: Arc<Mutex<System>>,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Cpu {
     pub cores: f32,
     pub usage: f32,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Storage {
     pub path: String,
     pub total: u64,
     pub used: u64,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Load {
     pub one: f64,
     pub five: f64,
     pub fifteen: f64,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Memory {
     pub total: u64,
     pub used: u64,
     pub free: u64,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Network {
     pub name: String,
     pub current_in: u64,
@@ -70,7 +73,7 @@ pub struct MySystem {
     pub ffp_version: Option<String>,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Swap {
     pub total: u64,
     pub used: u64,
@@ -95,86 +98,131 @@ impl SystemStat {
         }
     }
 
+    pub async fn process_snapshot(&self) -> (usize, String) {
+        let Ok(pid) = get_current_pid() else {
+            return (0, String::from("0.0"));
+        };
+
+        let info_sys = Arc::clone(&self.info_sys);
+
+        tokio::task::spawn_blocking(move || {
+            let mut sys = info_sys.lock().unwrap_or_else(PoisonError::into_inner);
+
+            sys.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&[pid]),
+                false,
+                ProcessRefreshKind::nothing().with_tasks().with_memory(),
+            );
+
+            if let Some(process) = sys.process(pid) {
+                let threads = process.tasks().map_or(0, HashSet::len);
+                let rss = sizeof_fmt(process.memory() as f64);
+
+                (threads, rss)
+            } else {
+                (0, String::from("0.0"))
+            }
+        })
+        .await
+        .unwrap_or_else(|_| (0, String::from("0.0")))
+    }
+
     pub async fn stat(&self, config: &PlayoutConfig) -> Self {
-        let mut disks = self.info_disks.lock().await;
-        let mut networks = self.info_net.lock().await;
-        let mut sys = self.info_sys.lock().await;
+        let info_disks = Arc::clone(&self.info_disks);
+        let info_net = Arc::clone(&self.info_net);
+        let info_sys = Arc::clone(&self.info_sys);
+        let storage_path = config.channel.storage.clone();
+        let system = self.system.clone();
 
-        let network_interfaces = list_afinet_netifas().unwrap_or_default();
-        let mut usage = 0.0;
-        let mut interfaces = vec![];
+        let Ok((cpu, load, memory, network, storage, swap)) =
+            tokio::task::spawn_blocking(move || {
+                let mut disks = info_disks.lock().unwrap_or_else(PoisonError::into_inner);
+                let mut networks = info_net.lock().unwrap_or_else(PoisonError::into_inner);
+                let mut sys = info_sys.lock().unwrap_or_else(PoisonError::into_inner);
 
-        for (name, ip) in &network_interfaces {
-            if !ip.is_loopback()
-                && !IGNORE_INTERFACES
-                    .iter()
-                    .any(|&prefix| name.starts_with(prefix))
-            {
-                interfaces.push((name, ip));
-            }
-        }
+                disks.refresh(true);
+                networks.refresh(true);
+                sys.refresh_cpu_usage();
+                sys.refresh_memory();
 
-        interfaces.dedup_by(|a, b| a.0 == b.0);
+                let network_interfaces = list_afinet_netifas().unwrap_or_default();
+                let mut usage = 0.0;
+                let mut interfaces = vec![];
 
-        tokio::task::block_in_place(|| {
-            disks.refresh(true);
-            networks.refresh(true);
-            sys.refresh_cpu_usage();
-            sys.refresh_memory();
-        });
+                for (name, ip) in &network_interfaces {
+                    if !ip.is_loopback()
+                        && !IGNORE_INTERFACES
+                            .iter()
+                            .any(|&prefix| name.starts_with(prefix))
+                    {
+                        interfaces.push((name, ip));
+                    }
+                }
 
-        let cores = sys.cpus().len() as f32;
+                interfaces.dedup_by(|a, b| a.0 == b.0);
 
-        for cpu in sys.cpus() {
-            usage += cpu.cpu_usage();
-        }
+                let cores = sys.cpus().len() as f32;
 
-        let cpu = Cpu {
-            cores,
-            usage: usage * cores / 100.0,
-        };
+                for cpu in sys.cpus() {
+                    usage += cpu.cpu_usage();
+                }
 
-        let mut storage = Storage::default();
+                let cpu = Cpu {
+                    cores,
+                    usage: usage * cores / 100.0,
+                };
 
-        for disk in &*disks {
-            if disk.mount_point().to_string_lossy().len() > 1
-                && config.channel.storage.starts_with(disk.mount_point())
-            {
-                storage.path = disk.name().to_string_lossy().to_string();
-                storage.total = disk.total_space();
-                storage.used = disk.available_space();
-            }
-        }
+                let mut storage = Storage::default();
 
-        let load_avg = System::load_average();
-        let load = Load {
-            one: load_avg.one,
-            five: load_avg.five,
-            fifteen: load_avg.fifteen,
-        };
+                for disk in &*disks {
+                    if disk.mount_point().to_string_lossy().len() > 1
+                        && storage_path.starts_with(disk.mount_point())
+                    {
+                        storage.path = disk.name().to_string_lossy().to_string();
+                        storage.total = disk.total_space();
+                        storage.used = disk.available_space();
+                    }
+                }
 
-        let memory = Memory {
-            total: sys.total_memory(),
-            used: sys.used_memory(),
-            free: sys.total_memory() - sys.used_memory(),
-        };
+                let load_avg = System::load_average();
+                let load = Load {
+                    one: load_avg.one,
+                    five: load_avg.five,
+                    fifteen: load_avg.fifteen,
+                };
 
-        let mut network = Network::default();
+                let memory = Memory {
+                    total: sys.total_memory(),
+                    used: sys.used_memory(),
+                    free: sys.total_memory() - sys.used_memory(),
+                };
 
-        for (interface_name, data) in &*networks {
-            if !interfaces.is_empty() && interface_name == interfaces[0].0 {
-                network.name.clone_from(interface_name);
-                network.current_in = data.received();
-                network.total_in = data.total_received();
-                network.current_out = data.transmitted();
-                network.total_out = data.total_transmitted();
-            }
-        }
+                let mut network = Network::default();
 
-        let swap = Swap {
-            total: sys.total_swap(),
-            used: sys.used_swap(),
-            free: sys.free_swap(),
+                for (interface_name, data) in &*networks {
+                    if !interfaces.is_empty() && interface_name == interfaces[0].0 {
+                        network.name.clone_from(interface_name);
+                        network.current_in = data.received();
+                        network.total_in = data.total_received();
+                        network.current_out = data.transmitted();
+                        network.total_out = data.total_transmitted();
+                    }
+                }
+
+                let swap = Swap {
+                    total: sys.total_swap(),
+                    used: sys.used_swap(),
+                    free: sys.free_swap(),
+                };
+
+                (cpu, load, memory, network, storage, swap)
+            })
+            .await
+        else {
+            return Self {
+                system,
+                ..Default::default()
+            };
         };
 
         Self {
@@ -184,7 +232,7 @@ impl SystemStat {
             network,
             storage,
             swap,
-            system: self.system.clone(),
+            system,
             ..Default::default()
         }
     }

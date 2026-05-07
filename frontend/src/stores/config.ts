@@ -1,4 +1,4 @@
-import { cloneDeep } from 'lodash-es'
+import { cloneDeep } from 'es-toolkit/object'
 import { defineStore } from 'pinia'
 import { useRouter } from 'vue-router'
 
@@ -54,7 +54,7 @@ export const useConfig = defineStore('config', {
             localStorage.removeItem('refresh')
             authStore.isLogin = false
 
-            router.push('/')
+            router.push({ name: 'login' })
         },
 
         async getChannelConfig() {
@@ -194,7 +194,7 @@ export const useConfig = defineStore('config', {
 
                 return update
             } else {
-                const update = await fetch(`/api/playout/advanced/${id}/`, {
+                const update = await fetch(`/api/playout/advanced/${id}`, {
                     method: 'POST',
                     headers: { ...this.contentType, ...authStore.authHeader },
                     body: JSON.stringify(this.advanced),
@@ -239,7 +239,7 @@ export const useConfig = defineStore('config', {
             const authStore = useAuth()
             delete user.confirm
 
-            const update = await fetch('/api/user/', {
+            const update = await fetch('/api/user', {
                 method: 'Post',
                 headers: { ...this.contentType, ...authStore.authHeader },
                 body: JSON.stringify(user),
@@ -254,7 +254,7 @@ export const useConfig = defineStore('config', {
                 const indexStore = useIndex()
                 const id = this.channels[this.i]?.id
 
-                await fetch(`/api/control/${id}/process/`, {
+                await fetch(`/api/control/${id}/process`, {
                     method: 'POST',
                     headers: { ...this.contentType, ...authStore.authHeader },
                     body: JSON.stringify({ command: 'restart' }),

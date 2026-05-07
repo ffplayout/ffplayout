@@ -1,9 +1,7 @@
 use log::*;
 use tokio::process::Command;
 
-use crate::player::utils::get_data_map;
-
-use crate::player::controller::ChannelManager;
+use crate::player::{controller::ChannelManager, utils::get_data_map};
 
 pub async fn run(manager: ChannelManager) {
     let task_path = manager.config.read().await.task.path.clone();

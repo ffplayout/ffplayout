@@ -5,6 +5,7 @@ export default {
     socketDisconnected: 'Aviso! stream desconectado.',
     alert: {
         wrongLogin: 'Dados incorretos!',
+        verificationSent: 'Um código de verificação foi enviado para seu e-mail.',
     },
     button: {
         login: 'Logar',
@@ -24,6 +25,11 @@ export default {
     input: {
         username: 'Usuário',
         password: 'Senha',
+    },
+    verification: {
+        codePlaceholder: 'Código de verificação',
+        verify: 'Verificar',
+        wrongCode: 'Código de verificação incorreto!',
     },
     system: {
         cpu: 'CPU',

@@ -3,13 +3,15 @@ use std::process::Stdio;
 use log::*;
 use tokio::process::{Child, Command};
 
-use crate::player::filter::v_drawtext;
-use crate::utils::errors::ServiceError;
-use crate::utils::{
-    config::PlayoutConfig,
-    logging::{Target, fmt_cmd},
+use crate::{
+    player::filter::v_drawtext,
+    utils::{
+        config::PlayoutConfig,
+        errors::ServiceError,
+        logging::{Target, fmt_cmd},
+    },
+    vec_strings,
 };
-use crate::vec_strings;
 
 /// Desktop Output
 ///

@@ -11,10 +11,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
+      - name: Install frontend dependencies
+        run: npm ci
       - name: Set up Rust
         run: |
           rustup update stable

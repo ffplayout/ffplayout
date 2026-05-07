@@ -14,17 +14,20 @@ use rand::{RngExt, rng, seq::SliceRandom};
 use tokio::fs;
 use tokio_stream::StreamExt;
 
-use crate::player::{
-    controller::ChannelManager,
-    input::folder::FolderSource,
-    utils::{
-        Media, get_date_range, include_file_extension, json_serializer::JsonPlaylist, sum_durations,
+use crate::{
+    player::{
+        controller::ChannelManager,
+        input::folder::FolderSource,
+        utils::{
+            Media, get_date_range, include_file_extension, json_serializer::JsonPlaylist,
+            sum_durations,
+        },
     },
-};
-use crate::utils::{
-    config::{PlayoutConfig, Template},
-    logging::Target,
-    time_to_sec,
+    utils::{
+        config::{PlayoutConfig, Template},
+        logging::Target,
+        time_to_sec,
+    },
 };
 
 pub fn random_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
@@ -130,7 +133,6 @@ pub async fn generate_from_template(
     template: Template,
 ) -> FolderSource {
     let mut media_list = vec![];
-    let mut rng = rng();
     let mut index: usize = 0;
     let id = config.general.channel_id;
 
@@ -166,6 +168,7 @@ pub async fn generate_from_template(
         }
 
         let mut timed_list = if source.shuffle {
+            let mut rng = rng();
             source_list.shuffle(&mut rng);
 
             random_list(source_list, duration)

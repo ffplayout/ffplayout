@@ -3,11 +3,13 @@ use std::{ffi::OsStr, path::Path, sync::Arc};
 use regex::Regex;
 use tokio::sync::Mutex;
 
-use crate::player::{
-    controller::ProcessUnit::*,
-    utils::{Media, custom_format},
+use crate::{
+    player::{
+        controller::ProcessUnit::*,
+        utils::{Media, custom_format},
+    },
+    utils::config::PlayoutConfig,
 };
-use crate::utils::config::PlayoutConfig;
 
 pub async fn filter_node(
     config: &PlayoutConfig,

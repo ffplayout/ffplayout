@@ -5,18 +5,20 @@ use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::{ChildStderr, Command},
 };
+use tokio_util::sync::CancellationToken;
 
-use crate::utils::{
-    config::{FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS, PlayoutConfig},
-    logging::{Target, log_line},
-};
-use crate::vec_strings;
 use crate::{
     player::{
         controller::{ChannelManager, ProcessUnit::*},
         utils::{Media, is_free_tcp_port, valid_stream},
     },
-    utils::{errors::ServiceError, logging::fmt_cmd},
+    utils::{
+        config::{FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS, PlayoutConfig},
+        errors::ServiceError,
+        logging::fmt_cmd,
+        logging::{Target, log_line},
+    },
+    vec_strings,
 };
 
 async fn server_monitor(
@@ -25,11 +27,20 @@ async fn server_monitor(
     ignore: Vec<String>,
     buffer: BufReader<ChildStderr>,
     manager: ChannelManager,
+    cancel_token: CancellationToken,
 ) -> Result<(), ServiceError> {
     let mut is_running = false;
 
     let mut lines = buffer.lines();
-    while let Ok(Some(line)) = lines.next_line().await {
+    loop {
+        let line = tokio::select! {
+            _ = cancel_token.cancelled() => return Ok(()),
+            line = lines.next_line() => line,
+        };
+
+        let Ok(Some(line)) = line else {
+            break;
+        };
         if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
             && !ignore.iter().any(|i| line.contains(i))
         {
@@ -70,6 +81,7 @@ async fn server_monitor(
 pub async fn ingest_server(
     config: PlayoutConfig,
     manager: ChannelManager,
+    cancel_token: CancellationToken,
 ) -> Result<(), ServiceError> {
     let id = config.general.channel_id;
     let mut server_cmd = vec_strings![
@@ -135,13 +147,16 @@ pub async fn ingest_server(
                 ));
             }
 
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            tokio::select! {
+                _ = cancel_token.cancelled() => return Ok(()),
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(2)) => {}
+            }
         }
 
         info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <span class=\"log-addr\">{url}</span>");
     };
 
-    while is_alive.load(Ordering::SeqCst) {
+    while is_alive.load(Ordering::SeqCst) && !cancel_token.is_cancelled() {
         let proc_ctl = manager.clone();
         let level = config.logging.ingest_level.clone();
         let ignore = config.logging.ignore_lines.clone();
@@ -157,7 +172,15 @@ pub async fn ingest_server(
         *manager.ingest_reader.lock().await = Some(ingest_stdout);
         *manager.ingest.lock().await = Some(server_proc);
 
-        server_monitor(id, level, ignore, server_err, proc_ctl).await?;
+        server_monitor(
+            id,
+            level,
+            ignore,
+            server_err,
+            proc_ctl,
+            cancel_token.clone(),
+        )
+        .await?;
         ingest_is_alive.store(false, Ordering::SeqCst);
 
         manager.wait(Ingest).await;

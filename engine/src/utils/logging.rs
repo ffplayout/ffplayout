@@ -4,8 +4,17 @@ use std::{
     io::{self, Write},
     path::PathBuf,
     sync::{Arc, RwLock},
+    time::Instant,
 };
 
+use axum::{
+    body::{Body, HttpBody},
+    http::{
+        Request, Response,
+        header::{CONTENT_LENGTH, REFERER, USER_AGENT},
+    },
+    middleware::Next,
+};
 use chrono::{DateTime, FixedOffset};
 use chrono_tz::Tz;
 use flexi_logger::{
@@ -13,22 +22,23 @@ use flexi_logger::{
     WriteMode,
     writers::{FileLogWriter, LogWriter},
 };
+use real::RealIp;
 
 use log::{kv::Value, *};
 use regex::{Captures, Regex};
 use tokio::sync::Mutex;
 
-use super::ARGS;
-
-use crate::db::GLOBAL_SETTINGS;
-use crate::utils::{
-    ServiceError,
-    config::FFMPEG_UNRECOVERABLE_ERRORS,
-    mail::{MailQueue, mail_queue},
-    time_machine::time_now,
+use crate::{
+    ARGS,
+    db::GLOBAL_SETTINGS,
+    player::controller::ProcessUnit,
+    utils::{
+        ServiceError,
+        config::FFMPEG_UNRECOVERABLE_ERRORS,
+        mail::{MailQueue, mail_queue},
+        time_machine::time_now,
+    },
 };
-
-use crate::player::controller::ProcessUnit;
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.6f%:z";
 
@@ -396,10 +406,6 @@ pub fn init_logging(
     let mut builder = LogSpecification::builder();
     builder
         .default(log_level)
-        .module("actix", LevelFilter::Info)
-        .module("actix_files", LevelFilter::Info)
-        .module("actix_web", LevelFilter::Info)
-        .module("actix_web_service", LevelFilter::Error)
         .module("hyper", LevelFilter::Error)
         .module("flexi_logger", LevelFilter::Error)
         .module("libc", LevelFilter::Error)
@@ -415,7 +421,6 @@ pub fn init_logging(
 
     let logger = Logger::with(builder.build())
         .write_mode(WriteMode::Async)
-        // .format(console_formatter)
         .log_to_writer(Box::new(LogConsole))
         .add_writer("file", file_logger())
         .add_writer("mail", Box::new(LogMailer::new(mail_queues)))
@@ -444,8 +449,6 @@ pub fn log_line(id: i32, line: &str, level: &str) {
         error!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[error] ", ""));
     } else if line.contains("[fatal]") {
         error!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[fatal] ", ""));
-    } else {
-        warn!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {line}");
     }
 }
 
@@ -574,4 +577,59 @@ pub fn stderr_log(line: &str, suffix: ProcessUnit, channel_id: i32) -> Result<()
     }
 
     Ok(())
+}
+
+pub async fn log_middleware(real_ip: RealIp, req: Request<Body>, next: Next) -> Response<Body> {
+    let start = Instant::now();
+    let ip = real_ip.ip();
+
+    let m = req.method().clone();
+    let uri = req.uri().clone();
+    let v = req.version();
+
+    let r = req
+        .headers()
+        .get(REFERER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("-")
+        .to_string();
+
+    let a = req
+        .headers()
+        .get(USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("-")
+        .to_string();
+
+    let res = next.run(req).await;
+
+    let status = res.status().as_u16();
+    let size = res
+        .headers()
+        .get(CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+        .or_else(|| {
+            res.body()
+                .size_hint()
+                .exact()
+                .map(|value| value.to_string())
+        })
+        .unwrap_or_else(|| "-".to_string());
+
+    let l = start.elapsed().as_secs_f64();
+
+    match status {
+        500..=599 => {
+            error!(r#"{ip} "{m} {uri} {v:?}" {status} {size} "{r}" "{a}" {l:.6}"#);
+        }
+        401 | 403 | 429 => {
+            warn!(r#"{ip} "{m} {uri} {v:?}" {status} {size} "{r}" "{a}" {l:.6}"#);
+        }
+        _ => {
+            info!(r#"{ip} "{m} {uri} {v:?}" {status} {size} "{r}" "{a}" {l:.6}"#);
+        }
+    }
+
+    res
 }

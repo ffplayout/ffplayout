@@ -6,12 +6,14 @@ use serde_json::{Map, Value, json};
 use sqlx::{Pool, Sqlite};
 use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
 
-use crate::db::handles;
-use crate::player::{
-    controller::{ChannelManager, ProcessUnit::*},
-    utils::{get_delta, get_media_map},
+use crate::{
+    db::handles,
+    player::{
+        controller::{ChannelManager, ProcessUnit::*},
+        utils::{get_delta, get_media_map},
+    },
+    utils::{TextFilter, config::OutputMode::*, errors::ServiceError, logging::Target},
 };
-use crate::utils::{TextFilter, config::OutputMode::*, errors::ServiceError, logging::Target};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ControlParams {

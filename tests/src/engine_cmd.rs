@@ -2,13 +2,18 @@ use std::fs;
 
 use sqlx::sqlite::SqlitePoolOptions;
 
-use ffplayout::db::handles;
-use ffplayout::player::{
-    controller::{ChannelManager, ProcessUnit::*},
-    utils::{Media, prepare_output_cmd, seek_and_length},
+use ffplayout::{
+    db::handles,
+    player::{
+        controller::{ChannelManager, ProcessUnit::*},
+        utils::{Media, prepare_output_cmd, seek_and_length},
+    },
+    utils::{
+        config::{OutputMode::*, PlayoutConfig},
+        system::SystemStat,
+    },
+    vec_strings,
 };
-use ffplayout::utils::config::{OutputMode::*, PlayoutConfig};
-use ffplayout::vec_strings;
 
 async fn get_config() -> (PlayoutConfig, ChannelManager) {
     let pool = SqlitePoolOptions::new()
@@ -30,7 +35,7 @@ async fn get_config() -> (PlayoutConfig, ChannelManager) {
 
     let config = PlayoutConfig::new(&pool, 1, None).await.unwrap();
     let channel = handles::select_channel(&pool, &1).await.unwrap();
-    let manager = ChannelManager::new(pool, channel, config.clone()).await;
+    let manager = ChannelManager::new(pool, channel, config.clone(), SystemStat::new()).await;
 
     (config, manager)
 }

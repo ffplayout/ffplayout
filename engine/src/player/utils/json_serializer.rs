@@ -7,11 +7,13 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tokio::{fs::File, io::AsyncReadExt, sync::Mutex};
 
-use crate::player::utils::{
-    Media, PlayoutConfig, is_remote, json_validate::validate_playlist, modified_time,
-    time_from_header,
+use crate::{
+    player::{
+        controller::ChannelManager,
+        utils::{Media, PlayoutConfig, is_remote, modified_time, time_from_header},
+    },
+    utils::{config::DUMMY_LEN, logging::Target},
 };
-use crate::utils::{config::DUMMY_LEN, logging::Target};
 
 /// This is our main playlist object, it holds all necessary information for the current day.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
@@ -98,6 +100,7 @@ pub fn set_defaults(config: &PlayoutConfig, playlist: &mut JsonPlaylist) {
 /// Read json playlist file, fills JsonPlaylist struct and set some extra values,
 /// which we need to process.
 pub async fn read_json(
+    manager: &ChannelManager,
     config: &mut PlayoutConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     path: Option<String>,
@@ -150,12 +153,9 @@ pub async fn read_json(
                 let list_clone = playlist.clone();
 
                 if !config.general.skip_validation {
-                    tokio::spawn(validate_playlist(
-                        config_clone,
-                        current_list,
-                        list_clone,
-                        is_alive,
-                    ));
+                    manager
+                        .spawn_validation(config_clone, current_list, list_clone, is_alive)
+                        .await;
                 }
 
                 set_defaults(config, &mut playlist);
@@ -197,12 +197,9 @@ pub async fn read_json(
         let list_clone = playlist.clone();
 
         if !config.general.skip_validation {
-            tokio::spawn(validate_playlist(
-                config_clone,
-                current_list,
-                list_clone,
-                is_alive,
-            ));
+            manager
+                .spawn_validation(config_clone, current_list, list_clone, is_alive)
+                .await;
         }
 
         set_defaults(config, &mut playlist);

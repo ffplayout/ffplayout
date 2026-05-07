@@ -30,12 +30,14 @@ pub mod system;
 pub mod task_runner;
 pub mod time_machine;
 
-use crate::ARGS;
-use crate::db::GLOBAL_SETTINGS;
-use crate::player::utils::time_to_sec;
-use crate::utils::{
-    errors::ServiceError,
-    logging::{log_file_path, remove_html, timestamps_to_timezone},
+use crate::{
+    ARGS,
+    db::GLOBAL_SETTINGS,
+    player::utils::time_to_sec,
+    utils::{
+        errors::ServiceError,
+        logging::{log_file_path, remove_html, timestamps_to_timezone},
+    },
 };
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

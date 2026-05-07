@@ -1,48 +1,3 @@
-<template>
-    <div class="w-full flex flex-col">
-        <div class="flex justify-end p-3 h-14">
-            <div class="join">
-                <select v-model="errorLevel" class="join-item select select-sm w-24">
-                    <option
-                        v-for="(index, value) in indexStore.severityLevels"
-                        :key="index"
-                        :value="value"
-                        :selected="value === errorLevel"
-                    >
-                        {{ value }}
-                    </option>
-                </select>
-                <VueDatePicker
-                    v-model="listDate"
-                    :clearable="false"
-                    :hide-navigation="['time']"
-                    :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
-                    :formats="{ day: 'dd', input: 'EEEE dd. LLL yyyy' }"
-                    :time-config="{ enableTimePicker: false }"
-                    model-type="yyyy-MM-dd"
-                    auto-apply
-                    class="max-w-42.5"
-                    :locale="lang"
-                    :dark="indexStore.darkMode"
-                    :ui="{ input: 'join-item input !input-sm !max-w-42.5 text-right !pe-3' }"
-                    required
-                />
-                <button class="btn btn-sm btn-primary join-item" :title="t('log.reload')" @click="getLog()">
-                    <i class="bi-arrow-repeat" />
-                </button>
-                <button class="btn btn-sm btn-primary join-item" :title="t('log.download')" @click="downloadLog">
-                    <i class="bi-download" />
-                </button>
-            </div>
-        </div>
-        <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
-            <div id="log-container" class="bg-base-300 h-full font-mono overflow-auto p-3">
-                <div id="log-content" class="whitespace-pre" v-html="filterLogsBySeverity(currentLog, errorLevel)" />
-            </div>
-        </div>
-    </div>
-</template>
-
 <script setup lang="ts">
 import dayjs from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat.js'
@@ -213,7 +168,50 @@ async function downloadLog() {
     URL.revokeObjectURL(url)
 }
 </script>
-
+<template>
+    <div class="w-full flex flex-col">
+        <div class="flex justify-end p-3 h-14">
+            <div class="join">
+                <select v-model="errorLevel" class="join-item select select-sm w-24">
+                    <option
+                        v-for="(index, value) in indexStore.severityLevels"
+                        :key="index"
+                        :value="value"
+                        :selected="value === errorLevel"
+                    >
+                        {{ value }}
+                    </option>
+                </select>
+                <VueDatePicker
+                    v-model="listDate"
+                    :clearable="false"
+                    :hide-navigation="['time']"
+                    :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
+                    :formats="{ day: 'dd', input: 'EEEE dd. LLL yyyy' }"
+                    :time-config="{ enableTimePicker: false }"
+                    model-type="yyyy-MM-dd"
+                    auto-apply
+                    class="max-w-42.5"
+                    :locale="lang"
+                    :dark="indexStore.darkMode"
+                    :ui="{ input: 'join-item input !input-sm !max-w-42.5 text-right !pe-3' }"
+                    required
+                />
+                <button class="btn btn-sm btn-primary join-item" :title="t('log.reload')" @click="getLog()">
+                    <i class="bi-arrow-repeat" />
+                </button>
+                <button class="btn btn-sm btn-primary join-item" :title="t('log.download')" @click="downloadLog">
+                    <i class="bi-download" />
+                </button>
+            </div>
+        </div>
+        <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
+            <div id="log-container" class="bg-base-300 h-full font-mono overflow-auto p-3">
+                <div id="log-content" class="whitespace-pre" v-html="filterLogsBySeverity(currentLog, errorLevel)" />
+            </div>
+        </div>
+    </div>
+</template>
 <style>
 .log-gray {
     color: #666864;

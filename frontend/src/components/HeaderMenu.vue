@@ -1,3 +1,94 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+
+import SvgIcon from '@/components/utils/SvgIcon.vue'
+
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+
+const { t } = useI18n()
+const router = useRouter()
+
+const authStore = useAuth()
+const configStore = useConfig()
+const indexStore = useIndex()
+
+const menuDropdown = ref()
+const isOpen = ref(false)
+
+const menuItems = ref([
+    { label: 'home', name: t('button.home'), link: '/' },
+    { label: 'player', name: t('button.player'), link: '/player' },
+    { label: 'media', name: t('button.media'), link: '/media' },
+    { label: 'message', name: t('button.message'), link: '/message' },
+    { label: 'logging', name: t('button.logging'), link: '/logging' },
+])
+
+function closeMenu() {
+    setTimeout(() => {
+        isOpen.value = false
+        menuDropdown.value?.removeAttribute('open')
+    }, 200)
+}
+
+function clickMenu() {
+    isOpen.value = !isOpen.value
+
+    if (!isOpen.value) {
+        menuDropdown.value?.removeAttribute('open')
+    }
+}
+
+function blurMenu() {
+    if (isOpen.value) {
+        isOpen.value = !isOpen.value
+    } else {
+        setTimeout(() => {
+            menuDropdown.value?.removeAttribute('open')
+        }, 200)
+    }
+}
+
+function closeDropdown($event: FocusEvent) {
+    setTimeout(() => {
+        const parent = ($event.target as HTMLElement).parentNode;
+        if (parent && parent instanceof HTMLElement) {
+            parent.removeAttribute('open');
+        }
+    }, 200)
+}
+
+function logout() {
+    authStore.removeToken()
+    router.push({ name: 'login' })
+}
+
+function selectChannel(index: number) {
+    configStore.i = index
+
+    if (authStore.role === 'global_admin') {
+        configStore.getAdvancedConfig()
+    }
+
+    configStore.getPlayoutConfig()
+    configStore.getPlayoutOutputs()
+}
+
+function toggleTheme() {
+    indexStore.darkMode = !indexStore.darkMode
+
+    if (indexStore.darkMode) {
+        localStorage.setItem('theme', 'dark')
+        document.documentElement.setAttribute('data-theme', 'ffp-dark')
+    } else {
+        localStorage.setItem('theme', 'light')
+        document.documentElement.setAttribute('data-theme', 'ffp-light')
+    }
+}
+</script>
 <template>
     <div class="navbar bg-base-100 min-h-13 p-0 shadow-md">
         <RouterLink class="navbar-brand min-w-11.5 p-2" to="/">
@@ -153,98 +244,6 @@
         </div>
     </div>
 </template>
-
-<script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
-
-import SvgIcon from '@/components/SvgIcon.vue'
-
-import { useAuth } from '@/stores/auth'
-import { useIndex } from '@/stores/index'
-import { useConfig } from '@/stores/config'
-
-const { t } = useI18n()
-const router = useRouter()
-
-const authStore = useAuth()
-const configStore = useConfig()
-const indexStore = useIndex()
-
-const menuDropdown = ref()
-const isOpen = ref(false)
-
-const menuItems = ref([
-    { label: 'home', name: t('button.home'), link: '/' },
-    { label: 'player', name: t('button.player'), link: '/player' },
-    { label: 'media', name: t('button.media'), link: '/media' },
-    { label: 'message', name: t('button.message'), link: '/message' },
-    { label: 'logging', name: t('button.logging'), link: '/logging' },
-])
-
-function closeMenu() {
-    setTimeout(() => {
-        isOpen.value = false
-        menuDropdown.value?.removeAttribute('open')
-    }, 200)
-}
-
-function clickMenu() {
-    isOpen.value = !isOpen.value
-
-    if (!isOpen.value) {
-        menuDropdown.value?.removeAttribute('open')
-    }
-}
-
-function blurMenu() {
-    if (isOpen.value) {
-        isOpen.value = !isOpen.value
-    } else {
-        setTimeout(() => {
-            menuDropdown.value?.removeAttribute('open')
-        }, 200)
-    }
-}
-
-function closeDropdown($event: FocusEvent) {
-    setTimeout(() => {
-        const parent = ($event.target as HTMLElement).parentNode;
-        if (parent && parent instanceof HTMLElement) {
-            parent.removeAttribute('open');
-        }
-    }, 200)
-}
-
-function logout() {
-    authStore.removeToken()
-    router.push('/')
-}
-
-function selectChannel(index: number) {
-    configStore.i = index
-
-    if (authStore.role === 'global_admin') {
-        configStore.getAdvancedConfig()
-    }
-
-    configStore.getPlayoutConfig()
-    configStore.getPlayoutOutputs()
-}
-
-function toggleTheme() {
-    indexStore.darkMode = !indexStore.darkMode
-
-    if (indexStore.darkMode) {
-        localStorage.setItem('theme', 'dark')
-        document.documentElement.setAttribute('data-theme', 'dark')
-    } else {
-        localStorage.setItem('theme', 'light')
-        document.documentElement.setAttribute('data-theme', 'light')
-    }
-}
-</script>
 <style scoped>
 .is-active > span::after {
     background: var(--my-accent);

@@ -1,3 +1,155 @@
+<script setup lang="ts">
+import { ref, onBeforeMount } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { cloneDeep } from 'es-toolkit/object'
+import type { AdvancedConfig } from '@/types/advanced_config'
+
+import GenericModal from '@/components/utils/GenericModal.vue'
+
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+
+const { t } = useI18n()
+const authStore = useAuth()
+const configStore = useConfig()
+const indexStore = useIndex()
+
+const showModal = ref(false)
+const relatedConfigs = ref<AdvancedConfig[]>([])
+
+const newConfig = {
+    id: 0,
+    name: null,
+    decoder: {
+        input_param: '',
+        output_param: '',
+    },
+    encoder: {
+        input_param: '',
+    },
+    filter: {
+        deinterlace: '',
+        pad_scale_w: '',
+        pad_scale_h: '',
+        pad_video: '',
+        fps: '',
+        scale: '',
+        set_dar: '',
+        fade_in: '',
+        fade_out: '',
+        logo: '',
+        overlay_logo_scale: '',
+        overlay_logo_fade_in: '',
+        overlay_logo_fade_out: '',
+        overlay_logo: '',
+        tpad: '',
+        drawtext_from_file: '',
+        drawtext_from_zmq: '',
+        aevalsrc: '',
+        afade_in: '',
+        afade_out: '',
+        apad: '',
+        volume: '',
+        split: '',
+    },
+    ingest: {
+        input_param: '',
+    },
+}
+
+onBeforeMount(async () => {
+    await fetchRelatedConfigs()
+})
+
+async function fetchRelatedConfigs() {
+    const id = configStore.channels[configStore.i]?.id ?? 0
+
+    await fetch(`/api/playout/advanced/${id}/related`, {
+        method: 'GET',
+        headers: { ...configStore.contentType, ...authStore.authHeader },
+    })
+        .then(async (response) => {
+            if (!response.ok) {
+                throw new Error(await response.text())
+            }
+
+            return response.json()
+        })
+        .then((response) => {
+            relatedConfigs.value = response
+        })
+        .catch((e) => {
+            indexStore.msgAlert('error', e, 3)
+        })
+}
+
+function addAdvancedConfig() {
+    configStore.advanced = cloneDeep(newConfig)
+}
+
+async function removeAdvancedConfig() {
+    const id = configStore.channels[configStore.i]?.id ?? 0
+
+    await fetch(`/api/playout/advanced/${id}/${configStore.advanced.id}`, {
+        method: 'DELETE',
+        headers: { ...configStore.contentType, ...authStore.authHeader },
+    })
+        .then(async () => {
+            await fetchRelatedConfigs()
+            configStore.advanced = cloneDeep(newConfig)
+        })
+        .catch((e) => {
+            indexStore.msgAlert('error', e, 3)
+        })
+}
+
+async function onSubmitAdvanced() {
+    const update = await configStore.setAdvancedConfig()
+    configStore.onetimeInfo = true
+
+    if (update.status === 200) {
+        const id = configStore.channels[configStore.i]?.id ?? 0
+        indexStore.msgAlert('success', t('advanced.updateSuccess'), 2)
+
+        await fetchRelatedConfigs()
+
+        await fetch(`/api/control/${id}/process`, {
+            method: 'POST',
+            headers: { ...configStore.contentType, ...authStore.authHeader },
+            body: JSON.stringify({ command: 'status' }),
+        })
+            .then(async (response) => {
+                if (!response.ok) {
+                    throw new Error(await response.text())
+                }
+
+                return response.json()
+            })
+            .then((response) => {
+                if (response === 'active') {
+                    showModal.value = true
+                }
+            })
+    } else {
+        indexStore.msgAlert('error', t('advanced.updateFailed'), 2)
+    }
+}
+
+async function restart(res: boolean) {
+    if (res) {
+        const id = configStore.channels[configStore.i]?.id ?? 0
+
+        await fetch(`/api/control/${id}/process`, {
+            method: 'POST',
+            headers: { ...configStore.contentType, ...authStore.authHeader },
+            body: JSON.stringify({ command: 'restart' }),
+        })
+    }
+
+    showModal.value = false
+}
+</script>
 <template>
     <div class="max-w-300 xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('advanced.title') }}</h2>
@@ -376,156 +528,3 @@
         :modal-action="restart"
     />
 </template>
-
-<script setup lang="ts">
-import { ref, onBeforeMount } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { cloneDeep } from 'lodash-es'
-import type { AdvancedConfig } from '@/types/advanced_config'
-
-import GenericModal from '@/components/GenericModal.vue'
-
-import { useAuth } from '@/stores/auth'
-import { useIndex } from '@/stores/index'
-import { useConfig } from '@/stores/config'
-
-const { t } = useI18n()
-const authStore = useAuth()
-const configStore = useConfig()
-const indexStore = useIndex()
-
-const showModal = ref(false)
-const relatedConfigs = ref<AdvancedConfig[]>([])
-
-const newConfig = {
-    id: 0,
-    name: null,
-    decoder: {
-        input_param: '',
-        output_param: '',
-    },
-    encoder: {
-        input_param: '',
-    },
-    filter: {
-        deinterlace: '',
-        pad_scale_w: '',
-        pad_scale_h: '',
-        pad_video: '',
-        fps: '',
-        scale: '',
-        set_dar: '',
-        fade_in: '',
-        fade_out: '',
-        logo: '',
-        overlay_logo_scale: '',
-        overlay_logo_fade_in: '',
-        overlay_logo_fade_out: '',
-        overlay_logo: '',
-        tpad: '',
-        drawtext_from_file: '',
-        drawtext_from_zmq: '',
-        aevalsrc: '',
-        afade_in: '',
-        afade_out: '',
-        apad: '',
-        volume: '',
-        split: '',
-    },
-    ingest: {
-        input_param: '',
-    },
-}
-
-onBeforeMount(async () => {
-    await fetchRelatedConfigs()
-})
-
-async function fetchRelatedConfigs() {
-    const id = configStore.channels[configStore.i]?.id ?? 0
-
-    await fetch(`/api/playout/advanced/${id}/`, {
-        method: 'GET',
-        headers: { ...configStore.contentType, ...authStore.authHeader },
-    })
-        .then(async (response) => {
-            if (!response.ok) {
-                throw new Error(await response.text())
-            }
-
-            return response.json()
-        })
-        .then((response) => {
-            relatedConfigs.value = response
-        })
-        .catch((e) => {
-            indexStore.msgAlert('error', e, 3)
-        })
-}
-
-function addAdvancedConfig() {
-    configStore.advanced = cloneDeep(newConfig)
-}
-
-async function removeAdvancedConfig() {
-    const id = configStore.channels[configStore.i]?.id ?? 0
-
-    await fetch(`/api/playout/advanced/${id}/${configStore.advanced.id}`, {
-        method: 'DELETE',
-        headers: { ...configStore.contentType, ...authStore.authHeader },
-    })
-        .then(async () => {
-            await fetchRelatedConfigs()
-            configStore.advanced = cloneDeep(newConfig)
-        })
-        .catch((e) => {
-            indexStore.msgAlert('error', e, 3)
-        })
-}
-
-async function onSubmitAdvanced() {
-    const update = await configStore.setAdvancedConfig()
-    configStore.onetimeInfo = true
-
-    if (update.status === 200) {
-        const id = configStore.channels[configStore.i]?.id ?? 0
-        indexStore.msgAlert('success', t('advanced.updateSuccess'), 2)
-
-        await fetchRelatedConfigs()
-
-        await fetch(`/api/control/${id}/process/`, {
-            method: 'POST',
-            headers: { ...configStore.contentType, ...authStore.authHeader },
-            body: JSON.stringify({ command: 'status' }),
-        })
-        .then(async (response) => {
-            if (!response.ok) {
-                throw new Error(await response.text())
-            }
-
-            return response.json()
-        })
-        .then((response) => {
-            if (response === 'active') {
-                showModal.value = true
-            }
-        })
-    } else {
-        indexStore.msgAlert('error', t('advanced.updateFailed'), 2)
-    }
-}
-
-async function restart(res: boolean) {
-    if (res) {
-        const id = configStore.channels[configStore.i]?.id ?? 0
-
-        await fetch(`/api/control/${id}/process/`, {
-            method: 'POST',
-            headers: { ...configStore.contentType, ...authStore.authHeader },
-            body: JSON.stringify({ command: 'restart' }),
-        })
-    }
-
-    showModal.value = false
-}
-</script>

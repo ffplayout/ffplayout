@@ -5,6 +5,7 @@ export default {
     socketDisconnected: 'Message stream disconnected',
     alert: {
         wrongLogin: 'Неверные данные для входа!',
+        verificationSent: 'Код подтверждения был отправлен на ваш email.',
     },
     button: {
         login: 'Логин',
@@ -24,6 +25,11 @@ export default {
     input: {
         username: 'Логин',
         password: 'Пароль',
+    },
+    verification: {
+        codePlaceholder: 'Код подтверждения',
+        verify: 'Подтвердить',
+        wrongCode: 'Неверный код подтверждения!',
     },
     system: {
         cpu: 'Процессор',
