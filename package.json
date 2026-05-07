@@ -22,7 +22,7 @@
     "bootstrap-icons": "^1.13.1",
     "dayjs": "^1.11.19",
     "jwt-decode": "^4.0.0",
-    "lodash-es": "^4.17.23",
+    "lodash-es": "^4.18.1",
     "mpegts.js": "^1.8.0",
     "pinia": "^3.0.4",
     "splitpanes": "^4.0.4",
