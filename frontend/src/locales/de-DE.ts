@@ -250,6 +250,7 @@ export default {
         confirmPass: 'Passwort bestätigen',
         save: 'Speichern',
         admin: 'Administrator',
+        twoFactor: 'Zwei-Faktor-Authentifizierung',
         deleteNotPossible: 'Löschen des aktuellen Benutzers nicht möglich!',
         deleteSuccess: 'Benutzer erfolgreich gelöscht!',
         deleteError: 'Fehler beim Löschen des Benutzers',

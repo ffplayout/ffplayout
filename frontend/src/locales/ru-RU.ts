@@ -251,6 +251,7 @@ export default {
         confirmPass: 'Подтвердите пароль',
         save: 'Сохранить',
         admin: 'Админ',
+        twoFactor: 'Двухфакторная аутентификация',
         deleteNotPossible: 'Delete current user not possible!',
         deleteSuccess: 'Удаление пользователя успешно!',
         deleteError: 'Удаление пользователя с ошибкой',

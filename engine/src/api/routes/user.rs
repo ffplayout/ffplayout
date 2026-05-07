@@ -117,6 +117,10 @@ pub async fn update_user(
     let channel_ids = data.channel_ids.clone().unwrap_or_default();
     let mut fields = String::new();
 
+    if user.is_global_admin() {
+        fields.push_str(&format!("two_factor = {}", i32::from(data.two_factor)));
+    }
+
     if let Some(mail) = data.mail.clone() {
         if !fields.is_empty() {
             fields.push_str(", ");
