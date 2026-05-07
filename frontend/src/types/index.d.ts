@@ -56,6 +56,7 @@ declare global {
         admin?: boolean
         channel_ids?: number[]
         role_id?: number
+        two_factor: boolean
     }
 
     interface Crumb {

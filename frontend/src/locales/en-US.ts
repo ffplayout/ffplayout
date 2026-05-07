@@ -251,6 +251,7 @@ export default {
         confirmPass: 'Confirm Password',
         save: 'Save',
         admin: 'Admin',
+        twoFactor: 'Two-factor authentication',
         deleteNotPossible: 'Delete current user not possible!',
         deleteSuccess: 'Delete user done!',
         deleteError: 'Delete user error',

@@ -22,7 +22,7 @@ pub async fn select_role(pool: &SqlitePool, id: &i32) -> Result<Role, ProcessErr
 
 pub async fn select_login(pool: &SqlitePool, user: &str) -> Result<User, ProcessError> {
     const QUERY: &str =
-        "SELECT u.id, u.mail, u.username, u.password, u.role_id, group_concat(uc.channel_id, ',') as channel_ids FROM user u
+        "SELECT u.id, u.mail, u.username, u.password, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM user u
         left join user_channels uc on uc.user_id = u.id
     WHERE u.username = $1";
 
@@ -32,7 +32,7 @@ pub async fn select_login(pool: &SqlitePool, user: &str) -> Result<User, Process
 }
 
 pub async fn select_user(pool: &SqlitePool, id: i32) -> Result<User, ProcessError> {
-    const QUERY: &str = "SELECT u.id, u.mail, u.username, u.role_id, group_concat(uc.channel_id, ',') as channel_ids FROM user u
+    const QUERY: &str = "SELECT u.id, u.mail, u.username, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM user u
         left join user_channels uc on uc.user_id = u.id
     WHERE u.id = $1";
 
@@ -42,7 +42,7 @@ pub async fn select_user(pool: &SqlitePool, id: i32) -> Result<User, ProcessErro
 }
 
 pub async fn select_global_admins(pool: &SqlitePool) -> Result<Vec<User>, ProcessError> {
-    const QUERY: &str = "SELECT u.id, u.mail, u.username, u.role_id, group_concat(uc.channel_id, ',') as channel_ids FROM user u
+    const QUERY: &str = "SELECT u.id, u.mail, u.username, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM user u
         left join user_channels uc on uc.user_id = u.id
     WHERE u.role_id = 1";
 
@@ -60,8 +60,7 @@ pub async fn select_users(pool: &SqlitePool) -> Result<Vec<User>, ProcessError> 
 }
 
 pub async fn insert_user(pool: &SqlitePool, user: User) -> Result<(), ServiceError> {
-    const QUERY: &str =
-        "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4) RETURNING id";
+    const QUERY: &str = "INSERT INTO user (mail, username, password, role_id, two_factor) VALUES($1, $2, $3, $4, $5) RETURNING id";
 
     let password_hash = task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
@@ -78,6 +77,7 @@ pub async fn insert_user(pool: &SqlitePool, user: User) -> Result<(), ServiceErr
         .bind(user.username)
         .bind(password_hash)
         .bind(user.role_id)
+        .bind(user.two_factor)
         .fetch_one(pool)
         .await?
         .get("id");
@@ -100,9 +100,9 @@ pub async fn insert_or_update_user(pool: &SqlitePool, user: User) -> Result<(), 
     })
     .await?;
 
-    const QUERY: &str = "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4)
+    const QUERY: &str = "INSERT INTO user (mail, username, password, role_id, two_factor) VALUES($1, $2, $3, $4, $5)
             ON CONFLICT(username) DO UPDATE SET
-                mail = excluded.mail, username = excluded.username, password = excluded.password, role_id = excluded.role_id
+                mail = excluded.mail, username = excluded.username, password = excluded.password, role_id = excluded.role_id, two_factor = excluded.two_factor
         RETURNING id";
 
     let user_id: i32 = sqlx::query(QUERY)
@@ -110,6 +110,7 @@ pub async fn insert_or_update_user(pool: &SqlitePool, user: User) -> Result<(), 
         .bind(user.username)
         .bind(password_hash)
         .bind(user.role_id)
+        .bind(user.two_factor)
         .fetch_one(pool)
         .await?
         .get("id");

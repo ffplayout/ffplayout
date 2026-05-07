@@ -110,6 +110,10 @@ fn default_id() -> i32 {
     1
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct User {
     #[serde(skip_deserializing)]
@@ -121,6 +125,8 @@ pub struct User {
     pub password: String,
     pub role_id: Option<i32>,
     pub channel_ids: Option<Vec<i32>>,
+    #[serde(default = "default_true")]
+    pub two_factor: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
 }
@@ -129,10 +135,10 @@ impl FromRow<'_, SqliteRow> for User {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
         Ok(Self {
             id: row.try_get("id").unwrap_or_default(),
-            mail: row.try_get("mail").unwrap_or_default(),
+            mail: row.try_get("mail").ok(),
             username: row.try_get("username").unwrap_or_default(),
             password: row.try_get("password").unwrap_or_default(),
-            role_id: row.try_get("role_id").unwrap_or_default(),
+            role_id: row.try_get("role_id").ok(),
             channel_ids: Some(
                 row.try_get::<String, &str>("channel_ids")
                     .unwrap_or_default()
@@ -140,6 +146,7 @@ impl FromRow<'_, SqliteRow> for User {
                     .map(|i| i.parse::<i32>().unwrap_or_default())
                     .collect(),
             ),
+            two_factor: row.try_get("two_factor").unwrap_or(true),
             token: None,
         })
     }

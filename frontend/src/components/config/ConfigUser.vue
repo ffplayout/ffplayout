@@ -32,6 +32,7 @@ const user = ref({
     admin: false,
     channel_ids: [configStore.channels[configStore.i]?.id ?? 1],
     role_id: 3,
+    two_factor: true,
 } as User)
 
 onMounted(() => {
@@ -100,6 +101,7 @@ function clearUser() {
     user.value.admin = false
     user.value.channel_ids = [1]
     user.value.role_id = 3
+    user.value.two_factor = true
 }
 
 async function addUser(add: boolean) {
@@ -206,6 +208,13 @@ async function onSubmitUser() {
                 <input v-model="confirmPass" type="password" name="password" class="input w-full" />
             </fieldset>
 
+            <fieldset v-if="authStore.role === 'global_admin'" class="fieldset mt-2 rounded-box w-full">
+                <label class="fieldset-label text-base-content">
+                    <input v-model="configStore.configUser.two_factor" type="checkbox" class="checkbox" />
+                    {{ t('user.twoFactor') }}
+                </label>
+            </fieldset>
+
             <div v-if="authStore.role === 'global_admin'" class="form-control w-full max-w-md mt-5">
                 <Multiselect
                     v-model="configStore.configUser.channel_ids"
@@ -262,6 +271,13 @@ async function onSubmitUser() {
                 <label class="fieldset-label text-base-content">
                     <input v-model.number="user.admin" type="checkbox" class="checkbox" />
                     {{ t('user.admin') }}
+                </label>
+            </fieldset>
+
+            <fieldset class="fieldset mt-2 rounded-box w-full">
+                <label class="fieldset-label text-base-content">
+                    <input v-model="user.two_factor" type="checkbox" class="checkbox" />
+                    {{ t('user.twoFactor') }}
                 </label>
             </fieldset>
         </div>

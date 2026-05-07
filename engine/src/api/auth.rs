@@ -179,6 +179,7 @@ pub async fn login(
                     && !config.smtp_server.is_empty()
                     && !config.smtp_user.is_empty()
                     && !config.smtp_password.is_empty()
+                    && user.two_factor
                     && !ARGS.disable_two_factor
                 {
                     // Generate 6-digit random code
