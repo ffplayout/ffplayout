@@ -15,7 +15,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",
     "@types/lodash-es": "^4.17.12",
-    "@unhead/vue": "^2.1.10",
+    "@unhead/vue": "^2.1.13",
     "@vueform/multiselect": "^2.6.11",
     "@vuepic/vue-datepicker": "^12.1.0",
     "@vueuse/core": "^14.2.1",
