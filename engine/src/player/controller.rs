@@ -242,9 +242,7 @@ impl ChannelManager {
     }
 
     async fn log_dev_task(&self, task: &str, event: &str, generation: usize) {
-        let enabled = self.config.read().await.general.dev_metrics;
-
-        if enabled {
+        if cfg!(feature = "dev-metrics") {
             debug!(target: Target::file(), channel = self.id; "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">{task}</span> event=<span class=\"log-addr\">{event}</span> generation=<span class=\"log-number\">{generation}</span>");
         }
     }
@@ -264,9 +262,7 @@ impl ChannelManager {
         self.stop_task("metrics", &self.metrics_handle, &self.metrics_token)
             .await;
 
-        let enabled = self.config.read().await.general.dev_metrics;
-
-        if !enabled {
+        if !cfg!(feature = "dev-metrics") {
             return;
         }
 

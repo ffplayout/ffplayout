@@ -190,9 +190,6 @@ pub struct Args {
     #[clap(long, help_heading = Some("Playout"), help = "Skip validation process")]
     pub skip_validation: bool,
 
-    #[clap(long, hide = true, help = "Enable developer task lifecycle metrics")]
-    pub dev_metrics: Option<bool>,
-
     #[clap(long, hide = true, help = "Set fake time (for debugging)")]
     pub fake_time: Option<String>,
 

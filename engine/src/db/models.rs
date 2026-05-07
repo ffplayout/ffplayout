@@ -285,8 +285,6 @@ pub struct Configuration {
     pub id: i32,
     pub channel_id: i32,
     pub general_stop_threshold: f64,
-    #[serde(default)]
-    pub general_dev_metrics: bool,
 
     pub mail_subject: String,
     pub mail_recipient: String,
@@ -359,7 +357,6 @@ impl Configuration {
             id,
             channel_id,
             general_stop_threshold: config.general.stop_threshold,
-            general_dev_metrics: config.general.dev_metrics,
             mail_subject: config.mail.subject,
             mail_recipient: config.mail.recipient,
             mail_level: config.mail.mail_level.to_string(),

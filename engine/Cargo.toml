@@ -14,7 +14,7 @@ workspace = true
 [features]
 default = ["embed_frontend"]
 embed_frontend = []
-tokio-console = ["dep:console-subscriber", "tokio/tracing"]
+dev-metrics = ["dep:console-subscriber", "tokio/tracing"]
 
 [dependencies]
 axum = { version = "0.8", features = ["multipart", "macros"] }

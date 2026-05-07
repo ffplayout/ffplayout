@@ -56,7 +56,7 @@ pub static MAX_BLOCKING_THREADS: LazyLock<usize> =
     LazyLock::new(|| env_parse_or("MAX_BLOCKING_THREADS", 16));
 
 fn main() -> Result<(), ProcessError> {
-    #[cfg(feature = "tokio-console")]
+    #[cfg(feature = "dev-metrics")]
     console_subscriber::init();
 
     tokio::runtime::Builder::new_multi_thread()

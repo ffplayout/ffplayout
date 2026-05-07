@@ -28,8 +28,8 @@ use crate::{
     vec_strings,
 };
 
-fn log_dev_task(enabled: bool, channel_id: i32, task: &str, event: &str) {
-    if enabled {
+fn log_dev_task(channel_id: i32, task: &str, event: &str) {
+    if cfg!(feature = "dev-metrics") {
         debug!(target: Target::file(), channel = channel_id; "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">{task}</span> event=<span class=\"log-addr\">{event}</span>");
     }
 }
@@ -228,7 +228,6 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let ignore_enc = config.logging.ignore_lines.clone();
     let channel_id = config.general.channel_id;
-    let dev_metrics = config.general.dev_metrics;
 
     // get ffmpeg output instance
     let mut enc_proc = match config.output.mode {
@@ -251,7 +250,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
 
     // spawn a task to log ffmpeg output error messages
     let enc_log_token = CancellationToken::new();
-    log_dev_task(dev_metrics, channel_id, "encoder_stderr", "start");
+    log_dev_task(channel_id, "encoder_stderr", "start");
     let handle_enc_stderr = tokio::spawn(stderr_reader(
         enc_err,
         ignore_enc,
@@ -263,7 +262,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     // spawn a task for a ffmpeg ingest server
     let ingest_token = CancellationToken::new();
     let mut handle_ingest = if config.ingest.enable {
-        log_dev_task(dev_metrics, channel_id, "ingest_server", "start");
+        log_dev_task(channel_id, "ingest_server", "start");
         Some(tokio::spawn(ingest_server(
             config_clone,
             mgr_clone2,
@@ -298,30 +297,25 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
 
     ingest_token.cancel();
     enc_log_token.cancel();
-    log_dev_task(
-        dev_metrics,
-        channel_id,
-        "encoder_stderr",
-        "cancel_requested",
-    );
+    log_dev_task(channel_id, "encoder_stderr", "cancel_requested");
     if handle_ingest.is_some() {
-        log_dev_task(dev_metrics, channel_id, "ingest_server", "cancel_requested");
+        log_dev_task(channel_id, "ingest_server", "cancel_requested");
     }
 
     if let Some(mut handle_ingest) = handle_ingest {
         tokio::select! {
             _ = &mut handle_ingest => {
-                log_dev_task(dev_metrics, channel_id, "ingest_server", "done");
+                log_dev_task(channel_id, "ingest_server", "done");
             }
             _ = sleep(Duration::from_secs(2)) => {
-                log_dev_task(dev_metrics, channel_id, "ingest_server", "abort_fallback");
+                log_dev_task(channel_id, "ingest_server", "abort_fallback");
                 handle_ingest.abort();
                 let _ = handle_ingest.await;
             }
         }
     }
 
-    log_dev_task(dev_metrics, channel_id, "encoder_stderr", "done");
+    log_dev_task(channel_id, "encoder_stderr", "done");
     result?;
 
     trace!("Out of source loop");

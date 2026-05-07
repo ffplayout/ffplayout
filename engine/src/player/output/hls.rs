@@ -52,8 +52,8 @@ use crate::{
     vec_strings,
 };
 
-fn log_dev_task(enabled: bool, channel_id: i32, task: &str, event: &str) {
-    if enabled {
+fn log_dev_task(channel_id: i32, task: &str, event: &str) {
+    if cfg!(feature = "dev-metrics") {
         debug!(target: Target::file(), channel = channel_id; "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">{task}</span> event=<span class=\"log-addr\">{event}</span>");
     }
 }
@@ -357,7 +357,6 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
     let manager2 = manager.clone();
     let is_alive = manager.is_alive.clone();
     let output_cmd = config.output.output_cmd.unwrap_or_default();
-    let dev_metrics = config.general.dev_metrics;
     let hls_duration = output_cmd
         .windows(2)
         .find_map(|pair| {
@@ -380,12 +379,7 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
 
     let mut handle_ingest = if config.ingest.enable {
         // spawn a thread for ffmpeg ingest server
-        log_dev_task(
-            dev_metrics,
-            config.general.channel_id,
-            "hls_ingest_writer",
-            "start",
-        );
+        log_dev_task(config.general.channel_id, "hls_ingest_writer", "start");
         Some(tokio::spawn(Box::pin(ingest_writer(
             manager2,
             ingest_token.clone(),
@@ -394,12 +388,7 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
         None
     };
 
-    log_dev_task(
-        dev_metrics,
-        config.general.channel_id,
-        "hls_watchdog",
-        "start",
-    );
+    log_dev_task(config.general.channel_id, "hls_watchdog", "start");
     let mut watchdog_hls = tokio::spawn(hls_watchdog(
         config.general.channel_id,
         m3u8_path,
@@ -434,14 +423,12 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
     watchdog_token.cancel();
     ingest_token.cancel();
     log_dev_task(
-        dev_metrics,
         config.general.channel_id,
         "hls_watchdog",
         "cancel_requested",
     );
     if handle_ingest.is_some() {
         log_dev_task(
-            dev_metrics,
             config.general.channel_id,
             "hls_ingest_writer",
             "cancel_requested",
@@ -450,10 +437,10 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
 
     tokio::select! {
         _ = &mut watchdog_hls => {
-            log_dev_task(dev_metrics, config.general.channel_id, "hls_watchdog", "done");
+            log_dev_task(config.general.channel_id, "hls_watchdog", "done");
         }
         _ = sleep(Duration::from_secs(2)) => {
-            log_dev_task(dev_metrics, config.general.channel_id, "hls_watchdog", "abort_fallback");
+            log_dev_task(config.general.channel_id, "hls_watchdog", "abort_fallback");
             watchdog_hls.abort();
             let _ = watchdog_hls.await;
         }
@@ -462,10 +449,10 @@ pub async fn writer(manager: &ChannelManager, ff_log_format: &str) -> Result<(),
     if let Some(mut handle_ingest) = handle_ingest {
         tokio::select! {
             _ = &mut handle_ingest => {
-                log_dev_task(dev_metrics, config.general.channel_id, "hls_ingest_writer", "done");
+                log_dev_task(config.general.channel_id, "hls_ingest_writer", "done");
             }
             _ = sleep(Duration::from_secs(2)) => {
-                log_dev_task(dev_metrics, config.general.channel_id, "hls_ingest_writer", "abort_fallback");
+                log_dev_task(config.general.channel_id, "hls_ingest_writer", "abort_fallback");
                 handle_ingest.abort();
                 let _ = handle_ingest.await;
             }

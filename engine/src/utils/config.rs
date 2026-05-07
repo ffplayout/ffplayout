@@ -241,8 +241,6 @@ pub struct General {
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub validate: bool,
-    #[ts(skip)]
-    pub dev_metrics: bool,
 }
 
 impl General {
@@ -258,7 +256,6 @@ impl General {
             template: None,
             skip_validation: false,
             validate: false,
-            dev_metrics: config.general_dev_metrics,
         }
     }
 }
@@ -933,10 +930,6 @@ pub async fn get_config(
     config.general.generate = args.generate;
     config.general.validate = args.validate;
     config.general.skip_validation = args.skip_validation;
-
-    if let Some(dev_metrics) = args.dev_metrics {
-        config.general.dev_metrics = dev_metrics;
-    }
 
     if let Some(template_file) = args.template {
         let mut f = fs::File::options()
