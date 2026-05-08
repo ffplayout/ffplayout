@@ -1254,43 +1254,6 @@ pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
     filled_template
 }
 
-#[cfg(test)]
-mod tests {
-    use super::custom_format;
-
-    #[test]
-    fn custom_format_keeps_escaped_braces_without_args() {
-        assert_eq!(custom_format::<&str>("{{}}", &[]), "{}");
-    }
-
-    #[test]
-    fn custom_format_replaces_automatic_placeholders() {
-        assert_eq!(custom_format("{} {}", &["foo", "bar"]), "foo bar");
-    }
-
-    #[test]
-    fn custom_format_replaces_indexed_placeholders() {
-        assert_eq!(custom_format("{1}-{0}", &["left", "right"]), "right-left");
-        assert_eq!(
-            custom_format("{10}", &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-            "10"
-        );
-    }
-
-    #[test]
-    fn custom_format_keeps_out_of_range_placeholders() {
-        assert_eq!(custom_format("{9}", &["foo"]), "{9}");
-        assert_eq!(custom_format("{}", &[] as &[&str]), "{}");
-    }
-
-    #[test]
-    fn custom_format_keeps_invalid_or_unclosed_placeholders() {
-        assert_eq!(custom_format("{x}", &["foo"]), "{x}");
-        assert_eq!(custom_format("{0", &["foo"]), "{0");
-        assert_eq!(custom_format("}", &["foo"]), "}");
-    }
-}
-
 fn gcd(a: u32, b: u32) -> u32 {
     if b == 0 { a } else { gcd(b, a % b) }
 }
@@ -1326,4 +1289,41 @@ pub fn calc_aspect(config: &PlayoutConfig, aspect_string: &Option<String>) -> f6
     }
 
     source_aspect
+}
+
+#[cfg(test)]
+mod tests {
+    use super::custom_format;
+
+    #[test]
+    fn custom_format_keeps_escaped_braces_without_args() {
+        assert_eq!(custom_format::<&str>("{{}}", &[]), "{}");
+    }
+
+    #[test]
+    fn custom_format_replaces_automatic_placeholders() {
+        assert_eq!(custom_format("{} {}", &["foo", "bar"]), "foo bar");
+    }
+
+    #[test]
+    fn custom_format_replaces_indexed_placeholders() {
+        assert_eq!(custom_format("{1}-{0}", &["left", "right"]), "right-left");
+        assert_eq!(
+            custom_format("{10}", &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+            "10"
+        );
+    }
+
+    #[test]
+    fn custom_format_keeps_out_of_range_placeholders() {
+        assert_eq!(custom_format("{9}", &["foo"]), "{9}");
+        assert_eq!(custom_format("{}", &[] as &[&str]), "{}");
+    }
+
+    #[test]
+    fn custom_format_keeps_invalid_or_unclosed_placeholders() {
+        assert_eq!(custom_format("{x}", &["foo"]), "{x}");
+        assert_eq!(custom_format("{0", &["foo"]), "{0");
+        assert_eq!(custom_format("}", &["foo"]), "}");
+    }
 }
