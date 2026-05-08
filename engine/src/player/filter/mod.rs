@@ -341,7 +341,7 @@ fn hw_upload_str(config: &PlayoutConfig) -> String {
         .decoder
         .input_param
         .as_ref()
-        .is_some_and(|p| p.contains("cuda"))
+        .is_some_and(|p| p.contains("cuda") || p.contains("cuvid"))
     {
         return "hwupload_cuda".to_string();
     }
@@ -577,7 +577,9 @@ async fn add_text(
     {
         let filter = v_drawtext::filter_node(config, Some(node), filter_chain).await;
 
-        chain.add(&filter, 0, Video);
+        if !filter.is_empty() {
+            chain.add(&filter, 0, Video);
+        }
     }
 }
 

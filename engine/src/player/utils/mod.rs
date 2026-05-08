@@ -1185,33 +1185,66 @@ pub fn parse_log_level_filter(s: &str) -> Result<LevelFilter, &'static str> {
 pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
     let mut filled_template = String::new();
     let mut arg_iter = args.iter().map(T::to_string);
-    let mut template_iter = template.chars();
+    let mut template_iter = template.chars().peekable();
 
     while let Some(c) = template_iter.next() {
         if c == '{' {
-            if let Some(nc) = template_iter.next() {
-                if nc == '{' {
+            match template_iter.peek().copied() {
+                Some('{') => {
+                    template_iter.next();
                     filled_template.push('{');
-                } else if nc == '}' {
+                }
+                Some('}') => {
+                    template_iter.next();
+
                     if let Some(arg) = arg_iter.next() {
                         filled_template.push_str(&arg);
                     } else {
-                        filled_template.push(c);
-                        filled_template.push(nc);
+                        filled_template.push('{');
+                        filled_template.push('}');
                     }
-                } else if let Some(n) = nc.to_digit(10) {
-                    filled_template.push_str(&args[n as usize].to_string());
-                } else {
-                    filled_template.push(nc);
                 }
+                Some(nc) if nc.is_ascii_digit() => {
+                    let mut index = String::new();
+
+                    while let Some(nc) = template_iter.peek().copied() {
+                        if nc.is_ascii_digit() {
+                            index.push(nc);
+                            template_iter.next();
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if matches!(template_iter.peek(), Some('}')) {
+                        template_iter.next();
+
+                        if let Ok(n) = index.parse::<usize>() {
+                            if let Some(arg) = args.get(n) {
+                                filled_template.push_str(&arg.to_string());
+                            } else {
+                                filled_template.push('{');
+                                filled_template.push_str(&index);
+                                filled_template.push('}');
+                            }
+                        } else {
+                            filled_template.push('{');
+                            filled_template.push_str(&index);
+                            filled_template.push('}');
+                        }
+                    } else {
+                        filled_template.push('{');
+                        filled_template.push_str(&index);
+                    }
+                }
+                _ => filled_template.push('{'),
             }
         } else if c == '}' {
-            if let Some(nc) = template_iter.next() {
-                if nc == '}' {
-                    filled_template.push('}');
-                    continue;
-                }
-                filled_template.push(nc);
+            if matches!(template_iter.peek(), Some('}')) {
+                template_iter.next();
+                filled_template.push('}');
+            } else {
+                filled_template.push('}');
             }
         } else {
             filled_template.push(c);
@@ -1219,6 +1252,43 @@ pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
     }
 
     filled_template
+}
+
+#[cfg(test)]
+mod tests {
+    use super::custom_format;
+
+    #[test]
+    fn custom_format_keeps_escaped_braces_without_args() {
+        assert_eq!(custom_format::<&str>("{{}}", &[]), "{}");
+    }
+
+    #[test]
+    fn custom_format_replaces_automatic_placeholders() {
+        assert_eq!(custom_format("{} {}", &["foo", "bar"]), "foo bar");
+    }
+
+    #[test]
+    fn custom_format_replaces_indexed_placeholders() {
+        assert_eq!(custom_format("{1}-{0}", &["left", "right"]), "right-left");
+        assert_eq!(
+            custom_format("{10}", &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+            "10"
+        );
+    }
+
+    #[test]
+    fn custom_format_keeps_out_of_range_placeholders() {
+        assert_eq!(custom_format("{9}", &["foo"]), "{9}");
+        assert_eq!(custom_format("{}", &[] as &[&str]), "{}");
+    }
+
+    #[test]
+    fn custom_format_keeps_invalid_or_unclosed_placeholders() {
+        assert_eq!(custom_format("{x}", &["foo"]), "{x}");
+        assert_eq!(custom_format("{0", &["foo"]), "{0");
+        assert_eq!(custom_format("}", &["foo"]), "}");
+    }
 }
 
 fn gcd(a: u32, b: u32) -> u32 {
