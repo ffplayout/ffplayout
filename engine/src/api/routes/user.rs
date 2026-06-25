@@ -115,25 +115,12 @@ pub async fn update_user(
     user.ensure_self_or_admin(id)?;
 
     let channel_ids = data.channel_ids.clone().unwrap_or_default();
-    let mut fields = String::new();
+    let two_factor = user.is_global_admin().then_some(data.two_factor);
+    let mail = data.mail.clone();
 
-    if user.is_global_admin() {
-        fields.push_str(&format!("two_factor = {}", i32::from(data.two_factor)));
-    }
-
-    if let Some(mail) = data.mail.clone() {
-        if !fields.is_empty() {
-            fields.push_str(", ");
-        }
-
-        fields.push_str(&format!("mail = '{mail}'"));
-    }
-
-    if !data.password.is_empty() {
-        if !fields.is_empty() {
-            fields.push_str(", ");
-        }
-
+    let password_hash = if data.password.is_empty() {
+        None
+    } else {
         let password_hash = task::spawn_blocking(move || {
             let salt = SaltString::generate(&mut OsRng);
 
@@ -144,10 +131,10 @@ pub async fn update_user(
         .await?
         .map_err(|e| ServiceError::Conflict(e.to_string()))?;
 
-        fields.push_str(&format!("password = '{password_hash}'"));
-    }
+        Some(password_hash)
+    };
 
-    handles::update_user(&state.pool, id, fields).await?;
+    handles::update_user(&state.pool, id, two_factor, mail, password_hash).await?;
 
     let related_channels = handles::select_related_channels(&state.pool, Some(id)).await?;
 

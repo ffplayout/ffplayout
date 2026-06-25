@@ -3,7 +3,7 @@ use argon2::{
     password_hash::{SaltString, rand_core::OsRng},
 };
 use sqlx::{
-    Row,
+    QueryBuilder, Row, Sqlite,
     sqlite::{SqlitePool, SqliteQueryResult},
 };
 use tokio::task;
@@ -125,13 +125,37 @@ pub async fn insert_or_update_user(pool: &SqlitePool, user: User) -> Result<(), 
 pub async fn update_user(
     pool: &SqlitePool,
     id: i32,
-    fields: String,
-) -> Result<SqliteQueryResult, ProcessError> {
-    let query = format!("UPDATE user SET {fields} WHERE id = $1");
+    two_factor: Option<bool>,
+    mail: Option<String>,
+    password_hash: Option<String>,
+) -> Result<(), ProcessError> {
+    if two_factor.is_none() && mail.is_none() && password_hash.is_none() {
+        return Ok(());
+    }
 
-    let result = sqlx::query(&query).bind(id).execute(pool).await?;
+    let mut query = QueryBuilder::<Sqlite>::new("UPDATE user SET ");
+    let mut separated = query.separated(", ");
 
-    Ok(result)
+    if let Some(two_factor) = two_factor {
+        separated.push("two_factor = ");
+        separated.push_bind(i32::from(two_factor));
+    }
+
+    if let Some(mail) = mail {
+        separated.push("mail = ");
+        separated.push_bind(mail);
+    }
+
+    if let Some(password_hash) = password_hash {
+        separated.push("password = ");
+        separated.push_bind(password_hash);
+    }
+
+    query.push(" WHERE id = ");
+    query.push_bind(id);
+    query.build().execute(pool).await?;
+
+    Ok(())
 }
 
 pub async fn delete_user(pool: &SqlitePool, id: i32) -> Result<SqliteQueryResult, ProcessError> {

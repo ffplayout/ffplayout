@@ -545,6 +545,10 @@ fn overlay(config: &PlayoutConfig, chain: &mut Filters, node: &mut Media) {
     }
 }
 
+fn color_space(chain: &mut Filters) {
+    chain.add("colorspace=iall=bt709:all=bt709", 0, Video);
+}
+
 fn extend_video(config: &PlayoutConfig, chain: &mut Filters, node: &mut Media) {
     if let Some(video_duration) = node
         .probe
@@ -775,6 +779,7 @@ pub async fn filter_chains(
         add_text(config, &mut filters, node, filter_chain).await;
         fade(config, &mut filters, node, 0, Video);
         overlay(config, &mut filters, node);
+        color_space(&mut filters);
     }
 
     let (proc_vf, proc_af) = if node.unit == Ingest {
