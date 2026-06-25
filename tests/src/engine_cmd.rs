@@ -55,7 +55,7 @@ async fn video_audio_input() {
     let test_filter_cmd = vec_strings![
         "-filter_complex",
         format!(
-            "[0:v:0]scale=1024:576[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1[vout0];[0:a:0]anull[aout0]",
+            "[0:v:0]scale=1024:576[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1,colorspace=iall=bt709:all=bt709[vout0];[0:a:0]anull[aout0]",
             config.processing.logo_path
         )
     ];
@@ -86,7 +86,7 @@ async fn video_audio_custom_filter1_input() {
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
-        "[0:v:0]scale=1024:576,gblur=2[vout0];[0:a:0]anull,volume=0.2[aout0]"
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709,gblur=2[vout0];[0:a:0]anull,volume=0.2[aout0]"
     ];
 
     let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
@@ -117,7 +117,7 @@ async fn video_audio_custom_filter2_input() {
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
-        "[0:v:0]scale=1024:576,null[v];movie=logo.png[l];[v][l]overlay[vout0];[0:a:0]anull,volume=0.2[aout0]"
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709,null[v];movie=logo.png[l];[v][l]overlay[vout0];[0:a:0]anull,volume=0.2[aout0]"
     ];
 
     let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
@@ -147,7 +147,7 @@ async fn video_audio_custom_filter3_input() {
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
-        "[0:v:0]scale=1024:576[v_in];movie=logo.png[l];[v_in][l]overlay[vout0];[0:a:0]anull,volume=0.2[aout0]"
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709[v_in];movie=logo.png[l];[v_in][l]overlay[vout0];[0:a:0]anull,volume=0.2[aout0]"
     ];
 
     let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
@@ -176,7 +176,7 @@ async fn dual_audio_aevalsrc_input() {
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
-        "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];aevalsrc=0:channel_layout=stereo:duration=30:sample_rate=48000,anull[aout1]"
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709[vout0];[0:a:0]anull[aout0];aevalsrc=0:channel_layout=stereo:duration=30:sample_rate=48000,anull[aout1]"
     ];
 
     let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]", "-map", "[aout1]"];
@@ -205,7 +205,7 @@ async fn dual_audio_input() {
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
-        "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1]"
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1]"
     ];
 
     let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]", "-map", "[aout1]"];
@@ -236,7 +236,7 @@ async fn video_separate_audio_input() {
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
-        "[0:v:0]scale=1024:576[vout0];[1:a:0]anull[aout0]"
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709[vout0];[1:a:0]anull[aout0]"
     ];
 
     let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
@@ -1462,7 +1462,7 @@ async fn video_audio_hls() {
         "-i",
         "./assets/storage/media_mix/with_audio.mp4",
         "-filter_complex",
-        "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0]",
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709[vout0];[0:a:0]anull[aout0]",
         "-map",
         "[vout0]",
         "-map",
@@ -1552,7 +1552,7 @@ async fn video_audio_sub_meta_hls() {
         "-i",
         "./assets/storage/media_mix/with_audio.mp4",
         "-filter_complex",
-        "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0]",
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709[vout0];[0:a:0]anull[aout0]",
         "-map",
         "[vout0]",
         "-map",
@@ -1643,7 +1643,7 @@ async fn video_multi_audio_hls() {
         "-i",
         "./assets/storage/media_mix/dual_audio.mp4",
         "-filter_complex",
-        "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1]",
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1]",
         "-map",
         "[vout0]",
         "-map",
@@ -1749,7 +1749,7 @@ async fn multi_video_audio_hls() {
         "-i",
         "./assets/storage/media_mix/with_audio.mp4",
         "-filter_complex",
-        "[0:v:0]scale=1024:576,split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a]asplit=2[a1][a2]",
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709,split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a]asplit=2[a1][a2]",
         "-map",
         "[v1_out]",
         "-map",
@@ -1866,7 +1866,7 @@ async fn multi_video_multi_audio_hls() {
         "-i",
         "./assets/storage/media_mix/dual_audio.mp4",
         "-filter_complex",
-        "[0:v:0]scale=1024:576,split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a:0]anull,asplit=2[a_0_1][a_0_2];[0:a:1]anull,asplit=2[a_1_1][a_1_2]",
+        "[0:v:0]scale=1024:576,colorspace=iall=bt709:all=bt709,split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a:0]anull,asplit=2[a_0_1][a_0_2];[0:a:1]anull,asplit=2[a_1_1][a_1_2]",
         "-map",
         "[v1_out]",
         "-map",
