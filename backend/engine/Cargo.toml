@@ -1,0 +1,26 @@
+[package]
+name = "ffplayout-lib"
+description = "FFmpeg-based real-time playout library"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["desktop"]
+desktop = ["dep:sdl2"]
+
+[dependencies]
+anyhow = "1"
+ffmpeg-next = "8"
+log = "0.4"
+sdl2 = { version = "0.38", optional = true, features = ["unsafe_textures"] }
+
+[dev-dependencies]
+clap = { version = "4", features = ["derive"] }
+env_logger = "0.11"
+glob = "0.3"

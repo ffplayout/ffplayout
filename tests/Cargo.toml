@@ -11,7 +11,7 @@ publish = false
 workspace = true
 
 [dev-dependencies]
-ffplayout = { path = "../engine" }
+ffplayout = { path = "../backend/app" }
 
 axum = "0.8"
 chrono = "0.4"

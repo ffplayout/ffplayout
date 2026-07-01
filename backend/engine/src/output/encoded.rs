@@ -1,0 +1,506 @@
+use std::{collections::VecDeque, fs, path::Path};
+
+use anyhow::{Context, Result, anyhow};
+use ffmpeg::{
+    Packet, codec, format, frame,
+    software::scaling,
+    util::{
+        channel_layout::ChannelLayout, format::pixel::Pixel, format::sample::Sample,
+        rational::Rational,
+    },
+};
+use ffmpeg_next as ffmpeg;
+
+use super::{hls, vtt};
+use crate::{
+    clock::PlayoutClock,
+    utils::config::{HlsVariant, OutputConfig},
+};
+
+pub(super) struct EncodedOutput {
+    octx: format::context::Output,
+    video_streams: Vec<VideoOutputStream>,
+    audio_streams: Vec<AudioOutputStream>,
+    subtitle_streams: Vec<SubtitleOutputStream>,
+    vtt_subtitles: bool,
+    audio_buffer: [VecDeque<f32>; 2],
+    audio_buffer_pts: Option<i64>,
+    audio_sample_rate: u32,
+    clock: PlayoutClock,
+}
+
+#[derive(Clone)]
+pub(super) enum EncodedFormat {
+    Auto,
+    Hls {
+        variants: Vec<HlsVariant>,
+        vtt_subtitles: bool,
+    },
+}
+
+struct VideoOutputStream {
+    stream_index: usize,
+    encoder: codec::encoder::video::Encoder,
+    scaler: Option<scaling::Context>,
+    width: u32,
+    height: u32,
+}
+
+struct AudioOutputStream {
+    stream_index: usize,
+    encoder: codec::encoder::audio::Encoder,
+}
+
+struct SubtitleOutputStream {
+    stream_index: usize,
+}
+
+impl EncodedOutput {
+    pub(super) fn open(
+        path: &str,
+        cfg: &OutputConfig,
+        output_format: EncodedFormat,
+    ) -> Result<Self> {
+        let hls_variants = match &output_format {
+            EncodedFormat::Auto => &[][..],
+            EncodedFormat::Hls { variants, .. } => variants.as_slice(),
+        };
+        let vtt_subtitles = matches!(
+            output_format,
+            EncodedFormat::Hls {
+                vtt_subtitles: true,
+                ..
+            }
+        );
+        hls::validate_variants(hls_variants)?;
+        let hls_playlist_path = hls::playlist_path(path, hls_variants)?;
+
+        if matches!(output_format, EncodedFormat::Hls { .. })
+            && let Some(parent) = Path::new(path).parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create HLS directory {}", parent.display()))?;
+        }
+        let mut octx = match output_format {
+            EncodedFormat::Hls { .. } => format::output_as(&hls_playlist_path, "hls")?,
+            EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
+                format::output_as(path, "flv")?
+            }
+            EncodedFormat::Auto => format::output(path)?,
+        };
+        if !hls_variants.is_empty() {
+            hls::close_preopened_output(&mut octx, &hls_playlist_path)?;
+        }
+
+        let global_header = octx
+            .format()
+            .flags()
+            .contains(format::flag::Flags::GLOBAL_HEADER);
+
+        let mut video_streams = Vec::new();
+        let mut audio_streams = Vec::new();
+        let mut subtitle_streams = Vec::new();
+        let stream_count = hls_variants.len().max(1);
+
+        for index in 0..stream_count {
+            let variant = hls_variants.get(index);
+            video_streams.push(open_video_stream(
+                &mut octx,
+                cfg,
+                output_format.clone(),
+                global_header,
+                variant,
+            )?);
+            audio_streams.push(open_audio_stream(&mut octx, cfg, global_header, variant)?);
+        }
+        if vtt_subtitles {
+            subtitle_streams.push(open_subtitle_stream(&mut octx)?);
+        }
+
+        match output_format {
+            EncodedFormat::Auto => octx.write_header()?,
+            EncodedFormat::Hls { .. } => {
+                let mut options = ffmpeg::Dictionary::new();
+                options.set("hls_time", "6");
+                options.set("hls_list_size", "60");
+                options.set(
+                    "hls_flags",
+                    "append_list+delete_segments+omit_endlist+temp_file",
+                );
+                if !hls_variants.is_empty() {
+                    options.set("hls_segment_filename", &hls::segment_pattern(path));
+                    options.set("master_pl_name", "master.m3u8");
+                    options.set(
+                        "var_stream_map",
+                        &hls::var_stream_map(hls_variants, vtt_subtitles),
+                    );
+                }
+                let _unused_options = octx.write_header_with(options)?;
+            }
+        }
+
+        Ok(Self {
+            octx,
+            video_streams,
+            audio_streams,
+            subtitle_streams,
+            vtt_subtitles,
+            audio_buffer: [VecDeque::new(), VecDeque::new()],
+            audio_buffer_pts: None,
+            audio_sample_rate: cfg.sample_rate,
+            clock: PlayoutClock::new(),
+        })
+    }
+
+    pub(super) fn audio_frame_size(&self) -> usize {
+        self.audio_streams
+            .first()
+            .map(|stream| stream.encoder.frame_size() as usize)
+            .unwrap_or(0)
+    }
+
+    pub(super) fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+        for index in 0..self.video_streams.len() {
+            let stream = &mut self.video_streams[index];
+            if let Some(scaler) = &mut stream.scaler {
+                let mut scaled_frame =
+                    frame::Video::new(Pixel::YUV420P, stream.width, stream.height);
+                scaled_frame.set_pts(frame.pts());
+                scaler.run(frame, &mut scaled_frame)?;
+                stream.encoder.send_frame(&scaled_frame)?;
+            } else {
+                stream.encoder.send_frame(frame)?;
+            }
+            self.write_video_packets(index)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        if frame.samples() == 0 {
+            return Ok(());
+        }
+
+        self.align_audio_buffer_to_frame_pts(frame.pts())?;
+        if self.audio_buffer[0].is_empty() {
+            self.audio_buffer_pts = frame.pts();
+        }
+        for channel in 0..self.audio_buffer.len() {
+            self.audio_buffer[channel].extend(
+                frame
+                    .plane::<f32>(channel)
+                    .iter()
+                    .map(|sample| if sample.is_finite() { *sample } else { 0.0 }),
+            );
+        }
+
+        self.write_complete_audio_frames()
+    }
+
+    fn align_audio_buffer_to_frame_pts(&mut self, frame_pts: Option<i64>) -> Result<()> {
+        let Some(frame_pts) = frame_pts else {
+            return Ok(());
+        };
+        let Some(buffer_pts) = self.audio_buffer_pts else {
+            return Ok(());
+        };
+        if self.audio_buffer[0].is_empty() {
+            return Ok(());
+        }
+
+        let expected_pts = buffer_pts + self.audio_buffer[0].len() as i64;
+        if frame_pts != expected_pts {
+            self.pad_audio_buffer()?;
+            if self.audio_buffer[0].is_empty() {
+                self.audio_buffer_pts = Some(frame_pts);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(super) fn write_vtt_subtitles(
+        &mut self,
+        media_path: &str,
+        output_start_ms: i64,
+        source_start_ms: i64,
+    ) -> Result<()> {
+        if !self.vtt_subtitles || self.subtitle_streams.is_empty() {
+            return Ok(());
+        }
+
+        let vtt_path = vtt::sidecar_path(media_path);
+        if !vtt_path.exists() {
+            return Ok(());
+        }
+
+        let cues = vtt::parse_file(&vtt_path)?;
+        for cue in cues {
+            if cue.end_ms <= source_start_ms {
+                continue;
+            }
+
+            let mut packet = Packet::copy(cue.text.as_bytes());
+            let cue_start_ms = cue.start_ms.saturating_sub(source_start_ms);
+            let cue_end_ms = cue.end_ms - source_start_ms;
+            let pts = output_start_ms + cue_start_ms;
+            packet.set_pts(Some(pts));
+            packet.set_dts(Some(pts));
+            packet.set_duration(cue_end_ms - cue_start_ms);
+            self.write_subtitle_packet(&mut packet)?;
+        }
+
+        Ok(())
+    }
+
+    fn write_complete_audio_frames(&mut self) -> Result<()> {
+        let frame_size = self.audio_frame_size();
+        if frame_size == 0 {
+            return Err(anyhow!("audio encoder reported a frame size of zero"));
+        }
+
+        while self.audio_buffer[0].len() >= frame_size {
+            let mut frame = frame::Audio::new(
+                Sample::F32(ffmpeg::format::sample::Type::Planar),
+                frame_size,
+                ChannelLayout::STEREO,
+            );
+            frame.set_rate(self.audio_sample_rate);
+            frame.set_pts(self.audio_buffer_pts);
+
+            for channel in 0..self.audio_buffer.len() {
+                for sample in frame.plane_mut::<f32>(channel) {
+                    *sample = self.audio_buffer[channel]
+                        .pop_front()
+                        .context("audio buffer is unexpectedly incomplete")?;
+                }
+            }
+
+            self.audio_buffer_pts = self
+                .audio_buffer_pts
+                .map(|pts| pts + self.audio_frame_size() as i64);
+            self.send_audio_frame(&frame)?;
+        }
+
+        Ok(())
+    }
+
+    fn send_audio_frame(&mut self, frame: &frame::Audio) -> Result<()> {
+        for index in 0..self.audio_streams.len() {
+            self.audio_streams[index].encoder.send_frame(frame)?;
+            self.write_audio_packets(index)?;
+        }
+        Ok(())
+    }
+
+    fn pad_audio_buffer(&mut self) -> Result<()> {
+        if self.audio_buffer[0].is_empty() {
+            return Ok(());
+        }
+
+        let frame_size = self.audio_frame_size();
+        for channel in &mut self.audio_buffer {
+            channel.resize(frame_size, 0.0);
+        }
+        self.write_complete_audio_frames()
+    }
+
+    fn write_packet(
+        &mut self,
+        packet: &mut ffmpeg::Packet,
+        stream_index: usize,
+        encoder_time_base: Rational,
+    ) -> Result<()> {
+        let stream_time_base = self
+            .octx
+            .stream(stream_index)
+            .context("output stream is missing")?
+            .time_base();
+
+        packet.set_stream(stream_index);
+        packet.rescale_ts(encoder_time_base, stream_time_base);
+        self.clock
+            .wait_until(packet.dts().or_else(|| packet.pts()), stream_time_base);
+        packet.write_interleaved(&mut self.octx)?;
+        Ok(())
+    }
+
+    pub(super) fn finish(mut self) -> Result<()> {
+        for index in 0..self.video_streams.len() {
+            self.video_streams[index].encoder.send_eof()?;
+            self.write_video_packets(index)?;
+        }
+
+        self.pad_audio_buffer()?;
+        for index in 0..self.audio_streams.len() {
+            self.audio_streams[index].encoder.send_eof()?;
+            self.write_audio_packets(index)?;
+        }
+
+        self.octx.write_trailer()?;
+        Ok(())
+    }
+
+    fn write_video_packets(&mut self, index: usize) -> Result<()> {
+        let mut packet = ffmpeg::Packet::empty();
+        while self.video_streams[index]
+            .encoder
+            .receive_packet(&mut packet)
+            .is_ok()
+        {
+            if packet.duration() == 0 {
+                packet.set_duration(1);
+            }
+            let stream_index = self.video_streams[index].stream_index;
+            let time_base = self.video_streams[index].encoder.time_base();
+            self.write_packet(&mut packet, stream_index, time_base)?;
+        }
+        Ok(())
+    }
+
+    fn write_audio_packets(&mut self, index: usize) -> Result<()> {
+        let mut packet = ffmpeg::Packet::empty();
+        while self.audio_streams[index]
+            .encoder
+            .receive_packet(&mut packet)
+            .is_ok()
+        {
+            let stream_index = self.audio_streams[index].stream_index;
+            let time_base = self.audio_streams[index].encoder.time_base();
+            self.write_packet(&mut packet, stream_index, time_base)?;
+        }
+        Ok(())
+    }
+
+    fn write_subtitle_packet(&mut self, packet: &mut Packet) -> Result<()> {
+        let stream_index = self
+            .subtitle_streams
+            .first()
+            .context("subtitle output stream is missing")?
+            .stream_index;
+        let stream_time_base = self
+            .octx
+            .stream(stream_index)
+            .context("subtitle output stream is missing")?
+            .time_base();
+
+        packet.set_stream(stream_index);
+        packet.rescale_ts(Rational(1, 1_000), stream_time_base);
+        packet.write_interleaved(&mut self.octx)?;
+        Ok(())
+    }
+}
+
+fn open_video_stream(
+    octx: &mut format::context::Output,
+    cfg: &OutputConfig,
+    output_format: EncodedFormat,
+    global_header: bool,
+    variant: Option<&HlsVariant>,
+) -> Result<VideoOutputStream> {
+    let video_codec = codec::encoder::find(codec::Id::H264).context("H.264 encoder not found")?;
+    let mut video_stream = octx.add_stream(video_codec)?;
+    let mut video_ctx = codec::context::Context::new_with_codec(video_codec)
+        .encoder()
+        .video()?;
+    let width = variant.map_or(cfg.width, |variant| variant.width);
+    let height = variant.map_or(cfg.height, |variant| variant.height);
+    video_ctx.set_width(width);
+    video_ctx.set_height(height);
+    video_ctx.set_format(Pixel::YUV420P);
+    video_ctx.set_time_base(cfg.video_time_base);
+    video_ctx.set_frame_rate(Some(Rational(cfg.fps as i32, 1)));
+    video_ctx.set_bit_rate(variant.map_or(3_000_000, |variant| variant.video_bitrate as usize));
+    if matches!(output_format, EncodedFormat::Hls { .. }) {
+        video_ctx.set_gop(cfg.fps.saturating_mul(2));
+    }
+    let mut video_flags = codec::flag::Flags::empty();
+    if global_header {
+        video_flags |= codec::flag::Flags::GLOBAL_HEADER;
+    }
+    if matches!(output_format, EncodedFormat::Hls { .. }) {
+        video_flags |= codec::flag::Flags::CLOSED_GOP;
+    }
+    if !video_flags.is_empty() {
+        video_ctx.set_flags(video_flags);
+    }
+    let video_encoder = match output_format {
+        EncodedFormat::Auto => video_ctx.open_as(video_codec)?,
+        EncodedFormat::Hls { .. } => {
+            let mut options = ffmpeg::Dictionary::new();
+            options.set("x264-params", "open-gop=0:repeat-headers=1");
+            video_ctx.open_as_with(video_codec, options)?
+        }
+    };
+    video_stream.set_parameters(&video_encoder);
+    video_stream.set_time_base(cfg.video_time_base);
+    let stream_index = video_stream.index();
+    let scaler = if width == cfg.width && height == cfg.height {
+        None
+    } else {
+        Some(scaling::Context::get(
+            Pixel::YUV420P,
+            cfg.width,
+            cfg.height,
+            Pixel::YUV420P,
+            width,
+            height,
+            scaling::flag::Flags::BILINEAR,
+        )?)
+    };
+
+    Ok(VideoOutputStream {
+        stream_index,
+        encoder: video_encoder,
+        scaler,
+        width,
+        height,
+    })
+}
+
+fn open_audio_stream(
+    octx: &mut format::context::Output,
+    cfg: &OutputConfig,
+    global_header: bool,
+    variant: Option<&HlsVariant>,
+) -> Result<AudioOutputStream> {
+    let audio_codec = codec::encoder::find(codec::Id::AAC).context("AAC encoder not found")?;
+    let mut audio_stream = octx.add_stream(audio_codec)?;
+    let mut audio_ctx = codec::context::Context::new_with_codec(audio_codec)
+        .encoder()
+        .audio()?;
+    audio_ctx.set_rate(cfg.sample_rate as i32);
+    audio_ctx.set_channel_layout(ChannelLayout::STEREO);
+    audio_ctx.set_format(Sample::F32(ffmpeg::format::sample::Type::Planar));
+    audio_ctx.set_time_base(cfg.audio_time_base);
+    audio_ctx.set_bit_rate(variant.map_or(128_000, |variant| variant.audio_bitrate as usize));
+    if global_header {
+        audio_ctx.set_flags(codec::flag::Flags::GLOBAL_HEADER);
+    }
+    let audio_encoder = audio_ctx.open_as(audio_codec)?;
+    audio_stream.set_parameters(&audio_encoder);
+    audio_stream.set_time_base(cfg.audio_time_base);
+    Ok(AudioOutputStream {
+        stream_index: audio_stream.index(),
+        encoder: audio_encoder,
+    })
+}
+
+fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOutputStream> {
+    let mut stream = octx.add_stream(codec::Id::WEBVTT)?;
+    stream.set_time_base(Rational(1, 1_000));
+    // `add_stream` only sets up an encoder-backed stream; WebVTT subtitles here
+    // are muxed as pre-formatted text packets without an actual encoder, so the
+    // safe API has no way to mark the stream's codec parameters as a subtitle
+    // stream. Setting `codec_type`/`codec_id` on the raw `AVCodecParameters` is
+    // the only way to make the muxer (and downstream HLS players) recognize it.
+    unsafe {
+        let codecpar = (*stream.as_mut_ptr()).codecpar;
+        (*codecpar).codec_type = ffmpeg::ffi::AVMediaType::AVMEDIA_TYPE_SUBTITLE;
+        (*codecpar).codec_id = ffmpeg::ffi::AVCodecID::AV_CODEC_ID_WEBVTT;
+    }
+    Ok(SubtitleOutputStream {
+        stream_index: stream.index(),
+    })
+}

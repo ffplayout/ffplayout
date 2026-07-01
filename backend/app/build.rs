@@ -15,16 +15,16 @@ const NPM_COMMAND: &str = "npm.cmd";
 const NPM_COMMAND: &str = "npm";
 
 #[cfg(all(not(debug_assertions), windows))]
-const RUN_P_BIN: &str = "../frontend/node_modules/.bin/run-p.cmd";
+const RUN_P_BIN: &str = "../../node_modules/.bin/run-p.cmd";
 
 #[cfg(all(not(debug_assertions), not(windows)))]
-const RUN_P_BIN: &str = "../frontend/node_modules/.bin/run-p";
+const RUN_P_BIN: &str = "../../node_modules/.bin/run-p";
 
 #[cfg(not(debug_assertions))]
 fn run_npm(args: &[&str]) {
     let output = Command::new(NPM_COMMAND)
         .args(args)
-        .current_dir("../frontend")
+        .current_dir("../..")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()

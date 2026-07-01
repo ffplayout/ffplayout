@@ -14,7 +14,7 @@ use {
 };
 
 #[cfg(not(debug_assertions))]
-static FRONTEND_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../frontend/dist");
+static FRONTEND_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../frontend/dist");
 
 #[cfg(not(debug_assertions))]
 const DEFAULT_FILE: &str = "index.html";

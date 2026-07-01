@@ -7,7 +7,7 @@ use crate::{
 };
 
 pub async fn db_migrate(pool: &SqlitePool) -> Result<bool, ProcessError> {
-    sqlx::migrate!("../migrations").run(pool).await?;
+    sqlx::migrate!("../../migrations").run(pool).await?;
     let mut init = false;
 
     if select_global(pool).await.is_err() {
