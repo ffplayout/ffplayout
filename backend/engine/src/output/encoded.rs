@@ -463,11 +463,14 @@ fn open_video_stream(
     if !video_flags.is_empty() {
         video_ctx.set_flags(video_flags);
     }
+
+    // TODO: make preset configurable
     let video_encoder = match output_format {
         EncodedFormat::Auto | EncodedFormat::Null => video_ctx.open_as(video_codec)?,
         EncodedFormat::Hls { .. } => {
             let mut options = ffmpeg::Dictionary::new();
             options.set("x264-params", "open-gop=0:repeat-headers=1");
+            options.set("preset", "faster");
             video_ctx.open_as_with(video_codec, options)?
         }
     };
