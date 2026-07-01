@@ -1,5 +1,5 @@
 [package]
-name = "ffplayout-lib"
+name = "ff-engine"
 description = "FFmpeg-based real-time playout library"
 version.workspace = true
 license.workspace = true
@@ -13,12 +13,14 @@ workspace = true
 [features]
 default = ["desktop"]
 desktop = ["dep:sdl2"]
+tokio = ["dep:tokio"]
 
 [dependencies]
 anyhow = "1"
 ffmpeg-next = "8"
 log = "0.4"
 sdl2 = { version = "0.38", optional = true, features = ["unsafe_textures"] }
+tokio = { version = "1.44", optional = true, features = ["rt", "sync"] }
 
 [dev-dependencies]
 clap = { version = "4", features = ["derive"] }

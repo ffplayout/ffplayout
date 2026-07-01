@@ -12,11 +12,16 @@ edition.workspace = true
 workspace = true
 
 [features]
-default = ["embed_frontend"]
+default = ["desktop", "embed_frontend"]
+desktop = ["ff-engine/desktop"]
 embed_frontend = []
 dev-metrics = ["dep:console-subscriber", "tokio/tracing"]
 
 [dependencies]
+ff-engine = { path = "../engine", default-features = false, features = [
+    "tokio",
+] }
+
 axum = { version = "0.8", features = ["multipart", "macros"] }
 argon2 = "0.5"
 async-walkdir = "2"

@@ -186,6 +186,23 @@ impl FrameOutput for DesktopFrameSender {
 
 impl DesktopRenderer {
     fn open(cfg: &OutputConfig) -> Result<Self> {
+        // All desktop-output sessions (across restarts and channels) are
+        // routed through the single persistent thread in `sdl_thread`, so SDL
+        // and libdecor/GTK always see the same OS thread for their whole
+        // process lifetime. That thread affinity is what libdecor's GTK
+        // plugin needs; without it window creation can fail with
+        // "Failed to load plugin 'libdecor-gtk.so': failed to init".
+        //
+        // By default SDL installs its own SIGINT/SIGTERM handlers and turns
+        // them into an `Event::Quit`, which `handle_events` treats as "stop
+        // the current clip" (the same as closing the window or pressing
+        // Escape) rather than as a request to terminate the whole process.
+        // Since the channel supervisor automatically restarts a stopped
+        // channel, Ctrl-C would just restart playback instead of exiting the
+        // process. Disabling SDL's signal handlers restores the normal OS
+        // default (Ctrl-C terminates the process), matching the behavior of
+        // the other output modes, which don't use SDL at all.
+        sdl2::hint::set("SDL_NO_SIGNAL_HANDLERS", "1");
         let sdl = sdl2::init().map_err(anyhow::Error::msg)?;
         let video = sdl.video().map_err(anyhow::Error::msg)?;
         let audio_subsystem = sdl.audio().map_err(anyhow::Error::msg)?;

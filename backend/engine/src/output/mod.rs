@@ -4,6 +4,8 @@ use std::{error::Error, fmt};
 mod desktop;
 mod encoded;
 mod hls;
+#[cfg(feature = "desktop")]
+pub(crate) mod sdl_thread;
 mod vtt;
 
 use anyhow::Result;
@@ -61,6 +63,12 @@ impl Output {
     pub(crate) fn open(path: &str, cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
             kind: OutputKind::Encoded(EncodedOutput::open(path, cfg, EncodedFormat::Auto)?),
+        })
+    }
+
+    pub(crate) fn open_null(cfg: &OutputConfig) -> Result<Self> {
+        Ok(Self {
+            kind: OutputKind::Encoded(EncodedOutput::open("-", cfg, EncodedFormat::Null)?),
         })
     }
 

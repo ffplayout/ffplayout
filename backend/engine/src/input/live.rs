@@ -23,7 +23,7 @@ use log::{error, info, warn};
 
 use crate::{
     output::FrameOutput,
-    playout::{Timeline, play_opened_input},
+    playout::{InputPlaybackOptions, Timeline, play_opened_input},
     utils::config::OutputConfig,
 };
 
@@ -483,8 +483,11 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
                         &worker_cfg,
                         &mut timeline,
                         &mut output,
-                        None,
-                        None,
+                        InputPlaybackOptions {
+                            seek_seconds: None,
+                            duration_seconds: None,
+                            subtitles_media_path: None,
+                        },
                     );
                     let _ = done_tx.send(result.map_err(|error| format!("{error:#}")));
                 });

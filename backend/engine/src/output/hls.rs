@@ -57,7 +57,7 @@ pub(super) fn close_preopened_output(
 
 pub(super) fn segment_pattern(path: &str) -> String {
     Path::new(path)
-        .with_file_name("%v_segment_%03d.ts")
+        .with_file_name("%v_%d.ts")
         .to_string_lossy()
         .into_owned()
 }

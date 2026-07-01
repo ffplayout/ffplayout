@@ -32,6 +32,7 @@ pub(super) struct EncodedOutput {
 #[derive(Clone)]
 pub(super) enum EncodedFormat {
     Auto,
+    Null,
     Hls {
         variants: Vec<HlsVariant>,
         vtt_subtitles: bool,
@@ -62,7 +63,7 @@ impl EncodedOutput {
         output_format: EncodedFormat,
     ) -> Result<Self> {
         let hls_variants = match &output_format {
-            EncodedFormat::Auto => &[][..],
+            EncodedFormat::Auto | EncodedFormat::Null => &[][..],
             EncodedFormat::Hls { variants, .. } => variants.as_slice(),
         };
         let vtt_subtitles = matches!(
@@ -73,6 +74,32 @@ impl EncodedOutput {
             }
         );
         hls::validate_variants(hls_variants)?;
+
+        // ffmpeg's HLS muxer only emits a master playlist (with the
+        // `EXT-X-MEDIA:TYPE=SUBTITLES` entry HLS players need to discover the
+        // VTT track) when `var_stream_map` is used. With a single, implicit
+        // variant this does *not* require `%v` in the main playlist file
+        // name (ffmpeg just uses the literal name), so when VTT subtitles
+        // are enabled without explicit bitrate variants we only synthesize
+        // a single default variant to drive the `var_stream_map` string -
+        // the playlist path itself stays untouched. It doesn't affect real
+        // encoder settings: `open_video_stream`/`open_audio_stream` still
+        // fall back to `cfg` because they receive `None` for their
+        // `variant` argument below.
+        let default_variant = [HlsVariant {
+            name: "stream".to_string(),
+            width: cfg.width,
+            height: cfg.height,
+            video_bitrate: 0,
+            audio_bitrate: 0,
+        }];
+        let uses_var_stream_map = !hls_variants.is_empty() || vtt_subtitles;
+        let variants_for_naming: &[HlsVariant] = if hls_variants.is_empty() && vtt_subtitles {
+            &default_variant
+        } else {
+            hls_variants
+        };
+
         let hls_playlist_path = hls::playlist_path(path, hls_variants)?;
 
         if matches!(output_format, EncodedFormat::Hls { .. })
@@ -84,11 +111,16 @@ impl EncodedOutput {
         }
         let mut octx = match output_format {
             EncodedFormat::Hls { .. } => format::output_as(&hls_playlist_path, "hls")?,
+            EncodedFormat::Null => format::output_as("-", "null")?,
             EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
                 format::output_as(path, "flv")?
             }
             EncodedFormat::Auto => format::output(path)?,
         };
+        // Only real bitrate variants rename the playlist path (`%v_...`),
+        // leaving a bogus placeholder file opened at the old name that must
+        // be closed and removed. With no explicit variants the path is
+        // unchanged, so the preopened output is already the correct file.
         if !hls_variants.is_empty() {
             hls::close_preopened_output(&mut octx, &hls_playlist_path)?;
         }
@@ -119,7 +151,7 @@ impl EncodedOutput {
         }
 
         match output_format {
-            EncodedFormat::Auto => octx.write_header()?,
+            EncodedFormat::Auto | EncodedFormat::Null => octx.write_header()?,
             EncodedFormat::Hls { .. } => {
                 let mut options = ffmpeg::Dictionary::new();
                 options.set("hls_time", "6");
@@ -128,12 +160,12 @@ impl EncodedOutput {
                     "hls_flags",
                     "append_list+delete_segments+omit_endlist+temp_file",
                 );
-                if !hls_variants.is_empty() {
+                if uses_var_stream_map {
                     options.set("hls_segment_filename", &hls::segment_pattern(path));
                     options.set("master_pl_name", "master.m3u8");
                     options.set(
                         "var_stream_map",
-                        &hls::var_stream_map(hls_variants, vtt_subtitles),
+                        &hls::var_stream_map(variants_for_naming, vtt_subtitles),
                     );
                 }
                 let _unused_options = octx.write_header_with(options)?;
@@ -426,7 +458,7 @@ fn open_video_stream(
         video_ctx.set_flags(video_flags);
     }
     let video_encoder = match output_format {
-        EncodedFormat::Auto => video_ctx.open_as(video_codec)?,
+        EncodedFormat::Auto | EncodedFormat::Null => video_ctx.open_as(video_codec)?,
         EncodedFormat::Hls { .. } => {
             let mut options = ffmpeg::Dictionary::new();
             options.set("x264-params", "open-gop=0:repeat-headers=1");
@@ -503,4 +535,36 @@ fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOu
     Ok(SubtitleOutputStream {
         stream_index: stream.index(),
     })
+}
+
+#[cfg(test)]
+mod open_tests {
+    use super::*;
+    use crate::utils::config::OutputConfig;
+    use std::fs;
+
+    #[test]
+    fn vtt_only_master_playlist_uses_literal_playlist_name() {
+        ffmpeg::init().ok();
+        let dir = std::env::temp_dir().join(format!("hls_vtt_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("index.m3u8");
+        let cfg = OutputConfig::new(320, 240, 25, 44100);
+        let output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Hls {
+                variants: vec![],
+                vtt_subtitles: true,
+            },
+        );
+        let output = output.unwrap();
+        assert!(
+            output.finish().is_ok(),
+            "expected finish() to flush the trailer"
+        );
+        assert!(path.exists(), "expected literal index.m3u8 to exist");
+        assert!(dir.join("master.m3u8").exists(), "expected master.m3u8");
+        fs::remove_dir_all(&dir).ok();
+    }
 }

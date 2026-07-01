@@ -1210,6 +1210,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ff-engine"
+version = "2.0.0-beta"
+dependencies = [
+ "anyhow",
+ "clap",
+ "env_logger",
+ "ffmpeg-next",
+ "glob",
+ "log",
+ "sdl2",
+ "tokio",
+]
+
+[[package]]
 name = "ffmpeg-next"
 version = "8.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1236,7 +1250,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "1.1.1"
+version = "2.0.0-beta"
 dependencies = [
  "argon2",
  "async-walkdir",
@@ -1248,6 +1262,7 @@ dependencies = [
  "console-subscriber",
  "derive_more",
  "faccess",
+ "ff-engine",
  "flexi_logger",
  "iana-time-zone",
  "include_dir",
@@ -1284,19 +1299,6 @@ dependencies = [
  "ts-rs",
  "uuid",
  "zeromq",
-]
-
-[[package]]
-name = "ffplayout-lib"
-version = "1.1.1"
-dependencies = [
- "anyhow",
- "clap",
- "env_logger",
- "ffmpeg-next",
- "glob",
- "log",
- "sdl2",
 ]
 
 [[package]]
@@ -4054,7 +4056,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "1.1.1"
+version = "2.0.0-beta"
 dependencies = [
  "axum",
  "chrono",

@@ -10,8 +10,8 @@ use clap::Parser;
 use env_logger::{Builder, Env};
 use glob::glob;
 
-use ffplayout_lib::{
-    ClipResult, HlsVariant, OutputConfig, OutputSize, Playout, print_media_info,
+use ff_engine::{
+    ClipResult, HlsVariant, LogoConfig, OutputConfig, OutputSize, Playout, print_media_info,
     spawn_rtmp_listener,
 };
 
@@ -72,6 +72,26 @@ struct Args {
     #[arg(long, value_name = "WIDTH:HEIGHT")]
     size: Option<OutputSize>,
 
+    /// Audio volume multiplier.
+    #[arg(long, default_value_t = 1.0)]
+    volume: f64,
+
+    /// Logo image path to overlay on video.
+    #[arg(long, value_name = "PATH")]
+    logo: Option<String>,
+
+    /// Logo scale as WIDTH:HEIGHT. Use -1 to preserve aspect ratio.
+    #[arg(long, value_name = "WIDTH:HEIGHT")]
+    logo_scale: Option<String>,
+
+    /// Logo opacity from 0.0 to 1.0.
+    #[arg(long, default_value_t = 1.0)]
+    logo_opacity: f64,
+
+    /// Logo position expression, e.g. W-w-20:H-h-20.
+    #[arg(long, default_value = "W-w-20:H-h-20")]
+    logo_position: String,
+
     /// RTMP listen URL for live override, e.g. rtmp://0.0.0.0:1935/live/input
     #[arg(long, value_name = "URL")]
     rtmp_live: Option<String>,
@@ -123,6 +143,12 @@ fn main() -> Result<()> {
     if !args.seek.is_finite() || args.seek < 0.0 {
         return Err(anyhow!("--seek must be a non-negative number"));
     }
+    if !args.volume.is_finite() {
+        return Err(anyhow!("--volume must be finite"));
+    }
+    if !args.logo_opacity.is_finite() || !(0.0..=1.0).contains(&args.logo_opacity) {
+        return Err(anyhow!("--logo-opacity must be between 0.0 and 1.0"));
+    }
     if args.hls_vtt_subtitles && args.hls_variants.is_empty() {
         return Err(anyhow!(
             "--hls-vtt-subtitles requires at least one --hls-variant so subtitles can be linked from master.m3u8"
@@ -134,6 +160,13 @@ fn main() -> Result<()> {
         config.width = size.width;
         config.height = size.height;
     }
+    config.volume = args.volume;
+    config.logo = args.logo.clone().map(|path| LogoConfig {
+        path,
+        scale: args.logo_scale.clone(),
+        opacity: args.logo_opacity,
+        position: args.logo_position.clone(),
+    });
     let live_config = config.clone();
 
     let mut playout = if args.desktop() {

@@ -6,7 +6,10 @@ use ffmpeg_next::{
 };
 use log::debug;
 
-use crate::{output::FrameOutput, utils::config::OutputConfig};
+use crate::{
+    output::FrameOutput,
+    utils::config::{LogoConfig, OutputConfig},
+};
 
 #[derive(Clone, Copy)]
 pub(crate) struct Timeline {
@@ -33,9 +36,27 @@ pub(crate) fn play_clip<O: FrameOutput>(
     timeline: &mut Timeline,
     output: &mut O,
     seek_seconds: Option<f64>,
+    duration_seconds: Option<f64>,
 ) -> Result<()> {
     let ictx = format::input(path)?;
-    play_opened_input(path, ictx, cfg, timeline, output, seek_seconds, Some(path))
+    play_opened_input(
+        path,
+        ictx,
+        cfg,
+        timeline,
+        output,
+        InputPlaybackOptions {
+            seek_seconds,
+            duration_seconds,
+            subtitles_media_path: Some(path),
+        },
+    )
+}
+
+pub(crate) struct InputPlaybackOptions<'a> {
+    pub(crate) seek_seconds: Option<f64>,
+    pub(crate) duration_seconds: Option<f64>,
+    pub(crate) subtitles_media_path: Option<&'a str>,
 }
 
 pub(crate) fn play_opened_input<O: FrameOutput>(
@@ -44,9 +65,9 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     cfg: &OutputConfig,
     timeline: &mut Timeline,
     output: &mut O,
-    seek_seconds: Option<f64>,
-    subtitles_media_path: Option<&str>,
+    options: InputPlaybackOptions<'_>,
 ) -> Result<()> {
+    let seek_seconds = options.seek_seconds;
     let seek_us = seek_seconds.map(seconds_to_microseconds).unwrap_or(0);
     if let Some(seek_seconds) = seek_seconds {
         seek_input(&mut ictx, seek_seconds)?;
@@ -74,6 +95,18 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     let mut video_finished = video.is_none();
     let mut decoded_video_frames = 0_i64;
     let mut decoded_audio_samples = 0_i64;
+    let duration_us = options.duration_seconds.map(seconds_to_microseconds);
+    let video_limit_pts = duration_us.map(|duration_us| {
+        timeline.video_pts
+            + div_ceil(i128::from(duration_us) * i128::from(cfg.fps), 1_000_000) as i64
+    });
+    let audio_limit_pts = duration_us.map(|duration_us| {
+        timeline.audio_pts
+            + div_ceil(
+                i128::from(duration_us) * i128::from(cfg.sample_rate),
+                1_000_000,
+            ) as i64
+    });
 
     let video_end_pts = video_duration_us.map(|duration_us| {
         let duration_us = duration_us.saturating_sub(seek_us);
@@ -81,7 +114,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             + div_ceil(i128::from(duration_us) * i128::from(cfg.fps), 1_000_000) as i64
     });
     output.set_video_end(video_end_pts)?;
-    if let Some(media_path) = subtitles_media_path {
+    if let Some(media_path) = options.subtitles_media_path {
         output.write_vtt_subtitles(
             media_path,
             timeline.video_pts * 1_000 / i64::from(cfg.fps),
@@ -97,13 +130,31 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         if Some(stream.index()) == video_index {
             if !video_finished && let Some(video) = video.as_mut() {
                 video.decoder.send_packet(&packet)?;
-                receive_video_frames(video, timeline, output, &mut decoded_video_frames)?;
+                receive_video_frames(
+                    video,
+                    timeline,
+                    output,
+                    &mut decoded_video_frames,
+                    video_limit_pts,
+                )?;
             }
         } else if Some(stream.index()) == audio_index
             && let Some(audio) = audio.as_mut()
         {
             audio.decoder.send_packet(&packet)?;
-            receive_audio_frames(audio, timeline, output, &mut decoded_audio_samples)?;
+            receive_audio_frames(
+                audio,
+                timeline,
+                output,
+                &mut decoded_audio_samples,
+                audio_limit_pts,
+            )?;
+        }
+
+        if video_limit_pts.is_none_or(|limit| timeline.video_pts >= limit)
+            && audio_limit_pts.is_none_or(|limit| timeline.audio_pts >= limit)
+        {
+            break;
         }
     }
 
@@ -113,10 +164,17 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         output,
         &mut decoded_video_frames,
         &mut video_finished,
+        video_limit_pts,
     )?;
     if let Some(audio) = audio.as_mut() {
         audio.decoder.send_eof()?;
-        receive_audio_frames(audio, timeline, output, &mut decoded_audio_samples)?;
+        receive_audio_frames(
+            audio,
+            timeline,
+            output,
+            &mut decoded_audio_samples,
+            audio_limit_pts,
+        )?;
     }
 
     if decoded_video_frames == 0 && decoded_audio_samples == 0 {
@@ -149,6 +207,7 @@ fn finish_video<O: FrameOutput>(
     output: &mut O,
     decoded_frames: &mut i64,
     finished: &mut bool,
+    limit_pts: Option<i64>,
 ) -> Result<()> {
     if *finished {
         return Ok(());
@@ -156,7 +215,7 @@ fn finish_video<O: FrameOutput>(
 
     if let Some(video) = video.as_mut() {
         video.decoder.send_eof()?;
-        receive_video_frames(video, timeline, output, decoded_frames)?;
+        receive_video_frames(video, timeline, output, decoded_frames, limit_pts)?;
     }
     output.video_finished()?;
     *finished = true;
@@ -196,9 +255,14 @@ fn receive_video_frames<O: FrameOutput>(
     timeline: &mut Timeline,
     output: &mut O,
     decoded_frames: &mut i64,
+    limit_pts: Option<i64>,
 ) -> Result<()> {
     let mut raw = frame::Video::empty();
     while video.decoder.receive_frame(&mut raw).is_ok() {
+        if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
+            return Ok(());
+        }
+
         if is_before_trim_start(
             raw.timestamp().or_else(|| raw.pts()),
             video.frame_rate_converter.input_time_base,
@@ -231,7 +295,14 @@ fn receive_video_frames<O: FrameOutput>(
             None
         };
         for _ in 0..output_frames {
+            if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
+                return Ok(());
+            }
+
             let frame = padded.as_mut().unwrap_or(&mut scaled);
+            if let Some(logo) = &video.logo {
+                blend_logo(frame, logo);
+            }
             frame.set_pts(Some(timeline.video_pts));
             output.encode_video(frame)?;
             timeline.video_pts += 1;
@@ -246,9 +317,14 @@ fn receive_audio_frames<O: FrameOutput>(
     timeline: &mut Timeline,
     output: &mut O,
     decoded_samples: &mut i64,
+    limit_pts: Option<i64>,
 ) -> Result<()> {
     let mut raw = frame::Audio::empty();
     while audio.decoder.receive_frame(&mut raw).is_ok() {
+        if limit_pts.is_some_and(|limit| timeline.audio_pts >= limit) {
+            return Ok(());
+        }
+
         if is_before_trim_start(
             raw.timestamp().or_else(|| raw.pts()),
             audio.input_time_base,
@@ -259,6 +335,7 @@ fn receive_audio_frames<O: FrameOutput>(
 
         let mut converted = frame::Audio::empty();
         audio.resampler.run(&raw, &mut converted)?;
+        apply_volume(&mut converted, audio.volume);
         let samples = converted.samples() as i64;
         converted.set_pts(Some(timeline.audio_pts));
         output.encode_audio(&converted)?;
@@ -292,6 +369,7 @@ struct VideoDecoder {
     scaled_height: u32,
     x_offset: u32,
     y_offset: u32,
+    logo: Option<LogoOverlay>,
     frame_rate_converter: FrameRateConverter,
     trim_start_us: Option<i64>,
 }
@@ -326,6 +404,11 @@ impl VideoDecoder {
             scaled_height: scale.scaled_height,
             x_offset: scale.x_offset,
             y_offset: scale.y_offset,
+            logo: cfg
+                .logo
+                .as_ref()
+                .map(|logo| LogoOverlay::load(logo, cfg.width, cfg.height))
+                .transpose()?,
             frame_rate_converter: FrameRateConverter::new(stream.time_base(), cfg.fps),
             trim_start_us,
         })
@@ -336,6 +419,286 @@ impl VideoDecoder {
             || self.scaled_height != self.output_height
             || self.x_offset != 0
             || self.y_offset != 0
+    }
+}
+
+struct LogoOverlay {
+    frame: frame::Video,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    opacity: f64,
+}
+
+impl LogoOverlay {
+    fn load(config: &LogoConfig, output_width: u32, output_height: u32) -> Result<Self> {
+        if !(0.0..=1.0).contains(&config.opacity) || !config.opacity.is_finite() {
+            return Err(anyhow!("logo opacity must be between 0.0 and 1.0"));
+        }
+
+        let mut ictx = format::input(&config.path)
+            .with_context(|| format!("failed to open logo {}", config.path))?;
+        let stream = ictx
+            .streams()
+            .best(media::Type::Video)
+            .ok_or_else(|| anyhow!("logo {} contains no video/image stream", config.path))?;
+        let stream_index = stream.index();
+        let ctx = codec::context::Context::from_parameters(stream.parameters())?;
+        let mut decoder = ctx.decoder().video()?;
+        let input_width = decoder.width();
+        let input_height = decoder.height();
+        let (width, height) = logo_dimensions(
+            config.scale.as_deref(),
+            input_width,
+            input_height,
+            output_width,
+            output_height,
+        )?;
+        let mut scaler = scaling::Context::get(
+            decoder.format(),
+            input_width,
+            input_height,
+            Pixel::RGBA,
+            width,
+            height,
+            scaling::flag::Flags::BILINEAR,
+        )?;
+
+        let mut decoded = frame::Video::empty();
+        let mut rgba = None;
+        for (packet_stream, packet) in ictx.packets() {
+            if packet_stream.index() != stream_index {
+                continue;
+            }
+            decoder.send_packet(&packet)?;
+            if decoder.receive_frame(&mut decoded).is_ok() {
+                let mut scaled = frame::Video::empty();
+                scaler.run(&decoded, &mut scaled)?;
+                rgba = Some(scaled);
+            }
+            if rgba.is_some() {
+                break;
+            }
+        }
+        if rgba.is_none() {
+            decoder.send_eof()?;
+            if decoder.receive_frame(&mut decoded).is_ok() {
+                let mut scaled = frame::Video::empty();
+                scaler.run(&decoded, &mut scaled)?;
+                rgba = Some(scaled);
+            }
+        }
+        let frame = rgba.ok_or_else(|| anyhow!("logo {} produced no frame", config.path))?;
+        let (x, y) = logo_position(&config.position, output_width, output_height, width, height)?;
+
+        Ok(Self {
+            frame,
+            x,
+            y,
+            width,
+            height,
+            opacity: config.opacity,
+        })
+    }
+}
+
+fn logo_dimensions(
+    scale: Option<&str>,
+    input_width: u32,
+    input_height: u32,
+    output_width: u32,
+    output_height: u32,
+) -> Result<(u32, u32)> {
+    let Some(scale) = scale.filter(|scale| !scale.trim().is_empty()) else {
+        return Ok((even(input_width).max(2), even(input_height).max(2)));
+    };
+    let (width, height) = scale
+        .split_once(':')
+        .or_else(|| scale.split_once('x'))
+        .ok_or_else(|| anyhow!("logo scale must use WIDTH:HEIGHT or WIDTHxHEIGHT"))?;
+    let width = parse_logo_dimension(width, input_width, output_width)?;
+    let height = parse_logo_dimension(height, input_height, output_height)?;
+
+    let (width, height) = match (width, height) {
+        (Some(width), Some(height)) => (width, height),
+        (Some(width), None) => (
+            width,
+            ((u64::from(width) * u64::from(input_height)) / u64::from(input_width)) as u32,
+        ),
+        (None, Some(height)) => (
+            ((u64::from(height) * u64::from(input_width)) / u64::from(input_height)) as u32,
+            height,
+        ),
+        (None, None) => (input_width, input_height),
+    };
+
+    Ok((even(width).max(2), even(height).max(2)))
+}
+
+fn parse_logo_dimension(value: &str, input: u32, output: u32) -> Result<Option<u32>> {
+    let value = value.trim();
+    if value == "-1" {
+        return Ok(None);
+    }
+    if value == "iw" || value == "ih" {
+        return Ok(Some(input));
+    }
+    if value == "W" || value == "H" || value == "main_w" || value == "main_h" {
+        return Ok(Some(output));
+    }
+    value
+        .parse::<u32>()
+        .map(Some)
+        .map_err(|_| anyhow!("unsupported logo scale expression {value:?}"))
+}
+
+fn logo_position(
+    position: &str,
+    output_width: u32,
+    output_height: u32,
+    logo_width: u32,
+    logo_height: u32,
+) -> Result<(u32, u32)> {
+    let (x, y) = position
+        .split_once(':')
+        .ok_or_else(|| anyhow!("logo position must use X:Y"))?;
+    let x = eval_position_expr(x, output_width, logo_width)?;
+    let y = eval_position_expr(y, output_height, logo_height)?;
+    Ok((
+        x.clamp(0, i64::from(output_width.saturating_sub(logo_width))) as u32,
+        y.clamp(0, i64::from(output_height.saturating_sub(logo_height))) as u32,
+    ))
+}
+
+fn eval_position_expr(expr: &str, main: u32, overlay: u32) -> Result<i64> {
+    let normalized = expr
+        .replace("main_w", "M")
+        .replace("main_h", "M")
+        .replace("overlay_w", "O")
+        .replace("overlay_h", "O")
+        .replace(['W', 'H'], "M")
+        .replace(['w', 'h'], "O")
+        .replace('-', "+-");
+    let mut total = 0_i64;
+    for part in normalized.split('+') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let (sign, part) = part
+            .strip_prefix('-')
+            .map_or((1_i64, part), |part| (-1_i64, part));
+        let value = match part {
+            "M" => i64::from(main),
+            "O" => i64::from(overlay),
+            _ => part
+                .parse::<i64>()
+                .map_err(|_| anyhow!("unsupported logo position expression {expr:?}"))?,
+        };
+        total += sign * value;
+    }
+    Ok(total)
+}
+
+fn blend_logo(target: &mut frame::Video, logo: &LogoOverlay) {
+    let logo_data = logo.frame.data(0);
+    let logo_stride = logo.frame.stride(0);
+    let target_y_stride = target.stride(0);
+    let target_u_stride = target.stride(1);
+    let target_v_stride = target.stride(2);
+    let target_y_len = target.data(0).len();
+    let target_u_len = target.data(1).len();
+    let target_v_len = target.data(2).len();
+
+    for y in 0..logo.height as usize {
+        for x in 0..logo.width as usize {
+            let logo_index = y * logo_stride + x * 4;
+            if logo_index + 3 >= logo_data.len() {
+                continue;
+            }
+            let alpha = (f64::from(logo_data[logo_index + 3]) / 255.0) * logo.opacity;
+            if alpha <= 0.0 {
+                continue;
+            }
+
+            let target_x = logo.x as usize + x;
+            let target_y = logo.y as usize + y;
+            let y_index = target_y * target_y_stride + target_x;
+            if y_index >= target_y_len {
+                continue;
+            }
+
+            let uv_x = target_x / 2;
+            let uv_y = target_y / 2;
+            let u_index = uv_y * target_u_stride + uv_x;
+            let v_index = uv_y * target_v_stride + uv_x;
+            if u_index >= target_u_len || v_index >= target_v_len {
+                continue;
+            }
+
+            let source_rgb = (
+                f64::from(logo_data[logo_index]),
+                f64::from(logo_data[logo_index + 1]),
+                f64::from(logo_data[logo_index + 2]),
+            );
+            let target_rgb = yuv_to_rgb(
+                target.data(0)[y_index],
+                target.data(1)[u_index],
+                target.data(2)[v_index],
+            );
+            let blended = (
+                target_rgb.0 * (1.0 - alpha) + source_rgb.0 * alpha,
+                target_rgb.1 * (1.0 - alpha) + source_rgb.1 * alpha,
+                target_rgb.2 * (1.0 - alpha) + source_rgb.2 * alpha,
+            );
+            let (new_y, new_u, new_v) = rgb_to_yuv(blended);
+
+            target.data_mut(0)[y_index] = new_y;
+            target.data_mut(1)[u_index] = new_u;
+            target.data_mut(2)[v_index] = new_v;
+        }
+    }
+}
+
+fn yuv_to_rgb(y: u8, u: u8, v: u8) -> (f64, f64, f64) {
+    let y = f64::from(y) - 16.0;
+    let u = f64::from(u) - 128.0;
+    let v = f64::from(v) - 128.0;
+    (
+        (1.164 * y + 1.596 * v).clamp(0.0, 255.0),
+        (1.164 * y - 0.392 * u - 0.813 * v).clamp(0.0, 255.0),
+        (1.164 * y + 2.017 * u).clamp(0.0, 255.0),
+    )
+}
+
+fn rgb_to_yuv((r, g, b): (f64, f64, f64)) -> (u8, u8, u8) {
+    (
+        (16.0 + 0.257 * r + 0.504 * g + 0.098 * b)
+            .round()
+            .clamp(0.0, 255.0) as u8,
+        (128.0 - 0.148 * r - 0.291 * g + 0.439 * b)
+            .round()
+            .clamp(0.0, 255.0) as u8,
+        (128.0 + 0.439 * r - 0.368 * g - 0.071 * b)
+            .round()
+            .clamp(0.0, 255.0) as u8,
+    )
+}
+
+fn apply_volume(frame: &mut frame::Audio, volume: f64) {
+    if (volume - 1.0).abs() <= f64::EPSILON {
+        return;
+    }
+    let volume = volume as f32;
+    for plane in 0..frame.planes() {
+        for sample in frame.plane_mut::<f32>(plane) {
+            *sample = if sample.is_finite() {
+                *sample * volume
+            } else {
+                0.0
+            };
+        }
     }
 }
 
@@ -429,6 +792,7 @@ struct AudioDecoder {
     resampler: resampling::Context,
     input_time_base: Rational,
     trim_start_us: Option<i64>,
+    volume: f64,
 }
 
 impl AudioDecoder {
@@ -452,6 +816,7 @@ impl AudioDecoder {
             resampler,
             input_time_base: stream.time_base(),
             trim_start_us,
+            volume: cfg.volume,
         })
     }
 }

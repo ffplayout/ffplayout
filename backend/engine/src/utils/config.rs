@@ -91,18 +91,46 @@ pub struct OutputConfig {
     pub sample_rate: u32,
     pub video_time_base: Rational,
     pub audio_time_base: Rational,
+    pub volume: f64,
+    pub logo: Option<LogoConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogoConfig {
+    pub path: String,
+    pub scale: Option<String>,
+    pub opacity: f64,
+    pub position: String,
+}
+
+impl OutputConfig {
+    pub fn new(width: u32, height: u32, fps: u32, sample_rate: u32) -> Self {
+        Self {
+            width,
+            height,
+            fps,
+            sample_rate,
+            video_time_base: Rational(1, fps as i32),
+            audio_time_base: Rational(1, sample_rate as i32),
+            volume: 1.0,
+            logo: None,
+        }
+    }
+
+    pub fn with_volume(mut self, volume: f64) -> Self {
+        self.volume = volume;
+        self
+    }
+
+    pub fn with_logo(mut self, logo: Option<LogoConfig>) -> Self {
+        self.logo = logo;
+        self
+    }
 }
 
 impl Default for OutputConfig {
     fn default() -> Self {
-        Self {
-            width: 1024,
-            height: 576,
-            fps: 25,
-            sample_rate: 48_000,
-            video_time_base: Rational(1, 25),
-            audio_time_base: Rational(1, 48_000),
-        }
+        Self::new(1024, 576, 25, 48_000)
     }
 }
 
