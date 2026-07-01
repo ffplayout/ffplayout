@@ -38,6 +38,10 @@ pub(crate) fn play_clip<O: FrameOutput>(
     seek_seconds: Option<f64>,
     duration_seconds: Option<f64>,
 ) -> Result<()> {
+    if let Some(duration_seconds) = duration_seconds.filter(|duration| *duration > 0.0) {
+        return play_looped_clip(path, cfg, timeline, output, seek_seconds, duration_seconds);
+    }
+
     let ictx = format::input(path)?;
     play_opened_input(
         path,
@@ -51,6 +55,75 @@ pub(crate) fn play_clip<O: FrameOutput>(
             subtitles_media_path: Some(path),
         },
     )
+}
+
+fn play_looped_clip<O: FrameOutput>(
+    path: &str,
+    cfg: &OutputConfig,
+    timeline: &mut Timeline,
+    output: &mut O,
+    seek_seconds: Option<f64>,
+    duration_seconds: f64,
+) -> Result<()> {
+    if !duration_seconds.is_finite() {
+        return Err(anyhow!("clip duration must be a finite number"));
+    }
+
+    let mut remaining = duration_seconds;
+    let mut first_iteration = true;
+    let mut iterations = 0_u32;
+    let minimum_progress = (1.0 / f64::from(cfg.fps)).min(1.0 / f64::from(cfg.sample_rate));
+
+    while remaining > minimum_progress {
+        let before_video_pts = timeline.video_pts;
+        let before_audio_pts = timeline.audio_pts;
+        let ictx = format::input(path)?;
+        play_opened_input(
+            path,
+            ictx,
+            cfg,
+            timeline,
+            output,
+            InputPlaybackOptions {
+                seek_seconds: first_iteration.then_some(seek_seconds).flatten(),
+                duration_seconds: Some(remaining),
+                subtitles_media_path: first_iteration.then_some(path),
+            },
+        )?;
+
+        let elapsed = elapsed_timeline_seconds(cfg, timeline, before_video_pts, before_audio_pts);
+        if elapsed <= minimum_progress {
+            return Err(anyhow!(
+                "{path} did not advance the playout timeline while looping to the requested duration"
+            ));
+        }
+
+        remaining -= elapsed;
+        first_iteration = false;
+        iterations += 1;
+
+        if remaining > minimum_progress {
+            debug!(
+                "looping {path} to fill requested duration; iteration {iterations}, remaining {:.6} s",
+                remaining
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn elapsed_timeline_seconds(
+    cfg: &OutputConfig,
+    timeline: &Timeline,
+    before_video_pts: i64,
+    before_audio_pts: i64,
+) -> f64 {
+    let video_elapsed = (timeline.video_pts - before_video_pts).max(0) as f64 / f64::from(cfg.fps);
+    let audio_elapsed =
+        (timeline.audio_pts - before_audio_pts).max(0) as f64 / f64::from(cfg.sample_rate);
+
+    video_elapsed.max(audio_elapsed)
 }
 
 pub(crate) struct InputPlaybackOptions<'a> {
@@ -217,9 +290,55 @@ fn finish_video<O: FrameOutput>(
         video.decoder.send_eof()?;
         receive_video_frames(video, timeline, output, decoded_frames, limit_pts)?;
     }
+    repeat_single_video_frame_to_limit(video, timeline, output, decoded_frames, limit_pts)?;
     output.video_finished()?;
     *finished = true;
     Ok(())
+}
+
+fn repeat_single_video_frame_to_limit<O: FrameOutput>(
+    video: &mut Option<VideoDecoder>,
+    timeline: &mut Timeline,
+    output: &mut O,
+    decoded_frames: &mut i64,
+    limit_pts: Option<i64>,
+) -> Result<()> {
+    let Some(limit_pts) = limit_pts else {
+        return Ok(());
+    };
+    let Some(video) = video.as_mut() else {
+        return Ok(());
+    };
+    let repeat_frames = single_frame_repeat_frames(*decoded_frames, timeline.video_pts, limit_pts);
+    if repeat_frames == 0 {
+        return Ok(());
+    }
+    let Some(frame) = video.last_output_frame.clone() else {
+        return Ok(());
+    };
+
+    debug!(
+        "holding single decoded video frame for {repeat_frames} frame(s) ({:.6} s)",
+        repeat_frames as f64 / f64::from(video.output_fps)
+    );
+
+    while timeline.video_pts < limit_pts {
+        let mut frame = frame.clone();
+        frame.set_pts(Some(timeline.video_pts));
+        output.encode_video(&frame)?;
+        timeline.video_pts += 1;
+        *decoded_frames += 1;
+    }
+
+    Ok(())
+}
+
+fn single_frame_repeat_frames(decoded_frames: i64, video_pts: i64, limit_pts: i64) -> i64 {
+    if decoded_frames == 1 && video_pts < limit_pts {
+        limit_pts - video_pts
+    } else {
+        0
+    }
 }
 
 fn stream_duration_us(stream: &format::stream::Stream) -> Option<i64> {
@@ -304,6 +423,7 @@ fn receive_video_frames<O: FrameOutput>(
                 blend_logo(frame, logo);
             }
             frame.set_pts(Some(timeline.video_pts));
+            video.last_output_frame = Some(frame.clone());
             output.encode_video(frame)?;
             timeline.video_pts += 1;
             *decoded_frames += 1;
@@ -371,7 +491,9 @@ struct VideoDecoder {
     y_offset: u32,
     logo: Option<LogoOverlay>,
     frame_rate_converter: FrameRateConverter,
+    output_fps: u32,
     trim_start_us: Option<i64>,
+    last_output_frame: Option<frame::Video>,
 }
 
 impl VideoDecoder {
@@ -410,7 +532,9 @@ impl VideoDecoder {
                 .map(|logo| LogoOverlay::load(logo, cfg.width, cfg.height))
                 .transpose()?,
             frame_rate_converter: FrameRateConverter::new(stream.time_base(), cfg.fps),
+            output_fps: cfg.fps,
             trim_start_us,
+            last_output_frame: None,
         })
     }
 
@@ -1029,7 +1153,10 @@ fn write_silence<O: FrameOutput>(
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameRateConverter, Rational, fit_dimensions, padding_to_sync, parse_duration_us};
+    use super::{
+        FrameRateConverter, Rational, fit_dimensions, padding_to_sync, parse_duration_us,
+        single_frame_repeat_frames,
+    };
 
     #[test]
     fn pads_short_audio_to_video_duration() {
@@ -1039,6 +1166,13 @@ mod tests {
     #[test]
     fn pads_short_video_to_audio_duration() {
         assert_eq!(padding_to_sync(49, 96_000, 25, 48_000).unwrap(), (1, 0));
+    }
+
+    #[test]
+    fn repeats_single_decoded_video_frame_until_requested_duration() {
+        assert_eq!(single_frame_repeat_frames(1, 1, 250), 249);
+        assert_eq!(single_frame_repeat_frames(2, 2, 250), 0);
+        assert_eq!(single_frame_repeat_frames(1, 250, 250), 0);
     }
 
     #[test]

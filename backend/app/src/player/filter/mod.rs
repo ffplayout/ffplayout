@@ -41,7 +41,6 @@ const HW_FILTER_POSTFIX: &[&str; 6] = &["_cuda", "_npp", "_opencl", "_vaapi", "_
 
 #[derive(Debug, Clone)]
 pub struct Filters {
-    unit: ProcessUnit,
     hw_context: bool,
     a_chain: Vec<String>,
     v_chain: Vec<String>,
@@ -61,7 +60,7 @@ pub struct Filters {
 }
 
 impl Filters {
-    pub fn new(config: PlayoutConfig, unit: ProcessUnit, audio_position: i32) -> Self {
+    pub fn new(config: PlayoutConfig, _unit: ProcessUnit, audio_position: i32) -> Self {
         let hw = config
             .advanced
             .decoder
@@ -70,7 +69,6 @@ impl Filters {
             .is_some_and(|i| i.contains("-hw"));
 
         Self {
-            unit,
             hw_context: hw,
             a_chain: vec![],
             v_chain: vec![],
@@ -243,22 +241,7 @@ impl Filters {
     }
 
     pub fn map(&mut self) -> Vec<String> {
-        if (!self.output_chain.is_empty() && self.config.processing.override_filter)
-            || (self
-                .config
-                .output
-                .output_cmd
-                .as_ref()
-                .is_some_and(|p| p.iter().filter(|&n| *n == "-map").count() > 1)
-                && self.config.output.mode == HLS)
-            || (self
-                .config
-                .output
-                .output_cmd
-                .as_ref()
-                .is_some_and(|p| p.iter().filter(|&n| *n == "-map").count() > 1)
-                && self.unit == Encoder)
-        {
+        if !self.output_chain.is_empty() && self.config.processing.override_filter {
             return vec![];
         }
 
@@ -629,37 +612,13 @@ fn audio_volume(config: &PlayoutConfig, chain: &mut Filters, nr: i32) {
     }
 }
 
-pub fn split_filter(config: &PlayoutConfig, chain: &mut Filters, nr: i32, filter_type: FilterType) {
-    let count = config.output.output_count;
-
-    if count > 1 {
-        let out_link = match filter_type {
-            Audio => &mut chain.audio_out_link,
-            Video => &mut chain.video_out_link,
-        };
-
-        for i in 0..count {
-            let link = format!("[{filter_type}out_{nr}_{i}]");
-            if !out_link.contains(&link) {
-                out_link.push(link);
-            }
-        }
-
-        let split = match config.advanced.filter.split.clone() {
-            Some(split) => custom_format(&split, &[count.to_string(), out_link.join("")]),
-            None => format!("split={count}{}", out_link.join("")),
-        };
-
-        chain.add(&split, nr, filter_type);
-    }
-}
-
 /// Process output filter chain and add new filters to existing ones.
+#[allow(dead_code)]
 fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, output_filter: &str) {
     let re_v = Regex::new(r"\[[0:]+[v^\[]+([:0]+)?\]").unwrap(); // match video filter input link
     let re_a = Regex::new(r"\[[0:]+[a^\[]+([:0-9]+)?\]").unwrap(); // match audio filter input link
-    let re_split = Regex::new(r"\[\d+:a(?::\d+)?\]").unwrap(); // match audio selector for split
     let re_a_out = Regex::new(r"\[aout[0-9]+\];?").unwrap(); // match audio output link
+    let re_split = Regex::new(r"\[\d+:a(?::\d+)?\]").unwrap();
     let mut v_filter_full = String::new();
     let mut v_filter = String::new();
     let mut a_filter_full = String::new();
@@ -733,19 +692,9 @@ pub async fn filter_chains(
         return filters;
     }
 
-    if node.source.contains("color=c=") {
-        filters.audio_position = 1;
-    }
-
     if node.unit == Encoder {
         if !config.processing.audio_only {
             add_text(config, &mut filters, node, filter_chain).await;
-        }
-
-        if let Some(f) = config.output.output_filter.clone() {
-            process_output_filters(config, &mut filters, &f);
-        } else if config.output.output_count > 1 && !config.processing.audio_only {
-            split_filter(config, &mut filters, 0, Video);
         }
 
         filters.build();
@@ -815,7 +764,7 @@ pub async fn filter_chains(
                 || Path::new(&node.audio).is_file()
             {
                 extend_audio(config, &mut filters, node, i);
-            } else if node.unit == Decoder && !node.source.contains("color=c=") {
+            } else if node.unit == Decoder {
                 error!(target: Target::file_mail(), channel = config.general.channel_id;
                     "Missing audio track (id {i}) from <span class=\"log-addr\">{}</span>",
                     node.source
@@ -836,12 +785,6 @@ pub async fn filter_chains(
         }
     } else if config.processing.audio_track_index > -1 {
         error!(target: Target::file_mail(), channel = config.general.channel_id; "Setting 'audio_track_index' other than '-1' is not allowed in audio copy mode!");
-    }
-
-    if config.output.mode == HLS
-        && let Some(f) = config.output.output_filter.clone()
-    {
-        process_output_filters(config, &mut filters, &f);
     }
 
     filters.build();

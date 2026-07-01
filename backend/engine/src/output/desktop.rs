@@ -203,6 +203,7 @@ impl DesktopRenderer {
         // default (Ctrl-C terminates the process), matching the behavior of
         // the other output modes, which don't use SDL at all.
         sdl2::hint::set("SDL_NO_SIGNAL_HANDLERS", "1");
+        sdl2::hint::set("SDL_VIDEO_WAYLAND_PREFER_LIBDECOR", "0");
         let sdl = sdl2::init().map_err(anyhow::Error::msg)?;
         let video = sdl.video().map_err(anyhow::Error::msg)?;
         let audio_subsystem = sdl.audio().map_err(anyhow::Error::msg)?;

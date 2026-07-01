@@ -1,0 +1,14 @@
+services:
+    build:
+        build:
+            context: ../..
+            dockerfile: docker/builder/Dockerfile
+        image: ffplayout-builder:trixie-unstable-ffmpeg
+        volumes:
+            - ../../target/docker:/artifacts
+            - cargo-registry:/usr/local/cargo/registry
+            - cargo-git:/usr/local/cargo/git
+
+volumes:
+    cargo-registry:
+    cargo-git:

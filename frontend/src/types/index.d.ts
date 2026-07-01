@@ -23,7 +23,11 @@ declare global {
     interface PlayoutOutput {
         id: number
         name: string
-        parameters: string
+        hls_variants: string
+        stream_url: string
+        hls_playlist_path: string | null
+        hls_segment_duration: number | null
+        hls_list_size: number | null
         channel_id: number
     }
 

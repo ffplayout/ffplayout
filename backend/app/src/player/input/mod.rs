@@ -1,10 +1,8 @@
 use log::*;
 
 pub mod folder;
-pub mod ingest;
 pub mod playlist;
 
-pub use ingest::ingest_server;
 pub use playlist::CurrentProgram;
 
 use crate::{

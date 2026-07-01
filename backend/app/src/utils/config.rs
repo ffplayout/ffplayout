@@ -7,7 +7,6 @@ use std::{
 use chrono::NaiveTime;
 use chrono_tz::Tz;
 use flexi_logger::Level;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use shlex::split;
 use sqlx::{Pool, Sqlite};
@@ -18,17 +17,11 @@ use crate::{
     ARGS, AdvancedConfig,
     db::{handles, models},
     file::norm_abs_path,
-    player::utils::validate_ffmpeg,
     utils::{errors::ServiceError, gen_tcp_socket, time_to_sec},
     vec_strings,
 };
 
 pub const DUMMY_LEN: f64 = 60.0;
-pub const IMAGE_FORMAT: [&str; 21] = [
-    "bmp", "dds", "dpx", "exr", "gif", "hdr", "j2k", "jpg", "jpeg", "pcx", "pfm", "pgm", "phm",
-    "png", "psd", "ppm", "sgi", "svg", "tga", "tif", "webp",
-];
-
 // Some well known errors can be safely ignore
 pub const FFMPEG_IGNORE_ERRORS: [&str; 15] = [
     "ac-tex damaged",
@@ -551,16 +544,33 @@ impl Task {
 pub struct Output {
     pub id: i32,
     pub mode: OutputMode,
-    pub output_param: String,
-    #[ts(skip)]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub output_count: usize,
-    #[ts(skip)]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub output_filter: Option<String>,
-    #[ts(skip)]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub output_cmd: Option<Vec<String>>,
+    #[serde(default)]
+    pub stream_url: String,
+    #[serde(default = "default_hls_playlist_path")]
+    pub hls_playlist_path: String,
+    #[serde(default = "default_hls_segment_duration")]
+    pub hls_segment_duration: u32,
+    #[serde(default = "default_hls_list_size")]
+    pub hls_list_size: u32,
+    /// Adaptive HLS renditions, one per entry, each formatted as
+    /// `NAME:WIDTHxHEIGHT:VIDEO_BITRATE[:AUDIO_BITRATE]` (e.g.
+    /// `high:1920x1080:5000k:192k`). Only relevant when `mode == HLS`; an
+    /// empty vector means "single, implicit stream" (no master playlist
+    /// unless VTT subtitles are enabled).
+    #[serde(default)]
+    pub hls_variants: Vec<String>,
+}
+
+fn default_hls_playlist_path() -> String {
+    "live/stream.m3u8".to_string()
+}
+
+const fn default_hls_segment_duration() -> u32 {
+    6
+}
+
+const fn default_hls_list_size() -> u32 {
+    600
 }
 
 impl Output {
@@ -574,11 +584,58 @@ impl Output {
         Self {
             id: output.id,
             mode: OutputMode::new(&output.name),
-            output_param: output.parameters.clone(),
-            output_count: 0,
-            output_filter: None,
-            output_cmd: None,
+            stream_url: output.stream_url,
+            hls_playlist_path: output
+                .hls_playlist_path
+                .unwrap_or_else(default_hls_playlist_path),
+            hls_segment_duration: output
+                .hls_segment_duration
+                .and_then(|value| u32::try_from(value).ok())
+                .unwrap_or_else(default_hls_segment_duration),
+            hls_list_size: output
+                .hls_list_size
+                .and_then(|value| u32::try_from(value).ok())
+                .unwrap_or_else(default_hls_list_size),
+            hls_variants: output
+                .hls_variants
+                .split(';')
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(str::to_string)
+                .collect(),
         }
+    }
+
+    /// Parses `hls_variants` into engine-ready [`ff_engine::HlsVariant`]s,
+    /// returning a descriptive error for the offending entry on failure.
+    pub fn parsed_hls_variants(&self) -> Result<Vec<ff_engine::HlsVariant>, String> {
+        self.hls_variants
+            .iter()
+            .map(|spec| {
+                spec.parse::<ff_engine::HlsVariant>()
+                    .map_err(|e| format!("invalid HLS variant \"{spec}\": {e}"))
+            })
+            .collect()
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        match self.mode {
+            OutputMode::HLS => {
+                if self.hls_playlist_path.trim().is_empty() {
+                    return Err("HLS playlist path must not be empty".to_string());
+                }
+                if self.hls_segment_duration == 0 {
+                    return Err("HLS segment duration must be greater than zero".to_string());
+                }
+                self.parsed_hls_variants()?;
+            }
+            OutputMode::Stream if self.stream_url.trim().is_empty() => {
+                return Err("stream output URL must not be empty".to_string());
+            }
+            _ => {}
+        }
+
+        Ok(())
     }
 }
 
@@ -640,7 +697,7 @@ impl PlayoutConfig {
         let mut playlist = Playlist::new(&config);
         let mut text = Text::new(&config);
         let task = Task::new(&config);
-        let mut output = Output::new(&config, outputs);
+        let output = Output::new(&config, outputs);
         let mut storage = Storage::new(&config, channel.storage.clone(), channel.shared);
 
         if !channel.playlists.is_dir() {
@@ -726,87 +783,6 @@ impl PlayoutConfig {
         processing.cmd = Some(process_cmd);
 
         ingest.input_cmd = split(ingest.input_param.as_str());
-
-        output.output_count = 1;
-        output.output_filter = None;
-
-        if output.mode == OutputMode::Null {
-            output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
-        } else if let Some(mut cmd) = split(output.output_param.as_str()) {
-            // get output count according to the var_stream_map value, or by counting output parameters
-            if let Some(i) = cmd.clone().iter().position(|m| m == "-var_stream_map") {
-                output.output_count = cmd[i + 1].split_whitespace().count();
-            } else {
-                output.output_count = cmd
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, p)| i > &0 && !p.starts_with('-') && !cmd[i - 1].starts_with('-'))
-                    .count();
-            }
-
-            if let Some(i) = cmd.clone().iter().position(|r| r == "-filter_complex") {
-                output.output_filter = Some(cmd[i + 1].clone());
-                cmd.remove(i);
-                cmd.remove(i);
-            }
-
-            let is_tee_muxer = cmd.contains(&"tee".to_string());
-            let re_ts = Regex::new(r"filename=(\S+?\.ts)").unwrap();
-            let re_m3 = Regex::new(r"\](\S+?\.m3u8)").unwrap();
-
-            for item in &mut cmd {
-                if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
-                    if is_tee_muxer {
-                        // Processes the `item` string to replace `.ts` and `.m3u8` filenames with their absolute paths.
-                        // Ensures that the corresponding directories exist.
-                        //
-                        // - Uses regular expressions to identify `.ts` and `.m3u8` filenames within the `item` string.
-                        // - For each identified filename, normalizes its path and checks if the parent directory exists.
-                        // - Creates the parent directory if it does not exist.
-                        // - Replaces the original filename in the `item` string with the normalized absolute path.
-
-                        for s in item.clone().split('|') {
-                            if let Some(ts) = re_ts.captures(s).and_then(|p| p.get(1)) {
-                                let (segment_path, _, _) =
-                                    norm_abs_path(&channel.public, ts.as_str())?;
-                                let parent = segment_path.parent().ok_or("HLS parent path")?;
-
-                                if !parent.is_dir() {
-                                    fs::create_dir_all(parent).await?;
-                                }
-
-                                item.clone_from(
-                                    &item.replace(ts.as_str(), &segment_path.to_string_lossy()),
-                                );
-                            }
-
-                            if let Some(m3) = re_m3.captures(s).and_then(|p| p.get(1)) {
-                                let (m3u8_path, _, _) =
-                                    norm_abs_path(&channel.public, m3.as_str())?;
-                                let parent = m3u8_path.parent().ok_or("HLS parent path")?;
-
-                                if !parent.is_dir() {
-                                    fs::create_dir_all(parent).await?;
-                                }
-
-                                item.clone_from(
-                                    &item.replace(m3.as_str(), &m3u8_path.to_string_lossy()),
-                                );
-                            }
-                        }
-                    } else if let Ok((public, _, _)) = norm_abs_path(&channel.public, item) {
-                        let parent = public.parent().ok_or("HLS parent path")?;
-
-                        if !parent.is_dir() {
-                            fs::create_dir_all(parent).await?;
-                        }
-                        item.clone_from(&public.to_string_lossy().to_string());
-                    };
-                }
-            }
-
-            output.output_cmd = Some(cmd);
-        }
 
         // when text overlay without text_from_filename is on, turn also the RPC server on,
         // to get text messages from it
@@ -918,8 +894,6 @@ pub async fn get_config(
 
     let mut config = PlayoutConfig::new(pool, channel_id, output_id).await?;
 
-    validate_ffmpeg(&mut config).await?;
-
     config.general.generate = args.generate;
     config.general.validate = args.validate;
     config.general.skip_validation = args.skip_validation;
@@ -973,12 +947,6 @@ pub async fn get_config(
 
     if let Some(output) = args.output {
         config.output.mode = output;
-
-        if config.output.mode == OutputMode::Null {
-            config.output.output_count = 1;
-            config.output.output_filter = None;
-            config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
-        }
     }
 
     if let Some(volume) = args.volume {
@@ -1006,4 +974,49 @@ pub async fn get_config(
     }
 
     Ok(config)
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::{Output, OutputMode};
+
+    fn output(mode: OutputMode) -> Output {
+        Output {
+            id: 1,
+            mode,
+            stream_url: "rtmp://localhost/live/test".to_string(),
+            hls_playlist_path: "live/stream.m3u8".to_string(),
+            hls_segment_duration: 6,
+            hls_list_size: 600,
+            hls_variants: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn validates_structured_output_settings() {
+        assert!(output(OutputMode::HLS).validate().is_ok());
+        assert!(output(OutputMode::Stream).validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_zero_hls_segment_duration() {
+        let mut output = output(OutputMode::HLS);
+        output.hls_segment_duration = 0;
+        assert_eq!(
+            output.validate().unwrap_err(),
+            "HLS segment duration must be greater than zero"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_hls_variant() {
+        let mut output = output(OutputMode::HLS);
+        output.hls_variants = vec!["invalid".to_string()];
+        assert!(
+            output
+                .validate()
+                .unwrap_err()
+                .contains("invalid HLS variant")
+        );
+    }
 }

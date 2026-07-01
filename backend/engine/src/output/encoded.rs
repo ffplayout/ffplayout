@@ -36,6 +36,8 @@ pub(super) enum EncodedFormat {
     Hls {
         variants: Vec<HlsVariant>,
         vtt_subtitles: bool,
+        segment_seconds: u32,
+        list_size: u32,
     },
 }
 
@@ -152,10 +154,14 @@ impl EncodedOutput {
 
         match output_format {
             EncodedFormat::Auto | EncodedFormat::Null => octx.write_header()?,
-            EncodedFormat::Hls { .. } => {
+            EncodedFormat::Hls {
+                segment_seconds,
+                list_size,
+                ..
+            } => {
                 let mut options = ffmpeg::Dictionary::new();
-                options.set("hls_time", "6");
-                options.set("hls_list_size", "60");
+                options.set("hls_time", &segment_seconds.to_string());
+                options.set("hls_list_size", &list_size.to_string());
                 options.set(
                     "hls_flags",
                     "append_list+delete_segments+omit_endlist+temp_file",
@@ -556,6 +562,8 @@ mod open_tests {
             EncodedFormat::Hls {
                 variants: vec![],
                 vtt_subtitles: true,
+                segment_seconds: 6,
+                list_size: 60,
             },
         );
         let output = output.unwrap();

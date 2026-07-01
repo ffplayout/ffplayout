@@ -17,7 +17,7 @@ use crate::{
     },
     file::norm_abs_path,
     utils::{
-        config::{PlayoutConfig, get_config},
+        config::{OutputMode, PlayoutConfig, get_config},
         errors::ServiceError,
     },
 };
@@ -85,8 +85,20 @@ pub async fn update_playout_config(
     data.processing.logo = logo;
     data.storage.filler = filler;
     data.text.font = font;
+    data.output.validate().map_err(ServiceError::BadRequest)?;
 
-    handles::update_output(&state.pool, data.output.id, id, &data.output.output_param).await?;
+    let is_hls = data.output.mode == OutputMode::HLS;
+    handles::update_output(
+        &state.pool,
+        data.output.id,
+        id,
+        &data.output.hls_variants.join(";"),
+        &data.output.stream_url,
+        is_hls.then_some(data.output.hls_playlist_path.as_str()),
+        is_hls.then_some(i64::from(data.output.hls_segment_duration)),
+        is_hls.then_some(i64::from(data.output.hls_list_size)),
+    )
+    .await?;
     handles::update_configuration(&state.pool, config_id, data).await?;
     let new_config = get_config(&state.pool, id).await?;
     let mut queues = state.mail_queues.lock().await;

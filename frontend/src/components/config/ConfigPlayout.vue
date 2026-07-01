@@ -33,10 +33,66 @@ const output = computed({
 
     set(value: string) {
         const output = configStore.outputs.find(o => o.name === value)
-        configStore.playout.output.output_param = output?.parameters ?? ''
         configStore.playout.output.id = output?.id ?? 0
+        configStore.playout.output.stream_url = output?.stream_url ?? ''
+        configStore.playout.output.hls_playlist_path = output?.hls_playlist_path ?? 'live/stream.m3u8'
+        configStore.playout.output.hls_segment_duration = output?.hls_segment_duration ?? 6
+        configStore.playout.output.hls_list_size = output?.hls_list_size ?? 600
+        configStore.playout.output.hls_variants = (output?.hls_variants ?? '')
+            .split(';')
+            .map(v => v.trim())
+            .filter(v => v.length > 0)
     },
 })
+
+interface HlsVariantRow {
+    name: string
+    width: string
+    height: string
+    videoBitrate: string
+    audioBitrate: string
+}
+
+function parseHlsVariant(spec: string): HlsVariantRow {
+    const [name = '', resolution = '', videoBitrate = '', audioBitrate = ''] = spec.split(':')
+    const [width = '', height = ''] = resolution.split('x')
+
+    return { name, width, height, videoBitrate, audioBitrate }
+}
+
+function serializeHlsVariant(row: HlsVariantRow): string {
+    const base = `${row.name}:${row.width}x${row.height}:${row.videoBitrate}`
+    return row.audioBitrate ? `${base}:${row.audioBitrate}` : base
+}
+
+const hlsVariants = computed<HlsVariantRow[]>({
+    get() {
+        return configStore.playout.output.hls_variants.map(parseHlsVariant)
+    },
+
+    set(rows: HlsVariantRow[]) {
+        configStore.playout.output.hls_variants = rows.map(serializeHlsVariant)
+    },
+})
+
+function addHlsVariant() {
+    hlsVariants.value = [
+        ...hlsVariants.value,
+        { name: '', width: '1280', height: '720', videoBitrate: '2500k', audioBitrate: '128k' },
+    ]
+}
+
+function removeHlsVariant(index: number) {
+    const rows = [...hlsVariants.value]
+    rows.splice(index, 1)
+    hlsVariants.value = rows
+}
+
+function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: string) {
+    const rows = [...hlsVariants.value]
+    rows[index] = { ...rows[index], [field]: value }
+    hlsVariants.value = rows
+}
 
 const formatIgnoreLines = computed({
     get() {
@@ -601,10 +657,63 @@ async function onSubmitPlayout() {
                         <option v-for="output in configStore.outputs" :key="output.id" :value="output.name">{{ output.name }}</option>
                     </select>
                 </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Output Parameter</legend>
-                    <textarea v-model="configStore.playout.output.output_param" class="textarea w-full" rows="6" />
+                <fieldset v-if="output === 'stream'" class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.streamUrl') }}</legend>
+                    <input v-model="configStore.playout.output.stream_url" type="url" class="input input-sm w-full max-w-lg" />
+                </fieldset>
+
+                <fieldset v-if="output === 'hls'" class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.hlsSettings') }}</legend>
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.hlsPlaylistPath') }}</span>
+                            <input v-model="configStore.playout.output.hls_playlist_path" type="text" class="input input-sm w-full" />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.hlsSegmentDuration') }}</span>
+                            <input v-model.number="configStore.playout.output.hls_segment_duration" type="number" min="1"
+                                class="input input-sm w-full" />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.hlsListSize') }}</span>
+                            <input v-model.number="configStore.playout.output.hls_list_size" type="number" min="0"
+                                class="input input-sm w-full" />
+                        </label>
+                    </div>
                     <p class="fieldset-label items-baseline">{{ t('config.outputParam') }}</p>
+                </fieldset>
+
+                <fieldset v-if="output === 'hls'" class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.hlsVariants') }}</legend>
+                    <p class="fieldset-label items-baseline mb-2">{{ t('config.hlsVariantsHelp') }}</p>
+
+                    <div v-for="(variant, index) in hlsVariants" :key="index"
+                        class="flex flex-wrap items-center gap-2 mb-2">
+                        <input :value="variant.name"
+                            @input="updateHlsVariant(index, 'name', ($event.target as HTMLInputElement).value)"
+                            type="text" placeholder="name" class="input input-sm w-24" />
+                        <input :value="variant.width"
+                            @input="updateHlsVariant(index, 'width', ($event.target as HTMLInputElement).value)"
+                            type="number" placeholder="width" class="input input-sm w-20" />
+                        <span>x</span>
+                        <input :value="variant.height"
+                            @input="updateHlsVariant(index, 'height', ($event.target as HTMLInputElement).value)"
+                            type="number" placeholder="height" class="input input-sm w-20" />
+                        <input :value="variant.videoBitrate"
+                            @input="updateHlsVariant(index, 'videoBitrate', ($event.target as HTMLInputElement).value)"
+                            type="text" placeholder="video bitrate, e.g. 5000k" class="input input-sm w-32" />
+                        <input :value="variant.audioBitrate"
+                            @input="updateHlsVariant(index, 'audioBitrate', ($event.target as HTMLInputElement).value)"
+                            type="text" placeholder="audio bitrate, e.g. 128k" class="input input-sm w-32" />
+                        <button type="button" class="btn btn-sm btn-error btn-outline"
+                            @click="removeHlsVariant(index)">
+                            {{ t('config.remove') }}
+                        </button>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-outline mt-1" @click="addHlsVariant">
+                        {{ t('config.addHlsVariant') }}
+                    </button>
                 </fieldset>
             </div>
             <div class="mt-5 mb-10">

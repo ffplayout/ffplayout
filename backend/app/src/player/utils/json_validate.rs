@@ -1,6 +1,5 @@
 use std::{
     path::Path,
-    process::Stdio,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -9,172 +8,71 @@ use std::{
 };
 
 use log::*;
-use regex::Regex;
 use tokio::{
     fs::File,
     io::{AsyncBufReadExt, BufReader},
-    process::Command,
     sync::Mutex,
 };
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    player::{
-        filter::FilterType::Audio,
-        utils::{
-            JsonPlaylist, Media, is_close, is_remote, loop_image, sec_to_time, seek_and_length,
-            time_in_seconds, time_to_sec,
-        },
+    player::utils::{
+        JsonPlaylist, Media, is_close, is_remote, sec_to_time, time_in_seconds, time_to_sec,
     },
-    utils::{
-        config::{FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT, OutputMode::Null, PlayoutConfig},
-        errors::ProcessError,
-        logging::Target,
-    },
-    vec_strings,
+    utils::{config::PlayoutConfig, errors::ProcessError, logging::Target},
 };
 
 /// Validate a single media file.
 ///
 /// - Check if file exists
-/// - Check if ffmpeg can read the file
+/// - Check if the engine can probe the file
 /// - Check if Metadata exists
-/// - Check if the file is not silent
 async fn check_media(
     config: &PlayoutConfig,
-    mut node: Media,
+    node: Media,
     pos: usize,
     begin: f64,
     cancel_token: CancellationToken,
 ) -> Result<(), ProcessError> {
     let id = config.general.channel_id;
-    let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let mut error_list = vec![];
-    let mut config = config.clone();
-    config.output.mode = Null;
 
-    let mut process_length = 0.1;
+    if cancel_token.is_cancelled() {
+        return Ok(());
+    }
 
-    if let Some(decoder_input_cmd) = &config.advanced.decoder.input_cmd {
-        dec_cmd.append(&mut decoder_input_cmd.clone());
+    if let Some(probe) = &node.probe {
+        if probe.format.duration.is_none() && node.duration <= 0.0 {
+            error_list.push("Engine probe returned no media duration".to_string());
+        }
+
+        if probe.video.is_empty() && probe.audio.is_empty() {
+            error_list.push("Engine probe returned no audio or video stream".to_string());
+        }
+    } else {
+        error_list.push("Engine probe returned no media metadata".to_string());
+    }
+
+    if !node.audio.is_empty() && node.probe_audio.is_none() {
+        error_list.push(format!(
+            "Engine probe returned no metadata for external audio: {}",
+            node.audio
+        ));
     }
 
     if config.logging.detect_silence {
-        process_length = 15.0;
-        let seek = node.duration / 4.0;
-
-        // Seek in file, to prevent false silence detection on intros without sound.
-        dec_cmd.append(&mut vec_strings!["-ss", seek]);
-    }
-
-    // Take care, that no seek and length command is added.
-    node.seek = 0.0;
-    node.out = node.duration;
-
-    if node
-        .source
-        .rsplit_once('.')
-        .map(|(_, e)| e.to_lowercase())
-        .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
-        .is_some()
-    {
-        node.cmd = Some(loop_image(&config, &node));
-    } else {
-        node.cmd = Some(seek_and_length(&config, &mut node));
-    }
-
-    node.add_filter(&config, &None).await;
-
-    let mut filter = node.filter.unwrap_or_default();
-
-    if filter.cmd().len() > 1 {
-        let re_clean = Regex::new(r"volume=[0-9.]+")?;
-
-        filter.audio_chain = re_clean
-            .replace_all(&filter.audio_chain, "anull")
-            .to_string();
-    }
-
-    filter.add("silencedetect=n=-30dB", 0, Audio);
-
-    dec_cmd.append(&mut node.cmd.unwrap_or_default());
-    dec_cmd.append(&mut filter.cmd());
-    dec_cmd.append(&mut filter.map());
-    dec_cmd.append(&mut vec_strings!["-t", process_length, "-f", "null", "-"]);
-
-    let mut enc_proc = Command::new("ffmpeg")
-        .args(dec_cmd)
-        .kill_on_drop(true)
-        .stderr(Stdio::piped())
-        .spawn()?;
-
-    let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
-    let mut lines = enc_err.lines();
-    let mut silence_start = 0.0;
-    let mut silence_end = 0.0;
-    let re_start = Regex::new(r"silence_start: ([0-9]+:)?([0-9.]+)")?;
-    let re_end = Regex::new(r"silence_end: ([0-9]+:)?([0-9.]+)")?;
-
-    loop {
-        let line = tokio::select! {
-            _ = cancel_token.cancelled() => {
-                let _ = enc_proc.kill().await;
-                let _ = enc_proc.wait().await;
-                return Ok(());
-            }
-            line = lines.next_line() => line,
-        };
-
-        let Some(line) = line? else {
-            break;
-        };
-        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
-            && !config.logging.ignore_lines.iter().any(|i| line.contains(i))
-            && (line.contains("[error]") || line.contains("[fatal]"))
-        {
-            let log_line = line.replace("[error] ", "").replace("[fatal] ", "");
-
-            if !error_list.contains(&log_line) {
-                error_list.push(log_line);
-            }
-        }
-
-        if config.logging.detect_silence {
-            if let Some(start) = re_start.captures(&line).and_then(|c| c.get(2)) {
-                silence_start = start.as_str().parse::<f32>().unwrap_or_default();
-            }
-
-            if let Some(end) = re_end.captures(&line).and_then(|c| c.get(2)) {
-                silence_end = end.as_str().parse::<f32>().unwrap_or_default() + 0.5;
-            }
-        }
-    }
-
-    if silence_end - silence_start > process_length {
-        error_list.push("Audio is totally silent!".to_string());
+        debug!(target: Target::file_mail(), channel = id;
+            "<span class=\"log-gray\">[Validation]</span> Silence detection is skipped because app validation no longer starts the ffmpeg binary."
+        );
     }
 
     if !error_list.is_empty() {
         error!(target: Target::file_mail(), channel = id;
-            "<span class=\"log-gray\">[Validator]</span> ffmpeg error on position <span class=\"log-number\">{pos}</span> - {}: <span class=\"log-addr\">{}</span>: {}",
+            "<span class=\"log-gray\">[Validator]</span> Engine probe error on position <span class=\"log-number\">{pos}</span> - {}: <span class=\"log-addr\">{}</span>: {}",
             sec_to_time(begin),
             node.source,
             error_list.join("\n    ")
         );
-    }
-
-    error_list.clear();
-
-    let wait_result = tokio::select! {
-        _ = cancel_token.cancelled() => {
-            let _ = enc_proc.kill().await;
-            enc_proc.wait().await
-        }
-        result = enc_proc.wait() => result,
-    };
-
-    if let Err(e) = wait_result {
-        error!(target: Target::file_mail(), channel = id; "Validation process: {e:?}");
     }
 
     Ok(())
@@ -223,7 +121,7 @@ async fn check_vtt(source: &str, duration: f64, channel_id: i32) -> Result<(), P
 /// Validate a given playlist, to check if:
 ///
 /// - the source files are existing
-/// - file can be read by ffprobe and metadata exists
+/// - file can be read by the engine probe and metadata exists
 /// - total playtime fits target length from config
 ///
 /// This function we run in a thread, to don't block the main function.

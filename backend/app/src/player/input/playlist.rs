@@ -13,17 +13,12 @@ use crate::{
     player::{
         controller::ChannelManager,
         utils::{
-            JsonPlaylist, Media, gen_dummy, get_date, get_delta, is_close, is_remote,
+            JsonPlaylist, Media, get_date, get_delta, is_close, is_remote,
             json_serializer::{read_json, set_defaults},
-            loop_filler, loop_image, modified_time,
-            probe::MediaProbe,
-            seek_and_length, time_in_seconds,
+            modified_time, probe_media, time_in_seconds,
         },
     },
-    utils::{
-        config::{IMAGE_FORMAT, PlayoutConfig},
-        logging::Target,
-    },
+    utils::{config::PlayoutConfig, logging::Target},
 };
 
 const NEXT_START_THRESHOLD: f64 = 1.5;
@@ -343,7 +338,6 @@ impl CurrentProgram {
                 .current_node
                 .source
                 .contains(&self.config.channel.storage.to_string_lossy().to_string())
-                || self.current_node.source.contains("color=c=#121212")
             {
                 is_filler = true;
             }
@@ -498,8 +492,6 @@ impl CurrentProgram {
                 } else if self.manager.is_alive.load(Ordering::SeqCst) {
                     error!(target: Target::file_mail(), channel = self.channel_id; "Clip begin out of sync for <span class=\"log-number\">{delta:.3}</span> seconds.");
 
-                    node.cmd = None;
-
                     self.current_node = node;
                     return;
                 }
@@ -564,24 +556,7 @@ impl CurrentProgram {
         };
 
         // separate if condition, because of node.add_probe() in last condition
-        if node.probe.is_some() {
-            if node
-                .source
-                .rsplit_once('.')
-                .map(|(_, e)| e.to_lowercase())
-                .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
-                .is_some()
-            {
-                node.cmd = Some(loop_image(&self.config, &node));
-            } else {
-                if node.seek > 0.0 && node.out > node.duration {
-                    warn!(target: Target::file_mail(), channel = self.channel_id; "Clip loops and has seek value, duplicate clip to separate loop and seek.");
-                    self.duplicate_for_seek_and_loop(&mut node).await;
-                }
-
-                node.cmd = Some(seek_and_length(&self.config, &mut node));
-            }
-        } else {
+        if node.probe.is_none() {
             trace!("clip index: {node_index} | last index: {last_index}");
 
             if node_index < last_index {
@@ -618,43 +593,24 @@ impl CurrentProgram {
                     error!(target: Target::file_mail(), channel = self.channel_id; "{e:?}");
                 };
 
-                if node.duration > 0.0 && filler_media.duration > duration {
-                    filler_media.out = duration;
-                }
-
                 node.source = filler_media.source;
                 node.seek = 0.0;
-                node.out = filler_media.out;
+                node.out = if duration > 0.0 {
+                    duration
+                } else {
+                    filler_media.out.max(filler_media.duration)
+                };
                 node.duration = filler_media.duration;
-                node.cmd = Some(loop_filler(&self.config, &node));
                 node.probe = filler_media.probe;
             } else {
-                match MediaProbe::new(&self.config.storage.filler_path).await {
+                match probe_media(&self.config.storage.filler_path).await {
                     Ok(probe) => {
-                        if self
-                            .config
-                            .storage
-                            .filler_path
-                            .extension()
-                            .map(|e| e.to_string_lossy().to_lowercase())
-                            .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
-                            .is_some()
-                        {
-                            node.source = self
-                                .config
-                                .storage
-                                .filler_path
-                                .clone()
-                                .to_string_lossy()
-                                .to_string();
-                            node.cmd = Some(loop_image(&self.config, &node));
-                            node.probe = Some(probe);
-                        } else if let Some(filler_duration) = probe.clone().format.duration {
+                        if let Some(filler_duration) = probe.clone().format.duration {
                             // Create placeholder from config filler.
-                            let filler_out = if node.duration == 0.0 {
+                            let filler_out = if duration <= 0.0 {
                                 filler_duration
                             } else {
-                                filler_duration.min(duration)
+                                duration
                             };
 
                             node.source = self
@@ -667,17 +623,22 @@ impl CurrentProgram {
                             node.seek = 0.0;
                             node.out = filler_out;
                             node.duration = filler_duration;
-                            node.cmd = Some(loop_filler(&self.config, &node));
                             node.probe = Some(probe);
                         } else {
-                            // Create colored placeholder.
-                            let (source, cmd) = gen_dummy(&self.config, duration);
-                            node.source = source;
-                            node.cmd = Some(cmd);
+                            node.source = self
+                                .config
+                                .storage
+                                .filler_path
+                                .clone()
+                                .to_string_lossy()
+                                .to_string();
+                            node.seek = 0.0;
+                            node.out = duration;
+                            node.duration = duration;
+                            node.probe = Some(probe);
                         }
                     }
                     Err(e) => {
-                        // Create colored placeholder.
                         error!(target: Target::file_mail(), channel = self.channel_id; "Filler error: {e}");
 
                         let mut dummy_duration = 60.0;
@@ -686,12 +647,9 @@ impl CurrentProgram {
                             dummy_duration = duration;
                         }
 
-                        let (source, cmd) = gen_dummy(&self.config, dummy_duration);
                         node.seek = 0.0;
                         node.out = dummy_duration;
                         node.duration = dummy_duration;
-                        node.source = source;
-                        node.cmd = Some(cmd);
                     }
                 }
             }
@@ -712,38 +670,6 @@ impl CurrentProgram {
         );
 
         self.current_node = node;
-    }
-
-    async fn duplicate_for_seek_and_loop(&mut self, node: &mut Media) {
-        let index = node.index.unwrap_or_default();
-
-        let mut node_duplicate = node.clone();
-        node_duplicate.seek = 0.0;
-        let orig_seek = node.seek;
-        node.out = node.duration;
-
-        if node.seek > node.duration {
-            node.seek %= node.duration;
-
-            node_duplicate.out = node_duplicate.out - orig_seek - (node.out - node.seek);
-        } else {
-            node_duplicate.out -= node_duplicate.duration;
-        }
-
-        if node.seek == node.out {
-            node.seek = node_duplicate.seek;
-            node.out = node_duplicate.out;
-        } else if node_duplicate.out - node_duplicate.seek > 1.2 {
-            node_duplicate.begin =
-                Some(node_duplicate.begin.unwrap_or_default() + (node.out - node.seek));
-
-            let mut nodes = self.manager.current_list.lock().await;
-            nodes.insert(index + 1, node_duplicate);
-
-            for (i, item) in nodes.iter_mut().enumerate() {
-                item.index = Some(i);
-            }
-        }
     }
 }
 

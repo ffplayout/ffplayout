@@ -27,7 +27,7 @@ use crate::file::{
     },
     watcher::watch,
 };
-use crate::player::utils::{Media, file_extension, include_file_extension, probe::MediaProbe};
+use crate::player::utils::{Media, file_extension, include_file_extension, probe_media};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, logging::Target};
 
 #[derive(Clone, Debug)]
@@ -129,7 +129,7 @@ impl LocalStorage {
         let mut media_files = vec![];
 
         for file in files {
-            match MediaProbe::new(file.to_string_lossy().as_ref()).await {
+            match probe_media(file.to_string_lossy().as_ref()).await {
                 Ok(probe) => {
                     let duration = probe.format.duration.unwrap_or_default();
 

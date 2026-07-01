@@ -8,7 +8,15 @@ export type Logging = { ffmpeg_level: string, ingest_level: string, detect_silen
 
 export type Mail = { show: boolean, subject: string, recipient: string, mail_level: string, interval: bigint, };
 
-export type Output = { id: number, mode: OutputMode, output_param: string, };
+export type Output = { id: number, mode: OutputMode, stream_url: string, hls_playlist_path: string, hls_segment_duration: number, hls_list_size: number,
+/**
+ * Adaptive HLS renditions, one per entry, each formatted as
+ * `NAME:WIDTHxHEIGHT:VIDEO_BITRATE[:AUDIO_BITRATE]` (e.g.
+ * `high:1920x1080:5000k:192k`). Only relevant when `mode == HLS`; an
+ * empty vector means "single, implicit stream" (no master playlist
+ * unless VTT subtitles are enabled).
+ */
+hls_variants: Array<string>, };
 
 export type OutputMode = "desktop" | "hls" | "null" | "stream";
 

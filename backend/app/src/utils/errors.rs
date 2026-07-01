@@ -7,8 +7,6 @@ use axum::{
 };
 use derive_more::Display;
 
-use crate::player::utils::probe::FfProbeError;
-
 #[derive(Debug, Display)]
 pub enum ServiceError {
     #[display("Internal Server Error")]
@@ -185,12 +183,6 @@ pub enum ProcessError {
 impl From<std::io::Error> for ProcessError {
     fn from(err: std::io::Error) -> Self {
         Self::IO(err.to_string())
-    }
-}
-
-impl From<FfProbeError> for ProcessError {
-    fn from(err: FfProbeError) -> Self {
-        Self::Ffprobe(err.to_string())
     }
 }
 

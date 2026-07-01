@@ -64,6 +64,14 @@ struct Args {
     #[arg(long, requires = "hls")]
     hls_vtt_subtitles: bool,
 
+    /// HLS segment duration in seconds
+    #[arg(long, value_name = "SECONDS", default_value_t = 6)]
+    hls_segment_seconds: u32,
+
+    /// Number of segments kept in the HLS playlist
+    #[arg(long, value_name = "COUNT", default_value_t = 60)]
+    hls_list_size: u32,
+
     /// Seek position in seconds for the first input file only
     #[arg(long, value_name = "SECONDS", default_value_t = 0.0)]
     seek: f64,
@@ -187,6 +195,8 @@ fn main() -> Result<()> {
             args.fallback_duration,
             &args.hls_variants,
             args.hls_vtt_subtitles,
+            args.hls_segment_seconds,
+            args.hls_list_size,
         )?
     } else {
         Playout::open(

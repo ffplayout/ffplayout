@@ -8,6 +8,8 @@ mod hls;
 pub(crate) mod sdl_thread;
 mod vtt;
 
+pub use hls::resolved_variant_playlist_path;
+
 use anyhow::Result;
 #[cfg(feature = "desktop")]
 use anyhow::anyhow;
@@ -77,6 +79,8 @@ impl Output {
         cfg: &OutputConfig,
         hls_variants: &[HlsVariant],
         hls_vtt_subtitles: bool,
+        hls_segment_seconds: u32,
+        hls_list_size: u32,
     ) -> Result<Self> {
         Ok(Self {
             kind: OutputKind::Encoded(EncodedOutput::open(
@@ -85,6 +89,8 @@ impl Output {
                 EncodedFormat::Hls {
                     variants: hls_variants.to_vec(),
                     vtt_subtitles: hls_vtt_subtitles,
+                    segment_seconds: hls_segment_seconds,
+                    list_size: hls_list_size,
                 },
             )?),
         })

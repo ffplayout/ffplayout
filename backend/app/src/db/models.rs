@@ -419,16 +419,33 @@ pub struct Output {
     pub id: i32,
     pub channel_id: i32,
     pub name: String,
-    pub parameters: String,
+    pub hls_variants: String,
+    pub stream_url: String,
+    pub hls_playlist_path: Option<String>,
+    pub hls_segment_duration: Option<i64>,
+    pub hls_list_size: Option<i64>,
 }
 
 impl Output {
-    pub fn new(channel_id: i32, mode: OutputMode, parameters: String) -> Self {
+    pub fn new(channel_id: i32, mode: OutputMode) -> Self {
+        let stream_url = if mode == OutputMode::Stream {
+            "rtmp://127.0.0.1/live/stream".to_string()
+        } else {
+            Default::default()
+        };
+        let hls_playlist_path = (mode == OutputMode::HLS).then(|| "live/stream.m3u8".to_string());
+        let hls_segment_duration = (mode == OutputMode::HLS).then_some(6);
+        let hls_list_size = (mode == OutputMode::HLS).then_some(600);
+
         Self {
             id: 0,
             channel_id,
             name: mode.to_string(),
-            parameters,
+            hls_variants: String::new(),
+            stream_url,
+            hls_playlist_path,
+            hls_segment_duration,
+            hls_list_size,
         }
     }
 }

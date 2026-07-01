@@ -14,13 +14,17 @@ mod utils;
 
 use input::live::LiveOverrideOutput;
 pub use input::live::{LiveReceiver, spawn_rtmp_listener};
+pub use output::resolved_variant_playlist_path;
 use output::{FrameOutput, Output, PlaybackStopped};
 use playout::{Timeline, play_clip, write_fallback};
 pub use utils::{
     clock,
     config::{HlsVariant, LogoConfig, OutputConfig, OutputSize},
     logging,
-    media_info::{MediaInfo, print_media_info, probe_media_info},
+    media_info::{
+        AudioStream as EngineAudioStream, MediaInfo, MediaProbe as EngineMediaProbe, ProbeFormat,
+        VideoStream as EngineVideoStream, print_media_info, probe_media, probe_media_info,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,6 +75,8 @@ impl AsyncPlayout {
         fallback_duration: f64,
         hls_variants: Vec<HlsVariant>,
         hls_vtt_subtitles: bool,
+        hls_segment_seconds: u32,
+        hls_list_size: u32,
     ) -> Result<Self> {
         let playlist = playlist.into();
         Self::open_with(move || {
@@ -80,6 +86,8 @@ impl AsyncPlayout {
                 fallback_duration,
                 &hls_variants,
                 hls_vtt_subtitles,
+                hls_segment_seconds,
+                hls_list_size,
             )
         })
         .await
@@ -339,10 +347,19 @@ impl Playout {
         fallback_duration: f64,
         hls_variants: &[HlsVariant],
         hls_vtt_subtitles: bool,
+        hls_segment_seconds: u32,
+        hls_list_size: u32,
     ) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
         init_ffmpeg()?;
-        let output = Output::open_hls(playlist, &config, hls_variants, hls_vtt_subtitles)?;
+        let output = Output::open_hls(
+            playlist,
+            &config,
+            hls_variants,
+            hls_vtt_subtitles,
+            hls_segment_seconds,
+            hls_list_size,
+        )?;
 
         Ok(Self::with_output(config, output, fallback_duration))
     }
@@ -498,7 +515,10 @@ fn play_to_output<O: FrameOutput>(
         Err(error) if error.downcast_ref::<PlaybackStopped>().is_some() => Ok(ClipResult::Stopped),
         Err(error) => {
             let reason = format!("{error:#}");
-            write_fallback(config, timeline, output, fallback_duration)
+            let duration = duration_seconds
+                .filter(|duration| duration.is_finite() && *duration > 0.0)
+                .unwrap_or(fallback_duration);
+            write_fallback(config, timeline, output, duration)
                 .with_context(|| format!("failed to generate fallback for {path}"))?;
             Ok(ClipResult::Fallback { reason })
         }

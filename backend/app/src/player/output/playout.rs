@@ -5,12 +5,15 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use ff_engine::{AsyncPlayout, ClipResult, LogoConfig, OutputConfig};
+use ff_engine::{
+    AsyncPlayout, ClipResult, LogoConfig, OutputConfig, resolved_variant_playlist_path,
+};
 use log::*;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    file::norm_abs_path,
     player::{controller::ChannelManager, input::source_generator, utils::sec_to_time},
     utils::{
         config::{OutputMode, PlayoutConfig},
@@ -58,18 +61,8 @@ async fn play_hls(
     config: &PlayoutConfig,
     playout: &AsyncPlayout,
 ) -> Result<(), ServiceError> {
-    let output_cmd = config.output.output_cmd.clone().unwrap_or_default();
-    let hls_duration = output_cmd
-        .windows(2)
-        .find_map(|pair| {
-            if pair[0] == "-hls_time" {
-                pair[1].parse::<u64>().ok()
-            } else {
-                None
-            }
-        })
-        .unwrap_or(10);
-    let m3u8_path = hls_playlist_path(config)?;
+    let hls_duration = u64::from(config.output.hls_segment_duration);
+    let m3u8_path = watchdog_playlist_path(config)?;
     let watchdog_token = CancellationToken::new();
     let mut watchdog = tokio::spawn(hls_watchdog(
         config.general.channel_id,
@@ -244,15 +237,24 @@ async fn open_playout(
     let fallback_duration = config.storage.filler_path.metadata().map_or(10.0, |_| 10.0);
 
     match config.output.mode {
-        OutputMode::HLS => AsyncPlayout::open_hls(
-            hls_playlist_path(config)?.to_string_lossy().to_string(),
-            output_config,
-            fallback_duration,
-            Vec::new(),
-            config.processing.vtt_enable,
-        )
-        .await
-        .map_err(engine_error),
+        OutputMode::HLS => {
+            let hls_variants = config
+                .output
+                .parsed_hls_variants()
+                .map_err(ServiceError::Conflict)?;
+
+            AsyncPlayout::open_hls(
+                hls_playlist_path(config)?.to_string_lossy().to_string(),
+                output_config,
+                fallback_duration,
+                hls_variants,
+                config.processing.vtt_enable,
+                config.output.hls_segment_duration,
+                config.output.hls_list_size,
+            )
+            .await
+            .map_err(engine_error)
+        }
         OutputMode::Null => AsyncPlayout::open_null(output_config, fallback_duration)
             .await
             .map_err(engine_error),
@@ -317,6 +319,8 @@ fn engine_output_config(config: &PlayoutConfig) -> Result<OutputConfig, ServiceE
 }
 
 fn validate_supported_config(config: &PlayoutConfig) -> Result<(), ServiceError> {
+    config.output.validate().map_err(ServiceError::Conflict)?;
+
     let processing = &config.processing;
     let unsupported = [
         (processing.audio_only, "audio_only"),
@@ -330,10 +334,6 @@ fn validate_supported_config(config: &PlayoutConfig) -> Result<(), ServiceError>
             "audio_track_index other than default/first track",
         ),
         (config.text.add_text, "text overlay"),
-        (
-            config.output.output_filter.is_some(),
-            "output filter_complex",
-        ),
         (
             config.advanced.decoder.input_cmd.is_some()
                 || config.advanced.decoder.output_cmd.is_some()
@@ -367,19 +367,6 @@ fn validate_supported_node(
             "backend/engine integration does not support separate audio files yet".to_string(),
         ));
     }
-    if Path::new(source)
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            crate::utils::config::IMAGE_FORMAT
-                .iter()
-                .any(|image_extension| image_extension.eq_ignore_ascii_case(extension))
-        })
-    {
-        return Err(ServiceError::Conflict(
-            "backend/engine integration does not support image loop sources yet".to_string(),
-        ));
-    }
     if config.processing.vtt_enable && !Path::new(source).with_extension("vtt").is_file() {
         warn!(target: Target::file_mail(), channel = config.general.channel_id;
             "WebVTT enabled, but no sidecar subtitle file found for <span class=\"log-addr\">{source}</span>"
@@ -390,36 +377,54 @@ fn validate_supported_node(
 }
 
 fn output_url(config: &PlayoutConfig) -> Result<String, ServiceError> {
-    config
-        .output
-        .output_cmd
-        .as_deref()
-        .and_then(last_output_argument)
-        .ok_or_else(|| {
-            ServiceError::Conflict(
-                "could not resolve stream output URL from output parameters".to_string(),
-            )
-        })
+    let url = config.output.stream_url.trim();
+    if url.is_empty() {
+        Err(ServiceError::Conflict(
+            "stream output URL must not be empty".to_string(),
+        ))
+    } else {
+        Ok(url.to_string())
+    }
 }
 
 fn hls_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
-    if let Some(path) = config.output.output_cmd.as_deref().and_then(|cmd| {
-        cmd.iter()
-            .find(|item| item.ends_with(".m3u8") && !item.ends_with("master.m3u8"))
-    }) {
-        return Ok(PathBuf::from(path));
+    let configured_path = config.output.hls_playlist_path.trim();
+    if configured_path.is_empty() {
+        return Err(ServiceError::Conflict(
+            "HLS playlist path must not be empty".to_string(),
+        ));
     }
 
-    if config
-        .channel
-        .public
-        .extension()
-        .is_some_and(|extension| extension == "m3u8")
-    {
-        Ok(config.channel.public.clone())
-    } else {
-        Ok(config.channel.public.join("index.m3u8"))
+    let (path, _, _) = norm_abs_path(&config.channel.public, configured_path)?;
+    let parent = path.parent().ok_or_else(|| {
+        ServiceError::Conflict("HLS playlist path must include a parent directory".to_string())
+    })?;
+    if !parent.is_dir() {
+        std::fs::create_dir_all(parent)?;
     }
+
+    Ok(path)
+}
+
+/// Resolves the actual playlist file the watchdog should observe. When
+/// bitrate variants are configured, ffmpeg renames the base path with a
+/// `%v` prefix that it substitutes with the first variant's name (see
+/// `ff_engine::resolved_variant_playlist_path`), so `hls_playlist_path`'s
+/// literal path is never written to in that case.
+fn watchdog_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
+    let base_path = hls_playlist_path(config)?;
+    let variants = config
+        .output
+        .parsed_hls_variants()
+        .map_err(ServiceError::Conflict)?;
+
+    let Some(first_variant) = variants.first() else {
+        return Ok(base_path);
+    };
+
+    resolved_variant_playlist_path(&base_path.to_string_lossy(), &first_variant.name)
+        .map(PathBuf::from)
+        .map_err(|e| ServiceError::Conflict(e.to_string()))
 }
 
 fn ingest_url(config: &PlayoutConfig) -> Result<String, ServiceError> {
@@ -429,20 +434,6 @@ fn ingest_url(config: &PlayoutConfig) -> Result<String, ServiceError> {
         .as_deref()
         .and_then(|cmd| cmd.iter().find(|item| item.contains("://")).cloned())
         .ok_or_else(|| ServiceError::Conflict("could not resolve ingest URL".to_string()))
-}
-
-fn last_output_argument(cmd: &[String]) -> Option<String> {
-    cmd.iter()
-        .enumerate()
-        .rev()
-        .find(|(index, item)| {
-            *index > 0
-                && !item.starts_with('-')
-                && cmd
-                    .get(index.saturating_sub(1))
-                    .is_some_and(|previous| !previous.starts_with('-'))
-        })
-        .map(|(_, item)| item.clone())
 }
 
 fn engine_error(error: impl fmt::Display) -> ServiceError {

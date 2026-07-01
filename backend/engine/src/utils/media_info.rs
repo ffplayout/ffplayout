@@ -8,6 +8,42 @@ pub struct MediaInfo {
     pub resolution: Option<(u32, u32)>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct MediaProbe {
+    pub format: ProbeFormat,
+    pub audio: Vec<AudioStream>,
+    pub video: Vec<VideoStream>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProbeFormat {
+    pub duration: Option<f64>,
+    pub nb_streams: i64,
+    pub size: Option<i64>,
+    pub bit_rate: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AudioStream {
+    pub channels: Option<i64>,
+    pub codec_name: Option<String>,
+    pub duration: Option<f64>,
+    pub sample_rate: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VideoStream {
+    pub aspect_ratio: Option<String>,
+    pub bit_rate: Option<i64>,
+    pub codec_name: Option<String>,
+    pub duration: Option<f64>,
+    pub field_order: Option<String>,
+    pub frame_rate: String,
+    pub height: Option<i64>,
+    pub nb_frames: Option<i64>,
+    pub width: Option<i64>,
+}
+
 pub fn print_media_info(path: &str) {
     match probe_media_info(path) {
         Ok(info) => info!(
@@ -50,6 +86,88 @@ pub fn probe_media_info(path: &str) -> Result<MediaInfo> {
         fps,
         resolution,
     })
+}
+
+pub fn probe_media(path: &str) -> Result<MediaProbe> {
+    let ictx = format::input(path)?;
+    let format = ProbeFormat {
+        duration: (ictx.duration() > 0).then_some(ictx.duration() as f64 / 1_000_000.0),
+        nb_streams: ictx.nb_streams() as i64,
+        size: None,
+        bit_rate: (ictx.bit_rate() > 0).then_some(ictx.bit_rate()),
+    };
+    let mut audio = Vec::new();
+    let mut video = Vec::new();
+
+    for stream in ictx.streams() {
+        match stream.parameters().medium() {
+            media::Type::Audio => audio.push(probe_audio_stream(&stream)),
+            media::Type::Video => video.push(probe_video_stream(&stream)),
+            _ => {}
+        }
+    }
+
+    Ok(MediaProbe {
+        format,
+        audio,
+        video,
+    })
+}
+
+fn probe_audio_stream(stream: &format::stream::Stream) -> AudioStream {
+    let parameters = stream.parameters();
+    let codec_name = codec::decoder::find(parameters.id()).map(|codec| codec.name().to_string());
+    let mut result = AudioStream {
+        channels: None,
+        codec_name,
+        duration: stream_duration_seconds(stream),
+        sample_rate: None,
+    };
+
+    if let Ok(context) = codec::context::Context::from_parameters(parameters)
+        && let Ok(decoder) = context.decoder().audio()
+    {
+        result.sample_rate = Some(i64::from(decoder.rate()));
+        result.channels = Some(i64::from(decoder.channels()));
+    }
+
+    result
+}
+
+fn probe_video_stream(stream: &format::stream::Stream) -> VideoStream {
+    let parameters = stream.parameters();
+    let codec_name = codec::decoder::find(parameters.id()).map(|codec| codec.name().to_string());
+    let mut result = VideoStream {
+        aspect_ratio: None,
+        bit_rate: None,
+        codec_name,
+        duration: stream_duration_seconds(stream),
+        field_order: None,
+        frame_rate: rational_string(stream.rate()),
+        height: None,
+        nb_frames: (stream.frames() > 0).then_some(stream.frames()),
+        width: None,
+    };
+
+    if let Ok(context) = codec::context::Context::from_parameters(parameters)
+        && let Ok(decoder) = context.decoder().video()
+    {
+        let width = decoder.width();
+        let height = decoder.height();
+        result.width = Some(i64::from(width));
+        result.height = Some(i64::from(height));
+        result.aspect_ratio = Some(format!("{width}:{height}"));
+    }
+
+    result
+}
+
+fn rational_string(value: Rational) -> String {
+    if value.denominator() == 0 {
+        "0/0".to_string()
+    } else {
+        format!("{}/{}", value.numerator(), value.denominator())
+    }
 }
 
 fn stream_duration_seconds(stream: &format::stream::Stream) -> Option<f64> {

@@ -21,6 +21,23 @@ pub(super) fn playlist_path(path: &str, variants: &[HlsVariant]) -> Result<Strin
         .into_owned())
 }
 
+/// Resolves the concrete, on-disk playlist path ffmpeg writes for a single
+/// variant once it substitutes `%v` (produced by [`playlist_path`]) with the
+/// variant's `name` from `var_stream_map`. Callers (e.g. a watchdog that
+/// checks the playlist's mtime) need this to know which file to observe when
+/// real bitrate variants are configured.
+pub fn resolved_variant_playlist_path(path: &str, variant_name: &str) -> Result<String> {
+    let path = Path::new(path);
+    let file_name = path
+        .file_name()
+        .and_then(|file_name| file_name.to_str())
+        .context("HLS playlist path must include a file name")?;
+    Ok(path
+        .with_file_name(format!("{variant_name}_{file_name}"))
+        .to_string_lossy()
+        .into_owned())
+}
+
 pub(super) fn validate_variants(variants: &[HlsVariant]) -> Result<()> {
     let mut names = HashSet::new();
     for variant in variants {
@@ -57,7 +74,7 @@ pub(super) fn close_preopened_output(
 
 pub(super) fn segment_pattern(path: &str) -> String {
     Path::new(path)
-        .with_file_name("%v_%d.ts")
+        .with_file_name("%v_segment_%03d.ts")
         .to_string_lossy()
         .into_owned()
 }

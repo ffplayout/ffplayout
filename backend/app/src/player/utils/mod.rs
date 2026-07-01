@@ -4,7 +4,7 @@ use std::{
     io::Error,
     net::TcpListener,
     path::{Path, PathBuf},
-    process::{Stdio, exit},
+    process::exit,
     str::FromStr,
     sync::{Arc, atomic::Ordering},
 };
@@ -12,7 +12,6 @@ use std::{
 use chrono::{TimeDelta, prelude::*};
 use chrono_tz::Tz;
 use log::*;
-use probe::MediaProbe;
 use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
@@ -20,16 +19,13 @@ use serde::{Deserialize, Serialize, de::Deserializer};
 use serde_json::{Map, Value, json};
 use tokio::{
     fs::{File, metadata},
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    process::{ChildStderr, Command},
+    io::{AsyncReadExt, AsyncWriteExt},
     sync::Mutex,
 };
-use tokio_util::sync::CancellationToken;
 
 pub mod import;
 pub mod json_serializer;
 pub mod json_validate;
-pub mod probe;
 
 use crate::{
     player::{
@@ -40,14 +36,20 @@ use crate::{
         filter::{Filters, filter_chains},
     },
     utils::{
-        config::{FFMPEG_IGNORE_ERRORS, OutputMode::*, PlayoutConfig},
-        errors::ServiceError,
-        logging::{LogDedup, Target},
+        config::{OutputMode::*, PlayoutConfig},
+        errors::ProcessError,
+        logging::Target,
         time_machine::time_now,
     },
-    vec_strings,
 };
 pub use json_serializer::{JsonPlaylist, read_json};
+
+pub type MediaProbe = ff_engine::EngineMediaProbe;
+
+pub async fn probe_media(input: impl AsRef<std::path::Path>) -> Result<MediaProbe, ProcessError> {
+    let path = input.as_ref().to_string_lossy().to_string();
+    ff_engine::probe_media(&path).map_err(|error| ProcessError::Ffprobe(error.to_string()))
+}
 
 /// Compare incoming stream name with expecting name, but ignore question mark.
 pub fn valid_stream(msg: &str) -> bool {
@@ -63,78 +65,6 @@ pub fn valid_stream(msg: &str) -> bool {
     }
 
     false
-}
-
-/// Prepare output parameters
-///
-/// Seek for multiple outputs and add mapping for it.
-pub fn prepare_output_cmd(
-    config: &PlayoutConfig,
-    mut cmd: Vec<String>,
-    filters: &Option<Filters>,
-) -> Vec<String> {
-    let mut output_params = config.output.clone().output_cmd.unwrap();
-    let mut new_params = vec![];
-    let mut count = 0;
-    let re_v = Regex::new(r"\[?0:v(:0)?\]?").unwrap();
-
-    if let Some(mut filter) = filters.clone() {
-        for (i, param) in output_params.iter().enumerate() {
-            if filter.video_out_link.len() > count && re_v.is_match(param) {
-                // replace mapping with link from filter struct
-                new_params.push(filter.video_out_link[count].clone());
-            } else {
-                new_params.push(param.clone());
-            }
-
-            // Check if parameter is a output
-            if i > 0
-                && !param.starts_with('-')
-                && !output_params[i - 1].starts_with('-')
-                && i < output_params.len() - 1
-            {
-                count += 1;
-
-                if filter.video_out_link.len() > count
-                    && !output_params.contains(&"-map".to_string())
-                {
-                    new_params.append(&mut vec_strings!["-map", filter.video_out_link[count]]);
-
-                    for i in 0..config.processing.audio_tracks {
-                        new_params.append(&mut vec_strings!["-map", format!("0:a:{i}")]);
-                    }
-                }
-            }
-        }
-
-        output_params = new_params;
-
-        cmd.append(&mut filter.cmd());
-
-        // add mapping at the begin, if needed
-        if !filter.map().iter().all(|item| output_params.contains(item))
-            && filter.output_chain.is_empty()
-            && filter.video_out_link.is_empty()
-        {
-            cmd.append(&mut filter.map());
-        } else if &output_params[0] != "-map" && !filter.video_out_link.is_empty() {
-            cmd.append(&mut vec_strings!["-map", filter.video_out_link[0].clone()]);
-
-            for i in 0..config.processing.audio_tracks {
-                cmd.append(&mut vec_strings!["-map", format!("0:a:{i}")]);
-            }
-        }
-    }
-
-    if config.processing.vtt_enable {
-        let i = cmd.iter().filter(|&n| n == "-i").count().saturating_sub(1);
-
-        cmd.append(&mut vec_strings!("-map", format!("{i}:s?")));
-    }
-
-    cmd.append(&mut output_params);
-
-    cmd
 }
 
 /// map media struct to json object
@@ -225,9 +155,6 @@ pub struct Media {
     pub audio: String,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub cmd: Option<Vec<String>>,
-
-    #[serde(skip_serializing, skip_deserializing)]
     pub filter: Option<Filters>,
 
     #[serde(default, skip_serializing_if = "is_empty_string")]
@@ -259,7 +186,7 @@ impl Media {
 
         if do_probe
             && (is_remote(src) || Path::new(src).is_file())
-            && let Ok(p) = MediaProbe::new(src).await
+            && let Ok(p) = probe_media(src).await
         {
             probe = Some(p.clone());
 
@@ -277,7 +204,6 @@ impl Media {
             category: String::new(),
             source: src.to_string(),
             audio: String::new(),
-            cmd: Some(vec_strings!["-i", src]),
             filter: None,
             custom_filter: String::new(),
             probe,
@@ -293,7 +219,7 @@ impl Media {
         let mut errors = vec![];
 
         if self.probe.is_none() {
-            match MediaProbe::new(&self.source).await {
+            match probe_media(&self.source).await {
                 Ok(probe) => {
                     self.probe = Some(probe.clone());
 
@@ -313,7 +239,7 @@ impl Media {
             };
 
             if check_audio && Path::new(&self.audio).is_file() {
-                match MediaProbe::new(&self.audio).await {
+                match probe_media(&self.audio).await {
                     Ok(probe) => {
                         self.probe_audio = Some(probe.clone());
 
@@ -356,7 +282,6 @@ impl Default for Media {
             category: String::new(),
             source: String::new(),
             audio: String::new(),
-            cmd: Some(vec_strings!["-i", String::new()]),
             filter: None,
             custom_filter: String::new(),
             probe: None,
@@ -575,277 +500,6 @@ pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
     (current_delta, total_delta)
 }
 
-pub fn insert_readrate(options: &[String], args: &mut Vec<String>, rate: f64) {
-    let mut i = 0;
-    while i < args.len() {
-        if args[i] == "-i" {
-            args.insert(i, rate.to_string());
-            args.insert(i, "-readrate".to_string());
-
-            if options.contains(&"-readrate_catchup".to_string()) {
-                args.insert(i, 1.5.to_string());
-                args.insert(i, "-readrate_catchup".to_string());
-            }
-
-            /*
-            Note: normally, each input should have a readrate parameter.
-            However, due to a bug in ffmpeg, we only add the parameter to the first (video) input.
-
-            The ffmpeg bug drops FPS when there is a long period of silence (no text) at the current position.
-
-            In theory, if not every input has a readrate parameter, it could flush some caching.
-            However, a test with a 1.5-hour-long video could not simulate this.
-             */
-
-            break;
-        }
-
-        i += 1;
-    }
-}
-
-/// Loop image until target duration is reached.
-pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
-    let duration = node.out - node.seek;
-    let mut source_cmd: Vec<String> = vec_strings!["-loop", "1", "-i", node.source.clone()];
-
-    info!(
-        "Loop image <span class=\"log-addr\">{}</span>, total duration: <span class=\"log-number\">{duration:.2}</span>",
-        node.source
-    );
-
-    if Path::new(&node.audio).is_file() {
-        if node.seek > 0.0 {
-            source_cmd.append(&mut vec_strings!["-ss", node.seek]);
-        }
-
-        source_cmd.append(&mut vec_strings!["-i", node.audio.clone()]);
-    }
-
-    source_cmd.append(&mut vec_strings!["-t", duration]);
-
-    if config.processing.vtt_enable {
-        let vtt_file = Path::new(&node.source).with_extension("vtt");
-        let vtt_dummy = config
-            .channel
-            .storage
-            .join(config.processing.vtt_dummy.clone().unwrap_or_default());
-
-        if node.seek > 0.5 {
-            source_cmd.append(&mut vec_strings!["-ss", node.seek]);
-        }
-
-        if vtt_file.is_file() {
-            source_cmd.append(&mut vec_strings![
-                "-i",
-                vtt_file.to_string_lossy(),
-                "-t",
-                node.out
-            ]);
-        } else if vtt_dummy.is_file() {
-            source_cmd.append(&mut vec_strings![
-                "-i",
-                vtt_dummy.to_string_lossy(),
-                "-t",
-                node.out
-            ]);
-        } else {
-            error!("WebVTT enabled, but no vtt or dummy file found!");
-        }
-    }
-
-    source_cmd
-}
-
-/// Loop filler until target duration is reached.
-pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
-    let loop_count = (node.out / node.duration).ceil() as i32;
-    let mut source_cmd = vec![];
-
-    if loop_count > 1 {
-        info!(
-            "Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>",
-            node.source, node.out
-        );
-
-        source_cmd.append(&mut vec_strings![
-            "-stream_loop",
-            loop_count,
-            "-i",
-            node.source
-        ]);
-    } else {
-        source_cmd.append(&mut vec_strings!["-i", node.source]);
-    }
-
-    if node.duration != node.out {
-        source_cmd.append(&mut vec_strings!["-t", node.out]);
-    }
-
-    if config.processing.vtt_enable {
-        let vtt_file = Path::new(&node.source).with_extension("vtt");
-        let vtt_dummy = config
-            .channel
-            .storage
-            .join(config.processing.vtt_dummy.clone().unwrap_or_default());
-
-        if vtt_file.is_file() {
-            source_cmd.append(&mut vec_strings![
-                "-i",
-                vtt_file.to_string_lossy(),
-                "-t",
-                node.out
-            ]);
-        } else if vtt_dummy.is_file() {
-            source_cmd.append(&mut vec_strings![
-                "-i",
-                vtt_dummy.to_string_lossy(),
-                "-t",
-                node.out
-            ]);
-        } else {
-            error!("WebVTT enabled, but no vtt or dummy file found!");
-        }
-    }
-
-    source_cmd
-}
-
-/// Set clip seek in and length value.
-pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> {
-    let loop_count = (node.out / node.duration).ceil() as i32;
-    let mut source_cmd = vec![];
-    let mut cut_audio = false;
-    let mut loop_audio = false;
-    let remote_source = is_remote(&node.source);
-
-    if remote_source && node.probe.clone().and_then(|f| f.format.duration).is_none() {
-        node.out -= node.seek;
-        node.seek = 0.0;
-    } else if node.seek > 0.5 {
-        source_cmd.append(&mut vec_strings!["-ss", node.seek]);
-    }
-
-    if loop_count > 1 {
-        info!(
-            "Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>",
-            node.source, node.out
-        );
-
-        source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
-    }
-
-    source_cmd.append(&mut vec_strings!["-i", node.source.clone()]);
-
-    if node.duration > node.out || remote_source || loop_count > 1 {
-        source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
-    }
-
-    if !node.audio.is_empty() {
-        if node.seek > 0.5 {
-            source_cmd.append(&mut vec_strings!["-ss", node.seek]);
-        }
-
-        if node.duration_audio > node.out {
-            cut_audio = true;
-        } else if node.duration_audio < node.out {
-            source_cmd.append(&mut vec_strings!["-stream_loop", -1]);
-            loop_audio = true;
-        }
-
-        source_cmd.append(&mut vec_strings!["-i", node.audio.clone()]);
-
-        if cut_audio || loop_audio || remote_source {
-            source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
-        }
-    }
-
-    if config.processing.vtt_enable {
-        let vtt_file = Path::new(&node.source).with_extension("vtt");
-        let vtt_dummy = config
-            .channel
-            .storage
-            .join(config.processing.vtt_dummy.clone().unwrap_or_default());
-
-        if node.seek > 0.5 {
-            source_cmd.append(&mut vec_strings!["-ss", node.seek]);
-        }
-
-        if let Some(vtt_path) = if vtt_file.is_file() {
-            Some(vtt_file.to_string_lossy())
-        } else if vtt_dummy.is_file() {
-            Some(vtt_dummy.to_string_lossy())
-        } else {
-            error!("<span class=\"log-addr\">{:?}</span> not found!", vtt_dummy);
-            None
-        } {
-            source_cmd.append(&mut vec_strings![
-                "-i",
-                vtt_path,
-                "-t",
-                node.out - node.seek
-            ]);
-        }
-    }
-
-    source_cmd
-}
-
-/// Create a dummy clip as a placeholder for missing video files.
-pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>) {
-    let color = "#121212";
-    let source = format!(
-        "color=c={color}:s={}x{}:d={duration}",
-        config.processing.width, config.processing.height
-    );
-    let mut source_cmd: Vec<String> = vec_strings![
-        "-f",
-        "lavfi",
-        "-i",
-        format!(
-            "{source}:r={},format=pix_fmts=yuv420p",
-            config.processing.fps
-        ),
-        "-f",
-        "lavfi",
-        "-i",
-        format!("anoisesrc=d={duration}:c=pink:r=48000:a=0.3")
-    ];
-
-    if config.processing.vtt_enable {
-        let vtt_dummy = config
-            .channel
-            .storage
-            .join(config.processing.vtt_dummy.clone().unwrap_or_default());
-
-        if vtt_dummy.is_file() {
-            source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
-        } else {
-            error!("WebVTT enabled, but no vtt or dummy file found!");
-        }
-    }
-
-    (source, source_cmd)
-}
-
-// fn get_output_count(cmd: &[String]) -> i32 {
-//     let mut count = 0;
-
-//     if let Some(index) = cmd.iter().position(|c| c == "-var_stream_map") {
-//         if let Some(mapping) = cmd.get(index + 1) {
-//             return mapping.split(' ').count() as i32;
-//         };
-//     };
-
-//     for (i, param) in cmd.iter().enumerate() {
-//         if i > 0 && !param.starts_with('-') && !cmd[i - 1].starts_with('-') {
-//             count += 1;
-//         }
-//     }
-
-//     count
-// }
-
 pub fn is_remote(path: &str) -> bool {
     Regex::new(r"^(https?|rtmps?|rts?p|udp|tcp|srt)://.*")
         .unwrap()
@@ -865,239 +519,21 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
     }
 
     if config.output.mode == HLS {
-        if let Some(ts_path) = config
-            .output
-            .output_cmd
-            .clone()
-            .unwrap_or_else(|| vec![String::new()])
-            .iter()
-            .find(|s| s.contains(".ts"))
-            && let Some(p) = Path::new(ts_path).parent()
-            && file_path.starts_with(p)
-        {
-            include = false;
-        }
-
-        if let Some(m3u8_path) = config
-            .output
-            .output_cmd
-            .clone()
-            .unwrap_or_else(|| vec![String::new()])
-            .iter()
-            .find(|s| s.contains(".m3u8") && !s.contains("master.m3u8"))
-            && let Some(p) = Path::new(m3u8_path).parent()
-            && file_path.starts_with(p)
+        let configured = Path::new(&config.output.hls_playlist_path);
+        let playlist_path = if configured.is_absolute() {
+            configured.to_path_buf()
+        } else {
+            config.channel.public.join(configured)
+        };
+        if playlist_path
+            .parent()
+            .is_some_and(|parent| file_path.starts_with(parent))
         {
             include = false;
         }
     }
 
     include
-}
-
-/// Read ffmpeg stderr decoder and encoder instance
-/// and log the output.
-pub async fn stderr_reader(
-    buffer: tokio::io::BufReader<ChildStderr>,
-    ignore: Vec<String>,
-    suffix: ProcessUnit,
-    channel_id: i32,
-    cancel_token: CancellationToken,
-) -> Result<(), ServiceError> {
-    let mut lines = buffer.lines();
-    let mut debup = LogDedup::new(suffix, channel_id);
-
-    loop {
-        let line = tokio::select! {
-            _ = cancel_token.cancelled() => break,
-            line = lines.next_line() => line,
-        };
-
-        let Some(line) = line? else {
-            break;
-        };
-
-        if FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
-            || ignore.iter().any(|i| line.contains(i))
-        {
-            continue;
-        }
-
-        debup.log(&line)?;
-    }
-
-    debup.flush()?;
-
-    Ok(())
-}
-
-/// Run program to test if it is in system.
-async fn is_in_system(name: &str) -> Result<(), String> {
-    match Command::new(name)
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-    {
-        Ok(mut proc) => {
-            if let Err(e) = proc.wait().await {
-                return Err(format!("{e}"));
-            };
-        }
-        Err(e) => return Err(format!("{name} not found on system! {e}")),
-    }
-
-    Ok(())
-}
-
-async fn ffmpeg_info(config: &mut PlayoutConfig) -> Result<(), String> {
-    let id = config.general.channel_id;
-    let ignore_flags = [
-        "--enable-gpl",
-        "--enable-version3",
-        "--enable-runtime-cpudetect",
-        "--enable-avfilter",
-        "--enable-zlib",
-        "--enable-pic",
-        "--enable-nonfree",
-    ];
-
-    let mut ff_proc = match Command::new("ffmpeg")
-        .args(["-filters"])
-        .kill_on_drop(true)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Err(e) => {
-            return Err(format!("couldn't spawn ffmpeg process: {e}"));
-        }
-        Ok(proc) => proc,
-    };
-
-    let out_buffer = BufReader::new(ff_proc.stdout.take().unwrap());
-    let err_buffer = BufReader::new(ff_proc.stderr.take().unwrap());
-
-    // stderr shows only the ffmpeg configuration
-    // get codec library's
-    let mut lines = err_buffer.lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        if line.contains("configuration:") {
-            let configs = line.split_whitespace();
-
-            for flag in configs {
-                if flag.contains("--enable") && !ignore_flags.contains(&flag) {
-                    config
-                        .general
-                        .ffmpeg_libs
-                        .push(flag.replace("--enable-", ""));
-                }
-            }
-            break;
-        }
-    }
-
-    // stdout shows filter from ffmpeg
-    // get filters
-    let mut lines = out_buffer.lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        if line.contains('>') {
-            let filter_line = line.split_whitespace().collect::<Vec<_>>();
-
-            if filter_line.len() > 2 {
-                config
-                    .general
-                    .ffmpeg_filters
-                    .push(filter_line[1].to_string());
-            }
-        }
-    }
-
-    if let Err(e) = ff_proc.wait().await {
-        error!(target: Target::file_mail(), channel = id; "{e}");
-    };
-
-    let mut ff_proc = match Command::new("ffmpeg")
-        .args(["-h", "long", "-hide_banner"])
-        .kill_on_drop(true)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Err(e) => {
-            return Err(format!("couldn't spawn ffmpeg process: {e}"));
-        }
-        Ok(proc) => proc,
-    };
-
-    let out_buffer = BufReader::new(ff_proc.stdout.take().unwrap());
-
-    // stdout shows options from ffmpeg
-    // get options
-    let mut lines = out_buffer.lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        if line.starts_with('-')
-            && let Some((opt, _)) = line.split_once([' ', '['])
-        {
-            config.general.ffmpeg_options.push(opt.to_string());
-        }
-    }
-
-    if let Err(e) = ff_proc.wait().await {
-        error!(target: Target::file_mail(), channel = id; "{e}");
-    };
-
-    Ok(())
-}
-
-/// Validate ffmpeg/ffprobe/ffplay.
-///
-/// Check if they are in system and has all libs and codecs we need.
-pub async fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
-    is_in_system("ffmpeg").await?;
-    is_in_system("ffprobe").await?;
-
-    if config.output.mode == Desktop {
-        is_in_system("ffplay").await?;
-    }
-
-    ffmpeg_info(config).await?;
-
-    if config
-        .output
-        .output_cmd
-        .as_ref()
-        .unwrap()
-        .contains(&"libx264".to_string())
-        && !config.general.ffmpeg_libs.contains(&"libx264".to_string())
-    {
-        return Err("ffmpeg contains no libx264!".to_string());
-    }
-
-    if config.text.add_text
-        && !config.text.text_from_filename
-        && !config.general.ffmpeg_libs.contains(&"libzmq".to_string())
-    {
-        return Err(
-            "ffmpeg contains no libzmq! Disable add_text in config or compile ffmpeg with libzmq."
-                .to_string(),
-        );
-    }
-
-    if config
-        .output
-        .output_cmd
-        .as_ref()
-        .unwrap()
-        .contains(&"libfdk_aac".to_string())
-        && !config
-            .general
-            .ffmpeg_libs
-            .contains(&"libfdk-aac".to_string())
-    {
-        return Err("ffmpeg contains no libfdk-aac!".to_string());
-    }
-
-    Ok(())
 }
 
 /// get a free tcp socket
