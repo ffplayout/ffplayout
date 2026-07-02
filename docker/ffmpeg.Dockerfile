@@ -3,11 +3,14 @@ FROM debian:trixie AS builder
 ENV DEBIAN_FRONTEND=noninteractive \
     LOCALDESTDIR=/tmp/local \
     PKG_CONFIG="pkg-config --static" \
-    PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig \
-    CPPFLAGS="-I/tmp/local/include -O3 -fPIC" \
-    CFLAGS="-I/tmp/local/include -O3 -fPIC" \
-    CXXFLAGS="-I/tmp/local/include -O2 -fPIC" \
-    LDFLAGS="-L/tmp/local/lib -pipe -static" \
+    PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig \
+    PKG_CONFIG_LIBDIR=/tmp/local/lib/pkgconfig \
+    PKG_CONFIG_ALL_STATIC=1 \
+    PKG_CONFIG_PREFER_STATIC=1 \
+    CPPFLAGS="-I/tmp/local/include -fPIC" \
+    CFLAGS="-I/tmp/local/include -mtune=generic -O2 -fPIC" \
+    CXXFLAGS="-I/tmp/local/include -mtune=generic -O2 -fPIC" \
+    LDFLAGS="-L/tmp/local/lib -pipe -static-libstdc++ -static-libgcc" \
     CC=gcc \
     CXX=g++
 
@@ -15,43 +18,100 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         autoconf \
         automake \
-        bash \
-        binutils \
+        bzip2 \
         build-essential \
         ca-certificates \
-        clang \
         cmake \
         curl \
-        diffutils \
-        file \
         git \
-        libbrotli-dev \
-        libbz2-dev \
-        libexpat1-dev \
-        libfontconfig-dev \
-        libfreetype-dev \
-        libfribidi-dev \
-        libglib2.0-dev \
-        libgraphite2-dev \
-        libjpeg-dev \
-        liblzma-dev \
-        libnuma-dev \
-        libpng-dev \
-        libsodium-dev \
+        gperf \
         libtool \
-        libxml2-dev \
-        libzstd-dev \
-        llvm \
         meson \
         nasm \
         ninja-build \
+        perl \
         pkg-config \
-        wget \
-        yasm \
-        zlib1g-dev && \
+        xz-utils && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /tmp
+
+RUN curl --retry 20 --retry-max-time 5 -L -f -o "zlib-1.3.2.tar.gz" "https://zlib.net/zlib-1.3.2.tar.gz" && \
+    tar xf "zlib-1.3.2.tar.gz" && \
+    cd "zlib-1.3.2" && \
+    ./configure --prefix="$LOCALDESTDIR" --static && \
+    make -j "$(nproc)" && \
+    make install
+
+RUN curl --retry 20 --retry-max-time 5 -L -f -o "bzip2-1.0.8.tar.gz" "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz" && \
+    tar xf "bzip2-1.0.8.tar.gz" && \
+    cd "bzip2-1.0.8" && \
+    make -j "$(nproc)" && \
+    make install PREFIX="$LOCALDESTDIR"
+
+RUN curl --retry 20 --retry-max-time 5 -L -f -o "xz-5.4.3.tar.gz" "https://downloads.sourceforge.net/project/lzmautils/xz-5.4.3.tar.gz" && \
+    tar xf "xz-5.4.3.tar.gz" && \
+    cd "xz-5.4.3" && \
+    ./configure --prefix="$LOCALDESTDIR" --disable-shared && \
+    make -j "$(nproc)" && \
+    make install
+
+RUN curl --retry 20 --retry-max-time 5 -L -f -o "libpng-1.6.48.tar.gz" "https://download.sourceforge.net/libpng/libpng-1.6.48.tar.gz" && \
+    tar xf "libpng-1.6.48.tar.gz" && \
+    cd "libpng-1.6.48" && \
+    ./configure --prefix="$LOCALDESTDIR" --disable-shared && \
+    make -j "$(nproc)" && \
+    make install
+
+RUN git clone --depth 1 "https://github.com/fribidi/fribidi.git" && cd fribidi && \
+    meson setup build \
+        --default-library=static \
+        --prefix "$LOCALDESTDIR" \
+        --libdir="$LOCALDESTDIR/lib" \
+        -Ddocs=false \
+        -Dbin=false \
+        -Dtests=false && \
+    ninja -C build && \
+    ninja -C build install
+
+RUN curl --retry 20 --retry-max-time 5 -L -f -o "expat-2.7.1.tar.bz2" "https://github.com/libexpat/libexpat/releases/download/R_2_7_1/expat-2.7.1.tar.bz2" && \
+    tar xf "expat-2.7.1.tar.bz2" && \
+    cd "expat-2.7.1" && \
+    ./configure --prefix="$LOCALDESTDIR" --enable-shared=no --without-docbook && \
+    make -j "$(nproc)" && \
+    make install
+
+RUN curl --retry 20 --retry-max-time 5 -L -f -o "brotli-1.1.0.tar.gz" "https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz" && \
+    tar xf "brotli-1.1.0.tar.gz" && \
+    cd "brotli-1.1.0" && \
+    cmake -S . -B build \
+        -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DCMAKE_INSTALL_LIBDIR=lib && \
+    cmake --build build -j "$(nproc)" && \
+    cmake --install build
+
+RUN curl --retry 20 --retry-max-time 5 -L -f -o "freetype-2.13.3.tar.gz" "https://sourceforge.net/projects/freetype/files/freetype2/2.13.3/freetype-2.13.3.tar.gz" && \
+    tar xf "freetype-2.13.3.tar.gz" && \
+    cd "freetype-2.13.3" && \
+    ./configure --prefix="$LOCALDESTDIR" --disable-shared --with-harfbuzz=no && \
+    make -j "$(nproc)" && \
+    make install
+
+RUN git clone --depth 1 --branch 2.16.0 "https://gitlab.freedesktop.org/fontconfig/fontconfig.git" && cd fontconfig && \
+    meson setup build \
+        --default-library=static \
+        --prefix "$LOCALDESTDIR" \
+        --libdir="$LOCALDESTDIR/lib" \
+        -Dcache-build=disabled \
+        -Ddoc=disabled \
+        -Dnls=disabled \
+        -Dtests=disabled \
+        -Dtools=disabled \
+        -Dxml-backend=expat && \
+    ninja -C build && \
+    ninja -C build install
 
 RUN git clone --depth 1 "https://github.com/mstorsjo/fdk-aac" && cd fdk-aac && \
     ./autogen.sh && \
@@ -76,24 +136,24 @@ RUN curl --retry 20 --retry-max-time 5 -L -k -f -o "opus-1.6.tar.gz" "https://ft
 RUN curl --retry 20 --retry-max-time 5 -L -k -f -o "openssl-3.5.0.tar.gz" "https://github.com/openssl/openssl/releases/download/openssl-3.5.0/openssl-3.5.0.tar.gz" && \
     tar xf "openssl-3.5.0.tar.gz" && \
     cd "openssl-3.5.0" && \
-    ./Configure --prefix=$LOCALDESTDIR --openssldir=$LOCALDESTDIR $target --libdir="$LOCALDESTDIR/lib" no-shared no-docs zlib -static && \
-    make depend all && \
+    ./Configure linux-x86_64 --prefix="$LOCALDESTDIR" --openssldir="$LOCALDESTDIR" --libdir=lib no-apps no-shared no-docs no-tests zlib -static -mtune=generic && \
+    make -j "$(nproc)" build_sw && \
     make install_sw
 
 RUN git clone --depth 1 "https://github.com/Haivision/srt.git" && cd srt && \
     mkdir build && \
     cd build && \
-    cmake .. -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" -DENABLE_SHARED:BOOLEAN=OFF -DOPENSSL_USE_STATIC_LIBS=ON -DUSE_STATIC_LIBSTDCXX:BOOLEAN=ON -DENABLE_CXX11:BOOLEAN=ON -DCMAKE_INSTALL_BINDIR="bin" -DCMAKE_INSTALL_LIBDIR="lib" -DCMAKE_INSTALL_INCLUDEDIR="include" && \
+    cmake .. -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" -DENABLE_SHARED:BOOLEAN=OFF -DOPENSSL_USE_STATIC_LIBS=ON -DUSE_STATIC_LIBSTDCXX:BOOLEAN=ON -DENABLE_CXX11:BOOLEAN=OFF -DCMAKE_INSTALL_BINDIR="bin" -DCMAKE_INSTALL_LIBDIR="lib" -DCMAKE_INSTALL_INCLUDEDIR="include" && \
     make -j "$(nproc)" && \
     make install
 
 RUN git clone "https://github.com/webmproject/libvpx.git" && cd libvpx && \
-    ./configure --prefix="$LOCALDESTDIR" --disable-shared --enable-static --disable-unit-tests --disable-docs --enable-postproc --enable-vp9-postproc --enable-runtime-cpu-detect && \
+    ./configure --prefix="$LOCALDESTDIR" --disable-shared --enable-static --enable-pic --disable-unit-tests --disable-docs --enable-postproc --enable-vp9-postproc --enable-runtime-cpu-detect && \
     make -j "$(nproc)" && \
     make install
 
 RUN git clone "https://code.videolan.org/videolan/x264" && cd x264 && \
-    ./configure --prefix="$LOCALDESTDIR" --enable-static && \
+    ./configure --prefix="$LOCALDESTDIR" --enable-static --enable-pic && \
     make -j "$(nproc)" && \
     make install
 
@@ -135,13 +195,18 @@ RUN git clone --depth 1 --branch v4.3.5 "https://github.com/zeromq/libzmq.git" &
         --prefix="$LOCALDESTDIR" \
         --enable-static \
         --disable-shared \
-        --with-libsodium \
+        --without-libsodium \
         --without-pgm \
         --without-norm \
         --without-vmci \
         --without-docs && \
     make -j "$(nproc)" && \
     make install
+
+RUN sed -i '/^Libs:/ s/$/ -lstdc++ -lcrypto -lz -lpthread -ldl/' \
+    "$LOCALDESTDIR/lib/pkgconfig/srt.pc"
+
+RUN sed -ri "s/(Libs\:.*)/\1 -lstdc++ -lpthread -ldl/g" "$LOCALDESTDIR/lib/pkgconfig/x265.pc"
 
 ARG FFMPEG_VERSION=release/8.1
 ARG FFMPEG_DEBUG=0
@@ -151,8 +216,12 @@ RUN mkdir -p /ffmpeg-debug && \
     if ! ./configure \
         --pkg-config-flags=--static \
         --extra-cflags="-DZMG_STATIC" \
-        --extra-ldflags="-Wl,--copy-dt-needed-entries -Wl,--allow-multiple-definition" \
+        --extra-libs="-lm -lpthread" \
         --enable-runtime-cpudetect \
+        --enable-pic \
+        --enable-bzlib \
+        --enable-lzma \
+        --enable-zlib \
         --prefix=/usr/local \
         --disable-debug \
         --disable-doc \

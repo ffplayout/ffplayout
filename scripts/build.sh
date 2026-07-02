@@ -95,6 +95,7 @@ for target in "${targets[@]}"; do
         mkdir -p ./target/debian-static
 
         docker build \
+         --build-arg FFMPEG_DEBUG=1 \
             --build-arg FFMPEG_VERSION="${FFMPEG_VERSION:-release/8.1}" \
             -t localhost/ffplayout-ffmpeg-static:latest \
             -f ./docker/ffmpeg.Dockerfile .
