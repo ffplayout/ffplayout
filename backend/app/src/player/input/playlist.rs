@@ -474,7 +474,7 @@ impl CurrentProgram {
         );
 
         if self.config.playlist.length.contains(':') {
-            if Some(current_date) == last_date && time_shift != 0.0 {
+            if Some(current_date.clone()) == last_date && time_shift != 0.0 {
                 shifted_delta = delta - time_shift;
                 shifted_msg = format!("shifted: <span class=\"log-number\">{delta:.3}</span>");
             }
@@ -501,6 +501,10 @@ impl CurrentProgram {
                 } else if self.manager.is_alive.load(Ordering::SeqCst) {
                     error!(target: Target::file_mail(), channel = self.channel_id; "Clip begin out of sync for <span class=\"log-number\">{delta:.3}</span> seconds.");
 
+                    self.set_status(&Some(current_date), 0.0).await;
+                    self.manager.list_init.store(true, Ordering::SeqCst);
+                    self.manager.current_index.store(0, Ordering::SeqCst);
+                    node.skip = true;
                     self.current_node = node;
                     return;
                 }

@@ -1,6 +1,7 @@
 use ffmpeg_next::{ffi, util::log::Level};
 use log::{debug, error, info, trace, warn};
 use std::{
+    cell::RefCell,
     ffi::CStr,
     os::raw::{c_char, c_int, c_void},
 };
@@ -9,11 +10,25 @@ const DEFAULT_FFMPEG_LOG_LEVEL: Level = Level::Warning;
 const FFMPEG_LOG_TARGET: &str = "ffmpeg";
 const SKIPPED_FFMPEG_LOG_MESSAGES: &[&str] = &["Could not update timestamps for skipped samples"];
 
+thread_local! {
+    static UNEXPECTED_RTMP_STREAM: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+}
+
 pub(crate) fn init() {
     ffmpeg_next::util::log::set_level(configured_level());
     unsafe {
         ffi::av_log_set_callback(Some(log_callback));
     }
+}
+
+pub(crate) fn clear_unexpected_rtmp_stream() {
+    UNEXPECTED_RTMP_STREAM.with(|stream| {
+        *stream.borrow_mut() = None;
+    });
+}
+
+pub(crate) fn take_unexpected_rtmp_stream() -> Option<(String, String)> {
+    UNEXPECTED_RTMP_STREAM.with(|stream| stream.borrow_mut().take())
 }
 
 fn configured_level() -> Level {
@@ -91,6 +106,8 @@ fn should_skip_ffmpeg_log(message: &str) -> bool {
 }
 
 fn log_line(level: c_int, message: &str) {
+    remember_unexpected_rtmp_stream(message);
+
     if level <= ffi::AV_LOG_ERROR {
         error!(target: FFMPEG_LOG_TARGET, "[ffmpeg] {message}");
     } else if level <= ffi::AV_LOG_WARNING {
@@ -102,4 +119,22 @@ fn log_line(level: c_int, message: &str) {
     } else {
         trace!(target: FFMPEG_LOG_TARGET, "[ffmpeg] {message}");
     }
+}
+
+fn remember_unexpected_rtmp_stream(message: &str) {
+    let Some(rest) = message.split_once("Unexpected stream ") else {
+        return;
+    };
+    let Some((actual, expected)) = rest.1.split_once(", expecting ") else {
+        return;
+    };
+    let actual = actual.trim();
+    let expected = expected.trim();
+    if actual.is_empty() || expected.is_empty() {
+        return;
+    }
+
+    UNEXPECTED_RTMP_STREAM.with(|stream| {
+        *stream.borrow_mut() = Some((actual.to_string(), expected.to_string()));
+    });
 }

@@ -192,6 +192,14 @@ async fn play_loop(
             .await
             .map_err(engine_error)?
         {
+            ClipResult::LiveEnded => {
+                info!(target: Target::file_mail(), channel = id;
+                    "Live input ended; reinitialize playlist at current time"
+                );
+                manager.list_init.store(true, Ordering::SeqCst);
+                node_sources = source_generator(manager.clone()).await;
+                continue;
+            }
             ClipResult::Played => {}
             ClipResult::Fallback { reason } => {
                 error!(target: Target::file_mail(), channel = id;

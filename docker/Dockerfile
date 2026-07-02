@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-ARG FFPLAYOUT_VERSION=0.25.3
+ARG FFPLAYOUT_VERSION=2.0.0-beta
 
 ENV DB=/db
 

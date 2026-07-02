@@ -31,6 +31,18 @@ docker_exec_env() {
     docker exec -it "${args[@]}" build-ffplayout "$@"
 }
 
+docker_run_env() {
+    local args=()
+
+    for name in "${env_names[@]}"; do
+        if [[ -v $name ]]; then
+            args+=("-e" "$name=${!name}")
+        fi
+    done
+
+    docker run --rm -it "${args[@]}" "$@"
+}
+
 cargo_features_args=()
 
 if [[ -n ${CARGO_FEATURES:-} ]]; then
@@ -75,6 +87,29 @@ for target in "${targets[@]}"; do
 
         tar --transform 's/\.\/target\/.*\///g' -czvf "ffplayout-v${version}_debian.tar.gz" --exclude='*.db' --exclude='*.db-shm' \
             --exclude='*.db-wal' assets docker docs LICENSE README.md ./target/x86_64-unknown-linux-gnu/release/ffplayout
+    elif [[ $target == "debian-static" ]]; then
+        rm -f ffplayout_${version}-1_amd64.deb
+        rm -f ./target/debian-static/ffplayout
+        rm -f ./target/debian-static/ffplayout_${version}-1_amd64.deb
+        rm -f ./target/release/ffplayout
+        mkdir -p ./target/debian-static
+
+        docker build \
+            --build-arg FFMPEG_VERSION="${FFMPEG_VERSION:-release/8.1}" \
+            -t localhost/ffplayout-ffmpeg-static:latest \
+            -f ./docker/ffmpeg.Dockerfile .
+
+        docker build \
+            --build-arg CARGO_FEATURES="${CARGO_FEATURES:-embed_frontend}" \
+            -t localhost/ffplayout-static-builder:latest \
+            -f ./docker/static.Dockerfile .
+
+        docker_run_env \
+            -v "$(pwd)":/src:z \
+            -v "$(pwd)/target/debian-static":/artifacts:z \
+            localhost/ffplayout-static-builder:latest
+
+        cp "./target/debian-static/ffplayout_${version}-1_amd64.deb" .
     elif [[ $target == "x86_64-pc-windows-gnu" ]]; then
         if [[ -f "ffplayout-v${version}_${target}.zip" ]]; then
             rm -f "ffplayout-v${version}_${target}.zip"

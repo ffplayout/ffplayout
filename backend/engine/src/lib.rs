@@ -12,7 +12,7 @@ mod output;
 mod playout;
 mod utils;
 
-use input::live::LiveOverrideOutput;
+use input::live::{LiveEnded, LiveOverrideOutput};
 pub use input::live::{LiveReceiver, spawn_rtmp_listener};
 pub use output::resolved_variant_playlist_path;
 use output::{FrameOutput, Output, PlaybackStopped};
@@ -30,6 +30,7 @@ pub use utils::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClipResult {
     Played,
+    LiveEnded,
     Fallback { reason: String },
     Stopped,
 }
@@ -528,6 +529,7 @@ fn play_to_output<O: FrameOutput>(
         options.subtitles_media_path,
     ) {
         Ok(()) => Ok(ClipResult::Played),
+        Err(error) if error.downcast_ref::<LiveEnded>().is_some() => Ok(ClipResult::LiveEnded),
         Err(error) if error.downcast_ref::<PlaybackStopped>().is_some() => Ok(ClipResult::Stopped),
         Err(error) => {
             let reason = format!("{error:#}");

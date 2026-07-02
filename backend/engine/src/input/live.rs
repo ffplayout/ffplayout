@@ -1,6 +1,7 @@
 use std::{
-    ffi::CString,
-    ptr,
+    error::Error,
+    ffi::{CStr, CString},
+    fmt, ptr,
     sync::{
         Arc, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -24,7 +25,7 @@ use log::{error, info, warn};
 use crate::{
     output::FrameOutput,
     playout::{InputPlaybackOptions, Timeline, play_opened_input},
-    utils::config::OutputConfig,
+    utils::{config::OutputConfig, logging},
 };
 
 const LIVE_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
@@ -43,17 +44,30 @@ pub struct LiveReceiver {
     active: bool,
     connecting: bool,
     session_id: u64,
-    session_video_base: Option<i64>,
-    session_audio_base: Option<i64>,
+    session_output_start_seconds: Option<f64>,
+    session_source_start_seconds: Option<f64>,
+    pending_audio: Vec<frame::Audio>,
     last_media_at: Option<Instant>,
     last_video_frame: Option<frame::Video>,
     last_video_output_pts: Option<i64>,
     last_audio_output_end_pts: Option<i64>,
     file_resume_at_seconds: Option<f64>,
     file_resume_shift_seconds: Option<f64>,
+    returned_to_file: bool,
     video_pts: i64,
     audio_pts: i64,
 }
+
+#[derive(Debug)]
+pub(crate) struct LiveEnded;
+
+impl fmt::Display for LiveEnded {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("live input ended")
+    }
+}
+
+impl Error for LiveEnded {}
 
 enum LiveEvent {
     Started(u64),
@@ -75,14 +89,16 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
         active: false,
         connecting: false,
         session_id: 0,
-        session_video_base: None,
-        session_audio_base: None,
+        session_output_start_seconds: None,
+        session_source_start_seconds: None,
+        pending_audio: Vec::new(),
         last_media_at: None,
         last_video_frame: None,
         last_video_output_pts: None,
         last_audio_output_end_pts: None,
         file_resume_at_seconds: None,
         file_resume_shift_seconds: None,
+        returned_to_file: false,
         video_pts: 0,
         audio_pts: 0,
     }
@@ -104,50 +120,40 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             match self.live.rx.try_recv() {
                 Ok(LiveEvent::Started(session_id)) => {
                     self.live.session_id = session_id;
-                    self.live.session_video_base = None;
-                    self.live.session_audio_base = None;
+                    self.live.session_output_start_seconds = None;
+                    self.live.session_source_start_seconds = None;
+                    self.live.pending_audio.clear();
                     self.live.last_media_at = Some(Instant::now());
                     self.live.active = false;
                     self.live.connecting = true;
                     info!("live input connected; waiting for first video frame");
                 }
-                Ok(LiveEvent::Video(session_id, mut frame)) => {
+                Ok(LiveEvent::Video(session_id, frame)) => {
                     if session_id == self.live.session_id {
                         if !self.live.active {
                             info!("first live video frame received; switching to RTMP live");
                             self.live.active = true;
                             self.live.connecting = false;
+                            self.start_live_session(video_seconds(
+                                self.live.fps,
+                                frame.pts().unwrap_or(0),
+                            ));
                         }
                         received_event = true;
-                        let source_pts = frame.pts().unwrap_or(0);
-                        let session_video_base = *self
-                            .live
-                            .session_video_base
-                            .get_or_insert(self.live.video_pts - source_pts);
-                        let pts = (session_video_base + source_pts).max(self.live.video_pts);
-                        self.fill_video_until(pts)?;
-                        frame.set_pts(Some(pts));
-                        self.output.encode_video(&frame)?;
-                        self.remember_video_frame(frame, pts);
+                        self.encode_live_video_frame(frame)?;
+                        self.flush_pending_audio()?;
                         self.live.last_media_at = Some(Instant::now());
-                        self.live.video_pts = pts + 1;
                     }
                 }
-                Ok(LiveEvent::Audio(session_id, mut frame)) => {
-                    if self.live.active && session_id == self.live.session_id {
+                Ok(LiveEvent::Audio(session_id, frame)) => {
+                    if session_id == self.live.session_id {
                         received_event = true;
-                        let samples = frame.samples() as i64;
-                        let source_pts = frame.pts().unwrap_or(0);
-                        let session_audio_base = *self
-                            .live
-                            .session_audio_base
-                            .get_or_insert(self.live.audio_pts - source_pts);
-                        let pts = (session_audio_base + source_pts).max(self.live.audio_pts);
-                        self.fill_audio_until(pts)?;
-                        frame.set_pts(Some(pts));
-                        self.output.encode_audio(&frame)?;
                         self.live.last_media_at = Some(Instant::now());
-                        self.remember_audio_frame_end(pts + samples);
+                        if self.live.active {
+                            self.encode_live_audio_frame(frame)?;
+                        } else {
+                            self.live.pending_audio.push(frame);
+                        }
                     }
                 }
                 Ok(LiveEvent::Ended(session_id)) => {
@@ -157,9 +163,11 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                             self.fill_live_gap_since_last_media()?;
                             self.align_live_pts_to_common_time();
                             self.prepare_file_resume();
+                            self.live.returned_to_file = true;
                         }
                         self.live.active = false;
                         self.live.connecting = false;
+                        self.live.pending_audio.clear();
                     }
                 }
                 Err(TryRecvError::Empty) => return Ok(received_event),
@@ -168,9 +176,11 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                         self.fill_live_gap_since_last_media()?;
                         self.align_live_pts_to_common_time();
                         self.prepare_file_resume();
+                        self.live.returned_to_file = true;
                     }
                     self.live.active = false;
                     self.live.connecting = false;
+                    self.live.pending_audio.clear();
                     return Ok(received_event);
                 }
             }
@@ -198,12 +208,18 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     self.fill_live_gap(idle_for)?;
                     self.align_live_pts_to_common_time();
                     self.prepare_file_resume();
+                    self.live.returned_to_file = true;
                 } else {
                     info!("live input produced no video frame; switching back to file playback");
                 }
                 self.live.active = false;
                 self.live.connecting = false;
+                self.live.pending_audio.clear();
             }
+        }
+        if self.live.returned_to_file {
+            self.live.returned_to_file = false;
+            return Err(LiveEnded.into());
         }
         Ok(())
     }
@@ -315,18 +331,86 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         self.live.last_audio_output_end_pts = Some(end_pts);
     }
 
-    fn align_live_pts_to_common_time(&mut self) {
-        let video_seconds = self.live.video_pts as f64 / f64::from(self.live.fps);
-        let audio_seconds = self.live.audio_pts as f64 / f64::from(self.live.sample_rate);
-        let common_seconds = video_seconds.max(audio_seconds);
+    fn start_live_session(&mut self, source_start_seconds: f64) {
+        let output_start_seconds = self.common_live_seconds();
         self.live.video_pts = self
             .live
             .video_pts
-            .max((common_seconds * f64::from(self.live.fps)).ceil() as i64);
+            .max(seconds_to_video_pts(self.live.fps, output_start_seconds));
+        self.live.audio_pts = self.live.audio_pts.max(seconds_to_audio_pts(
+            self.live.sample_rate,
+            output_start_seconds,
+        ));
+        self.live.session_output_start_seconds = Some(output_start_seconds);
+        self.live.session_source_start_seconds = Some(source_start_seconds);
+    }
+
+    fn common_live_seconds(&self) -> f64 {
+        let video_seconds = self.live.video_pts as f64 / f64::from(self.live.fps);
+        let audio_seconds = self.live.audio_pts as f64 / f64::from(self.live.sample_rate);
+        video_seconds.max(audio_seconds)
+    }
+
+    fn live_output_seconds(&self, source_seconds: f64) -> f64 {
+        let output_start = self
+            .live
+            .session_output_start_seconds
+            .unwrap_or_else(|| self.common_live_seconds());
+        let source_start = self
+            .live
+            .session_source_start_seconds
+            .unwrap_or(source_seconds);
+        output_start + (source_seconds - source_start)
+    }
+
+    fn encode_live_video_frame(&mut self, mut frame: frame::Video) -> Result<()> {
+        let source_pts = frame.pts().unwrap_or(0);
+        let pts = seconds_to_video_pts(
+            self.live.fps,
+            self.live_output_seconds(video_seconds(self.live.fps, source_pts)),
+        )
+        .max(self.live.video_pts);
+        self.fill_video_until(pts)?;
+        frame.set_pts(Some(pts));
+        self.output.encode_video(&frame)?;
+        self.remember_video_frame(frame, pts);
+        self.live.video_pts = pts + 1;
+        Ok(())
+    }
+
+    fn encode_live_audio_frame(&mut self, mut frame: frame::Audio) -> Result<()> {
+        let samples = frame.samples() as i64;
+        let source_pts = frame.pts().unwrap_or(0);
+        let pts = seconds_to_audio_pts(
+            self.live.sample_rate,
+            self.live_output_seconds(audio_seconds(self.live.sample_rate, source_pts)),
+        )
+        .max(self.live.audio_pts);
+        self.fill_audio_until(pts)?;
+        frame.set_pts(Some(pts));
+        self.output.encode_audio(&frame)?;
+        self.remember_audio_frame_end(pts + samples);
+        Ok(())
+    }
+
+    fn flush_pending_audio(&mut self) -> Result<()> {
+        let pending = std::mem::take(&mut self.live.pending_audio);
+        for frame in pending {
+            self.encode_live_audio_frame(frame)?;
+        }
+        Ok(())
+    }
+
+    fn align_live_pts_to_common_time(&mut self) {
+        let common_seconds = self.common_live_seconds();
+        self.live.video_pts = self
+            .live
+            .video_pts
+            .max(seconds_to_video_pts(self.live.fps, common_seconds));
         self.live.audio_pts = self
             .live
             .audio_pts
-            .max((common_seconds * f64::from(self.live.sample_rate)).ceil() as i64);
+            .max(seconds_to_audio_pts(self.live.sample_rate, common_seconds));
     }
 
     fn prepare_file_resume(&mut self) {
@@ -378,6 +462,22 @@ fn resume_pts(
         source_pts.max(floor_pts)
     }
     .max(floor_pts)
+}
+
+fn video_seconds(fps: u32, pts: i64) -> f64 {
+    pts as f64 / f64::from(fps)
+}
+
+fn audio_seconds(sample_rate: u32, pts: i64) -> f64 {
+    pts as f64 / f64::from(sample_rate)
+}
+
+fn seconds_to_video_pts(fps: u32, seconds: f64) -> i64 {
+    (seconds * f64::from(fps)).ceil() as i64
+}
+
+fn seconds_to_audio_pts(sample_rate: u32, seconds: f64) -> i64 {
+    (seconds * f64::from(sample_rate)).ceil() as i64
 }
 
 impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
@@ -603,6 +703,7 @@ fn open_rtmp_listener(url: &str, abort: Arc<AtomicBool>) -> Result<format::conte
     let mut options = Dictionary::new();
     options.set("listen", "1");
     options.set("timeout", "0");
+    logging::clear_unexpected_rtmp_stream();
 
     let url_cstring =
         CString::new(url).with_context(|| format!("RTMP input URL contains NUL byte: {url}"))?;
@@ -641,8 +742,74 @@ fn open_rtmp_listener(url: &str, abort: Arc<AtomicBool>) -> Result<format::conte
                 .with_context(|| format!("failed to read RTMP stream info at {url}"));
         }
 
+        if let Some((actual_key, expected_key)) = logging::take_unexpected_rtmp_stream() {
+            ffi::avformat_close_input(&mut ps);
+            anyhow::bail!(
+                "incoming RTMP stream key {actual_key:?} does not match configured key {expected_key:?}"
+            );
+        }
+
+        if let Some(expected_key) = rtmp_stream_key(url)
+            && let Some(actual_key) = rtmp_context_option(ps, "rtmp_playpath")
+            && actual_key != expected_key
+        {
+            ffi::avformat_close_input(&mut ps);
+            anyhow::bail!(
+                "incoming RTMP stream key {actual_key:?} does not match configured key {expected_key:?}"
+            );
+        }
+
         Ok(format::context::Input::wrap(ps))
     }
+}
+
+fn rtmp_stream_key(url: &str) -> Option<String> {
+    let path = url
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(url)
+        .split_once('/')
+        .map(|(_, path)| path)?;
+
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|key| !key.is_empty())
+        .map(str::to_string)
+}
+
+unsafe fn rtmp_context_option(ps: *mut ffi::AVFormatContext, name: &str) -> Option<String> {
+    let name = CString::new(name).ok()?;
+    let mut value = std::ptr::null_mut();
+
+    let candidates = [
+        ps.cast(),
+        (!ps.is_null()).then(|| unsafe { (*ps).pb.cast() })?,
+        (!ps.is_null() && !unsafe { (*ps).pb }.is_null()).then(|| unsafe { (*(*ps).pb).opaque })?,
+    ];
+
+    for candidate in candidates {
+        if candidate.is_null() {
+            continue;
+        }
+        let result = unsafe {
+            ffi::av_opt_get(
+                candidate,
+                name.as_ptr(),
+                ffi::AV_OPT_SEARCH_CHILDREN,
+                &mut value,
+            )
+        };
+        if result >= 0 && !value.is_null() {
+            let option = unsafe { CStr::from_ptr(value.cast()) }
+                .to_string_lossy()
+                .to_string();
+            unsafe { ffi::av_free(value.cast()) };
+            return (!option.is_empty()).then_some(option);
+        }
+    }
+
+    None
 }
 
 /// Monotonic millisecond clock used for idle-timeout tracking.
