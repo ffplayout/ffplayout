@@ -6,7 +6,7 @@ use std::{
 };
 
 use ff_engine::{
-    AsyncPlayout, ClipResult, LogoConfig, OutputConfig, resolved_variant_playlist_path,
+    AsyncPlayout, ClipResult, LogoConfig, OutputConfig, RateControl, resolved_variant_playlist_path,
 };
 use log::*;
 use tokio::time::sleep;
@@ -14,7 +14,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     file::norm_abs_path,
-    player::{controller::ChannelManager, input::source_generator, utils::sec_to_time},
+    player::{
+        controller::ChannelManager,
+        input::source_generator,
+        utils::{Media, sec_to_time},
+    },
     utils::{
         config::{OutputMode, PlayoutConfig},
         errors::ServiceError,
@@ -36,7 +40,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     }
 
     if config.ingest.enable {
-        let url = ingest_url(&config)?;
+        let url = config.ingest.ingest_url.clone();
         playout
             .start_rtmp_live(url.clone(), output_config)
             .await
@@ -177,12 +181,13 @@ async fn play_loop(
             }
         }
 
-        let duration = (node.out > node.seek).then_some(node.out - node.seek);
+        let duration = playout_duration(&node);
         match playout
             .play_with_timing(
                 node.source.clone(),
                 (node.seek > 0.0).then_some(node.seek),
                 duration,
+                subtitle_media_path(config, &node.source),
             )
             .await
             .map_err(engine_error)?
@@ -255,9 +260,6 @@ async fn open_playout(
             .await
             .map_err(engine_error)
         }
-        OutputMode::Null => AsyncPlayout::open_null(output_config, fallback_duration)
-            .await
-            .map_err(engine_error),
         OutputMode::Stream => {
             AsyncPlayout::open(output_url(config)?, output_config, fallback_duration)
                 .await
@@ -313,9 +315,21 @@ fn engine_output_config(config: &PlayoutConfig) -> Result<OutputConfig, ServiceE
         position: config.processing.logo_position.clone(),
     });
 
+    let rate_control = if config.output.rate_control == "crf" {
+        RateControl::Crf
+    } else {
+        RateControl::Cbr
+    };
     Ok(OutputConfig::new(width, height, fps, 48_000)
         .with_volume(config.processing.volume)
-        .with_logo(logo))
+        .with_logo(logo)
+        .with_encoding(
+            config.output.video_preset.clone(),
+            rate_control,
+            config.output.video_quality,
+            u64::from(config.output.video_maxrate) * 1_000,
+            u64::from(config.output.audio_bitrate) * 1_000,
+        ))
 }
 
 fn validate_supported_config(config: &PlayoutConfig) -> Result<(), ServiceError> {
@@ -326,20 +340,12 @@ fn validate_supported_config(config: &PlayoutConfig) -> Result<(), ServiceError>
         (processing.audio_only, "audio_only"),
         (processing.copy_audio, "copy_audio"),
         (processing.copy_video, "copy_video"),
-        (processing.override_filter, "override_filter"),
-        (!processing.custom_filter.trim().is_empty(), "custom_filter"),
         (processing.audio_tracks != 1, "audio_tracks != 1"),
         (
             processing.audio_track_index > 0,
             "audio_track_index other than default/first track",
         ),
         (config.text.add_text, "text overlay"),
-        (
-            config.advanced.decoder.input_cmd.is_some()
-                || config.advanced.decoder.output_cmd.is_some()
-                || config.advanced.encoder.input_cmd.is_some(),
-            "advanced ffmpeg command overrides",
-        ),
     ];
 
     let unsupported = unsupported
@@ -367,13 +373,34 @@ fn validate_supported_node(
             "backend/engine integration does not support separate audio files yet".to_string(),
         ));
     }
-    if config.processing.vtt_enable && !Path::new(source).with_extension("vtt").is_file() {
+    if config.processing.vtt_enable
+        && !Path::new(source).with_extension("vtt").is_file()
+        && subtitle_media_path(config, source).is_none()
+    {
         warn!(target: Target::file_mail(), channel = config.general.channel_id;
-            "WebVTT enabled, but no sidecar subtitle file found for <span class=\"log-addr\">{source}</span>"
+            "WebVTT enabled, but no sidecar or dummy subtitle file found for <span class=\"log-addr\">{source}</span>"
         );
     }
 
     Ok(())
+}
+
+fn subtitle_media_path(config: &PlayoutConfig, source: &str) -> Option<String> {
+    if !config.processing.vtt_enable {
+        return None;
+    }
+
+    let sidecar = Path::new(source).with_extension("vtt");
+    if sidecar.is_file() {
+        return Some(source.to_string());
+    }
+
+    config.processing.vtt_dummy.as_ref().and_then(|dummy| {
+        let (dummy_path, _, _) = norm_abs_path(&config.storage.path, dummy).ok()?;
+        dummy_path
+            .is_file()
+            .then(|| dummy_path.to_string_lossy().to_string())
+    })
 }
 
 fn output_url(config: &PlayoutConfig) -> Result<String, ServiceError> {
@@ -427,15 +454,51 @@ fn watchdog_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceErro
         .map_err(|e| ServiceError::Conflict(e.to_string()))
 }
 
-fn ingest_url(config: &PlayoutConfig) -> Result<String, ServiceError> {
-    config
-        .ingest
-        .input_cmd
-        .as_deref()
-        .and_then(|cmd| cmd.iter().find(|item| item.contains("://")).cloned())
-        .ok_or_else(|| ServiceError::Conflict("could not resolve ingest URL".to_string()))
+fn playout_duration(node: &Media) -> Option<f64> {
+    (node.out > node.seek).then_some(node.out - node.seek)
 }
 
 fn engine_error(error: impl fmt::Display) -> ServiceError {
     ServiceError::Conflict(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::playout_duration;
+    use crate::player::utils::Media;
+
+    #[test]
+    fn full_placeholder_keeps_explicit_duration() {
+        let node = Media {
+            out: 12.0,
+            duration: 12.0,
+            is_placeholder: true,
+            ..Media::default()
+        };
+
+        assert_eq!(playout_duration(&node), Some(12.0));
+    }
+
+    #[test]
+    fn shorter_placeholder_slot_is_trimmed() {
+        let node = Media {
+            out: 5.0,
+            duration: 12.0,
+            is_placeholder: true,
+            ..Media::default()
+        };
+
+        assert_eq!(playout_duration(&node), Some(5.0));
+    }
+
+    #[test]
+    fn regular_clip_keeps_loop_duration() {
+        let node = Media {
+            out: 20.0,
+            duration: 12.0,
+            ..Media::default()
+        };
+
+        assert_eq!(playout_duration(&node), Some(20.0));
+    }
 }

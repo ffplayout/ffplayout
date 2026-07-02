@@ -4,7 +4,7 @@ use ffmpeg_next::{
     software::{resampling, scaling},
     util::{channel_layout::ChannelLayout, format::pixel::Pixel, format::sample::Sample},
 };
-use log::debug;
+use log::{debug, trace};
 
 use crate::{
     output::FrameOutput,
@@ -37,9 +37,18 @@ pub(crate) fn play_clip<O: FrameOutput>(
     output: &mut O,
     seek_seconds: Option<f64>,
     duration_seconds: Option<f64>,
+    subtitles_media_path: Option<&str>,
 ) -> Result<()> {
     if let Some(duration_seconds) = duration_seconds.filter(|duration| *duration > 0.0) {
-        return play_looped_clip(path, cfg, timeline, output, seek_seconds, duration_seconds);
+        return play_looped_clip(
+            path,
+            cfg,
+            timeline,
+            output,
+            seek_seconds,
+            duration_seconds,
+            subtitles_media_path,
+        );
     }
 
     let ictx = format::input(path)?;
@@ -52,7 +61,7 @@ pub(crate) fn play_clip<O: FrameOutput>(
         InputPlaybackOptions {
             seek_seconds,
             duration_seconds,
-            subtitles_media_path: Some(path),
+            subtitles_media_path,
         },
     )
 }
@@ -64,6 +73,7 @@ fn play_looped_clip<O: FrameOutput>(
     output: &mut O,
     seek_seconds: Option<f64>,
     duration_seconds: f64,
+    subtitles_media_path: Option<&str>,
 ) -> Result<()> {
     if !duration_seconds.is_finite() {
         return Err(anyhow!("clip duration must be a finite number"));
@@ -87,7 +97,7 @@ fn play_looped_clip<O: FrameOutput>(
             InputPlaybackOptions {
                 seek_seconds: first_iteration.then_some(seek_seconds).flatten(),
                 duration_seconds: Some(remaining),
-                subtitles_media_path: first_iteration.then_some(path),
+                subtitles_media_path: first_iteration.then_some(subtitles_media_path).flatten(),
             },
         )?;
 
@@ -224,7 +234,8 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             )?;
         }
 
-        if video_limit_pts.is_none_or(|limit| timeline.video_pts >= limit)
+        if duration_us.is_some()
+            && video_limit_pts.is_none_or(|limit| timeline.video_pts >= limit)
             && audio_limit_pts.is_none_or(|limit| timeline.audio_pts >= limit)
         {
             break;
@@ -985,7 +996,7 @@ fn synchronize_timeline<O: FrameOutput>(
     )?;
 
     if video_frames > 0 {
-        debug!(
+        trace!(
             "padding video with {video_frames} black frame(s) ({:.6} s) to synchronize the timeline",
             video_frames as f64 / f64::from(cfg.fps)
         );
@@ -993,7 +1004,7 @@ fn synchronize_timeline<O: FrameOutput>(
     write_black_frames(cfg, timeline, output, video_frames)?;
 
     if audio_samples > 0 {
-        debug!(
+        trace!(
             "padding audio with {audio_samples} silent sample(s) ({:.6} s) to synchronize the timeline",
             audio_samples as f64 / f64::from(cfg.sample_rate)
         );

@@ -24,6 +24,21 @@ use crate::{
 const NEXT_START_THRESHOLD: f64 = 1.5;
 const IS_CLOSE_THRESHOLD: f64 = 2.0;
 
+fn placeholder_duration(requested: f64, natural: f64) -> f64 {
+    let requested = requested
+        .is_finite()
+        .then_some(requested)
+        .filter(|d| *d > 0.0);
+    let natural = natural.is_finite().then_some(natural).filter(|d| *d > 0.0);
+
+    match (requested, natural) {
+        (Some(requested), Some(natural)) => requested.min(natural),
+        (Some(requested), None) => requested,
+        (None, Some(natural)) => natural,
+        (None, None) => 0.0,
+    }
+}
+
 /// Struct for current playlist.
 ///
 /// Here we prepare the init clip and build a iterator where we pull our clips.
@@ -141,11 +156,8 @@ impl CurrentProgram {
             &time_in_seconds(&self.config.channel.timezone),
         );
         let mut next = false;
-
         let mut duration = self.current_node.out;
-
         let node_index = self.current_node.index.unwrap_or_default();
-
         let mut next_start = self.current_node.begin.unwrap_or_default() - self.start_sec + delta;
         let last_index = self.manager.current_list.lock().await.len() - 1;
 
@@ -364,9 +376,6 @@ impl CurrentProgram {
             .push(self.current_node.clone());
 
         self.current_node.last_ad = self.last_node_ad;
-        self.current_node
-            .add_filter(&self.config, &self.manager.filter_chain)
-            .await;
 
         self.manager.current_index.fetch_add(1, Ordering::SeqCst);
     }
@@ -595,24 +604,15 @@ impl CurrentProgram {
 
                 node.source = filler_media.source;
                 node.seek = 0.0;
-                node.out = if duration > 0.0 {
-                    duration
-                } else {
-                    filler_media.out.max(filler_media.duration)
-                };
+                node.out = placeholder_duration(duration, filler_media.duration);
                 node.duration = filler_media.duration;
                 node.probe = filler_media.probe;
+                node.is_placeholder = true;
             } else {
                 match probe_media(&self.config.storage.filler_path).await {
                     Ok(probe) => {
                         if let Some(filler_duration) = probe.clone().format.duration {
                             // Create placeholder from config filler.
-                            let filler_out = if duration <= 0.0 {
-                                filler_duration
-                            } else {
-                                duration
-                            };
-
                             node.source = self
                                 .config
                                 .storage
@@ -621,9 +621,10 @@ impl CurrentProgram {
                                 .to_string_lossy()
                                 .to_string();
                             node.seek = 0.0;
-                            node.out = filler_out;
+                            node.out = placeholder_duration(duration, filler_duration);
                             node.duration = filler_duration;
                             node.probe = Some(probe);
+                            node.is_placeholder = true;
                         } else {
                             node.source = self
                                 .config
@@ -636,6 +637,7 @@ impl CurrentProgram {
                             node.out = duration;
                             node.duration = duration;
                             node.probe = Some(probe);
+                            node.is_placeholder = true;
                         }
                     }
                     Err(e) => {
@@ -660,9 +662,6 @@ impl CurrentProgram {
                 node.out
             );
         }
-
-        node.add_filter(&self.config, &self.manager.filter_chain.clone())
-            .await;
 
         trace!(
             "return gen_source: {}, seek: {}, out: {}",
@@ -769,5 +768,25 @@ impl CurrentProgram {
         self.manager.current_index.store(1, Ordering::SeqCst);
 
         Some(self.current_node.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::placeholder_duration;
+
+    #[test]
+    fn placeholder_never_exceeds_its_natural_duration() {
+        assert_eq!(placeholder_duration(30.0, 12.0), 12.0);
+    }
+
+    #[test]
+    fn placeholder_can_be_trimmed_to_a_shorter_missing_slot() {
+        assert_eq!(placeholder_duration(5.0, 12.0), 5.0);
+    }
+
+    #[test]
+    fn missing_playlist_uses_one_natural_placeholder_duration() {
+        assert_eq!(placeholder_duration(86_400.0, 12.0), 12.0);
     }
 }

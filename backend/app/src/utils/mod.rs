@@ -16,7 +16,6 @@ use serde::{
     de::{self, Visitor},
 };
 
-pub mod advanced_config;
 pub mod args_parse;
 pub mod channels;
 pub mod config;

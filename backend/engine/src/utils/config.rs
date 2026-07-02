@@ -93,6 +93,17 @@ pub struct OutputConfig {
     pub audio_time_base: Rational,
     pub volume: f64,
     pub logo: Option<LogoConfig>,
+    pub video_preset: String,
+    pub rate_control: RateControl,
+    pub video_quality: u8,
+    pub video_maxrate: u64,
+    pub audio_bitrate: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RateControl {
+    Crf,
+    Cbr,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -114,6 +125,11 @@ impl OutputConfig {
             audio_time_base: Rational(1, sample_rate as i32),
             volume: 1.0,
             logo: None,
+            video_preset: "faster".to_string(),
+            rate_control: RateControl::Crf,
+            video_quality: 23,
+            video_maxrate: 2_400_000,
+            audio_bitrate: 128_000,
         }
     }
 
@@ -124,6 +140,22 @@ impl OutputConfig {
 
     pub fn with_logo(mut self, logo: Option<LogoConfig>) -> Self {
         self.logo = logo;
+        self
+    }
+
+    pub fn with_encoding(
+        mut self,
+        preset: String,
+        rate_control: RateControl,
+        quality: u8,
+        maxrate: u64,
+        audio_bitrate: u64,
+    ) -> Self {
+        self.video_preset = preset;
+        self.rate_control = rate_control;
+        self.video_quality = quality;
+        self.video_maxrate = maxrate;
+        self.audio_bitrate = audio_bitrate;
         self
     }
 }

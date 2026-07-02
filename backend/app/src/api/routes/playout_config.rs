@@ -88,6 +88,8 @@ pub async fn update_playout_config(
     data.output.validate().map_err(ServiceError::BadRequest)?;
 
     let is_hls = data.output.mode == OutputMode::HLS;
+    let is_encoded = matches!(data.output.mode, OutputMode::HLS | OutputMode::Stream);
+    let is_crf = is_encoded && data.output.rate_control == "crf";
     handles::update_output(
         &state.pool,
         data.output.id,
@@ -97,6 +99,11 @@ pub async fn update_playout_config(
         is_hls.then_some(data.output.hls_playlist_path.as_str()),
         is_hls.then_some(i64::from(data.output.hls_segment_duration)),
         is_hls.then_some(i64::from(data.output.hls_list_size)),
+        is_encoded.then_some(data.output.video_preset.as_str()),
+        is_encoded.then_some(data.output.rate_control.as_str()),
+        is_crf.then_some(i64::from(data.output.video_quality)),
+        is_encoded.then_some(i64::from(data.output.video_maxrate)),
+        is_encoded.then_some(i64::from(data.output.audio_bitrate)),
     )
     .await?;
     handles::update_configuration(&state.pool, config_id, data).await?;

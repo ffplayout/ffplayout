@@ -41,17 +41,6 @@ pub fn routes() -> Router<AppState> {
                 .route("/playlist/{id}", post(save_playlist))
                 .route("/playlist/{id}/generate/{date}", post(gen_playlist))
                 .route("/playlist/{id}/{date}", delete(del_playlist))
-                .route("/playout/advanced/{id}", get(get_advanced_config))
-                .route(
-                    "/playout/advanced/{id}/related",
-                    get(get_related_advanced_config),
-                )
-                .route(
-                    "/playout/advanced/{channel}/{id}",
-                    delete(remove_related_advanced_config),
-                )
-                .route("/playout/advanced/{id}", put(update_advanced_config))
-                .route("/playout/advanced/{id}", post(add_advanced_config))
                 .route(
                     "/playout/config/{id}",
                     get(get_playout_config).put(update_playout_config),

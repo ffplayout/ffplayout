@@ -18,7 +18,7 @@ pub async fn select_related_channels(
         Some(id) => {
             const QUERY: &str =
                 "SELECT c.id, c.name, c.preview_url, c.extra_extensions, c.active, c.public, c.playlists,
-            c.storage, c.last_date, c.time_shift, c.timezone, c.advanced_id FROM channels c
+            c.storage, c.last_date, c.time_shift, c.timezone FROM channels c
                 left join user_channels uc on uc.channel_id = c.id
                 left join user u on u.id = uc.user_id
              WHERE u.id = $1 ORDER BY c.id ASC;";

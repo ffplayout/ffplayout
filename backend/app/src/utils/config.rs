@@ -8,38 +8,18 @@ use chrono::NaiveTime;
 use chrono_tz::Tz;
 use flexi_logger::Level;
 use serde::{Deserialize, Serialize};
-use shlex::split;
 use sqlx::{Pool, Sqlite};
 use tokio::{fs, io::AsyncReadExt};
 use ts_rs::TS;
 
 use crate::{
-    ARGS, AdvancedConfig,
+    ARGS,
     db::{handles, models},
     file::norm_abs_path,
     utils::{errors::ServiceError, gen_tcp_socket, time_to_sec},
-    vec_strings,
 };
 
 pub const DUMMY_LEN: f64 = 60.0;
-// Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 15] = [
-    "ac-tex damaged",
-    "codec s302m, is muxed as a private data stream",
-    "corrupt decoded frame in stream",
-    "corrupt input packet in stream",
-    "end mismatch left",
-    "Invalid mb type in I-frame at",
-    "Packet corrupt",
-    "Referenced QT chapter track not found",
-    "skipped MB in I-frame at",
-    "Thread message queue blocking",
-    "timestamp discontinuity",
-    "Warning MVs not available",
-    "frame size not set",
-    "Error parsing Opus packet header.",
-    "Resumed reading at pts",
-];
 
 pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 9] = [
     "Address already in use",
@@ -60,7 +40,6 @@ pub enum OutputMode {
     Desktop,
     #[default]
     HLS,
-    Null,
     Stream,
 }
 
@@ -68,7 +47,6 @@ impl OutputMode {
     fn new(s: &str) -> Self {
         match s {
             "desktop" => Self::Desktop,
-            "null" => Self::Null,
             "stream" => Self::Stream,
             _ => Self::HLS,
         }
@@ -82,9 +60,8 @@ impl FromStr for OutputMode {
         match input {
             "desktop" => Ok(Self::Desktop),
             "hls" => Ok(Self::HLS),
-            "null" => Ok(Self::Null),
             "stream" => Ok(Self::Stream),
-            _ => Err("Use 'desktop', 'hls', 'null' or 'stream'".to_string()),
+            _ => Err("Use 'desktop', 'hls' or 'stream'".to_string()),
         }
     }
 }
@@ -94,7 +71,6 @@ impl fmt::Display for OutputMode {
         match *self {
             OutputMode::Desktop => write!(f, "desktop"),
             OutputMode::HLS => write!(f, "hls"),
-            OutputMode::Null => write!(f, "null"),
             OutputMode::Stream => write!(f, "stream"),
         }
     }
@@ -163,9 +139,6 @@ pub struct PlayoutConfig {
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub channel: Channel,
-    #[ts(skip)]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub advanced: AdvancedConfig,
     pub general: General,
     pub mail: Mail,
     pub logging: Logging,
@@ -338,8 +311,14 @@ impl Logging {
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Processing {
     pub mode: ProcessMode,
+    #[ts(skip)]
+    #[serde(default, skip_serializing, skip_deserializing)]
     pub audio_only: bool,
+    #[ts(skip)]
+    #[serde(default, skip_serializing, skip_deserializing)]
     pub copy_audio: bool,
+    #[ts(skip)]
+    #[serde(default, skip_serializing, skip_deserializing)]
     pub copy_video: bool,
     pub width: i64,
     pub height: i64,
@@ -353,20 +332,19 @@ pub struct Processing {
     pub logo_scale: String,
     pub logo_opacity: f64,
     pub logo_position: String,
+    #[ts(skip)]
+    #[serde(default = "default_tracks", skip_serializing, skip_deserializing)]
     pub audio_tracks: i32,
+    #[ts(skip)]
     #[serde(default = "default_track_index")]
+    #[serde(skip_serializing, skip_deserializing)]
     pub audio_track_index: i32,
     pub audio_channels: u8,
     pub volume: f64,
-    pub custom_filter: String,
-    pub override_filter: bool,
     #[serde(default)]
     pub vtt_enable: bool,
     #[serde(default)]
     pub vtt_dummy: Option<String>,
-    #[ts(skip)]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub cmd: Option<Vec<String>>,
 }
 
 impl Processing {
@@ -390,11 +368,8 @@ impl Processing {
             audio_tracks: config.processing_audio_tracks,
             audio_channels: config.processing_audio_channels,
             volume: config.processing_volume,
-            custom_filter: config.processing_filter.clone(),
-            override_filter: config.processing_override_filter,
             vtt_enable: config.processing_vtt_enable,
             vtt_dummy: config.processing_vtt_dummy.clone(),
-            cmd: None,
         }
     }
 }
@@ -403,20 +378,14 @@ impl Processing {
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Ingest {
     pub enable: bool,
-    pub input_param: String,
-    pub custom_filter: String,
-    #[ts(skip)]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub input_cmd: Option<Vec<String>>,
+    pub ingest_url: String,
 }
 
 impl Ingest {
     fn new(config: &models::Configuration) -> Self {
         Self {
             enable: config.ingest_enable,
-            input_param: config.ingest_param.clone(),
-            custom_filter: config.ingest_filter.clone(),
-            input_cmd: None,
+            ingest_url: config.ingest_url.clone(),
         }
     }
 }
@@ -552,6 +521,16 @@ pub struct Output {
     pub hls_segment_duration: u32,
     #[serde(default = "default_hls_list_size")]
     pub hls_list_size: u32,
+    #[serde(default = "default_video_preset")]
+    pub video_preset: String,
+    #[serde(default = "default_rate_control")]
+    pub rate_control: String,
+    #[serde(default = "default_video_quality")]
+    pub video_quality: u8,
+    #[serde(default = "default_video_maxrate")]
+    pub video_maxrate: u32,
+    #[serde(default = "default_audio_bitrate")]
+    pub audio_bitrate: u32,
     /// Adaptive HLS renditions, one per entry, each formatted as
     /// `NAME:WIDTHxHEIGHT:VIDEO_BITRATE[:AUDIO_BITRATE]` (e.g.
     /// `high:1920x1080:5000k:192k`). Only relevant when `mode == HLS`; an
@@ -571,6 +550,26 @@ const fn default_hls_segment_duration() -> u32 {
 
 const fn default_hls_list_size() -> u32 {
     600
+}
+
+fn default_video_preset() -> String {
+    "faster".to_string()
+}
+
+fn default_rate_control() -> String {
+    "crf".to_string()
+}
+
+const fn default_video_quality() -> u8 {
+    23
+}
+
+const fn default_video_maxrate() -> u32 {
+    2400
+}
+
+const fn default_audio_bitrate() -> u32 {
+    128
 }
 
 impl Output {
@@ -596,6 +595,20 @@ impl Output {
                 .hls_list_size
                 .and_then(|value| u32::try_from(value).ok())
                 .unwrap_or_else(default_hls_list_size),
+            video_preset: output.video_preset.unwrap_or_else(default_video_preset),
+            rate_control: output.rate_control.unwrap_or_else(default_rate_control),
+            video_quality: output
+                .video_quality
+                .and_then(|value| u8::try_from(value).ok())
+                .unwrap_or_else(default_video_quality),
+            video_maxrate: output
+                .video_maxrate
+                .and_then(|value| u32::try_from(value).ok())
+                .unwrap_or_else(default_video_maxrate),
+            audio_bitrate: output
+                .audio_bitrate
+                .and_then(|value| u32::try_from(value).ok())
+                .unwrap_or_else(default_audio_bitrate),
             hls_variants: output
                 .hls_variants
                 .split(';')
@@ -619,6 +632,36 @@ impl Output {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if matches!(self.mode, OutputMode::HLS | OutputMode::Stream) {
+            const PRESETS: &[&str] = &[
+                "ultrafast",
+                "superfast",
+                "veryfast",
+                "faster",
+                "fast",
+                "medium",
+                "slow",
+                "slower",
+                "veryslow",
+                "placebo",
+            ];
+            if !PRESETS.contains(&self.video_preset.as_str()) {
+                return Err(format!("unsupported video preset {:?}", self.video_preset));
+            }
+            if !matches!(self.rate_control.as_str(), "crf" | "cbr") {
+                return Err("rate control must be \"crf\" or \"cbr\"".to_string());
+            }
+            if self.rate_control == "crf" && self.video_quality > 51 {
+                return Err("CRF quality must be between 0 and 51".to_string());
+            }
+            if self.video_maxrate == 0 {
+                return Err("video maxrate must be greater than zero".to_string());
+            }
+            if self.audio_bitrate == 0 {
+                return Err("audio bitrate must be greater than zero".to_string());
+            }
+        }
+
         match self.mode {
             OutputMode::HLS => {
                 if self.hls_playlist_path.trim().is_empty() {
@@ -661,7 +704,6 @@ pub fn string_to_output_mode(l: String) -> OutputMode {
     match l.to_lowercase().as_str() {
         "desktop" => OutputMode::Desktop,
         "hls" => OutputMode::HLS,
-        "null" => OutputMode::Null,
         "stream" => OutputMode::Stream,
         _ => OutputMode::HLS,
     }
@@ -669,6 +711,10 @@ pub fn string_to_output_mode(l: String) -> OutputMode {
 
 fn default_track_index() -> i32 {
     -1
+}
+
+fn default_tracks() -> i32 {
+    1
 }
 
 impl PlayoutConfig {
@@ -680,7 +726,6 @@ impl PlayoutConfig {
         let global = handles::select_global(pool).await?;
         let channel = handles::select_channel(pool, &channel_id).await?;
         let mut config = handles::select_configuration(pool, channel_id).await?;
-        let adv_config = handles::select_advanced_configuration(pool, channel_id).await?;
         let outputs = handles::select_outputs(pool, channel_id).await?;
 
         if let Some(id) = output_id {
@@ -688,12 +733,11 @@ impl PlayoutConfig {
         }
 
         let channel = Channel::new(&global, channel);
-        let advanced = AdvancedConfig::new(adv_config);
         let general = General::new(&config);
         let mail = Mail::new(&global, &config);
         let logging = Logging::new(&config);
         let mut processing = Processing::new(&config);
-        let mut ingest = Ingest::new(&config);
+        let ingest = Ingest::new(&config);
         let mut playlist = Playlist::new(&config);
         let mut text = Text::new(&config);
         let task = Task::new(&config);
@@ -734,56 +778,6 @@ impl PlayoutConfig {
             processing.audio_tracks = 1;
         }
 
-        let mut process_cmd = vec_strings![];
-
-        if processing.audio_only {
-            process_cmd.append(&mut vec_strings!["-vn"]);
-        } else if processing.copy_video {
-            process_cmd.append(&mut vec_strings!["-c:v", "copy"]);
-        } else if let Some(decoder_cmd) = &advanced.decoder.output_cmd {
-            process_cmd.append(&mut decoder_cmd.clone());
-        } else {
-            let bitrate = format!("{}k", processing.width * processing.height / 16);
-            let buff_size = format!("{}k", (processing.width * processing.height / 16) / 2);
-
-            process_cmd.append(&mut vec_strings![
-                "-pix_fmt",
-                "yuv420p",
-                "-r",
-                &processing.fps,
-                "-c:v",
-                "mpeg2video",
-                "-g",
-                "1",
-                "-b:v",
-                &bitrate,
-                "-minrate",
-                &bitrate,
-                "-maxrate",
-                &bitrate,
-                "-bufsize",
-                &buff_size,
-                "-mpegts_flags",
-                "initial_discontinuity"
-            ]);
-        }
-
-        if processing.copy_audio {
-            process_cmd.append(&mut vec_strings!["-c:a", "copy"]);
-        } else if advanced.decoder.output_cmd.is_none() {
-            process_cmd.append(&mut pre_audio_codec(
-                &processing.custom_filter,
-                &ingest.custom_filter,
-                processing.audio_channels,
-            ));
-        }
-
-        process_cmd.append(&mut vec_strings!["-f", "mpegts", "-"]);
-
-        processing.cmd = Some(process_cmd);
-
-        ingest.input_cmd = split(ingest.input_param.as_str());
-
         // when text overlay without text_from_filename is on, turn also the RPC server on,
         // to get text messages from it
         if text.add_text && !text.text_from_filename {
@@ -803,7 +797,6 @@ impl PlayoutConfig {
 
         Ok(Self {
             channel,
-            advanced,
             general,
             mail,
             logging,
@@ -841,39 +834,6 @@ impl PlayoutConfig {
 
         Ok(())
     }
-}
-
-/// When custom_filter contains loudnorm filter use a different audio encoder,
-/// s302m has higher quality, but is experimental
-/// and works not well together with the loudnorm filter.
-fn pre_audio_codec(proc_filter: &str, ingest_filter: &str, channel_count: u8) -> Vec<String> {
-    let mut codec = vec_strings![
-        "-c:a",
-        "s302m",
-        "-strict",
-        "-2",
-        "-sample_fmt",
-        "s16",
-        "-ar",
-        "48000",
-        "-ac",
-        channel_count
-    ];
-
-    if proc_filter.contains("loudnorm") || ingest_filter.contains("loudnorm") {
-        codec = vec_strings![
-            "-c:a",
-            "mp2",
-            "-b:a",
-            "384k",
-            "-ar",
-            "48000",
-            "-ac",
-            channel_count
-        ];
-    }
-
-    codec
 }
 
 /// Read command line arguments, and override the config with them.
@@ -988,6 +948,11 @@ mod output_tests {
             hls_playlist_path: "live/stream.m3u8".to_string(),
             hls_segment_duration: 6,
             hls_list_size: 600,
+            video_preset: "faster".to_string(),
+            rate_control: "crf".to_string(),
+            video_quality: 23,
+            video_maxrate: 2400,
+            audio_bitrate: 128,
             hls_variants: Vec::new(),
         }
     }
@@ -1018,5 +983,23 @@ mod output_tests {
                 .unwrap_err()
                 .contains("invalid HLS variant")
         );
+    }
+
+    #[test]
+    fn rejects_invalid_crf_quality() {
+        let mut output = output(OutputMode::Stream);
+        output.video_quality = 52;
+        assert_eq!(
+            output.validate().unwrap_err(),
+            "CRF quality must be between 0 and 51"
+        );
+    }
+
+    #[test]
+    fn cbr_does_not_validate_unused_quality() {
+        let mut output = output(OutputMode::Stream);
+        output.rate_control = "cbr".to_string();
+        output.video_quality = 52;
+        assert!(output.validate().is_ok());
     }
 }

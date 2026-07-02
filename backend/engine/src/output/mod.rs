@@ -68,12 +68,6 @@ impl Output {
         })
     }
 
-    pub(crate) fn open_null(cfg: &OutputConfig) -> Result<Self> {
-        Ok(Self {
-            kind: OutputKind::Encoded(EncodedOutput::open("-", cfg, EncodedFormat::Null)?),
-        })
-    }
-
     pub(crate) fn open_hls(
         path: &str,
         cfg: &OutputConfig,

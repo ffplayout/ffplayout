@@ -65,12 +65,6 @@ const router = createRouter({
                     meta: { showHeader: true, roles: ['global_admin', 'channel_admin', 'user'] },
                 },
                 {
-                    path: 'advanced',
-                    name: 'configure-advanced',
-                    component: () => import('@/components/config/ConfigAdvanced.vue'),
-                    meta: { showHeader: true, roles: ['global_admin'] },
-                },
-                {
                     path: 'playout',
                     name: 'configure-playout',
                     component: () => import('@/components/config/ConfigPlayout.vue'),

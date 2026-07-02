@@ -129,9 +129,6 @@ impl FolderSource {
             let i = self.manager.current_index.load(Ordering::SeqCst);
             self.current_node = self.manager.current_list.lock().await[i].clone();
             let _ = self.current_node.add_probe(false).await.ok();
-            self.current_node
-                .add_filter(&config, &self.manager.filter_chain)
-                .await;
             self.current_node.begin = Some(time_in_seconds(&config.channel.timezone));
             self.manager.current_index.fetch_add(1, Ordering::SeqCst);
         } else {
@@ -154,9 +151,6 @@ impl FolderSource {
                 None => return None,
             };
             let _ = self.current_node.add_probe(false).await.ok();
-            self.current_node
-                .add_filter(&config, &self.manager.filter_chain)
-                .await;
             self.current_node.begin = Some(time_in_seconds(&config.channel.timezone));
             self.manager.current_index.store(1, Ordering::SeqCst);
         }

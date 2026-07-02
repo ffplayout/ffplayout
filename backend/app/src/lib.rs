@@ -21,7 +21,7 @@ pub mod serve;
 
 use api::auth;
 use db::models::{Role, UserMeta};
-use utils::{advanced_config::AdvancedConfig, args_parse::Args, errors::ServiceError};
+use utils::{args_parse::Args, errors::ServiceError};
 
 pub static ARGS: LazyLock<Args> = LazyLock::new(Args::parse);
 

@@ -5,7 +5,6 @@ import { useRouter } from 'vue-router'
 import { useAuth } from './auth'
 import { useIndex } from './index'
 import { i18n } from '../i18n'
-import type { AdvancedConfig } from '../types/advanced_config'
 import { stringFormatter } from '../composables/helper'
 
 export const useConfig = defineStore('config', {
@@ -16,7 +15,6 @@ export const useConfig = defineStore('config', {
         channels: [] as Channel[],
         channelsRaw: [] as Channel[],
         playlistLength: 86400.0,
-        advanced: {} as AdvancedConfig,
         playout: {} as PlayoutConfigExt,
         outputs: [] as PlayoutOutput[],
         currentUser: 0,
@@ -40,9 +38,6 @@ export const useConfig = defineStore('config', {
                     await this.getPlayoutOutputs()
                     await this.getUserConfig()
 
-                    if (authStore.role === 'global_admin') {
-                        await this.getAdvancedConfig()
-                    }
                 })
             }
         },
@@ -145,24 +140,6 @@ export const useConfig = defineStore('config', {
                 })
         },
 
-        async getAdvancedConfig() {
-            const authStore = useAuth()
-            const indexStore = useIndex()
-            const id = this.channels[this.i]?.id
-
-            await fetch(`/api/playout/advanced/${id}`, {
-                method: 'GET',
-                headers: authStore.authHeader,
-            })
-                .then((resp) => resp.json())
-                .then((data: AdvancedConfig) => {
-                    this.advanced = data
-                })
-                .catch(() => {
-                    indexStore.msgAlert('error', i18n.t('config.noAdvancedConfig'), 3)
-                })
-        },
-
         async setPlayoutConfig(obj: any) {
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
@@ -179,29 +156,6 @@ export const useConfig = defineStore('config', {
             })
 
             return update
-        },
-
-        async setAdvancedConfig() {
-            const authStore = useAuth()
-            const id = this.channels[this.i]?.id
-
-            if (this.advanced?.id > 0) {
-                const update = await fetch(`/api/playout/advanced/${id}`, {
-                    method: 'PUT',
-                    headers: { ...this.contentType, ...authStore.authHeader },
-                    body: JSON.stringify(this.advanced),
-                })
-
-                return update
-            } else {
-                const update = await fetch(`/api/playout/advanced/${id}`, {
-                    method: 'POST',
-                    headers: { ...this.contentType, ...authStore.authHeader },
-                    body: JSON.stringify(this.advanced),
-                })
-
-                return update
-            }
         },
 
         async getUserConfig() {

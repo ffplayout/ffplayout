@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
     str::FromStr,
-    sync::{Arc, atomic::Ordering},
+    sync::atomic::Ordering,
 };
 
 use chrono::{TimeDelta, prelude::*};
@@ -20,7 +20,6 @@ use serde_json::{Map, Value, json};
 use tokio::{
     fs::{File, metadata},
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::Mutex,
 };
 
 pub mod import;
@@ -28,12 +27,9 @@ pub mod json_serializer;
 pub mod json_validate;
 
 use crate::{
-    player::{
-        controller::{
-            ChannelManager,
-            ProcessUnit::{self, *},
-        },
-        filter::{Filters, filter_chains},
+    player::controller::{
+        ChannelManager,
+        ProcessUnit::{self, *},
     },
     utils::{
         config::{OutputMode::*, PlayoutConfig},
@@ -154,9 +150,6 @@ pub struct Media {
     )]
     pub audio: String,
 
-    #[serde(skip_serializing, skip_deserializing)]
-    pub filter: Option<Filters>,
-
     #[serde(default, skip_serializing_if = "is_empty_string")]
     pub custom_filter: String,
 
@@ -174,6 +167,9 @@ pub struct Media {
 
     #[serde(default, skip_serializing, skip_deserializing)]
     pub skip: bool,
+
+    #[serde(default, skip_serializing, skip_deserializing)]
+    pub is_placeholder: bool,
 
     #[serde(default, skip_serializing)]
     pub unit: ProcessUnit,
@@ -204,13 +200,13 @@ impl Media {
             category: String::new(),
             source: src.to_string(),
             audio: String::new(),
-            filter: None,
             custom_filter: String::new(),
             probe,
             probe_audio: None,
             last_ad: false,
             next_ad: false,
             skip: false,
+            is_placeholder: false,
             unit: Decoder,
         }
     }
@@ -258,15 +254,6 @@ impl Media {
 
         Ok(())
     }
-
-    pub async fn add_filter(
-        &mut self,
-        config: &PlayoutConfig,
-        filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
-    ) {
-        let mut node = self.clone();
-        self.filter = Some(filter_chains(config, &mut node, filter_chain).await);
-    }
 }
 
 impl Default for Media {
@@ -282,13 +269,13 @@ impl Default for Media {
             category: String::new(),
             source: String::new(),
             audio: String::new(),
-            filter: None,
             custom_filter: String::new(),
             probe: None,
             probe_audio: None,
             last_ad: false,
             next_ad: false,
             skip: false,
+            is_placeholder: false,
             unit: Decoder,
         }
     }

@@ -225,16 +225,8 @@ export const playlistOperations = () => {
             if (forSave) {
                 delete item.date
 
-                if (!item.audio) {
-                    delete item.audio
-                }
-
                 if (!item.category) {
                     delete item.category
-                }
-
-                if (!item.custom_filter) {
-                    delete item.custom_filter
                 }
 
                 if (!item.title) {

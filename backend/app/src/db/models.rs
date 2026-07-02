@@ -68,8 +68,6 @@ pub struct Channel {
     pub time_shift: f64,
     #[serde(default)]
     pub timezone: Option<Tz>,
-    #[serde(default)]
-    pub advanced_id: Option<i32>,
 }
 
 impl FromRow<'_, SqliteRow> for Channel {
@@ -101,7 +99,6 @@ impl FromRow<'_, SqliteRow> for Channel {
             last_date: row.try_get("last_date").unwrap_or_default(),
             time_shift: row.try_get("time_shift").unwrap_or_default(),
             timezone,
-            advanced_id: row.try_get("advanced_id").unwrap_or_default(),
         })
     }
 }
@@ -325,18 +322,12 @@ pub struct Configuration {
     pub processing_audio_channels: u8,
     pub processing_volume: f64,
     #[serde(default)]
-    pub processing_filter: String,
-    #[serde(default)]
-    pub processing_override_filter: bool,
-    #[serde(default)]
     pub processing_vtt_enable: bool,
     #[serde(default)]
     pub processing_vtt_dummy: Option<String>,
 
     pub ingest_enable: bool,
-    pub ingest_param: String,
-    #[serde(default)]
-    pub ingest_filter: String,
+    pub ingest_url: String,
 
     pub playlist_day_start: String,
     pub playlist_length: String,
@@ -389,13 +380,10 @@ impl Configuration {
             processing_audio_tracks: config.processing.audio_tracks,
             processing_audio_channels: config.processing.audio_channels,
             processing_volume: config.processing.volume,
-            processing_filter: config.processing.custom_filter,
-            processing_override_filter: config.processing.override_filter,
             processing_vtt_enable: config.processing.vtt_enable,
             processing_vtt_dummy: config.processing.vtt_dummy,
             ingest_enable: config.ingest.enable,
-            ingest_param: config.ingest.input_param,
-            ingest_filter: config.ingest.custom_filter,
+            ingest_url: config.ingest.ingest_url,
             playlist_day_start: config.playlist.day_start,
             playlist_length: config.playlist.length,
             playlist_infinit: config.playlist.infinit,
@@ -424,6 +412,11 @@ pub struct Output {
     pub hls_playlist_path: Option<String>,
     pub hls_segment_duration: Option<i64>,
     pub hls_list_size: Option<i64>,
+    pub video_preset: Option<String>,
+    pub rate_control: Option<String>,
+    pub video_quality: Option<i64>,
+    pub video_maxrate: Option<i64>,
+    pub audio_bitrate: Option<i64>,
 }
 
 impl Output {
@@ -436,6 +429,7 @@ impl Output {
         let hls_playlist_path = (mode == OutputMode::HLS).then(|| "live/stream.m3u8".to_string());
         let hls_segment_duration = (mode == OutputMode::HLS).then_some(6);
         let hls_list_size = (mode == OutputMode::HLS).then_some(600);
+        let encoded = matches!(mode, OutputMode::HLS | OutputMode::Stream);
 
         Self {
             id: 0,
@@ -446,6 +440,11 @@ impl Output {
             hls_playlist_path,
             hls_segment_duration,
             hls_list_size,
+            video_preset: encoded.then(|| "faster".to_string()),
+            rate_control: encoded.then(|| "crf".to_string()),
+            video_quality: encoded.then_some(23),
+            video_maxrate: encoded.then_some(2400),
+            audio_bitrate: encoded.then_some(128),
         }
     }
 }
@@ -460,36 +459,4 @@ fn default_tracks() -> i32 {
 
 fn default_channels() -> u8 {
     2
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]
-pub struct AdvancedConfiguration {
-    pub id: i32,
-    pub channel_id: i32,
-    pub decoder_input_param: Option<String>,
-    pub decoder_output_param: Option<String>,
-    pub encoder_input_param: Option<String>,
-    pub ingest_input_param: Option<String>,
-    pub filter_deinterlace: Option<String>,
-    pub filter_pad_video: Option<String>,
-    pub filter_fps: Option<String>,
-    pub filter_scale: Option<String>,
-    pub filter_set_dar: Option<String>,
-    pub filter_fade_in: Option<String>,
-    pub filter_fade_out: Option<String>,
-    pub filter_logo: Option<String>,
-    pub filter_overlay_logo_scale: Option<String>,
-    pub filter_overlay_logo_fade_in: Option<String>,
-    pub filter_overlay_logo_fade_out: Option<String>,
-    pub filter_overlay_logo: Option<String>,
-    pub filter_tpad: Option<String>,
-    pub filter_drawtext_from_file: Option<String>,
-    pub filter_drawtext_from_zmq: Option<String>,
-    pub filter_aevalsrc: Option<String>,
-    pub filter_afade_in: Option<String>,
-    pub filter_afade_out: Option<String>,
-    pub filter_apad: Option<String>,
-    pub filter_volume: Option<String>,
-    pub filter_split: Option<String>,
-    pub name: Option<String>,
 }

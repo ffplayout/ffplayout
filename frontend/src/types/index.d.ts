@@ -1,5 +1,4 @@
 import type { JwtPayload } from 'jwt-decode'
-// import type { AdvancedConfig } from './advanced_config'
 import type { PlayoutConfig, Playlist as Ply } from './playout_config'
 
 export {}
@@ -28,6 +27,11 @@ declare global {
         hls_playlist_path: string | null
         hls_segment_duration: number | null
         hls_list_size: number | null
+        video_preset: string | null
+        rate_control: string | null
+        video_quality: number | null
+        video_maxrate: number | null
+        audio_bitrate: number | null
         channel_id: number
     }
 
@@ -89,9 +93,7 @@ declare global {
         duration: number
         in: number
         out: number
-        audio?: string
         category?: string
-        custom_filter?: string
         overtime?: boolean
     }
 

@@ -27,7 +27,8 @@ use crate::{
     utils::config::OutputConfig,
 };
 
-const LIVE_IDLE_TIMEOUT: Duration = Duration::from_secs(1);
+const LIVE_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
+const LIVE_IDLE_TIMEOUT: Duration = Duration::from_secs(3);
 const LIVE_WATCHDOG_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Number of RTMP reader threads that outlived their `abort` signal and are
@@ -40,6 +41,7 @@ pub struct LiveReceiver {
     fps: u32,
     sample_rate: u32,
     active: bool,
+    connecting: bool,
     session_id: u64,
     session_video_base: Option<i64>,
     session_audio_base: Option<i64>,
@@ -71,6 +73,7 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
         fps,
         sample_rate,
         active: false,
+        connecting: false,
         session_id: 0,
         session_video_base: None,
         session_audio_base: None,
@@ -104,6 +107,8 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     self.live.session_video_base = None;
                     self.live.session_audio_base = None;
                     self.live.last_media_at = Some(Instant::now());
+                    self.live.active = false;
+                    self.live.connecting = true;
                     info!("live input connected; waiting for first video frame");
                 }
                 Ok(LiveEvent::Video(session_id, mut frame)) => {
@@ -111,6 +116,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                         if !self.live.active {
                             info!("first live video frame received; switching to RTMP live");
                             self.live.active = true;
+                            self.live.connecting = false;
                         }
                         received_event = true;
                         let source_pts = frame.pts().unwrap_or(0);
@@ -153,14 +159,18 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                             self.prepare_file_resume();
                         }
                         self.live.active = false;
+                        self.live.connecting = false;
                     }
                 }
                 Err(TryRecvError::Empty) => return Ok(received_event),
                 Err(TryRecvError::Disconnected) => {
-                    self.fill_live_gap_since_last_media()?;
-                    self.align_live_pts_to_common_time();
-                    self.prepare_file_resume();
+                    if self.live.active {
+                        self.fill_live_gap_since_last_media()?;
+                        self.align_live_pts_to_common_time();
+                        self.prepare_file_resume();
+                    }
                     self.live.active = false;
+                    self.live.connecting = false;
                     return Ok(received_event);
                 }
             }
@@ -169,7 +179,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
 
     fn wait_for_file_playback(&mut self) -> Result<()> {
         self.pump_live()?;
-        while self.live.active {
+        while self.live.active || self.live.connecting {
             thread::sleep(Duration::from_millis(10));
             self.pump_live()?;
             let idle_for = self
@@ -177,12 +187,22 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 .last_media_at
                 .map(|last_media_at| last_media_at.elapsed())
                 .unwrap_or_default();
-            if idle_for >= LIVE_IDLE_TIMEOUT {
-                info!("live input idle; switching back to file playback");
-                self.fill_live_gap(idle_for)?;
-                self.align_live_pts_to_common_time();
-                self.prepare_file_resume();
+            let timeout = if self.live.connecting {
+                LIVE_STARTUP_TIMEOUT
+            } else {
+                LIVE_IDLE_TIMEOUT
+            };
+            if idle_for >= timeout {
+                if self.live.active {
+                    info!("live input idle; switching back to file playback");
+                    self.fill_live_gap(idle_for)?;
+                    self.align_live_pts_to_common_time();
+                    self.prepare_file_resume();
+                } else {
+                    info!("live input produced no video frame; switching back to file playback");
+                }
                 self.live.active = false;
+                self.live.connecting = false;
             }
         }
         Ok(())
@@ -424,6 +444,7 @@ struct LiveFrameSender {
     tx: Sender<LiveEvent>,
     session_id: u64,
     last_frame_ms: Arc<AtomicU64>,
+    frame_seen: Arc<AtomicBool>,
 }
 
 impl FrameOutput for LiveFrameSender {
@@ -432,6 +453,7 @@ impl FrameOutput for LiveFrameSender {
     }
 
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+        self.frame_seen.store(true, Ordering::Relaxed);
         self.last_frame_ms
             .store(monotonic_millis(), Ordering::Relaxed);
         self.tx
@@ -440,6 +462,7 @@ impl FrameOutput for LiveFrameSender {
     }
 
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.frame_seen.store(true, Ordering::Relaxed);
         self.last_frame_ms
             .store(monotonic_millis(), Ordering::Relaxed);
         self.tx
@@ -458,7 +481,12 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
             Ok(ictx) => {
                 session_id += 1;
                 let last_frame_ms = Arc::new(AtomicU64::new(monotonic_millis()));
-                let watchdog = spawn_live_watchdog(Arc::clone(&last_frame_ms), Arc::clone(&abort));
+                let frame_seen = Arc::new(AtomicBool::new(false));
+                let watchdog = spawn_live_watchdog(
+                    Arc::clone(&last_frame_ms),
+                    Arc::clone(&frame_seen),
+                    Arc::clone(&abort),
+                );
 
                 if tx.send(LiveEvent::Started(session_id)).is_err() {
                     abort.store(true, Ordering::Relaxed);
@@ -471,6 +499,7 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
                     tx: tx.clone(),
                     session_id,
                     last_frame_ms,
+                    frame_seen,
                 };
 
                 let worker_url = url.clone();
@@ -543,6 +572,7 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
 
 fn spawn_live_watchdog(
     last_frame_ms: Arc<AtomicU64>,
+    frame_seen: Arc<AtomicBool>,
     abort: Arc<AtomicBool>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
@@ -550,10 +580,18 @@ fn spawn_live_watchdog(
             thread::sleep(LIVE_WATCHDOG_INTERVAL);
 
             let last_frame_ms = last_frame_ms.load(Ordering::Relaxed);
-            if monotonic_millis().saturating_sub(last_frame_ms)
-                >= LIVE_IDLE_TIMEOUT.as_millis() as u64
-            {
-                info!("live input disconnected or idle; restarting ingest server");
+            let timeout = if frame_seen.load(Ordering::Relaxed) {
+                LIVE_IDLE_TIMEOUT
+            } else {
+                LIVE_STARTUP_TIMEOUT
+            };
+
+            if monotonic_millis().saturating_sub(last_frame_ms) >= timeout.as_millis() as u64 {
+                if frame_seen.load(Ordering::Relaxed) {
+                    info!("live input disconnected or idle; restarting ingest server");
+                } else {
+                    info!("live input produced no decodable frames; restarting ingest server");
+                }
                 abort.store(true, Ordering::Relaxed);
                 return;
             }
@@ -562,8 +600,6 @@ fn spawn_live_watchdog(
 }
 
 fn open_rtmp_listener(url: &str, abort: Arc<AtomicBool>) -> Result<format::context::Input> {
-    info!("Start ingest server, listen on: {url}");
-
     let mut options = Dictionary::new();
     options.set("listen", "1");
     options.set("timeout", "0");

@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
-    "lint": "eslint . --fix"
+    "lint": "eslint . --fix --config frontend/eslint.config.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.1",

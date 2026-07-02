@@ -10,13 +10,7 @@ use crate::{
         models::{self, Channel},
     },
     player::controller::{ChannelController, ChannelManager},
-    utils::{
-        advanced_config::{AdvancedConfig, DecoderConfig, FilterConfig, IngestConfig},
-        config::get_config,
-        errors::ServiceError,
-        mail::MailQueue,
-        system::SystemStat,
-    },
+    utils::{config::get_config, errors::ServiceError, mail::MailQueue, system::SystemStat},
 };
 
 use super::config::OutputMode;
@@ -37,25 +31,6 @@ async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     Ok(())
 }
 
-const NVIDIA_NAME: &str = "Nvidia";
-const NVIDIA_INPUT: &str =
-    "-thread_queue_size 1024 -hwaccel_device 0 -hwaccel cuvid -hwaccel_output_format cuda";
-const NVIDIA_DECODER_OUTPUT: &str = "-c:v h264_nvenc -preset p2 -tune ll -b:v 50000k -minrate 50000k -maxrate 50000k -bufsize 25000k -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2";
-const NVIDIA_FILTER_DEINTERLACE: &str = "yadif_cuda=0:-1:0";
-const NVIDIA_FILTER_SCALE: &str = "scale_cuda={}:{}:format=yuv420p";
-const NVIDIA_FILTER_LOGO_SCALE: &str = "null";
-const NVIDIA_FILTER_OVERLAY: &str = "overlay_cuda={}:shortest=1";
-
-const QSV_NAME: &str = "QSV";
-const QSV_INPUT: &str =
-    "-hwaccel qsv -init_hw_device qsv=hw -filter_hw_device hw -hwaccel_output_format qsv";
-const QSV_DECODER_OUTPUT: &str = "-c:v mpeg2_qsv -g 1 -b:v 50000k -minrate 50000k -maxrate 50000k -bufsize 25000k -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2";
-const QSV_FILTER_DEINTERLACE: &str = "deinterlace_qsv";
-const QSV_FILTER_FPS: &str = "vpp_qsv=framerate=25";
-const QSV_FILTER_SCALE: &str = "scale_qsv={}:{}";
-const QSV_FILTER_LOGO_SCALE: &str = "scale_qsv={}";
-const QSV_FILTER_OVERLAY: &str = "overlay_qsv={}:shortest=1";
-
 pub async fn create_channel(
     conn: &Pool<Sqlite>,
     controllers: Arc<RwLock<ChannelController>>,
@@ -68,21 +43,10 @@ pub async fn create_channel(
         models::Output::new(channel.id, OutputMode::HLS),
         models::Output::new(channel.id, OutputMode::Stream),
         models::Output::new(channel.id, OutputMode::Desktop),
-        models::Output::new(channel.id, OutputMode::Null),
     ];
 
     handles::new_channel_presets(conn, channel.id).await?;
     handles::update_channel(conn, channel.id, channel.clone()).await?;
-    let adv_id = handles::insert_advanced_configuration(
-        conn,
-        channel.id,
-        None,
-        AdvancedConfig {
-            name: Some("None".to_string()),
-            ..Default::default()
-        },
-    )
-    .await?;
 
     let mut output_id = 1;
 
@@ -95,59 +59,6 @@ pub async fn create_channel(
     }
 
     handles::insert_configuration(conn, channel.id, output_id).await?;
-    handles::insert_advanced_configuration(
-        conn,
-        channel.id,
-        Some(adv_id),
-        AdvancedConfig {
-            name: Some(NVIDIA_NAME.to_string()),
-            decoder: DecoderConfig {
-                input_param: Some(NVIDIA_INPUT.to_string()),
-                output_param: Some(NVIDIA_DECODER_OUTPUT.to_string()),
-                ..Default::default()
-            },
-            ingest: IngestConfig {
-                input_param: Some(NVIDIA_INPUT.to_string()),
-                ..Default::default()
-            },
-            filter: FilterConfig {
-                deinterlace: Some(NVIDIA_FILTER_DEINTERLACE.to_string()),
-                scale: Some(NVIDIA_FILTER_SCALE.to_string()),
-                overlay_logo_scale: Some(NVIDIA_FILTER_LOGO_SCALE.to_string()),
-                overlay_logo: Some(NVIDIA_FILTER_OVERLAY.to_string()),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    )
-    .await?;
-    handles::insert_advanced_configuration(
-        conn,
-        channel.id,
-        Some(adv_id),
-        AdvancedConfig {
-            name: Some(QSV_NAME.to_string()),
-            decoder: DecoderConfig {
-                input_param: Some(QSV_INPUT.to_string()),
-                output_param: Some(QSV_DECODER_OUTPUT.to_string()),
-                ..Default::default()
-            },
-            ingest: IngestConfig {
-                input_param: Some(QSV_INPUT.to_string()),
-                ..Default::default()
-            },
-            filter: FilterConfig {
-                deinterlace: Some(QSV_FILTER_DEINTERLACE.to_string()),
-                fps: Some(QSV_FILTER_FPS.to_string()),
-                scale: Some(QSV_FILTER_SCALE.to_string()),
-                overlay_logo_scale: Some(QSV_FILTER_LOGO_SCALE.to_string()),
-                overlay_logo: Some(QSV_FILTER_OVERLAY.to_string()),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    )
-    .await?;
 
     let config = get_config(conn, channel.id).await?;
 

@@ -14,7 +14,7 @@ use ffmpeg_next as ffmpeg;
 use super::{hls, vtt};
 use crate::{
     clock::PlayoutClock,
-    utils::config::{HlsVariant, OutputConfig},
+    utils::config::{HlsVariant, OutputConfig, RateControl},
 };
 
 pub(super) struct EncodedOutput {
@@ -32,7 +32,6 @@ pub(super) struct EncodedOutput {
 #[derive(Clone)]
 pub(super) enum EncodedFormat {
     Auto,
-    Null,
     Hls {
         variants: Vec<HlsVariant>,
         vtt_subtitles: bool,
@@ -65,7 +64,7 @@ impl EncodedOutput {
         output_format: EncodedFormat,
     ) -> Result<Self> {
         let hls_variants = match &output_format {
-            EncodedFormat::Auto | EncodedFormat::Null => &[][..],
+            EncodedFormat::Auto => &[][..],
             EncodedFormat::Hls { variants, .. } => variants.as_slice(),
         };
         let vtt_subtitles = matches!(
@@ -113,7 +112,6 @@ impl EncodedOutput {
         }
         let mut octx = match output_format {
             EncodedFormat::Hls { .. } => format::output_as(&hls_playlist_path, "hls")?,
-            EncodedFormat::Null => format::output_as("-", "null")?,
             EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
                 format::output_as(path, "flv")?
             }
@@ -153,7 +151,7 @@ impl EncodedOutput {
         }
 
         match output_format {
-            EncodedFormat::Auto | EncodedFormat::Null => octx.write_header()?,
+            EncodedFormat::Auto => octx.write_header()?,
             EncodedFormat::Hls {
                 segment_seconds,
                 list_size,
@@ -449,7 +447,10 @@ fn open_video_stream(
     video_ctx.set_format(Pixel::YUV420P);
     video_ctx.set_time_base(cfg.video_time_base);
     video_ctx.set_frame_rate(Some(Rational(cfg.fps as i32, 1)));
-    video_ctx.set_bit_rate(variant.map_or(3_000_000, |variant| variant.video_bitrate as usize));
+    let maxrate = variant.map_or(cfg.video_maxrate, |variant| variant.video_bitrate);
+    if cfg.rate_control == RateControl::Cbr {
+        video_ctx.set_bit_rate(maxrate as usize);
+    }
     if matches!(output_format, EncodedFormat::Hls { .. }) {
         video_ctx.set_gop(cfg.fps.saturating_mul(2));
     }
@@ -465,17 +466,19 @@ fn open_video_stream(
     }
 
     let mut options = ffmpeg::Dictionary::new();
+    options.set("preset", &cfg.video_preset);
+    options.set("tune", "zerolatency");
+    options.set("maxrate", &maxrate.to_string());
+    options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+    match cfg.rate_control {
+        RateControl::Crf => options.set("crf", &cfg.video_quality.to_string()),
+        RateControl::Cbr => options.set("minrate", &maxrate.to_string()),
+    }
 
-    // TODO: make preset configurable
     let video_encoder = match output_format {
-        EncodedFormat::Auto => {
-            options.set("preset", "faster");
-            video_ctx.open_as_with(video_codec, options)?
-        }
-        EncodedFormat::Null => video_ctx.open_as(video_codec)?,
+        EncodedFormat::Auto => video_ctx.open_as_with(video_codec, options)?,
         EncodedFormat::Hls { .. } => {
             options.set("x264-params", "open-gop=0:repeat-headers=1");
-            options.set("preset", "faster");
             video_ctx.open_as_with(video_codec, options)?
         }
     };
@@ -520,7 +523,9 @@ fn open_audio_stream(
     audio_ctx.set_channel_layout(ChannelLayout::STEREO);
     audio_ctx.set_format(Sample::F32(ffmpeg::format::sample::Type::Planar));
     audio_ctx.set_time_base(cfg.audio_time_base);
-    audio_ctx.set_bit_rate(variant.map_or(128_000, |variant| variant.audio_bitrate as usize));
+    audio_ctx.set_bit_rate(variant.map_or(cfg.audio_bitrate as usize, |variant| {
+        variant.audio_bitrate as usize
+    }));
     if global_header {
         audio_ctx.set_flags(codec::flag::Flags::GLOBAL_HEADER);
     }
@@ -581,6 +586,35 @@ mod open_tests {
         );
         assert!(path.exists(), "expected literal index.m3u8 to exist");
         assert!(dir.join("master.m3u8").exists(), "expected master.m3u8");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn cbr_encoder_options_are_accepted() {
+        ffmpeg::init().ok();
+        let dir = std::env::temp_dir().join(format!("hls_cbr_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("index.m3u8");
+        let cfg = OutputConfig::new(320, 240, 25, 44100).with_encoding(
+            "faster".to_string(),
+            RateControl::Cbr,
+            23,
+            1_300_000,
+            128_000,
+        );
+        let output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Hls {
+                variants: vec![],
+                vtt_subtitles: false,
+                segment_seconds: 6,
+                list_size: 60,
+            },
+        );
+
+        assert!(output.is_ok(), "expected CBR encoder options to be valid");
+        drop(output);
         fs::remove_dir_all(&dir).ok();
     }
 }

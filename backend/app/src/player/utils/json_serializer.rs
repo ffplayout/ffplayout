@@ -81,7 +81,6 @@ pub fn set_defaults(config: &PlayoutConfig, playlist: &mut JsonPlaylist) {
         item.last_ad = false;
         item.next_ad = false;
         item.skip = false;
-        item.filter = None;
 
         let source_path = Path::new(&item.source);
         if source_path.is_relative() {

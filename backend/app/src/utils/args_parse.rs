@@ -17,7 +17,6 @@ use crate::{
         models::{Channel, User},
     },
     utils::{
-        advanced_config::AdvancedConfig,
         config::{OutputMode, PlayoutConfig},
         errors::ProcessError,
     },
@@ -103,22 +102,8 @@ pub struct Args {
     )]
     pub drop_db: bool,
 
-    #[clap(
-        long,
-        help_heading = Some("General"),
-        help = "Dump advanced channel configuration to advanced_{channel}.toml"
-    )]
-    pub dump_advanced: bool,
-
     #[clap(long, help_heading = Some("General"), help = "Dump channel configuration to ffplayout_{channel}.toml")]
     pub dump_config: bool,
-
-    #[clap(
-        long,
-        help_heading = Some("General"),
-        help = "import advanced channel configuration from file."
-    )]
-    pub import_advanced: Option<PathBuf>,
 
     #[clap(long, help_heading = Some("General"), help = "Import channel configuration from file")]
     pub import_config: Option<PathBuf>,
@@ -189,7 +174,7 @@ pub struct Args {
     #[clap(short, long, help_heading = Some("Playout"), help = "Play folder content")]
     pub folder: Option<PathBuf>,
 
-    #[clap(short, long, help_heading = Some("Playout"), help = "Set output mode: desktop, hls, null, stream")]
+    #[clap(short, long, help_heading = Some("Playout"), help = "Set output mode: desktop, hls, stream")]
     pub output: Option<OutputMode>,
 
     #[clap(short, long, help_heading = Some("Playout"), help = "Set audio volume")]
@@ -240,7 +225,7 @@ pub async fn init_args(pool: &Pool<Sqlite>) -> Result<bool, ProcessError> {
     let mut args = ARGS.clone();
     let mut init = false;
 
-    if !args.dump_advanced && !args.dump_config && !args.drop_db {
+    if !args.dump_config && !args.drop_db {
         init = handles::db_migrate(pool).await?;
     }
 
@@ -421,41 +406,12 @@ pub async fn init_args(pool: &Pool<Sqlite>) -> Result<bool, ProcessError> {
         );
     }
 
-    if ARGS.dump_advanced {
-        if let Some(channel) = &ARGS.channel {
-            for id in channel {
-                if let Err(e) = AdvancedConfig::dump(pool, *id).await {
-                    return Err(ProcessError::Custom(format!("Dump config: {e}")));
-                };
-            }
-        } else {
-            return Err(ProcessError::Custom(
-                "Channel ID(s) needed! Use `--channel 1 ...`".to_string(),
-            ));
-        }
-    }
-
     if ARGS.dump_config {
         if let Some(channel) = &ARGS.channel {
             for id in channel {
                 match PlayoutConfig::dump(pool, *id).await {
                     Ok(_) => println!("Dump config to: ffplayout_{id}.toml"),
                     Err(e) => return Err(ProcessError::Custom(format!("Dump config: {e}"))),
-                };
-            }
-        } else {
-            return Err(ProcessError::Custom(
-                "Channel ID(s) needed! Use `--channel 1 ...`".to_string(),
-            ));
-        }
-    }
-
-    if let Some(path) = &ARGS.import_advanced {
-        if let Some(channel) = &ARGS.channel {
-            for id in channel {
-                match AdvancedConfig::import(pool, *id, path).await {
-                    Ok(_) => println!("Import config done..."),
-                    Err(e) => return Err(ProcessError::Custom(format!("{e}"))),
                 };
             }
         } else {

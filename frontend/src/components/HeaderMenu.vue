@@ -69,10 +69,6 @@ function logout() {
 function selectChannel(index: number) {
     configStore.i = index
 
-    if (authStore.role === 'global_admin') {
-        configStore.getAdvancedConfig()
-    }
-
     configStore.getPlayoutConfig()
     configStore.getPlayoutOutputs()
 }

@@ -73,7 +73,6 @@ reqwest = { version = "0.13", default-features = false, features = ["json"] }
 sanitize-filename = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_with = "3.12"
 shlex = "2.0"
 sysinfo = { version = "0.39", features = ["linux-netdevs", "linux-tmpfs"] }
 sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }

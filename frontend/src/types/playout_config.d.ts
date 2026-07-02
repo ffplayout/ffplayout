@@ -2,13 +2,13 @@
 
 export type General = { stop_threshold: number, };
 
-export type Ingest = { enable: boolean, input_param: string, custom_filter: string, };
+export type Ingest = { enable: boolean, ingest_url: string, };
 
 export type Logging = { ffmpeg_level: string, ingest_level: string, detect_silence: boolean, ignore_lines: Array<string>, };
 
 export type Mail = { show: boolean, subject: string, recipient: string, mail_level: string, interval: bigint, };
 
-export type Output = { id: number, mode: OutputMode, stream_url: string, hls_playlist_path: string, hls_segment_duration: number, hls_list_size: number,
+export type Output = { id: number, mode: OutputMode, stream_url: string, hls_playlist_path: string, hls_segment_duration: number, hls_list_size: number, video_preset: string, rate_control: string, video_quality: number, video_maxrate: number, audio_bitrate: number, 
 /**
  * Adaptive HLS renditions, one per entry, each formatted as
  * `NAME:WIDTHxHEIGHT:VIDEO_BITRATE[:AUDIO_BITRATE]` (e.g.
@@ -18,7 +18,7 @@ export type Output = { id: number, mode: OutputMode, stream_url: string, hls_pla
  */
 hls_variants: Array<string>, };
 
-export type OutputMode = "desktop" | "hls" | "null" | "stream";
+export type OutputMode = "desktop" | "hls" | "stream";
 
 export type Playlist = { day_start: string, length: string, infinit: boolean, };
 
@@ -31,7 +31,7 @@ export type PlayoutConfig = { general: General, mail: Mail, logging: Logging, pr
 
 export type ProcessMode = "folder" | "playlist";
 
-export type Processing = { mode: ProcessMode, audio_only: boolean, copy_audio: boolean, copy_video: boolean, width: bigint, height: bigint, aspect: number, fps: number, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, audio_tracks: number, audio_track_index: number, audio_channels: number, volume: number, custom_filter: string, override_filter: boolean, vtt_enable: boolean, vtt_dummy: string | null, };
+export type Processing = { mode: ProcessMode, width: bigint, height: bigint, aspect: number, fps: number, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, audio_channels: number, volume: number, vtt_enable: boolean, vtt_dummy: string | null, };
 
 export type Storage = { filler: string, extensions: Array<string>, shuffle: boolean, shared_storage: boolean, };
 

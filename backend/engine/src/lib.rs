@@ -19,7 +19,7 @@ use output::{FrameOutput, Output, PlaybackStopped};
 use playout::{Timeline, play_clip, write_fallback};
 pub use utils::{
     clock,
-    config::{HlsVariant, LogoConfig, OutputConfig, OutputSize},
+    config::{HlsVariant, LogoConfig, OutputConfig, OutputSize, RateControl},
     logging,
     media_info::{
         AudioStream as EngineAudioStream, MediaInfo, MediaProbe as EngineMediaProbe, ProbeFormat,
@@ -39,6 +39,13 @@ pub struct Playout {
     output: Output,
     timeline: Timeline,
     fallback_duration: f64,
+}
+
+#[derive(Clone, Copy)]
+struct PlayOptions<'a> {
+    seek_seconds: Option<f64>,
+    duration_seconds: Option<f64>,
+    subtitles_media_path: Option<&'a str>,
 }
 
 #[cfg(feature = "tokio")]
@@ -91,10 +98,6 @@ impl AsyncPlayout {
             )
         })
         .await
-    }
-
-    pub async fn open_null(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
-        Self::open_with(move || Playout::open_null(config, fallback_duration)).await
     }
 
     #[cfg(feature = "desktop")]
@@ -169,6 +172,7 @@ impl AsyncPlayout {
                 path,
                 seek_seconds,
                 duration_seconds: None,
+                subtitles_media_path: None,
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
@@ -181,6 +185,7 @@ impl AsyncPlayout {
         path: impl Into<String>,
         seek_seconds: Option<f64>,
         duration_seconds: Option<f64>,
+        subtitles_media_path: Option<String>,
     ) -> Result<ClipResult> {
         let path = path.into();
         let (response, result) = oneshot::channel();
@@ -189,6 +194,7 @@ impl AsyncPlayout {
                 path,
                 seek_seconds,
                 duration_seconds,
+                subtitles_media_path,
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
@@ -261,6 +267,7 @@ enum AsyncCommand {
         path: String,
         seek_seconds: Option<f64>,
         duration_seconds: Option<f64>,
+        subtitles_media_path: Option<String>,
         response: oneshot::Sender<Result<ClipResult>>,
     },
     StartRtmpLive {
@@ -286,12 +293,14 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 path,
                 seek_seconds,
                 duration_seconds,
+                subtitles_media_path,
                 response,
             } => {
                 let _ = response.send(playout.play_timed_with_live(
                     &path,
                     seek_seconds,
                     duration_seconds,
+                    subtitles_media_path.as_deref(),
                     &mut live,
                 ));
             }
@@ -320,14 +329,6 @@ impl Playout {
         Self::validate_fallback_duration(fallback_duration)?;
         init_ffmpeg()?;
         let output = Output::open(output_url, &config)?;
-
-        Ok(Self::with_output(config, output, fallback_duration))
-    }
-
-    pub fn open_null(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
-        Self::validate_fallback_duration(fallback_duration)?;
-        init_ffmpeg()?;
-        let output = Output::open_null(&config)?;
 
         Ok(Self::with_output(config, output, fallback_duration))
     }
@@ -385,7 +386,7 @@ impl Playout {
     }
 
     pub fn play_with_seek(&mut self, path: &str, seek_seconds: Option<f64>) -> Result<ClipResult> {
-        self.play_timed_with_live(path, seek_seconds, None, &mut None)
+        self.play_timed_with_live(path, seek_seconds, None, Some(path), &mut None)
     }
 
     pub fn play_with_live(
@@ -394,7 +395,7 @@ impl Playout {
         seek_seconds: Option<f64>,
         live: &mut Option<LiveReceiver>,
     ) -> Result<ClipResult> {
-        self.play_timed_with_live(path, seek_seconds, None, live)
+        self.play_timed_with_live(path, seek_seconds, None, Some(path), live)
     }
 
     pub fn play_with_timing(
@@ -403,7 +404,7 @@ impl Playout {
         seek_seconds: Option<f64>,
         duration_seconds: Option<f64>,
     ) -> Result<ClipResult> {
-        self.play_timed_with_live(path, seek_seconds, duration_seconds, &mut None)
+        self.play_timed_with_live(path, seek_seconds, duration_seconds, Some(path), &mut None)
     }
 
     pub fn play_timed_with_live(
@@ -411,8 +412,11 @@ impl Playout {
         path: &str,
         seek_seconds: Option<f64>,
         duration_seconds: Option<f64>,
+        subtitles_media_path: Option<&str>,
         live: &mut Option<LiveReceiver>,
     ) -> Result<ClipResult> {
+        let subtitles_media_path = subtitles_media_path.map(str::to_string);
+
         #[cfg(feature = "desktop")]
         if self.output.is_desktop() {
             let config = self.config.clone();
@@ -429,8 +433,11 @@ impl Playout {
                         &mut timeline,
                         &mut output,
                         fallback_duration,
-                        seek_seconds,
-                        duration_seconds,
+                        PlayOptions {
+                            seek_seconds,
+                            duration_seconds,
+                            subtitles_media_path: subtitles_media_path.as_deref(),
+                        },
                     )
                 } else {
                     play_to_output(
@@ -439,8 +446,11 @@ impl Playout {
                         &mut timeline,
                         output,
                         fallback_duration,
-                        seek_seconds,
-                        duration_seconds,
+                        PlayOptions {
+                            seek_seconds,
+                            duration_seconds,
+                            subtitles_media_path: subtitles_media_path.as_deref(),
+                        },
                     )
                 };
                 (result, timeline, live_for_worker)
@@ -467,8 +477,11 @@ impl Playout {
                 &mut self.timeline,
                 &mut output,
                 self.fallback_duration,
-                seek_seconds,
-                duration_seconds,
+                PlayOptions {
+                    seek_seconds,
+                    duration_seconds,
+                    subtitles_media_path: subtitles_media_path.as_deref(),
+                },
             )
         } else {
             play_to_output(
@@ -477,8 +490,11 @@ impl Playout {
                 &mut self.timeline,
                 &mut self.output,
                 self.fallback_duration,
-                seek_seconds,
-                duration_seconds,
+                PlayOptions {
+                    seek_seconds,
+                    duration_seconds,
+                    subtitles_media_path: subtitles_media_path.as_deref(),
+                },
             )
         }
     }
@@ -500,22 +516,23 @@ fn play_to_output<O: FrameOutput>(
     timeline: &mut Timeline,
     output: &mut O,
     fallback_duration: f64,
-    seek_seconds: Option<f64>,
-    duration_seconds: Option<f64>,
+    options: PlayOptions<'_>,
 ) -> Result<ClipResult> {
     match play_clip(
         path,
         config,
         timeline,
         output,
-        seek_seconds,
-        duration_seconds,
+        options.seek_seconds,
+        options.duration_seconds,
+        options.subtitles_media_path,
     ) {
         Ok(()) => Ok(ClipResult::Played),
         Err(error) if error.downcast_ref::<PlaybackStopped>().is_some() => Ok(ClipResult::Stopped),
         Err(error) => {
             let reason = format!("{error:#}");
-            let duration = duration_seconds
+            let duration = options
+                .duration_seconds
                 .filter(|duration| duration.is_finite() && *duration > 0.0)
                 .unwrap_or(fallback_duration);
             write_fallback(config, timeline, output, duration)
