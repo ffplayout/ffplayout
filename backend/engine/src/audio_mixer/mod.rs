@@ -1,3 +1,4 @@
-pub mod effects;
+pub mod control;
+pub mod volume;
 
-pub use effects::*;
+pub use control::*;
