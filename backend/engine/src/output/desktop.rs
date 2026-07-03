@@ -22,7 +22,7 @@ use sdl2::{
 };
 
 use super::{FrameOutput, PlaybackStopped};
-use crate::{audio::AudioEffectChain, utils::config::OutputConfig};
+use crate::{audio_mixer::AudioEffectChain, utils::config::OutputConfig};
 
 const AUDIO_CHANNELS: usize = 2;
 const AUDIO_PREBUFFER_MS: u64 = 100;

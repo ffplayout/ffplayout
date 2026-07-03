@@ -7,14 +7,14 @@ use std::{
 #[cfg(feature = "tokio")]
 use tokio::sync::oneshot;
 
-mod audio;
+mod audio_mixer;
 mod compositor;
 mod input;
 mod output;
 mod playout;
 mod utils;
 
-pub use audio::AudioEffectsControl;
+pub use audio_mixer::AudioEffectsControl;
 use input::live::{LiveEnded, LiveOverrideOutput};
 pub use input::live::{LiveReceiver, spawn_rtmp_listener};
 pub use output::resolved_variant_playlist_path;

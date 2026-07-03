@@ -13,7 +13,7 @@ use ffmpeg_next as ffmpeg;
 
 use super::{hls, vtt};
 use crate::{
-    audio::AudioEffectChain,
+    audio_mixer::AudioEffectChain,
     clock::PlayoutClock,
     utils::config::{HlsSubtitle, HlsVariant, OutputConfig, RateControl},
 };
