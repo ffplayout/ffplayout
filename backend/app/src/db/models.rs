@@ -325,6 +325,12 @@ pub struct Configuration {
     pub processing_vtt_enable: bool,
     #[serde(default)]
     pub processing_vtt_dummy: Option<String>,
+    #[serde(default = "default_vtt_name")]
+    pub processing_vtt_name: String,
+    #[serde(default = "default_vtt_language")]
+    pub processing_vtt_language: String,
+    #[serde(default)]
+    pub processing_vtt_default: bool,
 
     pub ingest_enable: bool,
     pub ingest_url: String,
@@ -382,6 +388,9 @@ impl Configuration {
             processing_volume: config.processing.volume,
             processing_vtt_enable: config.processing.vtt_enable,
             processing_vtt_dummy: config.processing.vtt_dummy,
+            processing_vtt_name: config.processing.vtt_name,
+            processing_vtt_language: config.processing.vtt_language,
+            processing_vtt_default: config.processing.vtt_default,
             ingest_enable: config.ingest.enable,
             ingest_url: config.ingest.ingest_url,
             playlist_day_start: config.playlist.day_start,
@@ -459,4 +468,12 @@ fn default_tracks() -> i32 {
 
 fn default_channels() -> u8 {
     2
+}
+
+fn default_vtt_name() -> String {
+    "Subtitles".to_string()
+}
+
+fn default_vtt_language() -> String {
+    "und".to_string()
 }

@@ -6,7 +6,8 @@ use std::{
 };
 
 use ff_engine::{
-    AsyncPlayout, ClipResult, LogoConfig, OutputConfig, RateControl, resolved_variant_playlist_path,
+    AsyncPlayout, ClipResult, LogoConfig, LogoFade, OutputConfig, RateControl,
+    resolved_variant_playlist_path,
 };
 use log::*;
 use tokio::time::sleep;
@@ -31,7 +32,11 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
     validate_supported_config(&config)?;
 
-    let output_config = engine_output_config(&config)?;
+    manager
+        .audio_effects
+        .set_volume(config.processing.volume)
+        .map_err(engine_error)?;
+    let output_config = engine_output_config(&config, manager.audio_effects.clone())?;
     let playout = open_playout(&config, output_config.clone()).await?;
     if config.output.mode == OutputMode::Desktop {
         info!(target: Target::file_mail(), channel = config.general.channel_id;
@@ -182,12 +187,17 @@ async fn play_loop(
         }
 
         let duration = playout_duration(&node);
+        let is_ad = node.category == "advertisement";
         match playout
-            .play_with_timing(
+            .play_with_timing_and_logo_fade(
                 node.source.clone(),
                 (node.seek > 0.0).then_some(node.seek),
                 duration,
                 subtitle_media_path(config, &node.source),
+                LogoFade {
+                    fade_in: !is_ad && node.last_ad,
+                    fade_out: !is_ad && node.next_ad,
+                },
             )
             .await
             .map_err(engine_error)?
@@ -255,13 +265,17 @@ async fn open_playout(
                 .output
                 .parsed_hls_variants()
                 .map_err(ServiceError::Conflict)?;
+            let hls_subtitle = config
+                .processing
+                .hls_subtitle()
+                .map_err(ServiceError::Conflict)?;
 
             AsyncPlayout::open_hls(
                 hls_playlist_path(config)?.to_string_lossy().to_string(),
                 output_config,
                 fallback_duration,
                 hls_variants,
-                config.processing.vtt_enable,
+                hls_subtitle,
                 config.output.hls_segment_duration,
                 config.output.hls_list_size,
             )
@@ -298,7 +312,10 @@ async fn open_desktop_playout(
     ))
 }
 
-fn engine_output_config(config: &PlayoutConfig) -> Result<OutputConfig, ServiceError> {
+fn engine_output_config(
+    config: &PlayoutConfig,
+    audio_effects: ff_engine::AudioEffectsControl,
+) -> Result<OutputConfig, ServiceError> {
     let width = u32::try_from(config.processing.width)
         .map_err(|_| ServiceError::Conflict("processing width must be positive".to_string()))?;
     let height = u32::try_from(config.processing.height)
@@ -329,7 +346,7 @@ fn engine_output_config(config: &PlayoutConfig) -> Result<OutputConfig, ServiceE
         RateControl::Cbr
     };
     Ok(OutputConfig::new(width, height, fps, 48_000)
-        .with_volume(config.processing.volume)
+        .with_audio_effects(audio_effects)
         .with_logo(logo)
         .with_encoding(
             config.output.video_preset.clone(),
@@ -344,6 +361,11 @@ fn validate_supported_config(config: &PlayoutConfig) -> Result<(), ServiceError>
     config.output.validate().map_err(ServiceError::Conflict)?;
 
     let processing = &config.processing;
+    if !processing.volume.is_finite() || !(0.0..=1.0).contains(&processing.volume) {
+        return Err(ServiceError::Conflict(
+            "processing volume must be between 0.0 and 1.0".to_string(),
+        ));
+    }
     let unsupported = [
         (processing.audio_only, "audio_only"),
         (processing.copy_audio, "copy_audio"),

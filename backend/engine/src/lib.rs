@@ -7,11 +7,14 @@ use std::{
 #[cfg(feature = "tokio")]
 use tokio::sync::oneshot;
 
+mod audio;
+mod compositor;
 mod input;
 mod output;
 mod playout;
 mod utils;
 
+pub use audio::AudioEffectsControl;
 use input::live::{LiveEnded, LiveOverrideOutput};
 pub use input::live::{LiveReceiver, spawn_rtmp_listener};
 pub use output::resolved_variant_playlist_path;
@@ -19,7 +22,7 @@ use output::{FrameOutput, Output, PlaybackStopped};
 use playout::{Timeline, play_clip, write_fallback};
 pub use utils::{
     clock,
-    config::{HlsVariant, LogoConfig, OutputConfig, OutputSize, RateControl},
+    config::{HlsSubtitle, HlsVariant, LogoConfig, OutputConfig, OutputSize, RateControl},
     logging,
     media_info::{
         AudioStream as EngineAudioStream, MediaInfo, MediaProbe as EngineMediaProbe, ProbeFormat,
@@ -35,6 +38,12 @@ pub enum ClipResult {
     Stopped,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LogoFade {
+    pub fade_in: bool,
+    pub fade_out: bool,
+}
+
 pub struct Playout {
     config: OutputConfig,
     output: Output,
@@ -47,6 +56,7 @@ struct PlayOptions<'a> {
     seek_seconds: Option<f64>,
     duration_seconds: Option<f64>,
     subtitles_media_path: Option<&'a str>,
+    logo_fade: LogoFade,
 }
 
 #[cfg(feature = "tokio")]
@@ -82,7 +92,7 @@ impl AsyncPlayout {
         config: OutputConfig,
         fallback_duration: f64,
         hls_variants: Vec<HlsVariant>,
-        hls_vtt_subtitles: bool,
+        hls_subtitle: Option<HlsSubtitle>,
         hls_segment_seconds: u32,
         hls_list_size: u32,
     ) -> Result<Self> {
@@ -93,7 +103,7 @@ impl AsyncPlayout {
                 config,
                 fallback_duration,
                 &hls_variants,
-                hls_vtt_subtitles,
+                hls_subtitle,
                 hls_segment_seconds,
                 hls_list_size,
             )
@@ -174,6 +184,7 @@ impl AsyncPlayout {
                 seek_seconds,
                 duration_seconds: None,
                 subtitles_media_path: None,
+                logo_fade: LogoFade::default(),
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
@@ -188,6 +199,24 @@ impl AsyncPlayout {
         duration_seconds: Option<f64>,
         subtitles_media_path: Option<String>,
     ) -> Result<ClipResult> {
+        self.play_with_timing_and_logo_fade(
+            path,
+            seek_seconds,
+            duration_seconds,
+            subtitles_media_path,
+            LogoFade::default(),
+        )
+        .await
+    }
+
+    pub async fn play_with_timing_and_logo_fade(
+        &self,
+        path: impl Into<String>,
+        seek_seconds: Option<f64>,
+        duration_seconds: Option<f64>,
+        subtitles_media_path: Option<String>,
+        logo_fade: LogoFade,
+    ) -> Result<ClipResult> {
         let path = path.into();
         let (response, result) = oneshot::channel();
         self.commands
@@ -196,6 +225,7 @@ impl AsyncPlayout {
                 seek_seconds,
                 duration_seconds,
                 subtitles_media_path,
+                logo_fade,
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
@@ -269,6 +299,7 @@ enum AsyncCommand {
         seek_seconds: Option<f64>,
         duration_seconds: Option<f64>,
         subtitles_media_path: Option<String>,
+        logo_fade: LogoFade,
         response: oneshot::Sender<Result<ClipResult>>,
     },
     StartRtmpLive {
@@ -295,6 +326,7 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 seek_seconds,
                 duration_seconds,
                 subtitles_media_path,
+                logo_fade,
                 response,
             } => {
                 let _ = response.send(playout.play_timed_with_live(
@@ -302,6 +334,7 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                     seek_seconds,
                     duration_seconds,
                     subtitles_media_path.as_deref(),
+                    logo_fade,
                     &mut live,
                 ));
             }
@@ -348,7 +381,7 @@ impl Playout {
         config: OutputConfig,
         fallback_duration: f64,
         hls_variants: &[HlsVariant],
-        hls_vtt_subtitles: bool,
+        hls_subtitle: Option<HlsSubtitle>,
         hls_segment_seconds: u32,
         hls_list_size: u32,
     ) -> Result<Self> {
@@ -358,7 +391,7 @@ impl Playout {
             playlist,
             &config,
             hls_variants,
-            hls_vtt_subtitles,
+            hls_subtitle,
             hls_segment_seconds,
             hls_list_size,
         )?;
@@ -387,7 +420,14 @@ impl Playout {
     }
 
     pub fn play_with_seek(&mut self, path: &str, seek_seconds: Option<f64>) -> Result<ClipResult> {
-        self.play_timed_with_live(path, seek_seconds, None, Some(path), &mut None)
+        self.play_timed_with_live(
+            path,
+            seek_seconds,
+            None,
+            Some(path),
+            LogoFade::default(),
+            &mut None,
+        )
     }
 
     pub fn play_with_live(
@@ -396,7 +436,14 @@ impl Playout {
         seek_seconds: Option<f64>,
         live: &mut Option<LiveReceiver>,
     ) -> Result<ClipResult> {
-        self.play_timed_with_live(path, seek_seconds, None, Some(path), live)
+        self.play_timed_with_live(
+            path,
+            seek_seconds,
+            None,
+            Some(path),
+            LogoFade::default(),
+            live,
+        )
     }
 
     pub fn play_with_timing(
@@ -405,7 +452,31 @@ impl Playout {
         seek_seconds: Option<f64>,
         duration_seconds: Option<f64>,
     ) -> Result<ClipResult> {
-        self.play_timed_with_live(path, seek_seconds, duration_seconds, Some(path), &mut None)
+        self.play_timed_with_live(
+            path,
+            seek_seconds,
+            duration_seconds,
+            Some(path),
+            LogoFade::default(),
+            &mut None,
+        )
+    }
+
+    pub fn play_with_timing_and_logo_fade(
+        &mut self,
+        path: &str,
+        seek_seconds: Option<f64>,
+        duration_seconds: Option<f64>,
+        logo_fade: LogoFade,
+    ) -> Result<ClipResult> {
+        self.play_timed_with_live(
+            path,
+            seek_seconds,
+            duration_seconds,
+            Some(path),
+            logo_fade,
+            &mut None,
+        )
     }
 
     pub fn play_timed_with_live(
@@ -414,6 +485,7 @@ impl Playout {
         seek_seconds: Option<f64>,
         duration_seconds: Option<f64>,
         subtitles_media_path: Option<&str>,
+        logo_fade: LogoFade,
         live: &mut Option<LiveReceiver>,
     ) -> Result<ClipResult> {
         let subtitles_media_path = subtitles_media_path.map(str::to_string);
@@ -438,6 +510,7 @@ impl Playout {
                             seek_seconds,
                             duration_seconds,
                             subtitles_media_path: subtitles_media_path.as_deref(),
+                            logo_fade,
                         },
                     )
                 } else {
@@ -451,6 +524,7 @@ impl Playout {
                             seek_seconds,
                             duration_seconds,
                             subtitles_media_path: subtitles_media_path.as_deref(),
+                            logo_fade,
                         },
                     )
                 };
@@ -482,6 +556,7 @@ impl Playout {
                     seek_seconds,
                     duration_seconds,
                     subtitles_media_path: subtitles_media_path.as_deref(),
+                    logo_fade,
                 },
             )
         } else {
@@ -495,6 +570,7 @@ impl Playout {
                     seek_seconds,
                     duration_seconds,
                     subtitles_media_path: subtitles_media_path.as_deref(),
+                    logo_fade,
                 },
             )
         }
@@ -527,6 +603,7 @@ fn play_to_output<O: FrameOutput>(
         options.seek_seconds,
         options.duration_seconds,
         options.subtitles_media_path,
+        options.logo_fade,
     ) {
         Ok(()) => Ok(ClipResult::Played),
         Err(error) if error.downcast_ref::<LiveEnded>().is_some() => Ok(ClipResult::LiveEnded),
@@ -539,6 +616,7 @@ fn play_to_output<O: FrameOutput>(
                 .unwrap_or(fallback_duration);
             write_fallback(config, timeline, output, duration)
                 .with_context(|| format!("failed to generate fallback for {path}"))?;
+            timeline.finish_logo_fade(options.logo_fade);
             Ok(ClipResult::Fallback { reason })
         }
     }

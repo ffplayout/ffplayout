@@ -345,6 +345,20 @@ pub struct Processing {
     pub vtt_enable: bool,
     #[serde(default)]
     pub vtt_dummy: Option<String>,
+    #[serde(default = "default_vtt_name")]
+    pub vtt_name: String,
+    #[serde(default = "default_vtt_language")]
+    pub vtt_language: String,
+    #[serde(default)]
+    pub vtt_default: bool,
+}
+
+fn default_vtt_name() -> String {
+    "Subtitles".to_string()
+}
+
+fn default_vtt_language() -> String {
+    "und".to_string()
 }
 
 impl Processing {
@@ -370,7 +384,24 @@ impl Processing {
             volume: config.processing_volume,
             vtt_enable: config.processing_vtt_enable,
             vtt_dummy: config.processing_vtt_dummy.clone(),
+            vtt_name: config.processing_vtt_name.clone(),
+            vtt_language: config.processing_vtt_language.clone(),
+            vtt_default: config.processing_vtt_default,
         }
+    }
+
+    pub fn hls_subtitle(&self) -> Result<Option<ff_engine::HlsSubtitle>, String> {
+        if !self.vtt_enable {
+            return Ok(None);
+        }
+
+        let subtitle = ff_engine::HlsSubtitle {
+            name: self.vtt_name.trim().to_string(),
+            language: self.vtt_language.trim().to_string(),
+            default: self.vtt_default,
+        };
+        subtitle.validate()?;
+        Ok(Some(subtitle))
     }
 }
 

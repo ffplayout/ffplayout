@@ -2,6 +2,8 @@ use std::str::FromStr;
 
 use ffmpeg_next::Rational;
 
+use crate::AudioEffectsControl;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HlsVariant {
     pub name: String,
@@ -9,6 +11,30 @@ pub struct HlsVariant {
     pub height: u32,
     pub video_bitrate: u64,
     pub audio_bitrate: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HlsSubtitle {
+    pub name: String,
+    pub language: String,
+    pub default: bool,
+}
+
+impl HlsSubtitle {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_stream_map_value("subtitle name", &self.name)?;
+        validate_stream_map_value("subtitle language", &self.language)
+    }
+}
+
+fn validate_stream_map_value(label: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Err(format!("{label} must not be empty"));
+    }
+    if value.chars().any(|ch| ch.is_whitespace() || ch == ',') {
+        return Err(format!("{label} must not contain whitespace or ','"));
+    }
+    Ok(())
 }
 
 impl FromStr for HlsVariant {
@@ -83,6 +109,39 @@ fn parse_bitrate(value: &str) -> Result<u64, String> {
     Ok(number * multiplier)
 }
 
+#[cfg(test)]
+mod hls_subtitle_tests {
+    use super::HlsSubtitle;
+
+    #[test]
+    fn accepts_stream_map_safe_metadata() {
+        assert!(
+            HlsSubtitle {
+                name: "Deutsch".to_string(),
+                language: "de-DE".to_string(),
+                default: false,
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_values_that_break_stream_map() {
+        for name in ["", "Deutsch SD", "Deutsch,SD"] {
+            assert!(
+                HlsSubtitle {
+                    name: name.to_string(),
+                    language: "de-DE".to_string(),
+                    default: false,
+                }
+                .validate()
+                .is_err()
+            );
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct OutputConfig {
     pub width: u32,
@@ -91,7 +150,7 @@ pub struct OutputConfig {
     pub sample_rate: u32,
     pub video_time_base: Rational,
     pub audio_time_base: Rational,
-    pub volume: f64,
+    pub audio_effects: AudioEffectsControl,
     pub logo: Option<LogoConfig>,
     pub video_preset: String,
     pub rate_control: RateControl,
@@ -123,7 +182,7 @@ impl OutputConfig {
             sample_rate,
             video_time_base: Rational(1, fps as i32),
             audio_time_base: Rational(1, sample_rate as i32),
-            volume: 1.0,
+            audio_effects: AudioEffectsControl::default(),
             logo: None,
             video_preset: "faster".to_string(),
             rate_control: RateControl::Crf,
@@ -133,8 +192,13 @@ impl OutputConfig {
         }
     }
 
-    pub fn with_volume(mut self, volume: f64) -> Self {
-        self.volume = volume;
+    pub fn with_volume(mut self, volume: f64) -> anyhow::Result<Self> {
+        self.audio_effects = AudioEffectsControl::new(volume)?;
+        Ok(self)
+    }
+
+    pub fn with_audio_effects(mut self, audio_effects: AudioEffectsControl) -> Self {
+        self.audio_effects = audio_effects;
         self
     }
 

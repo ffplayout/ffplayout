@@ -28,6 +28,7 @@ pub fn routes() -> Router<AppState> {
                 .route("/channels", get(get_all_channels))
                 .route("/control/{id}/text", post(send_text_message))
                 .route("/control/{id}/playout", post(control_playout))
+                .route("/control/{id}/audio", put(update_audio_effects))
                 .route("/control/{id}/media/current", get(media_current))
                 .route("/control/{id}/process", post(process_control))
                 .route("/file/{id}/browse", post(file_browser))

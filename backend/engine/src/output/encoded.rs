@@ -13,8 +13,9 @@ use ffmpeg_next as ffmpeg;
 
 use super::{hls, vtt};
 use crate::{
+    audio::AudioEffectChain,
     clock::PlayoutClock,
-    utils::config::{HlsVariant, OutputConfig, RateControl},
+    utils::config::{HlsSubtitle, HlsVariant, OutputConfig, RateControl},
 };
 
 pub(super) struct EncodedOutput {
@@ -23,6 +24,7 @@ pub(super) struct EncodedOutput {
     audio_streams: Vec<AudioOutputStream>,
     subtitle_streams: Vec<SubtitleOutputStream>,
     vtt_subtitles: bool,
+    audio_effects: AudioEffectChain,
     audio_buffer: [VecDeque<f32>; 2],
     audio_buffer_pts: Option<i64>,
     audio_sample_rate: u32,
@@ -34,7 +36,7 @@ pub(super) enum EncodedFormat {
     Auto,
     Hls {
         variants: Vec<HlsVariant>,
-        vtt_subtitles: bool,
+        subtitle: Option<HlsSubtitle>,
         segment_seconds: u32,
         list_size: u32,
     },
@@ -67,14 +69,15 @@ impl EncodedOutput {
             EncodedFormat::Auto => &[][..],
             EncodedFormat::Hls { variants, .. } => variants.as_slice(),
         };
-        let vtt_subtitles = matches!(
-            output_format,
-            EncodedFormat::Hls {
-                vtt_subtitles: true,
-                ..
-            }
-        );
+        let hls_subtitle = match &output_format {
+            EncodedFormat::Hls { subtitle, .. } => subtitle.as_ref(),
+            EncodedFormat::Auto => None,
+        };
+        let vtt_subtitles = hls_subtitle.is_some();
         hls::validate_variants(hls_variants)?;
+        if let Some(subtitle) = hls_subtitle {
+            subtitle.validate().map_err(anyhow::Error::msg)?;
+        }
 
         // ffmpeg's HLS muxer only emits a master playlist (with the
         // `EXT-X-MEDIA:TYPE=SUBTITLES` entry HLS players need to discover the
@@ -169,7 +172,7 @@ impl EncodedOutput {
                     options.set("master_pl_name", "master.m3u8");
                     options.set(
                         "var_stream_map",
-                        &hls::var_stream_map(variants_for_naming, vtt_subtitles),
+                        &hls::var_stream_map(variants_for_naming, hls_subtitle),
                     );
                 }
                 let _unused_options = octx.write_header_with(options)?;
@@ -182,6 +185,7 @@ impl EncodedOutput {
             audio_streams,
             subtitle_streams,
             vtt_subtitles,
+            audio_effects: AudioEffectChain::new(cfg.audio_effects.clone(), cfg.sample_rate),
             audio_buffer: [VecDeque::new(), VecDeque::new()],
             audio_buffer_pts: None,
             audio_sample_rate: cfg.sample_rate,
@@ -218,6 +222,8 @@ impl EncodedOutput {
             return Ok(());
         }
 
+        let mut frame = frame.clone();
+        self.audio_effects.process(&mut frame);
         self.align_audio_buffer_to_frame_pts(frame.pts())?;
         if self.audio_buffer[0].is_empty() {
             self.audio_buffer_pts = frame.pts();
@@ -559,7 +565,7 @@ fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOu
 #[cfg(test)]
 mod open_tests {
     use super::*;
-    use crate::utils::config::OutputConfig;
+    use crate::utils::config::{HlsSubtitle, OutputConfig};
     use std::fs;
 
     #[test]
@@ -574,7 +580,11 @@ mod open_tests {
             &cfg,
             EncodedFormat::Hls {
                 variants: vec![],
-                vtt_subtitles: true,
+                subtitle: Some(HlsSubtitle {
+                    name: "Subtitles".to_string(),
+                    language: "und".to_string(),
+                    default: false,
+                }),
                 segment_seconds: 6,
                 list_size: 60,
             },
@@ -585,7 +595,10 @@ mod open_tests {
             "expected finish() to flush the trailer"
         );
         assert!(path.exists(), "expected literal index.m3u8 to exist");
-        assert!(dir.join("master.m3u8").exists(), "expected master.m3u8");
+        let master = fs::read_to_string(dir.join("master.m3u8")).unwrap();
+        assert!(master.contains("NAME=\"Subtitles\""), "{master}");
+        assert!(master.contains("LANGUAGE=\"und\""), "{master}");
+        assert!(master.contains("DEFAULT=NO"), "{master}");
         fs::remove_dir_all(&dir).ok();
     }
 
@@ -607,7 +620,7 @@ mod open_tests {
             &cfg,
             EncodedFormat::Hls {
                 variants: vec![],
-                vtt_subtitles: false,
+                subtitle: None,
                 segment_seconds: 6,
                 list_size: 60,
             },

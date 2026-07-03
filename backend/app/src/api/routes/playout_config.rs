@@ -85,6 +85,11 @@ pub async fn update_playout_config(
     data.processing.logo = logo;
     data.storage.filler = filler;
     data.text.font = font;
+    data.processing
+        .hls_subtitle()
+        .map_err(ServiceError::BadRequest)?;
+    ff_engine::AudioEffectsControl::new(data.processing.volume)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     data.output.validate().map_err(ServiceError::BadRequest)?;
 
     let is_hls = data.output.mode == OutputMode::HLS;

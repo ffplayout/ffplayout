@@ -18,7 +18,7 @@ use desktop::{DesktopFrameSender, DesktopOutput};
 use encoded::{EncodedFormat, EncodedOutput};
 use ffmpeg_next::frame;
 
-use crate::utils::config::{HlsVariant, OutputConfig};
+use crate::utils::config::{HlsSubtitle, HlsVariant, OutputConfig};
 
 #[derive(Debug)]
 pub(crate) struct PlaybackStopped;
@@ -72,7 +72,7 @@ impl Output {
         path: &str,
         cfg: &OutputConfig,
         hls_variants: &[HlsVariant],
-        hls_vtt_subtitles: bool,
+        hls_subtitle: Option<HlsSubtitle>,
         hls_segment_seconds: u32,
         hls_list_size: u32,
     ) -> Result<Self> {
@@ -82,7 +82,7 @@ impl Output {
                 cfg,
                 EncodedFormat::Hls {
                     variants: hls_variants.to_vec(),
-                    vtt_subtitles: hls_vtt_subtitles,
+                    subtitle: hls_subtitle,
                     segment_seconds: hls_segment_seconds,
                     list_size: hls_list_size,
                 },

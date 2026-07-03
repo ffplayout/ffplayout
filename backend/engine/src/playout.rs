@@ -7,14 +7,19 @@ use ffmpeg_next::{
 use log::{debug, trace};
 
 use crate::{
+    LogoFade,
+    compositor::logo::*,
     output::FrameOutput,
-    utils::config::{LogoConfig, OutputConfig},
+    utils::{config::OutputConfig, helper::even},
 };
+
+const LOGO_FADE_SECONDS: f64 = 1.0;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Timeline {
     video_pts: i64,
     audio_pts: i64,
+    logo_opacity: f64,
 }
 
 impl Timeline {
@@ -22,6 +27,19 @@ impl Timeline {
         Self {
             video_pts: 0,
             audio_pts: 0,
+            logo_opacity: 1.0,
+        }
+    }
+
+    pub(crate) fn video_pts(&self) -> i64 {
+        self.video_pts
+    }
+
+    pub(crate) fn finish_logo_fade(&mut self, fade: LogoFade) {
+        if fade.fade_out {
+            self.logo_opacity = 0.0;
+        } else if fade.fade_in {
+            self.logo_opacity = 1.0;
         }
     }
 }
@@ -30,6 +48,7 @@ impl Timeline {
 ///
 /// Input PTS are replaced with continuous timeline PTS. If only one media type
 /// exists, the missing counterpart is synthesized.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn play_clip<O: FrameOutput>(
     path: &str,
     cfg: &OutputConfig,
@@ -38,9 +57,13 @@ pub(crate) fn play_clip<O: FrameOutput>(
     seek_seconds: Option<f64>,
     duration_seconds: Option<f64>,
     subtitles_media_path: Option<&str>,
+    logo_fade: LogoFade,
 ) -> Result<()> {
-    if let Some(duration_seconds) = duration_seconds.filter(|duration| *duration > 0.0) {
-        return play_looped_clip(
+    let logo_fade_plan = LogoFadePlan::new(timeline.video_pts, duration_seconds, cfg, logo_fade);
+
+    let result = if let Some(duration_seconds) = duration_seconds.filter(|duration| *duration > 0.0)
+    {
+        play_looped_clip(
             path,
             cfg,
             timeline,
@@ -48,24 +71,33 @@ pub(crate) fn play_clip<O: FrameOutput>(
             seek_seconds,
             duration_seconds,
             subtitles_media_path,
-        );
+            logo_fade_plan,
+        )
+    } else {
+        let ictx = format::input(path)?;
+        play_opened_input(
+            path,
+            ictx,
+            cfg,
+            timeline,
+            output,
+            InputPlaybackOptions {
+                seek_seconds,
+                duration_seconds,
+                subtitles_media_path,
+                logo_fade_plan,
+            },
+        )
+    };
+
+    if result.is_ok() {
+        logo_fade_plan.finish(timeline);
     }
 
-    let ictx = format::input(path)?;
-    play_opened_input(
-        path,
-        ictx,
-        cfg,
-        timeline,
-        output,
-        InputPlaybackOptions {
-            seek_seconds,
-            duration_seconds,
-            subtitles_media_path,
-        },
-    )
+    result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn play_looped_clip<O: FrameOutput>(
     path: &str,
     cfg: &OutputConfig,
@@ -74,6 +106,7 @@ fn play_looped_clip<O: FrameOutput>(
     seek_seconds: Option<f64>,
     duration_seconds: f64,
     subtitles_media_path: Option<&str>,
+    logo_fade_plan: LogoFadePlan,
 ) -> Result<()> {
     if !duration_seconds.is_finite() {
         return Err(anyhow!("clip duration must be a finite number"));
@@ -98,6 +131,7 @@ fn play_looped_clip<O: FrameOutput>(
                 seek_seconds: first_iteration.then_some(seek_seconds).flatten(),
                 duration_seconds: Some(remaining),
                 subtitles_media_path: first_iteration.then_some(subtitles_media_path).flatten(),
+                logo_fade_plan,
             },
         )?;
 
@@ -140,6 +174,73 @@ pub(crate) struct InputPlaybackOptions<'a> {
     pub(crate) seek_seconds: Option<f64>,
     pub(crate) duration_seconds: Option<f64>,
     pub(crate) subtitles_media_path: Option<&'a str>,
+    pub(crate) logo_fade_plan: LogoFadePlan,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct LogoFadePlan {
+    fade_in: bool,
+    fade_out: bool,
+    start_pts: i64,
+    end_pts: Option<i64>,
+    frames: i64,
+}
+
+impl LogoFadePlan {
+    pub(crate) fn none(start_pts: i64, cfg: &OutputConfig) -> Self {
+        Self::new(start_pts, None, cfg, LogoFade::default())
+    }
+
+    fn new(
+        start_pts: i64,
+        duration_seconds: Option<f64>,
+        cfg: &OutputConfig,
+        fade: LogoFade,
+    ) -> Self {
+        let end_pts = duration_seconds
+            .filter(|duration| duration.is_finite() && *duration > 0.0)
+            .map(|duration| start_pts + (duration * f64::from(cfg.fps)).ceil() as i64);
+
+        Self {
+            fade_in: fade.fade_in,
+            fade_out: fade.fade_out,
+            start_pts,
+            end_pts,
+            frames: (LOGO_FADE_SECONDS * f64::from(cfg.fps)).round().max(1.0) as i64,
+        }
+    }
+
+    fn with_end_pts(mut self, end_pts: Option<i64>) -> Self {
+        if self.end_pts.is_none() {
+            self.end_pts = end_pts;
+        }
+        self
+    }
+
+    fn opacity_at(self, pts: i64, current_opacity: f64) -> f64 {
+        let mut opacity = current_opacity;
+
+        if self.fade_in {
+            let elapsed = (pts - self.start_pts).max(0);
+            opacity = (elapsed as f64 / self.frames as f64).clamp(0.0, 1.0);
+        }
+
+        if self.fade_out
+            && let Some(end_pts) = self.end_pts
+        {
+            let remaining = (end_pts - pts).max(0);
+            opacity = opacity.min((remaining as f64 / self.frames as f64).clamp(0.0, 1.0));
+        }
+
+        opacity
+    }
+
+    fn finish(self, timeline: &mut Timeline) {
+        timeline.finish_logo_fade(LogoFade {
+            fade_in: self.fade_in,
+            fade_out: self.fade_out,
+        });
+    }
 }
 
 pub(crate) fn play_opened_input<O: FrameOutput>(
@@ -196,6 +297,9 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         timeline.video_pts
             + div_ceil(i128::from(duration_us) * i128::from(cfg.fps), 1_000_000) as i64
     });
+    let logo_fade_plan = options
+        .logo_fade_plan
+        .with_end_pts(video_limit_pts.or(video_end_pts));
     output.set_video_end(video_end_pts)?;
     if let Some(media_path) = options.subtitles_media_path {
         output.write_vtt_subtitles(
@@ -219,6 +323,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
                     output,
                     &mut decoded_video_frames,
                     video_limit_pts,
+                    logo_fade_plan,
                 )?;
             }
         } else if Some(stream.index()) == audio_index
@@ -249,6 +354,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         &mut decoded_video_frames,
         &mut video_finished,
         video_limit_pts,
+        logo_fade_plan,
     )?;
     if let Some(audio) = audio.as_mut() {
         audio.decoder.send_eof()?;
@@ -267,7 +373,11 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         ));
     }
 
-    synchronize_timeline(cfg, timeline, output)
+    let last_video_frame = video
+        .as_ref()
+        .and_then(|video| video.last_composited_frame.clone());
+
+    synchronize_timeline(cfg, timeline, output, last_video_frame.as_ref())
 }
 
 fn seek_input(ictx: &mut format::context::Input, seek_seconds: f64) -> Result<()> {
@@ -292,6 +402,7 @@ fn finish_video<O: FrameOutput>(
     decoded_frames: &mut i64,
     finished: &mut bool,
     limit_pts: Option<i64>,
+    logo_fade_plan: LogoFadePlan,
 ) -> Result<()> {
     if *finished {
         return Ok(());
@@ -299,9 +410,23 @@ fn finish_video<O: FrameOutput>(
 
     if let Some(video) = video.as_mut() {
         video.decoder.send_eof()?;
-        receive_video_frames(video, timeline, output, decoded_frames, limit_pts)?;
+        receive_video_frames(
+            video,
+            timeline,
+            output,
+            decoded_frames,
+            limit_pts,
+            logo_fade_plan,
+        )?;
     }
-    repeat_single_video_frame_to_limit(video, timeline, output, decoded_frames, limit_pts)?;
+    repeat_single_video_frame_to_limit(
+        video,
+        timeline,
+        output,
+        decoded_frames,
+        limit_pts,
+        logo_fade_plan,
+    )?;
     output.video_finished()?;
     *finished = true;
     Ok(())
@@ -313,6 +438,7 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
     output: &mut O,
     decoded_frames: &mut i64,
     limit_pts: Option<i64>,
+    logo_fade_plan: LogoFadePlan,
 ) -> Result<()> {
     let Some(limit_pts) = limit_pts else {
         return Ok(());
@@ -335,7 +461,9 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
 
     while timeline.video_pts < limit_pts {
         let mut frame = frame.clone();
+        apply_logo(&mut frame, video, timeline, logo_fade_plan);
         frame.set_pts(Some(timeline.video_pts));
+        video.last_composited_frame = Some(frame.clone());
         output.encode_video(&frame)?;
         timeline.video_pts += 1;
         *decoded_frames += 1;
@@ -386,6 +514,7 @@ fn receive_video_frames<O: FrameOutput>(
     output: &mut O,
     decoded_frames: &mut i64,
     limit_pts: Option<i64>,
+    logo_fade_plan: LogoFadePlan,
 ) -> Result<()> {
     let mut raw = frame::Video::empty();
     while video.decoder.receive_frame(&mut raw).is_ok() {
@@ -430,17 +559,30 @@ fn receive_video_frames<O: FrameOutput>(
             }
 
             let frame = padded.as_mut().unwrap_or(&mut scaled);
-            if let Some(logo) = &video.logo {
-                blend_logo(frame, logo);
-            }
-            frame.set_pts(Some(timeline.video_pts));
             video.last_output_frame = Some(frame.clone());
+            apply_logo(frame, video, timeline, logo_fade_plan);
+            frame.set_pts(Some(timeline.video_pts));
+            video.last_composited_frame = Some(frame.clone());
             output.encode_video(frame)?;
             timeline.video_pts += 1;
             *decoded_frames += 1;
         }
     }
     Ok(())
+}
+
+fn apply_logo(
+    frame: &mut frame::Video,
+    video: &VideoDecoder,
+    timeline: &mut Timeline,
+    logo_fade_plan: LogoFadePlan,
+) {
+    let opacity = logo_fade_plan.opacity_at(timeline.video_pts, timeline.logo_opacity);
+    timeline.logo_opacity = opacity;
+
+    if let Some(logo) = &video.logo {
+        blend_logo(frame, logo, opacity);
+    }
 }
 
 fn receive_audio_frames<O: FrameOutput>(
@@ -466,7 +608,6 @@ fn receive_audio_frames<O: FrameOutput>(
 
         let mut converted = frame::Audio::empty();
         audio.resampler.run(&raw, &mut converted)?;
-        apply_volume(&mut converted, audio.volume);
         let samples = converted.samples() as i64;
         converted.set_pts(Some(timeline.audio_pts));
         output.encode_audio(&converted)?;
@@ -505,6 +646,7 @@ struct VideoDecoder {
     output_fps: u32,
     trim_start_us: Option<i64>,
     last_output_frame: Option<frame::Video>,
+    last_composited_frame: Option<frame::Video>,
 }
 
 impl VideoDecoder {
@@ -546,6 +688,7 @@ impl VideoDecoder {
             output_fps: cfg.fps,
             trim_start_us,
             last_output_frame: None,
+            last_composited_frame: None,
         })
     }
 
@@ -554,286 +697,6 @@ impl VideoDecoder {
             || self.scaled_height != self.output_height
             || self.x_offset != 0
             || self.y_offset != 0
-    }
-}
-
-struct LogoOverlay {
-    frame: frame::Video,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-    opacity: f64,
-}
-
-impl LogoOverlay {
-    fn load(config: &LogoConfig, output_width: u32, output_height: u32) -> Result<Self> {
-        if !(0.0..=1.0).contains(&config.opacity) || !config.opacity.is_finite() {
-            return Err(anyhow!("logo opacity must be between 0.0 and 1.0"));
-        }
-
-        let mut ictx = format::input(&config.path)
-            .with_context(|| format!("failed to open logo {}", config.path))?;
-        let stream = ictx
-            .streams()
-            .best(media::Type::Video)
-            .ok_or_else(|| anyhow!("logo {} contains no video/image stream", config.path))?;
-        let stream_index = stream.index();
-        let ctx = codec::context::Context::from_parameters(stream.parameters())?;
-        let mut decoder = ctx.decoder().video()?;
-        let input_width = decoder.width();
-        let input_height = decoder.height();
-        let (width, height) = logo_dimensions(
-            config.scale.as_deref(),
-            input_width,
-            input_height,
-            output_width,
-            output_height,
-        )?;
-        let mut scaler = scaling::Context::get(
-            decoder.format(),
-            input_width,
-            input_height,
-            Pixel::RGBA,
-            width,
-            height,
-            scaling::flag::Flags::BILINEAR,
-        )?;
-
-        let mut decoded = frame::Video::empty();
-        let mut rgba = None;
-        for (packet_stream, packet) in ictx.packets() {
-            if packet_stream.index() != stream_index {
-                continue;
-            }
-            decoder.send_packet(&packet)?;
-            if decoder.receive_frame(&mut decoded).is_ok() {
-                let mut scaled = frame::Video::empty();
-                scaler.run(&decoded, &mut scaled)?;
-                rgba = Some(scaled);
-            }
-            if rgba.is_some() {
-                break;
-            }
-        }
-        if rgba.is_none() {
-            decoder.send_eof()?;
-            if decoder.receive_frame(&mut decoded).is_ok() {
-                let mut scaled = frame::Video::empty();
-                scaler.run(&decoded, &mut scaled)?;
-                rgba = Some(scaled);
-            }
-        }
-        let frame = rgba.ok_or_else(|| anyhow!("logo {} produced no frame", config.path))?;
-        let (x, y) = logo_position(&config.position, output_width, output_height, width, height)?;
-
-        Ok(Self {
-            frame,
-            x,
-            y,
-            width,
-            height,
-            opacity: config.opacity,
-        })
-    }
-}
-
-fn logo_dimensions(
-    scale: Option<&str>,
-    input_width: u32,
-    input_height: u32,
-    output_width: u32,
-    output_height: u32,
-) -> Result<(u32, u32)> {
-    let Some(scale) = scale.filter(|scale| !scale.trim().is_empty()) else {
-        return Ok((even(input_width).max(2), even(input_height).max(2)));
-    };
-    let (width, height) = scale
-        .split_once(':')
-        .or_else(|| scale.split_once('x'))
-        .ok_or_else(|| anyhow!("logo scale must use WIDTH:HEIGHT or WIDTHxHEIGHT"))?;
-    let width = parse_logo_dimension(width, input_width, output_width)?;
-    let height = parse_logo_dimension(height, input_height, output_height)?;
-
-    let (width, height) = match (width, height) {
-        (Some(width), Some(height)) => (width, height),
-        (Some(width), None) => (
-            width,
-            ((u64::from(width) * u64::from(input_height)) / u64::from(input_width)) as u32,
-        ),
-        (None, Some(height)) => (
-            ((u64::from(height) * u64::from(input_width)) / u64::from(input_height)) as u32,
-            height,
-        ),
-        (None, None) => (input_width, input_height),
-    };
-
-    Ok((even(width).max(2), even(height).max(2)))
-}
-
-fn parse_logo_dimension(value: &str, input: u32, output: u32) -> Result<Option<u32>> {
-    let value = value.trim();
-    if value == "-1" {
-        return Ok(None);
-    }
-    if value == "iw" || value == "ih" {
-        return Ok(Some(input));
-    }
-    if value == "W" || value == "H" || value == "main_w" || value == "main_h" {
-        return Ok(Some(output));
-    }
-    value
-        .parse::<u32>()
-        .map(Some)
-        .map_err(|_| anyhow!("unsupported logo scale expression {value:?}"))
-}
-
-fn logo_position(
-    position: &str,
-    output_width: u32,
-    output_height: u32,
-    logo_width: u32,
-    logo_height: u32,
-) -> Result<(u32, u32)> {
-    let (x, y) = position
-        .split_once(':')
-        .ok_or_else(|| anyhow!("logo position must use X:Y"))?;
-    let x = eval_position_expr(x, output_width, logo_width)?;
-    let y = eval_position_expr(y, output_height, logo_height)?;
-    Ok((
-        x.clamp(0, i64::from(output_width.saturating_sub(logo_width))) as u32,
-        y.clamp(0, i64::from(output_height.saturating_sub(logo_height))) as u32,
-    ))
-}
-
-fn eval_position_expr(expr: &str, main: u32, overlay: u32) -> Result<i64> {
-    let normalized = expr
-        .replace("main_w", "M")
-        .replace("main_h", "M")
-        .replace("overlay_w", "O")
-        .replace("overlay_h", "O")
-        .replace(['W', 'H'], "M")
-        .replace(['w', 'h'], "O")
-        .replace('-', "+-");
-    let mut total = 0_i64;
-    for part in normalized.split('+') {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-        let (sign, part) = part
-            .strip_prefix('-')
-            .map_or((1_i64, part), |part| (-1_i64, part));
-        let value = match part {
-            "M" => i64::from(main),
-            "O" => i64::from(overlay),
-            _ => part
-                .parse::<i64>()
-                .map_err(|_| anyhow!("unsupported logo position expression {expr:?}"))?,
-        };
-        total += sign * value;
-    }
-    Ok(total)
-}
-
-fn blend_logo(target: &mut frame::Video, logo: &LogoOverlay) {
-    let logo_data = logo.frame.data(0);
-    let logo_stride = logo.frame.stride(0);
-    let target_y_stride = target.stride(0);
-    let target_u_stride = target.stride(1);
-    let target_v_stride = target.stride(2);
-    let target_y_len = target.data(0).len();
-    let target_u_len = target.data(1).len();
-    let target_v_len = target.data(2).len();
-
-    for y in 0..logo.height as usize {
-        for x in 0..logo.width as usize {
-            let logo_index = y * logo_stride + x * 4;
-            if logo_index + 3 >= logo_data.len() {
-                continue;
-            }
-            let alpha = (f64::from(logo_data[logo_index + 3]) / 255.0) * logo.opacity;
-            if alpha <= 0.0 {
-                continue;
-            }
-
-            let target_x = logo.x as usize + x;
-            let target_y = logo.y as usize + y;
-            let y_index = target_y * target_y_stride + target_x;
-            if y_index >= target_y_len {
-                continue;
-            }
-
-            let uv_x = target_x / 2;
-            let uv_y = target_y / 2;
-            let u_index = uv_y * target_u_stride + uv_x;
-            let v_index = uv_y * target_v_stride + uv_x;
-            if u_index >= target_u_len || v_index >= target_v_len {
-                continue;
-            }
-
-            let source_rgb = (
-                f64::from(logo_data[logo_index]),
-                f64::from(logo_data[logo_index + 1]),
-                f64::from(logo_data[logo_index + 2]),
-            );
-            let target_rgb = yuv_to_rgb(
-                target.data(0)[y_index],
-                target.data(1)[u_index],
-                target.data(2)[v_index],
-            );
-            let blended = (
-                target_rgb.0 * (1.0 - alpha) + source_rgb.0 * alpha,
-                target_rgb.1 * (1.0 - alpha) + source_rgb.1 * alpha,
-                target_rgb.2 * (1.0 - alpha) + source_rgb.2 * alpha,
-            );
-            let (new_y, new_u, new_v) = rgb_to_yuv(blended);
-
-            target.data_mut(0)[y_index] = new_y;
-            target.data_mut(1)[u_index] = new_u;
-            target.data_mut(2)[v_index] = new_v;
-        }
-    }
-}
-
-fn yuv_to_rgb(y: u8, u: u8, v: u8) -> (f64, f64, f64) {
-    let y = f64::from(y) - 16.0;
-    let u = f64::from(u) - 128.0;
-    let v = f64::from(v) - 128.0;
-    (
-        (1.164 * y + 1.596 * v).clamp(0.0, 255.0),
-        (1.164 * y - 0.392 * u - 0.813 * v).clamp(0.0, 255.0),
-        (1.164 * y + 2.017 * u).clamp(0.0, 255.0),
-    )
-}
-
-fn rgb_to_yuv((r, g, b): (f64, f64, f64)) -> (u8, u8, u8) {
-    (
-        (16.0 + 0.257 * r + 0.504 * g + 0.098 * b)
-            .round()
-            .clamp(0.0, 255.0) as u8,
-        (128.0 - 0.148 * r - 0.291 * g + 0.439 * b)
-            .round()
-            .clamp(0.0, 255.0) as u8,
-        (128.0 + 0.439 * r - 0.368 * g - 0.071 * b)
-            .round()
-            .clamp(0.0, 255.0) as u8,
-    )
-}
-
-fn apply_volume(frame: &mut frame::Audio, volume: f64) {
-    if (volume - 1.0).abs() <= f64::EPSILON {
-        return;
-    }
-    let volume = volume as f32;
-    for plane in 0..frame.planes() {
-        for sample in frame.plane_mut::<f32>(plane) {
-            *sample = if sample.is_finite() {
-                *sample * volume
-            } else {
-                0.0
-            };
-        }
     }
 }
 
@@ -884,10 +747,6 @@ fn fit_dimensions(
     }
 }
 
-fn even(value: u32) -> u32 {
-    value & !1
-}
-
 struct FrameRateConverter {
     input_time_base: Rational,
     output_time_base: Rational,
@@ -927,7 +786,6 @@ struct AudioDecoder {
     resampler: resampling::Context,
     input_time_base: Rational,
     trim_start_us: Option<i64>,
-    volume: f64,
 }
 
 impl AudioDecoder {
@@ -951,7 +809,6 @@ impl AudioDecoder {
             resampler,
             input_time_base: stream.time_base(),
             trim_start_us,
-            volume: cfg.volume,
         })
     }
 }
@@ -980,13 +837,14 @@ pub(crate) fn write_fallback<O: FrameOutput>(
         }
     }
 
-    synchronize_timeline(cfg, timeline, output)
+    synchronize_timeline(cfg, timeline, output, None)
 }
 
 fn synchronize_timeline<O: FrameOutput>(
     cfg: &OutputConfig,
     timeline: &mut Timeline,
     output: &mut O,
+    last_video_frame: Option<&frame::Video>,
 ) -> Result<()> {
     let (video_frames, audio_samples) = padding_to_sync(
         timeline.video_pts,
@@ -997,11 +855,11 @@ fn synchronize_timeline<O: FrameOutput>(
 
     if video_frames > 0 {
         trace!(
-            "padding video with {video_frames} black frame(s) ({:.6} s) to synchronize the timeline",
+            "padding video with {video_frames} frame(s) ({:.6} s) to synchronize the timeline",
             video_frames as f64 / f64::from(cfg.fps)
         );
     }
-    write_black_frames(cfg, timeline, output, video_frames)?;
+    write_padding_video_frames(cfg, timeline, output, video_frames, last_video_frame)?;
 
     if audio_samples > 0 {
         trace!(
@@ -1065,6 +923,26 @@ fn write_black_frames<O: FrameOutput>(
         timeline.video_pts += 1;
     }
     Ok(())
+}
+
+fn write_padding_video_frames<O: FrameOutput>(
+    cfg: &OutputConfig,
+    timeline: &mut Timeline,
+    output: &mut O,
+    frames: i64,
+    last_video_frame: Option<&frame::Video>,
+) -> Result<()> {
+    if let Some(last_video_frame) = last_video_frame {
+        for _ in 0..frames {
+            let mut frame = last_video_frame.clone();
+            frame.set_pts(Some(timeline.video_pts));
+            output.encode_video(&frame)?;
+            timeline.video_pts += 1;
+        }
+        Ok(())
+    } else {
+        write_black_frames(cfg, timeline, output, frames)
+    }
 }
 
 fn black_video_frame_for_config(cfg: &OutputConfig) -> frame::Video {

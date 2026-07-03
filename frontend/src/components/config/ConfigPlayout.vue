@@ -121,12 +121,29 @@ const formatIgnoreLines = computed({
     },
 })
 
+async function applyVolume() {
+    try {
+        const response = await configStore.applyAudioEffects(configStore.playout.processing.volume)
+        if (!response.ok) {
+            throw new Error(await response.text())
+        }
+        indexStore.msgAlert('success', t('config.volumeApplied'), 2)
+    } catch {
+        indexStore.msgAlert('error', t('config.volumeApplyFailed'), 3)
+    }
+}
+
 async function onSubmitPlayout() {
+    const { requiresRestart, volumeChanged } = configStore.playoutChangeSummary()
     const update = await configStore.setPlayoutConfig(configStore.playout)
     configStore.onetimeInfo = true
 
     if (update.status === 200) {
         indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
+
+        if (volumeChanged) {
+            await applyVolume()
+        }
 
         const id = configStore.channels[configStore.i]?.id
 
@@ -143,7 +160,7 @@ async function onSubmitPlayout() {
                 return response.json()
             })
             .then(async (response) => {
-                if (response === 'active') {
+                if (response === 'active' && requiresRestart) {
                     configStore.showRestartModal = true
                 }
 
@@ -383,14 +400,19 @@ async function onSubmitPlayout() {
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Volumen</legend>
-                    <input
-                        v-model="configStore.playout.processing.volume"
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.001"
-                        class="input input-sm w-full max-w-36"
-                    />
+                    <div class="flex items-center gap-2">
+                        <input
+                            v-model.number="configStore.playout.processing.volume"
+                            type="number"
+                            min="0"
+                            max="3"
+                            step="0.001"
+                            class="input input-sm w-36"
+                        />
+                        <button type="button" class="btn btn-sm btn-outline" @click="applyVolume">
+                            {{ t('config.apply') }}
+                        </button>
+                    </div>
                 </fieldset>
 
                 <fieldset class="fieldset mt-2 rounded-box w-full">
@@ -411,6 +433,29 @@ async function onSubmitPlayout() {
                     />
                     <p class="fieldset-label items-baseline">{{ t('config.processingVTTDummy') }}</p>
                 </fieldset>
+
+                <div v-if="configStore.playout.processing.vtt_enable" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <label class="fieldset">
+                        <span class="fieldset-legend">{{ t('config.hlsSubtitleName') }}</span>
+                        <input
+                            v-model.trim="configStore.playout.processing.vtt_name"
+                            type="text"
+                            class="input input-sm w-full"
+                        />
+                    </label>
+                    <label class="fieldset">
+                        <span class="fieldset-legend">{{ t('config.hlsSubtitleLanguage') }}</span>
+                        <input
+                            v-model.trim="configStore.playout.processing.vtt_language"
+                            type="text"
+                            class="input input-sm w-full"
+                        />
+                    </label>
+                    <label class="fieldset">
+                        <span class="fieldset-legend">{{ t('config.hlsSubtitleDefault') }}</span>
+                        <input v-model="configStore.playout.processing.vtt_default" type="checkbox" class="toggle" />
+                    </label>
+                </div>
             </div>
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.ingest') }}:</div>

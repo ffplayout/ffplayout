@@ -11,8 +11,8 @@ use env_logger::{Builder, Env};
 use glob::glob;
 
 use ff_engine::{
-    ClipResult, HlsVariant, LogoConfig, OutputConfig, OutputSize, Playout, print_media_info,
-    spawn_rtmp_listener,
+    ClipResult, HlsSubtitle, HlsVariant, LogoConfig, OutputConfig, OutputSize, Playout,
+    print_media_info, spawn_rtmp_listener,
 };
 
 #[derive(Parser, Debug)]
@@ -63,6 +63,18 @@ struct Args {
     /// Include sidecar WebVTT subtitles for HLS. For input video.mp4, video.vtt is used.
     #[arg(long, requires = "hls")]
     hls_vtt_subtitles: bool,
+
+    /// HLS subtitle display name
+    #[arg(long, default_value = "Subtitles", requires = "hls")]
+    hls_subtitle_name: String,
+
+    /// HLS subtitle language tag
+    #[arg(long, default_value = "und", requires = "hls")]
+    hls_subtitle_language: String,
+
+    /// Mark the HLS subtitle rendition as default
+    #[arg(long, requires = "hls")]
+    hls_subtitle_default: bool,
 
     /// HLS segment duration in seconds
     #[arg(long, value_name = "SECONDS", default_value_t = 6)]
@@ -151,8 +163,8 @@ fn main() -> Result<()> {
     if !args.seek.is_finite() || args.seek < 0.0 {
         return Err(anyhow!("--seek must be a non-negative number"));
     }
-    if !args.volume.is_finite() {
-        return Err(anyhow!("--volume must be finite"));
+    if !args.volume.is_finite() || !(0.0..=1.0).contains(&args.volume) {
+        return Err(anyhow!("--volume must be between 0.0 and 1.0"));
     }
     if !args.logo_opacity.is_finite() || !(0.0..=1.0).contains(&args.logo_opacity) {
         return Err(anyhow!("--logo-opacity must be between 0.0 and 1.0"));
@@ -168,7 +180,7 @@ fn main() -> Result<()> {
         config.width = size.width;
         config.height = size.height;
     }
-    config.volume = args.volume;
+    config = config.with_volume(args.volume)?;
     config.logo = args.logo.clone().map(|path| LogoConfig {
         path,
         scale: args.logo_scale.clone(),
@@ -194,7 +206,11 @@ fn main() -> Result<()> {
             config,
             args.fallback_duration,
             &args.hls_variants,
-            args.hls_vtt_subtitles,
+            args.hls_vtt_subtitles.then(|| HlsSubtitle {
+                name: args.hls_subtitle_name.clone(),
+                language: args.hls_subtitle_language.clone(),
+                default: args.hls_subtitle_default,
+            }),
             args.hls_segment_seconds,
             args.hls_list_size,
         )?

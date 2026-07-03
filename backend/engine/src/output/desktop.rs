@@ -1,7 +1,10 @@
 use std::{
     collections::VecDeque,
     mem::size_of,
-    sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
+    sync::{
+        Arc, Mutex,
+        mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -19,7 +22,7 @@ use sdl2::{
 };
 
 use super::{FrameOutput, PlaybackStopped};
-use crate::utils::config::OutputConfig;
+use crate::{audio::AudioEffectChain, utils::config::OutputConfig};
 
 const AUDIO_CHANNELS: usize = 2;
 const AUDIO_PREBUFFER_MS: u64 = 100;
@@ -45,6 +48,7 @@ fn video_frame_is_too_late(frame_pts: i64, expected_pts: i64, queue_len: usize) 
 
 pub(super) struct DesktopOutput {
     renderer: DesktopRenderer,
+    audio_effects: Arc<Mutex<AudioEffectChain>>,
 }
 
 enum DesktopMessage {
@@ -61,6 +65,7 @@ enum DesktopMessage {
 
 pub(crate) struct DesktopFrameSender {
     sender: SyncSender<DesktopMessage>,
+    audio_effects: Arc<Mutex<AudioEffectChain>>,
 }
 
 struct DesktopRenderer {
@@ -91,6 +96,10 @@ impl DesktopOutput {
     pub(super) fn open(cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
             renderer: DesktopRenderer::open(cfg)?,
+            audio_effects: Arc::new(Mutex::new(AudioEffectChain::new(
+                cfg.audio_effects.clone(),
+                cfg.sample_rate,
+            ))),
         })
     }
 
@@ -116,10 +125,14 @@ impl DesktopOutput {
         F: FnOnce(&mut DesktopFrameSender) -> T + Send + 'static,
     {
         let (sender, receiver) = sync_channel(OUTPUT_CHANNEL_CAPACITY);
+        let audio_effects = Arc::clone(&self.audio_effects);
         let worker = thread::Builder::new()
             .name("ffplayout-decode".to_string())
             .spawn(move || {
-                let mut output = DesktopFrameSender { sender };
+                let mut output = DesktopFrameSender {
+                    sender,
+                    audio_effects,
+                };
                 let _ = output.sender.send(DesktopMessage::ClipStarted);
                 let result = operation(&mut output);
                 let _ = output.sender.send(DesktopMessage::ClipFinished);
@@ -156,6 +169,11 @@ impl FrameOutput for DesktopFrameSender {
             return Ok(());
         }
 
+        let mut frame = frame.clone();
+        self.audio_effects
+            .lock()
+            .map_err(|_| anyhow!("audio effect chain lock poisoned"))?
+            .process(&mut frame);
         let left = frame.plane::<f32>(0);
         let right = frame.plane::<f32>(1);
         let mut interleaved = Vec::with_capacity(frame.samples() * AUDIO_CHANNELS);

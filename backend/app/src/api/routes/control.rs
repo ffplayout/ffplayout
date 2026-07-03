@@ -5,6 +5,7 @@ use axum::{
     extract::{Path, State},
 };
 use protect_axum::authorities::AuthDetails;
+use serde::Deserialize;
 
 use crate::{
     api::{
@@ -19,6 +20,35 @@ use crate::{
         errors::ServiceError,
     },
 };
+
+#[derive(Debug, Deserialize)]
+pub struct AudioEffectsUpdate {
+    volume: f64,
+}
+
+pub async fn update_audio_effects(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    user: AuthUser,
+    details: AuthDetails<Role>,
+    Json(update): Json<AudioEffectsUpdate>,
+) -> Result<Json<&'static str>, ServiceError> {
+    ensure_any_authority(&details, &[&Role::GlobalAdmin, &Role::ChannelAdmin])?;
+    user.ensure_channel_or_admin(id)?;
+
+    let manager = {
+        let guard = state.controller.read().await;
+        guard.get(id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    manager
+        .audio_effects
+        .set_volume(update.volume)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
+
+    Ok(Json("Success"))
+}
 
 /// ### ffplayout controlling
 ///

@@ -3,7 +3,7 @@ use std::{collections::HashSet, fs, io::ErrorKind, path::Path, ptr};
 use anyhow::{Context, Result, anyhow};
 use ffmpeg_next as ffmpeg;
 
-use crate::utils::config::HlsVariant;
+use crate::utils::config::{HlsSubtitle, HlsVariant};
 
 pub(super) fn playlist_path(path: &str, variants: &[HlsVariant]) -> Result<String> {
     if variants.is_empty() {
@@ -74,18 +74,22 @@ pub(super) fn close_preopened_output(
 
 pub(super) fn segment_pattern(path: &str) -> String {
     Path::new(path)
-        .with_file_name("%v_segment_%03d.ts")
+        .with_file_name("%v_%d.ts")
         .to_string_lossy()
         .into_owned()
 }
 
-pub(super) fn var_stream_map(variants: &[HlsVariant], include_subtitles: bool) -> String {
+pub(super) fn var_stream_map(variants: &[HlsVariant], subtitle: Option<&HlsSubtitle>) -> String {
     variants
         .iter()
         .enumerate()
         .map(|(index, variant)| {
-            if include_subtitles && index == 0 {
-                format!("v:{index},a:{index},s:0,sgroup:subs,name:{}", variant.name)
+            if let Some(subtitle) = subtitle.filter(|_| index == 0) {
+                let default = if subtitle.default { "YES" } else { "NO" };
+                format!(
+                    "v:{index},a:{index},s:0,sgroup:subs,name:{},sname:{},language:{},default:{default}",
+                    variant.name, subtitle.name, subtitle.language
+                )
             } else {
                 format!("v:{index},a:{index},name:{}", variant.name)
             }
@@ -105,6 +109,14 @@ mod tests {
             height: 720,
             video_bitrate: 3_000_000,
             audio_bitrate: 128_000,
+        }
+    }
+
+    fn subtitle() -> HlsSubtitle {
+        HlsSubtitle {
+            name: "Deutsch".to_string(),
+            language: "de-DE".to_string(),
+            default: false,
         }
     }
 
@@ -141,21 +153,22 @@ mod tests {
 
     #[test]
     fn segment_pattern_prefixes_file_name() {
-        assert_eq!(
-            segment_pattern("live/index.m3u8"),
-            "live/%v_segment_%03d.ts"
-        );
+        assert_eq!(segment_pattern("live/index.m3u8"), "live/%v_%d.ts");
     }
 
     #[test]
     fn var_stream_map_without_subtitles() {
-        let map = var_stream_map(&[variant("high"), variant("low")], false);
+        let map = var_stream_map(&[variant("high"), variant("low")], None);
         assert_eq!(map, "v:0,a:0,name:high v:1,a:1,name:low");
     }
 
     #[test]
     fn var_stream_map_links_subtitles_to_first_variant_only() {
-        let map = var_stream_map(&[variant("high"), variant("low")], true);
-        assert_eq!(map, "v:0,a:0,s:0,sgroup:subs,name:high v:1,a:1,name:low");
+        let subtitle = subtitle();
+        let map = var_stream_map(&[variant("high"), variant("low")], Some(&subtitle));
+        assert_eq!(
+            map,
+            "v:0,a:0,s:0,sgroup:subs,name:high,sname:Deutsch,language:de-DE,default:NO v:1,a:1,name:low"
+        );
     }
 }

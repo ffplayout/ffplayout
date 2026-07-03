@@ -8,6 +8,7 @@ use std::{
 };
 
 use async_walkdir::WalkDir;
+use ff_engine::AudioEffectsControl;
 use log::*;
 use m3u8_rs::Playlist;
 use serde::{Deserialize, Serialize};
@@ -88,6 +89,7 @@ pub struct ChannelManager {
     pub validation_token: Arc<Mutex<Option<CancellationToken>>>,
     pub metrics_token: Arc<Mutex<Option<CancellationToken>>>,
     pub task_generation: Arc<AtomicUsize>,
+    pub audio_effects: AudioEffectsControl,
     pub system: SystemStat,
 }
 
@@ -108,6 +110,7 @@ impl ChannelManager {
         extensions.append(&mut extra_extensions);
 
         let storage = init_storage(config.channel.storage.clone(), extensions).await;
+        let audio_effects = AudioEffectsControl::new(config.processing.volume).unwrap_or_default();
 
         Self {
             id: channel.id,
@@ -137,6 +140,7 @@ impl ChannelManager {
             validation_token: Arc::new(Mutex::new(None)),
             metrics_token: Arc::new(Mutex::new(None)),
             task_generation: Arc::new(AtomicUsize::new(0)),
+            audio_effects,
             system,
         }
     }

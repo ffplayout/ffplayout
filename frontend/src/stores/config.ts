@@ -1,4 +1,5 @@
 import { cloneDeep } from 'es-toolkit/object'
+import { isEqual } from 'es-toolkit/predicate'
 import { defineStore } from 'pinia'
 import { useRouter } from 'vue-router'
 
@@ -16,6 +17,7 @@ export const useConfig = defineStore('config', {
         channelsRaw: [] as Channel[],
         playlistLength: 86400.0,
         playout: {} as PlayoutConfigExt,
+        playoutSaved: {} as PlayoutConfigExt,
         outputs: [] as PlayoutOutput[],
         currentUser: 0,
         configUser: {} as User,
@@ -115,6 +117,7 @@ export const useConfig = defineStore('config', {
                     data.playlist.lengthInSec = timeToSeconds(data.playlist.length ?? this.playlistLength)
 
                     this.playout = data
+                    this.playoutSaved = cloneDeep(data)
                 })
                 .catch(() => {
                     indexStore.msgAlert('error', i18n.t('config.noPlayoutConfig'), 3)
@@ -156,6 +159,33 @@ export const useConfig = defineStore('config', {
             })
 
             return update
+        },
+
+        playoutChangeSummary() {
+            if (!this.playoutSaved.processing) {
+                return { requiresRestart: true, volumeChanged: false }
+            }
+
+            const current = cloneDeep(this.playout)
+            const saved = cloneDeep(this.playoutSaved)
+            const volumeChanged = current.processing.volume !== saved.processing.volume
+            current.processing.volume = saved.processing.volume
+
+            return {
+                requiresRestart: !isEqual(current, saved),
+                volumeChanged,
+            }
+        },
+
+        async applyAudioEffects(volume: number) {
+            const authStore = useAuth()
+            const id = this.channels[this.i]?.id
+
+            return fetch(`/api/control/${id}/audio`, {
+                method: 'PUT',
+                headers: { ...this.contentType, ...authStore.authHeader },
+                body: JSON.stringify({ volume }),
+            })
         },
 
         async getUserConfig() {

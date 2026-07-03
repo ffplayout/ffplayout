@@ -24,7 +24,7 @@ use log::{error, info, warn};
 
 use crate::{
     output::FrameOutput,
-    playout::{InputPlaybackOptions, Timeline, play_opened_input},
+    playout::{InputPlaybackOptions, LogoFadePlan, Timeline, play_opened_input},
     utils::{config::OutputConfig, logging},
 };
 
@@ -606,6 +606,7 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
                 let worker_cfg = cfg.clone();
                 let worker = thread::spawn(move || {
                     let mut timeline = Timeline::new();
+                    let logo_fade_plan = LogoFadePlan::none(timeline.video_pts(), &worker_cfg);
                     let result = play_opened_input(
                         &worker_url,
                         ictx,
@@ -616,6 +617,7 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
                             seek_seconds: None,
                             duration_seconds: None,
                             subtitles_media_path: None,
+                            logo_fade_plan,
                         },
                     );
                     let _ = done_tx.send(result.map_err(|error| format!("{error:#}")));

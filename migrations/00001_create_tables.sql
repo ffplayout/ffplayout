@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE global (
+CREATE TABLE IF NOT EXISTS global (
     id INTEGER PRIMARY KEY,
     secret TEXT NOT NULL UNIQUE,
     logs TEXT NOT NULL DEFAULT '/var/log/ffplayout',
@@ -15,9 +15,9 @@ CREATE TABLE global (
     smtp_port INTEGER NOT NULL DEFAULT 465
 );
 
-CREATE TABLE roles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+CREATE TABLE IF NOT EXISTS roles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
 
-CREATE TABLE channels (
+CREATE TABLE IF NOT EXISTS channels (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     preview_url TEXT NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE channels (
     timezone TEXT
 );
 
-CREATE TABLE presets (
+CREATE TABLE IF NOT EXISTS presets (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     text TEXT NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE presets (
     FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE TABLE user(
+CREATE TABLE IF NOT EXISTS user(
     id INTEGER PRIMARY KEY,
     mail TEXT NOT NULL,
     username TEXT NOT NULL UNIQUE,
@@ -58,7 +58,7 @@ CREATE TABLE user(
     FOREIGN KEY (role_id) REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET DEFAULT
 );
 
-CREATE TABLE user_channels (
+CREATE TABLE IF NOT EXISTS user_channels (
     id INTEGER PRIMARY KEY,
     channel_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
@@ -66,9 +66,9 @@ CREATE TABLE user_channels (
     FOREIGN KEY (user_id) REFERENCES user(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX idx_user_channels_unique ON user_channels (channel_id, user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_channels_unique ON user_channels (channel_id, user_id);
 
-CREATE TABLE outputs (
+CREATE TABLE IF NOT EXISTS outputs (
     id INTEGER PRIMARY KEY,
     channel_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -85,7 +85,7 @@ CREATE TABLE outputs (
     FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE TABLE configurations (
+CREATE TABLE IF NOT EXISTS configurations (
     id INTEGER PRIMARY KEY,
     channel_id INTEGER NOT NULL DEFAULT 1,
     general_stop_threshold REAL NOT NULL DEFAULT 11.0,
@@ -116,6 +116,9 @@ CREATE TABLE configurations (
     processing_volume REAL NOT NULL DEFAULT 1.0,
     processing_vtt_enable INTEGER NOT NULL DEFAULT 0,
     processing_vtt_dummy TEXT DEFAULT '00-assets/dummy.vtt',
+    processing_vtt_name TEXT NOT NULL DEFAULT 'Subtitles',
+    processing_vtt_language TEXT NOT NULL DEFAULT 'und',
+    processing_vtt_default INTEGER NOT NULL DEFAULT 0,
     ingest_enable INTEGER NOT NULL DEFAULT 0,
     ingest_url TEXT NOT NULL DEFAULT 'rtmp://127.0.0.1:1936/live/stream',
     playlist_day_start TEXT NOT NULL DEFAULT '05:59:25',
@@ -136,26 +139,28 @@ CREATE TABLE configurations (
     FOREIGN KEY (output_id) REFERENCES outputs (id) ON UPDATE CASCADE
 );
 
-INSERT INTO
-    roles (name)
+INSERT OR IGNORE INTO
+    roles (id, name)
 VALUES
-    ('global_admin'),
-    ('channel_admin'),
-    ('user'),
-    ('guest');
+    (1, 'global_admin'),
+    (2, 'channel_admin'),
+    (3, 'user'),
+    (4, 'guest');
 
-INSERT INTO
-    channels (name, preview_url, extra_extensions, active)
+INSERT OR IGNORE INTO
+    channels (id, name, preview_url, extra_extensions, active)
 VALUES
     (
+        1,
         'Channel 1',
         'http://127.0.0.1:8787/public/1/live/stream.m3u8',
         'jpg,jpeg,png',
         0
     );
 
-INSERT INTO
+INSERT OR IGNORE INTO
     presets (
+        id,
         name,
         text,
         x,
@@ -171,6 +176,7 @@ INSERT INTO
     )
 VALUES
     (
+        1,
         'Default',
         'Welcome to ffplayout messenger!',
         '(w-text_w)/2',
@@ -184,8 +190,9 @@ VALUES
         '1.0',
         1
     ),
-    ('Empty Text', '', '0', '0', '24', '4', '#000000', '0', '#000000', '0', '0', 1),
+    (2, 'Empty Text', '', '0', '0', '24', '4', '#000000', '0', '#000000', '0', '0', 1),
     (
+        3,
         'Bottom Text fade in',
         'The upcoming event will be delayed by a few minutes.',
         '(w-text_w)/2',
@@ -200,6 +207,7 @@ VALUES
         1
     ),
     (
+        4,
         'Scrolling Text',
         'We have a very important announcement to make.',
         'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))',
@@ -214,8 +222,9 @@ VALUES
         1
     );
 
-INSERT INTO
+INSERT OR IGNORE INTO
     outputs (
+        id,
         channel_id,
         name,
         hls_variants,
@@ -230,8 +239,9 @@ INSERT INTO
         audio_bitrate
     )
 VALUES
-    (1, 'hls', '', '', 'live/stream.m3u8', 6, 600, 'faster', 'crf', 23, 2400, 128),
+    (1, 1, 'hls', '', '', 'live/stream.m3u8', 6, 600, 'faster', 'crf', 23, 2400, 128),
     (
+        2,
         1,
         'stream',
         '',
@@ -245,20 +255,9 @@ VALUES
         2400,
         128
     ),
-    (1, 'desktop', '', '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+    (3, 1, 'desktop', '', '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
-INSERT INTO
-    configurations (channel_id, output_id)
+INSERT OR IGNORE INTO
+    configurations (id, channel_id, output_id)
 VALUES
-    (
-        1,
-        (
-            SELECT
-                id
-            FROM
-                outputs
-            WHERE
-                channel_id = 1
-                AND name = 'hls'
-        )
-    );
+    (1, 1, 1);
