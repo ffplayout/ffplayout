@@ -145,7 +145,8 @@ RUN git clone --depth 1 "https://github.com/Haivision/srt.git" && cd srt && \
     cd build && \
     cmake .. -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" -DENABLE_SHARED:BOOLEAN=OFF -DOPENSSL_USE_STATIC_LIBS=ON -DUSE_STATIC_LIBSTDCXX:BOOLEAN=ON -DENABLE_CXX11:BOOLEAN=OFF -DCMAKE_INSTALL_BINDIR="bin" -DCMAKE_INSTALL_LIBDIR="lib" -DCMAKE_INSTALL_INCLUDEDIR="include" && \
     make -j "$(nproc)" && \
-    make install
+    make install && \
+    sed -i '/^Libs:/ s/$/ -lstdc++ -lcrypto -lz -lpthread -ldl/' "$LOCALDESTDIR/lib/pkgconfig/srt.pc"
 
 RUN git clone "https://github.com/webmproject/libvpx.git" && cd libvpx && \
     ./configure --prefix="$LOCALDESTDIR" --disable-shared --enable-static --enable-pic --disable-unit-tests --disable-docs --enable-postproc --enable-vp9-postproc --enable-runtime-cpu-detect && \
@@ -160,7 +161,8 @@ RUN git clone "https://code.videolan.org/videolan/x264" && cd x264 && \
 RUN git clone "https://bitbucket.org/multicoreware/x265_git.git" && cd x265_git/build && \
     cmake ../source -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" -DENABLE_SHARED:BOOLEAN=OFF -DCMAKE_CXX_FLAGS_RELEASE:STRING="-O3 -DNDEBUG $CXXFLAGS" && \
     make -j "$(nproc)" && \
-    make install
+    make install && \
+    sed -ri "s/(Libs\:.*)/\1 -lstdc++ -lpthread -ldl/g" "$LOCALDESTDIR/lib/pkgconfig/x265.pc"
 
 RUN git clone --depth 1 "https://gitlab.com/AOMediaCodec/SVT-AV1.git" && cd SVT-AV1/Build && \
     cmake .. -G"Unix Makefiles" -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_BINDIR="bin" -DCMAKE_INSTALL_LIBDIR="lib" -DCMAKE_INSTALL_INCLUDEDIR="include" && \
@@ -202,11 +204,6 @@ RUN git clone --depth 1 --branch v4.3.5 "https://github.com/zeromq/libzmq.git" &
         --without-docs && \
     make -j "$(nproc)" && \
     make install
-
-RUN sed -i '/^Libs:/ s/$/ -lstdc++ -lcrypto -lz -lpthread -ldl/' \
-    "$LOCALDESTDIR/lib/pkgconfig/srt.pc"
-
-RUN sed -ri "s/(Libs\:.*)/\1 -lstdc++ -lpthread -ldl/g" "$LOCALDESTDIR/lib/pkgconfig/x265.pc"
 
 ARG FFMPEG_VERSION=release/8.1
 ARG FFMPEG_DEBUG=0
