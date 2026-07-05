@@ -54,18 +54,6 @@ impl Target {
         }
     }
 
-    pub fn console() -> &'static str {
-        "{console}"
-    }
-
-    pub fn file() -> &'static str {
-        "{file}"
-    }
-
-    pub fn mail() -> &'static str {
-        "{mail}"
-    }
-
     pub fn file_mail() -> &'static str {
         "{file,mail}"
     }

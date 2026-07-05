@@ -506,12 +506,11 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
     }
 
     if config.output.mode == HLS {
-        let configured = Path::new(&config.output.hls_playlist_path);
-        let playlist_path = if configured.is_absolute() {
-            configured.to_path_buf()
-        } else {
-            config.channel.public.join(configured)
-        };
+        let playlist_path = config
+            .channel
+            .public
+            .join("live")
+            .join(format!("{}.m3u8", config.output.hls_playlist_name));
         if playlist_path
             .parent()
             .is_some_and(|parent| file_path.starts_with(parent))
@@ -702,7 +701,7 @@ pub fn fraction(d: f64, max_denominator: u32) -> (u32, u32) {
 }
 
 pub fn calc_aspect(config: &PlayoutConfig, aspect_string: &Option<String>) -> f64 {
-    let mut source_aspect = config.processing.aspect;
+    let mut source_aspect = config.output.aspect;
 
     if let Some(aspect) = aspect_string {
         let aspect_vec: Vec<&str> = aspect.split(':').collect();

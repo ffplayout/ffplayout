@@ -37,7 +37,7 @@ pub async fn update_configuration(
     id: i32,
     config: PlayoutConfig,
 ) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "UPDATE configurations SET general_stop_threshold = $2, mail_subject = $3, mail_recipient = $4, mail_level = $5, mail_interval = $6, logging_ffmpeg_level = $7, logging_ingest_level = $8, logging_detect_silence = $9, logging_ignore = $10, processing_mode = $11, processing_audio_only = $12, processing_copy_audio = $13, processing_copy_video = $14, processing_width = $15, processing_height = $16, processing_aspect = $17, processing_fps = $18, processing_add_logo = $19, processing_logo = $20, processing_logo_scale = $21, processing_logo_opacity = $22, processing_logo_position = $23, processing_audio_tracks = $24, processing_audio_track_index = $25, processing_audio_channels = $26, processing_volume = $27, processing_vtt_enable = $28, processing_vtt_dummy = $29, processing_vtt_name = $30, processing_vtt_language = $31, processing_vtt_default = $32, ingest_enable = $33, ingest_url = $34, playlist_day_start = $35, playlist_length = $36, playlist_infinit = $37, storage_filler = $38, storage_extensions = $39, storage_shuffle = $40, text_add = $41, text_from_filename = $42, text_font = $43, text_style = $44, text_regex = $45, task_enable = $46, task_path = $47, output_id = $48 WHERE id = $1";
+    const QUERY: &str = "UPDATE configurations SET general_stop_threshold = $2, mail_subject = $3, mail_recipient = $4, mail_level = $5, mail_interval = $6, logging_ffmpeg_level = $7, logging_ingest_level = $8, logging_detect_silence = $9, logging_ignore = $10, processing_mode = $11, processing_add_logo = $12, processing_logo = $13, processing_logo_scale = $14, processing_logo_opacity = $15, processing_logo_position = $16, processing_volume = $17, processing_vtt_enable = $18, processing_vtt_dummy = $19, processing_vtt_name = $20, processing_vtt_language = $21, processing_vtt_default = $22, ingest_enable = $23, ingest_url = $24, playlist_day_start = $25, playlist_length = $26, playlist_infinit = $27, storage_filler = $28, storage_extensions = $29, storage_shuffle = $30, text_add = $31, text_from_filename = $32, text_font = $33, text_style = $34, text_regex = $35, task_enable = $36, task_path = $37, output_id = $38 WHERE id = $1";
 
     let result = sqlx::query(QUERY)
         .bind(id)
@@ -51,21 +51,11 @@ pub async fn update_configuration(
         .bind(config.logging.detect_silence)
         .bind(config.logging.ignore_lines.join(";"))
         .bind(config.processing.mode.to_string())
-        .bind(config.processing.audio_only)
-        .bind(config.processing.copy_audio)
-        .bind(config.processing.copy_video)
-        .bind(config.processing.width)
-        .bind(config.processing.height)
-        .bind(config.processing.aspect)
-        .bind(config.processing.fps)
         .bind(config.processing.add_logo)
         .bind(config.processing.logo)
         .bind(config.processing.logo_scale)
         .bind(config.processing.logo_opacity)
         .bind(config.processing.logo_position)
-        .bind(config.processing.audio_tracks)
-        .bind(config.processing.audio_track_index)
-        .bind(config.processing.audio_channels)
         .bind(config.processing.volume)
         .bind(config.processing.vtt_enable)
         .bind(config.processing.vtt_dummy)

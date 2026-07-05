@@ -302,24 +302,11 @@ pub struct Configuration {
     pub logging_ignore: String,
 
     pub processing_mode: String,
-    pub processing_audio_only: bool,
-    pub processing_copy_audio: bool,
-    pub processing_copy_video: bool,
-    pub processing_width: i64,
-    pub processing_height: i64,
-    pub processing_aspect: f64,
-    pub processing_fps: f64,
     pub processing_add_logo: bool,
     pub processing_logo: String,
     pub processing_logo_scale: String,
     pub processing_logo_opacity: f64,
     pub processing_logo_position: String,
-    #[serde(default = "default_tracks")]
-    pub processing_audio_tracks: i32,
-    #[serde(default = "default_track_index")]
-    pub processing_audio_track_index: i32,
-    #[serde(default = "default_channels")]
-    pub processing_audio_channels: u8,
     pub processing_volume: f64,
     #[serde(default)]
     pub processing_vtt_enable: bool,
@@ -370,21 +357,11 @@ impl Configuration {
             logging_detect_silence: config.logging.detect_silence,
             logging_ignore: config.logging.ignore_lines.join(";"),
             processing_mode: config.processing.mode.to_string(),
-            processing_audio_only: config.processing.audio_only,
-            processing_audio_track_index: config.processing.audio_track_index,
-            processing_copy_audio: config.processing.copy_audio,
-            processing_copy_video: config.processing.copy_video,
-            processing_width: config.processing.width,
-            processing_height: config.processing.height,
-            processing_aspect: config.processing.aspect,
-            processing_fps: config.processing.fps,
             processing_add_logo: config.processing.add_logo,
             processing_logo: config.processing.logo,
             processing_logo_scale: config.processing.logo_scale,
             processing_logo_opacity: config.processing.logo_opacity,
             processing_logo_position: config.processing.logo_position,
-            processing_audio_tracks: config.processing.audio_tracks,
-            processing_audio_channels: config.processing.audio_channels,
             processing_volume: config.processing.volume,
             processing_vtt_enable: config.processing.vtt_enable,
             processing_vtt_dummy: config.processing.vtt_dummy,
@@ -418,9 +395,13 @@ pub struct Output {
     pub name: String,
     pub hls_variants: String,
     pub stream_url: String,
-    pub hls_playlist_path: Option<String>,
+    pub hls_playlist_name: Option<String>,
     pub hls_segment_duration: Option<i64>,
     pub hls_list_size: Option<i64>,
+    pub width: i64,
+    pub height: i64,
+    pub aspect: f64,
+    pub fps: f64,
     pub video_preset: Option<String>,
     pub rate_control: Option<String>,
     pub video_quality: Option<i64>,
@@ -435,7 +416,7 @@ impl Output {
         } else {
             Default::default()
         };
-        let hls_playlist_path = (mode == OutputMode::HLS).then(|| "live/stream.m3u8".to_string());
+        let hls_playlist_name = (mode == OutputMode::HLS).then(|| "stream".to_string());
         let hls_segment_duration = (mode == OutputMode::HLS).then_some(6);
         let hls_list_size = (mode == OutputMode::HLS).then_some(600);
         let encoded = matches!(mode, OutputMode::HLS | OutputMode::Stream);
@@ -446,9 +427,13 @@ impl Output {
             name: mode.to_string(),
             hls_variants: String::new(),
             stream_url,
-            hls_playlist_path,
+            hls_playlist_name,
             hls_segment_duration,
             hls_list_size,
+            width: 1280,
+            height: 720,
+            aspect: 1.778,
+            fps: 25.0,
             video_preset: encoded.then(|| "faster".to_string()),
             rate_control: encoded.then(|| "crf".to_string()),
             video_quality: encoded.then_some(23),
@@ -456,18 +441,6 @@ impl Output {
             audio_bitrate: encoded.then_some(128),
         }
     }
-}
-
-fn default_track_index() -> i32 {
-    -1
-}
-
-fn default_tracks() -> i32 {
-    1
-}
-
-fn default_channels() -> u8 {
-    2
 }
 
 fn default_vtt_name() -> String {

@@ -261,9 +261,9 @@ async fn open_playout(
 
     match config.output.mode {
         OutputMode::HLS => {
-            let hls_variants = config
+            let hls_streams = config
                 .output
-                .parsed_hls_variants()
+                .hls_streams()
                 .map_err(ServiceError::Conflict)?;
             let hls_subtitle = config
                 .processing
@@ -274,7 +274,7 @@ async fn open_playout(
                 hls_playlist_path(config)?.to_string_lossy().to_string(),
                 output_config,
                 fallback_duration,
-                hls_variants,
+                hls_streams,
                 hls_subtitle,
                 config.output.hls_segment_duration,
                 config.output.hls_list_size,
@@ -316,21 +316,19 @@ fn engine_output_config(
     config: &PlayoutConfig,
     audio_effects: ff_engine::AudioEffectsControl,
 ) -> Result<OutputConfig, ServiceError> {
-    let width = u32::try_from(config.processing.width)
-        .map_err(|_| ServiceError::Conflict("processing width must be positive".to_string()))?;
-    let height = u32::try_from(config.processing.height)
-        .map_err(|_| ServiceError::Conflict("processing height must be positive".to_string()))?;
+    let width = config.output.width;
+    let height = config.output.height;
     if width == 0 || height == 0 {
         return Err(ServiceError::Conflict(
-            "processing size must be greater than zero".to_string(),
+            "output size must be greater than zero".to_string(),
         ));
     }
-    if !config.processing.fps.is_finite() || config.processing.fps <= 0.0 {
+    if !config.output.fps.is_finite() || config.output.fps <= 0.0 {
         return Err(ServiceError::Conflict(
-            "processing fps must be a positive number".to_string(),
+            "output fps must be a positive number".to_string(),
         ));
     }
-    let fps = config.processing.fps.round() as u32;
+    let fps = config.output.fps.round() as u32;
 
     let logo = config.processing.add_logo.then(|| LogoConfig {
         path: config.processing.logo_path.clone(),
@@ -366,17 +364,7 @@ fn validate_supported_config(config: &PlayoutConfig) -> Result<(), ServiceError>
             "processing volume must be between 0.0 and 1.0".to_string(),
         ));
     }
-    let unsupported = [
-        (processing.audio_only, "audio_only"),
-        (processing.copy_audio, "copy_audio"),
-        (processing.copy_video, "copy_video"),
-        (processing.audio_tracks != 1, "audio_tracks != 1"),
-        (
-            processing.audio_track_index > 0,
-            "audio_track_index other than default/first track",
-        ),
-        (config.text.add_text, "text overlay"),
-    ];
+    let unsupported = [(config.text.add_text, "text overlay")];
 
     let unsupported = unsupported
         .into_iter()
@@ -445,14 +433,9 @@ fn output_url(config: &PlayoutConfig) -> Result<String, ServiceError> {
 }
 
 fn hls_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
-    let configured_path = config.output.hls_playlist_path.trim();
-    if configured_path.is_empty() {
-        return Err(ServiceError::Conflict(
-            "HLS playlist path must not be empty".to_string(),
-        ));
-    }
-
-    let (path, _, _) = norm_abs_path(&config.channel.public, configured_path)?;
+    let playlist_name = config.output.hls_playlist_name.trim();
+    let relative_path = format!("live/{playlist_name}.m3u8");
+    let (path, _, _) = norm_abs_path(&config.channel.public, &relative_path)?;
     let parent = path.parent().ok_or_else(|| {
         ServiceError::Conflict("HLS playlist path must include a parent directory".to_string())
     })?;
@@ -464,22 +447,19 @@ fn hls_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
 }
 
 /// Resolves the actual playlist file the watchdog should observe. When
-/// bitrate variants are configured, ffmpeg renames the base path with a
-/// `%v` prefix that it substitutes with the first variant's name (see
-/// `ff_engine::resolved_variant_playlist_path`), so `hls_playlist_path`'s
-/// literal path is never written to in that case.
+/// The base output is always the first HLS rendition. The muxer substitutes
+/// its name into the `%v` playlist pattern.
 fn watchdog_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
     let base_path = hls_playlist_path(config)?;
-    let variants = config
+    let streams = config
         .output
-        .parsed_hls_variants()
+        .hls_streams()
         .map_err(ServiceError::Conflict)?;
+    let first_stream = streams
+        .first()
+        .ok_or_else(|| ServiceError::Conflict("HLS output has no streams".to_string()))?;
 
-    let Some(first_variant) = variants.first() else {
-        return Ok(base_path);
-    };
-
-    resolved_variant_playlist_path(&base_path.to_string_lossy(), &first_variant.name)
+    resolved_variant_playlist_path(&base_path.to_string_lossy(), &first_stream.name)
         .map(PathBuf::from)
         .map_err(|e| ServiceError::Conflict(e.to_string()))
 }

@@ -113,6 +113,9 @@ impl EncodedOutput {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create HLS directory {}", parent.display()))?;
         }
+        if matches!(output_format, EncodedFormat::Hls { .. }) && !uses_var_stream_map {
+            hls::remove_master_playlist(path)?;
+        }
         let mut octx = match output_format {
             EncodedFormat::Hls { .. } => format::output_as(&hls_playlist_path, "hls")?,
             EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
@@ -120,7 +123,7 @@ impl EncodedOutput {
             }
             EncodedFormat::Auto => format::output(path)?,
         };
-        // Only real bitrate variants rename the playlist path (`%v_...`),
+        // Only real bitrate variants rename the playlist path (`%v.m3u8`),
         // leaving a bogus placeholder file opened at the old name that must
         // be closed and removed. With no explicit variants the path is
         // unchanged, so the preopened output is already the correct file.
@@ -481,13 +484,17 @@ fn open_video_stream(
         RateControl::Cbr => options.set("minrate", &maxrate.to_string()),
     }
 
-    let video_encoder = match output_format {
+    let mut video_encoder = match output_format {
         EncodedFormat::Auto => video_ctx.open_as_with(video_codec, options)?,
         EncodedFormat::Hls { .. } => {
             options.set("x264-params", "open-gop=0:repeat-headers=1");
             video_ctx.open_as_with(video_codec, options)?
         }
     };
+    // CRF encoders clear AVCodecContext::bit_rate while opening. Restore the
+    // configured maximum as metadata so the HLS muxer can calculate BANDWIDTH
+    // for master.m3u8; this does not change the already-open encoder mode.
+    video_encoder.set_bit_rate(maxrate as usize);
     video_stream.set_parameters(&video_encoder);
     video_stream.set_time_base(cfg.video_time_base);
     let stream_index = video_stream.index();
@@ -603,6 +610,35 @@ mod open_tests {
     }
 
     #[test]
+    fn standalone_hls_output_does_not_create_master_playlist() {
+        ffmpeg::init().ok();
+        let dir = std::env::temp_dir().join(format!("hls_standalone_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("stream.m3u8");
+        fs::write(dir.join("master.m3u8"), "stale").unwrap();
+        let cfg = OutputConfig::new(320, 240, 25, 44100);
+        let output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Hls {
+                variants: vec![],
+                subtitle: None,
+                segment_seconds: 6,
+                list_size: 60,
+            },
+        )
+        .unwrap();
+
+        output.finish().unwrap();
+        assert!(path.exists(), "expected stream.m3u8 to exist");
+        assert!(
+            !dir.join("master.m3u8").exists(),
+            "standalone HLS output must not create master.m3u8"
+        );
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn cbr_encoder_options_are_accepted() {
         ffmpeg::init().ok();
         let dir = std::env::temp_dir().join(format!("hls_cbr_test_{}", std::process::id()));
@@ -628,6 +664,70 @@ mod open_tests {
 
         assert!(output.is_ok(), "expected CBR encoder options to be valid");
         drop(output);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn master_playlist_contains_base_output_and_additional_variant() {
+        ffmpeg::init().ok();
+        let dir =
+            std::env::temp_dir().join(format!("hls_multiple_streams_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("stream.m3u8");
+        let cfg = OutputConfig::new(320, 240, 25, 44100);
+        let variants = vec![
+            HlsVariant {
+                name: "stream".to_string(),
+                width: 320,
+                height: 240,
+                video_bitrate: 1_300_000,
+                audio_bitrate: 128_000,
+            },
+            HlsVariant {
+                name: "low".to_string(),
+                width: 160,
+                height: 120,
+                video_bitrate: 600_000,
+                audio_bitrate: 96_000,
+            },
+        ];
+        let mut output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Hls {
+                variants,
+                subtitle: None,
+                segment_seconds: 6,
+                list_size: 60,
+            },
+        )
+        .unwrap();
+
+        for stream in output.octx.streams() {
+            let parameters = stream.parameters();
+            let bit_rate = unsafe { (*parameters.as_ptr()).bit_rate };
+            assert!(bit_rate > 0, "stream {} has no bitrate", stream.index());
+        }
+        for index in 0..16 {
+            let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
+            video.set_pts(Some(index));
+            output.encode_video(&video).unwrap();
+            let mut audio = frame::Audio::new(
+                Sample::F32(ffmpeg::format::sample::Type::Planar),
+                output.audio_frame_size(),
+                ChannelLayout::STEREO,
+            );
+            audio.set_rate(44100);
+            audio.set_pts(Some(index * output.audio_frame_size() as i64));
+            for channel in 0..2 {
+                audio.plane_mut::<f32>(channel).fill(0.0);
+            }
+            output.encode_audio(&audio).unwrap();
+        }
+        output.finish().unwrap();
+        let master = fs::read_to_string(dir.join("master.m3u8")).unwrap();
+        assert!(master.contains("stream.m3u8"), "{master}");
+        assert!(master.contains("low.m3u8"), "{master}");
         fs::remove_dir_all(&dir).ok();
     }
 }

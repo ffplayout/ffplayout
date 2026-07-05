@@ -247,7 +247,7 @@ impl ChannelManager {
 
     async fn log_dev_task(&self, task: &str, event: &str, generation: usize) {
         if cfg!(feature = "dev-metrics") {
-            debug!(target: Target::file(), channel = self.id; "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">{task}</span> event=<span class=\"log-addr\">{event}</span> generation=<span class=\"log-number\">{generation}</span>");
+            debug!(target: Target::file_mail(), channel = self.id; "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">{task}</span> event=<span class=\"log-addr\">{event}</span> generation=<span class=\"log-number\">{generation}</span>");
         }
     }
 
@@ -592,7 +592,7 @@ async fn metrics_snapshot_loop(
                 let (thread_count, rss) = system.process_snapshot().await;
                 #[cfg(tokio_unstable)]
                 debug!(
-                    target: Target::file(),
+                    target: Target::file_mail(),
                     channel = manager.id;
                     "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">runtime_snapshot</span> event=<span class=\"log-addr\">tick</span> generation=<span class=\"log-number\">{generation}</span> tokio_alive=<span class=\"log-number\">{}</span> tokio_workers=<span class=\"log-number\">{}</span> global_queue_depth=<span class=\"log-number\">{}</span> blocking_queue_depth=<span class=\"log-number\">{}</span> threads=<span class=\"log-number\">{thread_count}</span> rss=<span class=\"log-number\">{rss}</span>",
                     metrics.num_alive_tasks(),
@@ -602,7 +602,7 @@ async fn metrics_snapshot_loop(
                 );
                 #[cfg(not(tokio_unstable))]
                 debug!(
-                    target: Target::file(),
+                    target: Target::file_mail(),
                     channel = manager.id;
                     "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">runtime_snapshot</span> event=<span class=\"log-addr\">tick</span> generation=<span class=\"log-number\">{generation}</span> tokio_alive=<span class=\"log-number\">{}</span> tokio_workers=<span class=\"log-number\">{}</span> global_queue_depth=<span class=\"log-number\">{}</span> threads=<span class=\"log-number\">{thread_count}</span> rss=<span class=\"log-number\">{rss}</span>",
                     metrics.num_alive_tasks(),

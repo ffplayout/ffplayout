@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt,
     path::{Path, PathBuf},
     str::FromStr,
@@ -311,19 +312,6 @@ impl Logging {
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Processing {
     pub mode: ProcessMode,
-    #[ts(skip)]
-    #[serde(default, skip_serializing, skip_deserializing)]
-    pub audio_only: bool,
-    #[ts(skip)]
-    #[serde(default, skip_serializing, skip_deserializing)]
-    pub copy_audio: bool,
-    #[ts(skip)]
-    #[serde(default, skip_serializing, skip_deserializing)]
-    pub copy_video: bool,
-    pub width: i64,
-    pub height: i64,
-    pub aspect: f64,
-    pub fps: f64,
     pub add_logo: bool,
     pub logo: String,
     #[ts(skip)]
@@ -332,14 +320,6 @@ pub struct Processing {
     pub logo_scale: String,
     pub logo_opacity: f64,
     pub logo_position: String,
-    #[ts(skip)]
-    #[serde(default = "default_tracks", skip_serializing, skip_deserializing)]
-    pub audio_tracks: i32,
-    #[ts(skip)]
-    #[serde(default = "default_track_index")]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub audio_track_index: i32,
-    pub audio_channels: u8,
     pub volume: f64,
     #[serde(default)]
     pub vtt_enable: bool,
@@ -365,22 +345,12 @@ impl Processing {
     fn new(config: &models::Configuration) -> Self {
         Self {
             mode: ProcessMode::new(&config.processing_mode.clone()),
-            audio_only: config.processing_audio_only,
-            audio_track_index: config.processing_audio_track_index,
-            copy_audio: config.processing_copy_audio,
-            copy_video: config.processing_copy_video,
-            width: config.processing_width,
-            height: config.processing_height,
-            aspect: config.processing_aspect,
-            fps: config.processing_fps,
             add_logo: config.processing_add_logo,
             logo: config.processing_logo.clone(),
             logo_path: config.processing_logo.clone(),
             logo_scale: config.processing_logo_scale.clone(),
             logo_opacity: config.processing_logo_opacity,
             logo_position: config.processing_logo_position.clone(),
-            audio_tracks: config.processing_audio_tracks,
-            audio_channels: config.processing_audio_channels,
             volume: config.processing_volume,
             vtt_enable: config.processing_vtt_enable,
             vtt_dummy: config.processing_vtt_dummy.clone(),
@@ -546,12 +516,16 @@ pub struct Output {
     pub mode: OutputMode,
     #[serde(default)]
     pub stream_url: String,
-    #[serde(default = "default_hls_playlist_path")]
-    pub hls_playlist_path: String,
+    #[serde(default = "default_hls_playlist_name")]
+    pub hls_playlist_name: String,
     #[serde(default = "default_hls_segment_duration")]
     pub hls_segment_duration: u32,
     #[serde(default = "default_hls_list_size")]
     pub hls_list_size: u32,
+    pub width: u32,
+    pub height: u32,
+    pub aspect: f64,
+    pub fps: f64,
     #[serde(default = "default_video_preset")]
     pub video_preset: String,
     #[serde(default = "default_rate_control")]
@@ -564,15 +538,15 @@ pub struct Output {
     pub audio_bitrate: u32,
     /// Adaptive HLS renditions, one per entry, each formatted as
     /// `NAME:WIDTHxHEIGHT:VIDEO_BITRATE[:AUDIO_BITRATE]` (e.g.
-    /// `high:1920x1080:5000k:192k`). Only relevant when `mode == HLS`; an
-    /// empty vector means "single, implicit stream" (no master playlist
-    /// unless VTT subtitles are enabled).
+    /// `high:1920x1080:5000k:192k`). Only relevant when `mode == HLS`;
+    /// entries are added to the base rendition configured directly on this
+    /// output.
     #[serde(default)]
     pub hls_variants: Vec<String>,
 }
 
-fn default_hls_playlist_path() -> String {
-    "live/stream.m3u8".to_string()
+fn default_hls_playlist_name() -> String {
+    "stream".to_string()
 }
 
 const fn default_hls_segment_duration() -> u32 {
@@ -615,9 +589,9 @@ impl Output {
             id: output.id,
             mode: OutputMode::new(&output.name),
             stream_url: output.stream_url,
-            hls_playlist_path: output
-                .hls_playlist_path
-                .unwrap_or_else(default_hls_playlist_path),
+            hls_playlist_name: output
+                .hls_playlist_name
+                .unwrap_or_else(default_hls_playlist_name),
             hls_segment_duration: output
                 .hls_segment_duration
                 .and_then(|value| u32::try_from(value).ok())
@@ -626,6 +600,10 @@ impl Output {
                 .hls_list_size
                 .and_then(|value| u32::try_from(value).ok())
                 .unwrap_or_else(default_hls_list_size),
+            width: u32::try_from(output.width).unwrap_or(1280),
+            height: u32::try_from(output.height).unwrap_or(720),
+            aspect: output.aspect,
+            fps: output.fps,
             video_preset: output.video_preset.unwrap_or_else(default_video_preset),
             rate_control: output.rate_control.unwrap_or_else(default_rate_control),
             video_quality: output
@@ -662,7 +640,52 @@ impl Output {
             .collect()
     }
 
+    /// Returns no explicit variants for a standalone base output. Once
+    /// additional variants are configured, the base output is prepended so
+    /// all renditions are included in the master playlist.
+    pub fn hls_streams(&self) -> Result<Vec<ff_engine::HlsVariant>, String> {
+        let base = ff_engine::HlsVariant {
+            name: self.hls_playlist_name.trim().to_string(),
+            width: self.width,
+            height: self.height,
+            video_bitrate: u64::from(self.video_maxrate) * 1_000,
+            audio_bitrate: u64::from(self.audio_bitrate) * 1_000,
+        };
+        validate_hls_name(&base.name)?;
+
+        let additional = self.parsed_hls_variants()?;
+        let mut names = HashSet::new();
+
+        names.insert(base.name.as_str());
+        for stream in &additional {
+            validate_hls_name(&stream.name)?;
+            if !names.insert(stream.name.as_str()) {
+                return Err(format!("duplicate HLS stream name {:?}", stream.name));
+            }
+        }
+
+        // TODO: we need one stream at least
+        if additional.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut streams = Vec::with_capacity(additional.len() + 1);
+        streams.push(base);
+        streams.extend(additional);
+        Ok(streams)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
+        if self.width == 0 || self.height == 0 {
+            return Err("output size must be greater than zero".to_string());
+        }
+        if !self.aspect.is_finite() || self.aspect <= 0.0 {
+            return Err("output aspect must be a positive number".to_string());
+        }
+        if !self.fps.is_finite() || self.fps < 1.0 || self.fps > f64::from(u32::MAX) {
+            return Err("output fps must be a positive number".to_string());
+        }
+
         if matches!(self.mode, OutputMode::HLS | OutputMode::Stream) {
             const PRESETS: &[&str] = &[
                 "ultrafast",
@@ -695,13 +718,10 @@ impl Output {
 
         match self.mode {
             OutputMode::HLS => {
-                if self.hls_playlist_path.trim().is_empty() {
-                    return Err("HLS playlist path must not be empty".to_string());
-                }
                 if self.hls_segment_duration == 0 {
                     return Err("HLS segment duration must be greater than zero".to_string());
                 }
-                self.parsed_hls_variants()?;
+                self.hls_streams()?;
             }
             OutputMode::Stream if self.stream_url.trim().is_empty() => {
                 return Err("stream output URL must not be empty".to_string());
@@ -711,6 +731,24 @@ impl Output {
 
         Ok(())
     }
+}
+
+fn validate_hls_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("HLS stream name must not be empty".to_string());
+    }
+    if !name
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    {
+        return Err(
+            "HLS stream name may only contain ASCII letters, numbers, '_' and '-'".to_string(),
+        );
+    }
+    if name == "master" {
+        return Err("HLS stream name \"master\" is reserved".to_string());
+    }
+    Ok(())
 }
 
 pub fn string_to_log_level(l: String) -> Level {
@@ -738,14 +776,6 @@ pub fn string_to_output_mode(l: String) -> OutputMode {
         "stream" => OutputMode::Stream,
         _ => OutputMode::HLS,
     }
-}
-
-fn default_track_index() -> i32 {
-    -1
-}
-
-fn default_tracks() -> i32 {
-    1
 }
 
 impl PlayoutConfig {
@@ -804,10 +834,6 @@ impl PlayoutConfig {
 
         processing.logo = logo;
         processing.logo_path = logo_path.to_string_lossy().to_string();
-
-        if processing.audio_tracks < 1 {
-            processing.audio_tracks = 1;
-        }
 
         // when text overlay without text_from_filename is on, turn also the RPC server on,
         // to get text messages from it
@@ -976,9 +1002,13 @@ mod output_tests {
             id: 1,
             mode,
             stream_url: "rtmp://localhost/live/test".to_string(),
-            hls_playlist_path: "live/stream.m3u8".to_string(),
+            hls_playlist_name: "stream".to_string(),
             hls_segment_duration: 6,
             hls_list_size: 600,
+            width: 1280,
+            height: 720,
+            aspect: 1.778,
+            fps: 25.0,
             video_preset: "faster".to_string(),
             rate_control: "crf".to_string(),
             video_quality: 23,
@@ -1013,6 +1043,36 @@ mod output_tests {
                 .validate()
                 .unwrap_err()
                 .contains("invalid HLS variant")
+        );
+    }
+
+    #[test]
+    fn hls_variants_are_added_after_base_output() {
+        let mut output = output(OutputMode::HLS);
+        output.hls_variants = vec!["low:640x360:800k:96k".to_string()];
+        let streams = output.hls_streams().unwrap();
+
+        assert_eq!(streams.len(), 2);
+        assert_eq!(streams[0].name, "stream");
+        assert_eq!(streams[0].width, 1280);
+        assert_eq!(streams[1].name, "low");
+    }
+
+    #[test]
+    fn standalone_hls_output_uses_no_explicit_variants() {
+        let output = output(OutputMode::HLS);
+        assert!(output.hls_streams().unwrap().is_empty());
+    }
+
+    #[test]
+    fn rejects_variant_with_same_name_as_base_output() {
+        let mut output = output(OutputMode::HLS);
+        output.hls_variants = vec!["stream:640x360:800k".to_string()];
+        assert!(
+            output
+                .validate()
+                .unwrap_err()
+                .contains("duplicate HLS stream name")
         );
     }
 

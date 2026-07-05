@@ -47,9 +47,13 @@ const output = computed({
         const output = configStore.outputs.find((o) => o.name === value)
         configStore.playout.output.id = output?.id ?? 0
         configStore.playout.output.stream_url = output?.stream_url ?? ''
-        configStore.playout.output.hls_playlist_path = output?.hls_playlist_path ?? 'live/stream.m3u8'
+        configStore.playout.output.hls_playlist_name = output?.hls_playlist_name ?? 'stream'
         configStore.playout.output.hls_segment_duration = output?.hls_segment_duration ?? 6
         configStore.playout.output.hls_list_size = output?.hls_list_size ?? 600
+        configStore.playout.output.width = output?.width ?? 1280
+        configStore.playout.output.height = output?.height ?? 720
+        configStore.playout.output.aspect = output?.aspect ?? 1.778
+        configStore.playout.output.fps = output?.fps ?? 25
         configStore.playout.output.video_preset = output?.video_preset ?? 'faster'
         configStore.playout.output.rate_control = output?.rate_control ?? 'crf'
         configStore.playout.output.video_quality = output?.video_quality ?? 23
@@ -297,47 +301,6 @@ async function onSubmitPlayout() {
                     </select>
                 </fieldset>
 
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Width</legend>
-                    <input
-                        v-model="configStore.playout.processing.width"
-                        type="number"
-                        min="-1"
-                        step="1"
-                        class="input input-sm w-full max-w-36"
-                    />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Height</legend>
-                    <input
-                        v-model="configStore.playout.processing.height"
-                        type="number"
-                        min="-1"
-                        step="1"
-                        class="input input-sm w-full max-w-36"
-                    />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Aspect</legend>
-                    <input
-                        v-model="configStore.playout.processing.aspect"
-                        type="number"
-                        min="1"
-                        step="0.001"
-                        class="input input-sm w-full max-w-36"
-                    />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">FPS</legend>
-                    <input
-                        v-model="configStore.playout.processing.fps"
-                        type="number"
-                        min="1"
-                        step="0.01"
-                        class="input input-sm w-full max-w-36"
-                    />
-                </fieldset>
-
                 <fieldset class="fieldset mt-2 rounded-box w-full">
                     <label class="fieldset-label text-base-content">
                         <input v-model="configStore.playout.processing.add_logo" type="checkbox" class="checkbox" />
@@ -385,18 +348,6 @@ async function onSubmitPlayout() {
                         class="input input-sm w-full max-w-md"
                     />
                     <p class="fieldset-label items-baseline">{{ t('config.processingLogoPosition') }}</p>
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Audio Channels</legend>
-                    <input
-                        v-model="configStore.playout.processing.audio_channels"
-                        type="number"
-                        min="1"
-                        max="255"
-                        step="1"
-                        class="input input-sm w-full max-w-36"
-                    />
-                    <p class="fieldset-label items-baseline">{{ t('config.processingAudioChannels') }}</p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Volumen</legend>
@@ -658,6 +609,52 @@ async function onSubmitPlayout() {
                     />
                 </fieldset>
 
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.outputFormat') }}</legend>
+                    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <label class="fieldset">
+                            <span class="fieldset-legend">Width</span>
+                            <input
+                                v-model.number="configStore.playout.output.width"
+                                type="number"
+                                min="1"
+                                step="1"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">Height</span>
+                            <input
+                                v-model.number="configStore.playout.output.height"
+                                type="number"
+                                min="1"
+                                step="1"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">Aspect</span>
+                            <input
+                                v-model.number="configStore.playout.output.aspect"
+                                type="number"
+                                min="0.001"
+                                step="0.001"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">FPS</span>
+                            <input
+                                v-model.number="configStore.playout.output.fps"
+                                type="number"
+                                min="1"
+                                step="0.01"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                    </div>
+                </fieldset>
+
                 <fieldset v-if="output === 'hls' || output === 'stream'" class="fieldset">
                     <legend class="fieldset-legend">{{ t('config.encodingSettings') }}</legend>
                     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -711,9 +708,9 @@ async function onSubmitPlayout() {
                     <legend class="fieldset-legend">{{ t('config.hlsSettings') }}</legend>
                     <div class="grid gap-3 sm:grid-cols-3">
                         <label class="fieldset">
-                            <span class="fieldset-legend">{{ t('config.hlsPlaylistPath') }}</span>
+                            <span class="fieldset-legend">{{ t('config.hlsPlaylistName') }}</span>
                             <input
-                                v-model="configStore.playout.output.hls_playlist_path"
+                                v-model.trim="configStore.playout.output.hls_playlist_name"
                                 type="text"
                                 class="input input-sm w-full"
                             />

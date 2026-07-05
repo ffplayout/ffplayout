@@ -8,13 +8,13 @@ export type Logging = { ffmpeg_level: string, ingest_level: string, detect_silen
 
 export type Mail = { show: boolean, subject: string, recipient: string, mail_level: string, interval: bigint, };
 
-export type Output = { id: number, mode: OutputMode, stream_url: string, hls_playlist_path: string, hls_segment_duration: number, hls_list_size: number, video_preset: string, rate_control: string, video_quality: number, video_maxrate: number, audio_bitrate: number, 
+export type Output = { id: number, mode: OutputMode, stream_url: string, hls_playlist_name: string, hls_segment_duration: number, hls_list_size: number, width: number, height: number, aspect: number, fps: number, video_preset: string, rate_control: string, video_quality: number, video_maxrate: number, audio_bitrate: number,
 /**
  * Adaptive HLS renditions, one per entry, each formatted as
  * `NAME:WIDTHxHEIGHT:VIDEO_BITRATE[:AUDIO_BITRATE]` (e.g.
- * `high:1920x1080:5000k:192k`). Only relevant when `mode == HLS`; an
- * empty vector means "single, implicit stream" (no master playlist
- * unless VTT subtitles are enabled).
+ * `high:1920x1080:5000k:192k`). Only relevant when `mode == HLS`;
+ * entries are added to the base rendition configured directly on this
+ * output.
  */
 hls_variants: Array<string>, };
 
@@ -31,7 +31,7 @@ export type PlayoutConfig = { general: General, mail: Mail, logging: Logging, pr
 
 export type ProcessMode = "folder" | "playlist";
 
-export type Processing = { mode: ProcessMode, width: bigint, height: bigint, aspect: number, fps: number, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, audio_channels: number, volume: number, vtt_enable: boolean, vtt_dummy: string | null, vtt_name: string, vtt_language: string, vtt_default: boolean, };
+export type Processing = { mode: ProcessMode, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, volume: number, vtt_enable: boolean, vtt_dummy: string | null, vtt_name: string, vtt_language: string, vtt_default: boolean, };
 
 export type Storage = { filler: string, extensions: Array<string>, shuffle: boolean, shared_storage: boolean, };
 

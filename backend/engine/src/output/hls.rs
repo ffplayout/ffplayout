@@ -11,12 +11,11 @@ pub(super) fn playlist_path(path: &str, variants: &[HlsVariant]) -> Result<Strin
     }
 
     let path = Path::new(path);
-    let file_name = path
-        .file_name()
+    path.file_name()
         .and_then(|file_name| file_name.to_str())
         .context("HLS playlist path must include a file name")?;
     Ok(path
-        .with_file_name(format!("%v_{file_name}"))
+        .with_file_name("%v.m3u8")
         .to_string_lossy()
         .into_owned())
 }
@@ -28,12 +27,11 @@ pub(super) fn playlist_path(path: &str, variants: &[HlsVariant]) -> Result<Strin
 /// real bitrate variants are configured.
 pub fn resolved_variant_playlist_path(path: &str, variant_name: &str) -> Result<String> {
     let path = Path::new(path);
-    let file_name = path
-        .file_name()
+    path.file_name()
         .and_then(|file_name| file_name.to_str())
         .context("HLS playlist path must include a file name")?;
     Ok(path
-        .with_file_name(format!("{variant_name}_{file_name}"))
+        .with_file_name(format!("{variant_name}.m3u8"))
         .to_string_lossy()
         .into_owned())
 }
@@ -41,6 +39,9 @@ pub fn resolved_variant_playlist_path(path: &str, variant_name: &str) -> Result<
 pub(super) fn validate_variants(variants: &[HlsVariant]) -> Result<()> {
     let mut names = HashSet::new();
     for variant in variants {
+        if variant.name == "master" {
+            return Err(anyhow!("HLS variant name \"master\" is reserved"));
+        }
         if !names.insert(variant.name.as_str()) {
             return Err(anyhow!("duplicate HLS variant name {}", variant.name));
         }
@@ -69,6 +70,16 @@ pub(super) fn close_preopened_output(
         Err(error) => {
             Err(error).with_context(|| format!("failed to remove HLS placeholder {path}"))
         }
+    }
+}
+
+pub(super) fn remove_master_playlist(path: &str) -> Result<()> {
+    let master = Path::new(path).with_file_name("master.m3u8");
+    match fs::remove_file(&master) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error)
+            .with_context(|| format!("failed to remove stale HLS master {}", master.display())),
     }
 }
 
@@ -129,10 +140,18 @@ mod tests {
     }
 
     #[test]
-    fn playlist_path_prefixes_file_name_with_variants() {
+    fn playlist_path_uses_variant_name_as_file_name() {
         assert_eq!(
             playlist_path("live/index.m3u8", &[variant("high")]).unwrap(),
-            "live/%v_index.m3u8"
+            "live/%v.m3u8"
+        );
+    }
+
+    #[test]
+    fn resolved_variant_path_uses_variant_name() {
+        assert_eq!(
+            resolved_variant_playlist_path("live/index.m3u8", "high").unwrap(),
+            "live/high.m3u8"
         );
     }
 

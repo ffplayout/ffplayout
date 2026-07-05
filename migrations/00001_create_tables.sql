@@ -74,9 +74,13 @@ CREATE TABLE IF NOT EXISTS outputs (
     name TEXT NOT NULL,
     hls_variants TEXT NOT NULL DEFAULT '',
     stream_url TEXT NOT NULL DEFAULT '',
-    hls_playlist_path TEXT,
+    hls_playlist_name TEXT,
     hls_segment_duration INTEGER,
     hls_list_size INTEGER,
+    width INTEGER NOT NULL DEFAULT 1280,
+    height INTEGER NOT NULL DEFAULT 720,
+    aspect REAL NOT NULL DEFAULT 1.778,
+    fps REAL NOT NULL DEFAULT 25.0,
     video_preset TEXT,
     rate_control TEXT,
     video_quality INTEGER,
@@ -98,21 +102,11 @@ CREATE TABLE IF NOT EXISTS configurations (
     logging_detect_silence INTEGER NOT NULL DEFAULT 0,
     logging_ignore TEXT NOT NULL DEFAULT 'P sub_mb_type 4 out of range at;error while decoding MB;negative number of zero coeffs at;out of range intra chroma pred mode;non-existing SPS 0 referenced in buffering period',
     processing_mode TEXT NOT NULL DEFAULT 'playlist',
-    processing_audio_only INTEGER NOT NULL DEFAULT 0,
-    processing_copy_audio INTEGER NOT NULL DEFAULT 0,
-    processing_copy_video INTEGER NOT NULL DEFAULT 0,
-    processing_width INTEGER NOT NULL DEFAULT 1280,
-    processing_height INTEGER NOT NULL DEFAULT 720,
-    processing_aspect REAL NOT NULL DEFAULT 1.778,
-    processing_fps REAL NOT NULL DEFAULT 25.0,
     processing_add_logo INTEGER NOT NULL DEFAULT 1,
     processing_logo TEXT NOT NULL DEFAULT '00-assets/logo.png',
     processing_logo_scale TEXT NOT NULL DEFAULT '',
     processing_logo_opacity REAL NOT NULL DEFAULT 0.7,
     processing_logo_position TEXT NOT NULL DEFAULT 'W-w-12:12',
-    processing_audio_tracks INTEGER NOT NULL DEFAULT 1,
-    processing_audio_track_index INTEGER NOT NULL DEFAULT -1,
-    processing_audio_channels INTEGER NOT NULL DEFAULT 2,
     processing_volume REAL NOT NULL DEFAULT 1.0,
     processing_vtt_enable INTEGER NOT NULL DEFAULT 0,
     processing_vtt_dummy TEXT DEFAULT '00-assets/dummy.vtt',
@@ -153,7 +147,7 @@ VALUES
     (
         1,
         'Channel 1',
-        'http://127.0.0.1:8787/public/1/live/stream.m3u8',
+        'http://127.0.0.1:8787/public/1/live/master.m3u8',
         'jpg,jpeg,png',
         0
     );
@@ -229,9 +223,13 @@ INSERT OR IGNORE INTO
         name,
         hls_variants,
         stream_url,
-        hls_playlist_path,
+        hls_playlist_name,
         hls_segment_duration,
         hls_list_size,
+        width,
+        height,
+        aspect,
+        fps,
         video_preset,
         rate_control,
         video_quality,
@@ -239,7 +237,7 @@ INSERT OR IGNORE INTO
         audio_bitrate
     )
 VALUES
-    (1, 1, 'hls', '', '', 'live/stream.m3u8', 6, 600, 'faster', 'crf', 23, 2400, 128),
+    (1, 1, 'hls', '', '', 'stream', 6, 600, 1280, 720, 1.778, 25.0, 'faster', 'crf', 23, 2400, 128),
     (
         2,
         1,
@@ -249,13 +247,17 @@ VALUES
         NULL,
         NULL,
         NULL,
+        1280,
+        720,
+        1.778,
+        25.0,
         'faster',
         'crf',
         23,
         2400,
         128
     ),
-    (3, 1, 'desktop', '', '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+    (3, 1, 'desktop', '', '', NULL, NULL, NULL, 1280, 720, 1.778, 25.0, NULL, NULL, NULL, NULL, NULL);
 
 INSERT OR IGNORE INTO
     configurations (id, channel_id, output_id)
