@@ -26,9 +26,9 @@ jobs:
 
       - name: Use ffmpeg on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        uses: FedericoCarboni/setup-ffmpeg@v3
+        uses: AnimMouse/setup-ffmpeg@v1
         with:
-          ffmpeg-version: 8.1.0
+          version: 8.1
 
       - name: Tests and build on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
