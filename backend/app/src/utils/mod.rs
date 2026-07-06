@@ -8,7 +8,7 @@ use chrono_tz::Tz;
 use log::*;
 use path_clean::PathClean;
 use rand::RngExt;
-use tokio::{fs, net::TcpListener, process::Command};
+use tokio::{fs, net::TcpListener};
 
 use serde::{Deserialize, Deserializer, de};
 
@@ -171,15 +171,10 @@ pub fn round_to_nearest_ten(num: i64) -> i64 {
 
 /// Combined function to check if the program is running inside a container.
 /// Returns `true` if running inside a container, otherwise `false`.
-pub async fn is_running_in_container() -> bool {
+pub fn is_running_in_container() -> bool {
     // Check for Docker or Podman specific files
     if Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists() {
         return true;
-    }
-
-    // Run `systemd-detect-virt -c` to check if we are in a container
-    if let Ok(output) = Command::new("systemd-detect-virt").arg("-c").output().await {
-        return output.status.success();
     }
 
     false

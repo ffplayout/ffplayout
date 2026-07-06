@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import GenericModal from '@/components/utils/GenericModal.vue'
@@ -27,17 +27,6 @@ const videoPresets = [
     'veryslow',
     'placebo',
 ]
-const textPresets = ref<TextPreset[]>([])
-
-async function loadTextPresets() {
-    const channelId = configStore.channels[configStore.i]?.id
-    if (!channelId) return
-    const response = await fetch(`/api/presets/${channelId}`, { headers: authStore.authHeader })
-    textPresets.value = response.ok ? await response.json() : []
-}
-
-onMounted(loadTextPresets)
-watch(() => configStore.i, loadTextPresets)
 
 const extensions = computed({
     get() {
@@ -509,23 +498,6 @@ async function onSubmitPlayout() {
                         Shuffle
                     </label>
                     <p class="fieldset-label items-baseline">{{ t('config.storageShuffle') }}</p>
-                </fieldset>
-            </div>
-
-            <div class="text-xl pt-3 md:text-right">{{ t('config.text') }}:</div>
-            <div class="md:pt-4">
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Automatic filename overlay</legend>
-                    <select v-model="configStore.playout.text.preset_id" class="select select-sm w-full max-w-lg">
-                        <option :value="null">Disabled</option>
-                        <option
-                            v-for="preset in textPresets.filter((item) => item.use_filename)"
-                            :key="preset.id"
-                            :value="preset.id"
-                        >
-                            {{ preset.name }}
-                        </option>
-                    </select>
                 </fieldset>
             </div>
 

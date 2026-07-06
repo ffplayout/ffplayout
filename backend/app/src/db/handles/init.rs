@@ -16,7 +16,7 @@ pub async fn db_migrate(pool: &SqlitePool) -> Result<bool, ProcessError> {
             .take(80)
             .map(char::from)
             .collect();
-        let shared = is_running_in_container().await;
+        let shared = is_running_in_container();
 
         const QUERY: &str = "CREATE TRIGGER global_row_count
         BEFORE INSERT ON global
