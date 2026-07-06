@@ -17,8 +17,11 @@ tokio = ["dep:tokio"]
 
 [dependencies]
 anyhow = "1"
+cosmic-text = "0.19"
 ffmpeg-next = "8"
 log = { version = "0.4", features = ["kv"] }
+regex = "1"
+rten-simd = "0.24"
 sdl2 = { version = "0.38", optional = true, features = ["unsafe_textures"] }
 tokio = { version = "1.44", optional = true, features = ["rt", "sync"] }
 
@@ -26,3 +29,7 @@ tokio = { version = "1.44", optional = true, features = ["rt", "sync"] }
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
 glob = "0.3"
+
+[[bench]]
+name = "overlay_blend"
+harness = false

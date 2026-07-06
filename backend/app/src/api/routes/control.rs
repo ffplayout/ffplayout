@@ -12,10 +12,9 @@ use crate::{
         routes::{AuthUser, ensure_any_authority},
         state::AppState,
     },
-    db::models::Role,
+    db::models::{Role, TextPreset},
     player::utils::get_data_map,
     utils::{
-        TextFilter,
         control::{ControlParams, Process, ProcessCtl, control_state, send_message},
         errors::ServiceError,
     },
@@ -63,14 +62,14 @@ pub async fn update_audio_effects(
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/control/1/text \
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>' \
-/// -d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
+/// -d '{"name": "Message", "text": "Hello from ffplayout", "position_x": "center", "position_y": "end:72", "font_size": 24, "text_color": "#ffffff", "background_enabled": true}'
 /// ```
 pub async fn send_text_message(
     State(state): State<AppState>,
     Path(id): Path<i32>,
     user: AuthUser,
     details: AuthDetails<Role>,
-    Json(data): Json<TextFilter>,
+    Json(data): Json<TextPreset>,
 ) -> Result<Json<serde_json::Map<String, serde_json::Value>>, ServiceError> {
     ensure_any_authority(
         &details,

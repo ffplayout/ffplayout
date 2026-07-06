@@ -1,4 +1,7 @@
-use std::str::FromStr;
+use std::{
+    str::FromStr,
+    sync::{Arc, PoisonError, RwLock},
+};
 
 use ffmpeg_next::{Rational, util::log::Level as FfmpegLevel};
 
@@ -169,6 +172,8 @@ pub struct OutputConfig {
     pub audio_time_base: Rational,
     pub audio_effects: AudioEffectsControl,
     pub logo: Option<LogoConfig>,
+    pub text: Option<TextConfig>,
+    pub text_overlay_state: TextOverlayState,
     pub video_preset: String,
     pub rate_control: RateControl,
     pub video_quality: u8,
@@ -242,6 +247,135 @@ pub struct LogoConfig {
     pub position: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextConfig {
+    pub text: Option<String>,
+    pub use_filename: bool,
+    pub filename_regex: Option<String>,
+    pub font_family: Option<String>,
+    pub font_weight: TextWeight,
+    pub font_size: f32,
+    pub line_spacing: f32,
+    pub text_color: RgbaColor,
+    pub opacity: f64,
+    pub position_x: TextPosition,
+    pub position_y: TextPosition,
+    pub background: Option<TextBackgroundConfig>,
+    pub scroll: TextScroll,
+    pub scroll_repeat: i32,
+    pub fade_in_seconds: f64,
+    pub fade_out_seconds: f64,
+}
+
+impl Default for TextConfig {
+    fn default() -> Self {
+        Self {
+            text: None,
+            use_filename: false,
+            filename_regex: None,
+            font_family: None,
+            font_weight: TextWeight::Normal,
+            font_size: 48.0,
+            line_spacing: 0.0,
+            text_color: RgbaColor::opaque(255, 255, 255),
+            opacity: 1.0,
+            position_x: TextPosition::Pixels(32),
+            position_y: TextPosition::Pixels(32),
+            background: None,
+            scroll: TextScroll::None,
+            scroll_repeat: -1,
+            fade_in_seconds: 0.0,
+            fade_out_seconds: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TextWeight {
+    #[default]
+    Normal,
+    Semibold,
+    Bold,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RgbaColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+impl RgbaColor {
+    pub const fn opaque(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b, a: 255 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextPosition {
+    Pixels(i32),
+    Center,
+    End(i32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextBackgroundConfig {
+    pub color: RgbaColor,
+    pub padding: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextScroll {
+    None,
+    LeftToRight { pixels_per_second: u32 },
+    RightToLeft { pixels_per_second: u32 },
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TextOverlayState {
+    inner: Arc<RwLock<TextOverlayStateInner>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TextOverlayStateInner {
+    revision: u64,
+    config: Option<TextConfig>,
+    start_pts: Option<i64>,
+}
+
+impl TextOverlayState {
+    pub fn set(&self, config: Option<TextConfig>) {
+        let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+        inner.revision = inner.revision.wrapping_add(1);
+        inner.config = config;
+        inner.start_pts = None;
+    }
+
+    pub fn clear(&self) {
+        self.set(None);
+    }
+
+    pub(crate) fn snapshot_at(&self, pts: i64) -> TextOverlaySnapshot {
+        let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+        if inner.config.is_some() && inner.start_pts.is_none() {
+            inner.start_pts = Some(pts);
+        }
+        TextOverlaySnapshot {
+            revision: inner.revision,
+            config: inner.config.clone(),
+            start_pts: inner.start_pts,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TextOverlaySnapshot {
+    pub revision: u64,
+    pub config: Option<TextConfig>,
+    pub start_pts: Option<i64>,
+}
+
 impl OutputConfig {
     pub fn new(width: u32, height: u32, fps: u32, sample_rate: u32) -> Self {
         Self {
@@ -253,6 +387,8 @@ impl OutputConfig {
             audio_time_base: Rational(1, sample_rate as i32),
             audio_effects: AudioEffectsControl::default(),
             logo: None,
+            text: None,
+            text_overlay_state: TextOverlayState::default(),
             video_preset: "faster".to_string(),
             rate_control: RateControl::Crf,
             video_quality: 23,
@@ -276,6 +412,16 @@ impl OutputConfig {
 
     pub fn with_logo(mut self, logo: Option<LogoConfig>) -> Self {
         self.logo = logo;
+        self
+    }
+
+    pub fn with_text(mut self, text: Option<TextConfig>) -> Self {
+        self.text = text;
+        self
+    }
+
+    pub fn with_text_overlay_state(mut self, text_overlay_state: TextOverlayState) -> Self {
+        self.text_overlay_state = text_overlay_state;
         self
     }
 

@@ -452,6 +452,7 @@ pub fn init_logging(
     let mut builder = LogSpecification::builder();
     builder
         .default(log_level)
+        .module("cosmic_text", LevelFilter::Error)
         .module("hyper", LevelFilter::Error)
         .module("flexi_logger", LevelFilter::Error)
         .module("libc", LevelFilter::Error)

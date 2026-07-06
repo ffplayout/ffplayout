@@ -1,7 +1,10 @@
 use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{codec, format, frame, media, software::scaling, util::format::pixel::Pixel};
 
-use crate::utils::{config::LogoConfig, helper::even};
+use crate::{
+    compositor::overlay::{OverlayRef, blend_overlay},
+    utils::{config::LogoConfig, helper::even},
+};
 
 pub struct LogoOverlay {
     pub frame: frame::Video, // YUVA420P
@@ -94,6 +97,17 @@ impl LogoOverlay {
             height,
             opacity: (config.opacity * 255.0).round().clamp(0.0, 255.0) as u8,
         })
+    }
+
+    fn as_overlay(&self) -> OverlayRef<'_> {
+        OverlayRef {
+            frame: &self.frame,
+            x: self.x as i32,
+            y: self.y as i32,
+            width: self.width,
+            height: self.height,
+            opacity: self.opacity,
+        }
     }
 }
 
@@ -196,159 +210,5 @@ fn eval_position_expr(expr: &str, main: u32, overlay: u32) -> Result<i64> {
 }
 
 pub fn blend_logo(target: &mut frame::Video, logo: &LogoOverlay, opacity_factor: f64) {
-    // Expected formats:
-    // target: YUV420P
-    // logo.frame: YUVA420P
-    if opacity_factor <= 0.0 {
-        return;
-    }
-    let opacity = ((logo.opacity as f64) * opacity_factor.clamp(0.0, 1.0))
-        .round()
-        .clamp(0.0, 255.0) as u8;
-
-    let logo_y = logo.frame.data(0);
-    let logo_u = logo.frame.data(1);
-    let logo_v = logo.frame.data(2);
-    let logo_a = logo.frame.data(3);
-
-    let logo_y_stride = logo.frame.stride(0);
-    let logo_u_stride = logo.frame.stride(1);
-    let logo_v_stride = logo.frame.stride(2);
-    let logo_a_stride = logo.frame.stride(3);
-
-    let target_y_stride = target.stride(0);
-    let target_u_stride = target.stride(1);
-    let target_v_stride = target.stride(2);
-
-    let target_y_len = target.data(0).len();
-    let target_u_len = target.data(1).len();
-    let target_v_len = target.data(2).len();
-
-    let width = logo.width as usize;
-    let height = logo.height as usize;
-    let logo_x = logo.x as usize;
-    let logo_y_pos = logo.y as usize;
-
-    // Luma: blend each pixel.
-    for y in 0..height {
-        for x in 0..width {
-            let src_y_idx = y * logo_y_stride + x;
-            let src_a_idx = y * logo_a_stride + x;
-
-            if src_y_idx >= logo_y.len() || src_a_idx >= logo_a.len() {
-                continue;
-            }
-
-            let alpha = mul_alpha(logo_a[src_a_idx], opacity);
-            if alpha == 0 {
-                continue;
-            }
-
-            let tx = logo_x + x;
-            let ty = logo_y_pos + y;
-            let dst_idx = ty * target_y_stride + tx;
-
-            if dst_idx >= target_y_len {
-                continue;
-            }
-
-            let dst = target.data(0)[dst_idx];
-            let src = logo_y[src_y_idx];
-
-            target.data_mut(0)[dst_idx] = blend_u8(dst, src, alpha);
-        }
-    }
-
-    // Chroma: blend one sample per 2x2 block for YUV420P.
-    let uv_width = width / 2;
-    let uv_height = height / 2;
-    let target_uv_x = logo_x / 2;
-    let target_uv_y = logo_y_pos / 2;
-
-    for y in 0..uv_height {
-        for x in 0..uv_width {
-            let src_u_idx = y * logo_u_stride + x;
-            let src_v_idx = y * logo_v_stride + x;
-
-            if src_u_idx >= logo_u.len() || src_v_idx >= logo_v.len() {
-                continue;
-            }
-
-            // Average alpha for the 2x2 luma block.
-            let ax = x * 2;
-            let ay = y * 2;
-
-            let alpha = avg_alpha_2x2(logo_a, logo_a_stride, ax, ay, width, height, opacity);
-
-            if alpha == 0 {
-                continue;
-            }
-
-            let dst_x = target_uv_x + x;
-            let dst_y = target_uv_y + y;
-
-            let dst_u_idx = dst_y * target_u_stride + dst_x;
-            let dst_v_idx = dst_y * target_v_stride + dst_x;
-
-            if dst_u_idx >= target_u_len || dst_v_idx >= target_v_len {
-                continue;
-            }
-
-            let dst_u = target.data(1)[dst_u_idx];
-            let dst_v = target.data(2)[dst_v_idx];
-
-            target.data_mut(1)[dst_u_idx] = blend_u8(dst_u, logo_u[src_u_idx], alpha);
-            target.data_mut(2)[dst_v_idx] = blend_u8(dst_v, logo_v[src_v_idx], alpha);
-        }
-    }
-}
-
-#[inline]
-fn blend_u8(dst: u8, src: u8, alpha: u8) -> u8 {
-    let a = alpha as u16;
-    (((dst as u16 * (255 - a)) + (src as u16 * a) + 127) / 255) as u8
-}
-
-#[inline]
-fn mul_alpha(src_alpha: u8, opacity: u8) -> u8 {
-    ((src_alpha as u16 * opacity as u16 + 127) / 255) as u8
-}
-
-fn avg_alpha_2x2(
-    alpha_plane: &[u8],
-    alpha_stride: usize,
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-    opacity: u8,
-) -> u8 {
-    let mut sum = 0_u16;
-    let mut count = 0_u16;
-
-    for dy in 0..2 {
-        for dx in 0..2 {
-            let px = x + dx;
-            let py = y + dy;
-
-            if px >= width || py >= height {
-                continue;
-            }
-
-            let idx = py * alpha_stride + px;
-            if idx >= alpha_plane.len() {
-                continue;
-            }
-
-            sum += alpha_plane[idx] as u16;
-            count += 1;
-        }
-    }
-
-    if count == 0 {
-        return 0;
-    }
-
-    let avg = (sum / count) as u8;
-    mul_alpha(avg, opacity)
+    blend_overlay(target, logo.as_overlay(), opacity_factor);
 }

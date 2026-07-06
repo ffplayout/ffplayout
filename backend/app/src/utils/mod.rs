@@ -1,5 +1,5 @@
 use std::{
-    env, fmt,
+    env,
     path::{Path, PathBuf},
 };
 
@@ -8,13 +8,9 @@ use chrono_tz::Tz;
 use log::*;
 use path_clean::PathClean;
 use rand::RngExt;
-use regex::Regex;
 use tokio::{fs, net::TcpListener, process::Command};
 
-use serde::{
-    Deserialize, Deserializer, Serialize,
-    de::{self, Visitor},
-};
+use serde::{Deserialize, Deserializer, de};
 
 pub mod args_parse;
 pub mod channels;
@@ -27,6 +23,7 @@ pub mod mail;
 pub mod playlist;
 pub mod system;
 pub mod task_runner;
+pub mod text;
 pub mod time_machine;
 
 use crate::{
@@ -38,126 +35,6 @@ use crate::{
         logging::{log_file_path, remove_html, timestamps_to_timezone},
     },
 };
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct TextFilter {
-    pub text: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_number_or_string")]
-    pub x: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_number_or_string")]
-    pub y: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_number_or_string")]
-    pub fontsize: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_number_or_string")]
-    pub line_spacing: Option<String>,
-    pub fontcolor: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_number_or_string")]
-    pub alpha: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_number_or_string")]
-    pub r#box: Option<String>,
-    pub boxcolor: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_number_or_string")]
-    pub boxborderw: Option<String>,
-}
-
-/// Deserialize number or string
-pub fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    struct StringOrNumberVisitor;
-
-    impl Visitor<'_> for StringOrNumberVisitor {
-        type Value = Option<String>;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("a string or a number")
-        }
-
-        fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
-            let re = Regex::new(r"0,([0-9]+)").unwrap();
-            let clean_string = re.replace_all(value, "0.$1").to_string();
-            Ok(Some(clean_string))
-        }
-
-        fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
-            Ok(Some(value.to_string()))
-        }
-
-        fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
-            Ok(Some(value.to_string()))
-        }
-
-        fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
-            Ok(Some(value.to_string()))
-        }
-    }
-
-    deserializer.deserialize_any(StringOrNumberVisitor)
-}
-
-impl fmt::Display for TextFilter {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let escaped_text = self
-            .text
-            .clone()
-            .unwrap_or_default()
-            .replace('\'', "'\\\\\\''")
-            .replace('\\', "\\\\\\\\")
-            .replace('%', "\\\\\\%")
-            .replace(':', "\\:");
-
-        let mut s = format!("text='{escaped_text}'");
-
-        if let Some(v) = &self.x
-            && !v.is_empty()
-        {
-            s.push_str(&format!(":x='{v}'"));
-        }
-        if let Some(v) = &self.y
-            && !v.is_empty()
-        {
-            s.push_str(&format!(":y='{v}'"));
-        }
-        if let Some(v) = &self.fontsize
-            && !v.is_empty()
-        {
-            s.push_str(&format!(":fontsize={v}"));
-        }
-        if let Some(v) = &self.line_spacing
-            && !v.is_empty()
-        {
-            s.push_str(&format!(":line_spacing={v}"));
-        }
-        if let Some(v) = &self.fontcolor
-            && !v.is_empty()
-        {
-            s.push_str(&format!(":fontcolor={v}"));
-        }
-        if let Some(v) = &self.alpha
-            && !v.is_empty()
-        {
-            s.push_str(&format!(":alpha='{v}'"));
-        }
-        if let Some(v) = &self.r#box
-            && !v.is_empty()
-        {
-            s.push_str(&format!(":box={v}"));
-        }
-        if let Some(v) = &self.boxcolor
-            && !v.is_empty()
-        {
-            s.push_str(&format!(":boxcolor={v}"));
-        }
-        if let Some(v) = &self.boxborderw
-            && !v.is_empty()
-        {
-            s.push_str(&format!(":boxborderw={v}"));
-        }
-
-        write!(f, "{s}")
-    }
-}
 
 pub fn public_path() -> PathBuf {
     let config = GLOBAL_SETTINGS.get().unwrap();

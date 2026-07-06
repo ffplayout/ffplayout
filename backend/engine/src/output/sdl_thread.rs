@@ -17,10 +17,13 @@ use std::{
     thread,
 };
 
+#[cfg(feature = "desktop")]
 type Job = Box<dyn FnOnce() + Send>;
 
+#[cfg(feature = "desktop")]
 static SDL_THREAD: OnceLock<mpsc::SyncSender<Job>> = OnceLock::new();
 
+#[cfg(feature = "desktop")]
 fn sdl_thread() -> &'static mpsc::SyncSender<Job> {
     SDL_THREAD.get_or_init(|| {
         // Rendezvous channel: `send` blocks until the dedicated thread has
@@ -45,6 +48,7 @@ fn sdl_thread() -> &'static mpsc::SyncSender<Job> {
 /// the job has been *accepted* by that thread (not until it finishes) -
 /// callers that need to wait for completion should signal it themselves,
 /// e.g. via a channel captured in the closure.
+#[cfg(feature = "desktop")]
 pub(crate) fn spawn(job: impl FnOnce() + Send + 'static) {
     sdl_thread()
         .send(Box::new(job))

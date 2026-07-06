@@ -8,7 +8,7 @@ use std::{
 };
 
 use async_walkdir::WalkDir;
-use ff_engine::AudioEffectsControl;
+use ff_engine::{AudioEffectsControl, PlaybackControl, TextOverlayState};
 use log::*;
 use m3u8_rs::Playlist;
 use serde::{Deserialize, Serialize};
@@ -90,6 +90,8 @@ pub struct ChannelManager {
     pub metrics_token: Arc<Mutex<Option<CancellationToken>>>,
     pub task_generation: Arc<AtomicUsize>,
     pub audio_effects: AudioEffectsControl,
+    pub text_overlay: TextOverlayState,
+    pub playback_control: Arc<Mutex<PlaybackControl>>,
     pub system: SystemStat,
 }
 
@@ -111,6 +113,7 @@ impl ChannelManager {
 
         let storage = init_storage(config.channel.storage.clone(), extensions).await;
         let audio_effects = AudioEffectsControl::new(config.processing.volume).unwrap_or_default();
+        let text_overlay = TextOverlayState::default();
 
         Self {
             id: channel.id,
@@ -141,6 +144,8 @@ impl ChannelManager {
             metrics_token: Arc::new(Mutex::new(None)),
             task_generation: Arc::new(AtomicUsize::new(0)),
             audio_effects,
+            text_overlay,
+            playback_control: Arc::new(Mutex::new(PlaybackControl::default())),
             system,
         }
     }
@@ -444,6 +449,7 @@ impl ChannelManager {
 
         self.is_alive.store(false, Ordering::SeqCst);
         self.ingest_is_alive.store(false, Ordering::SeqCst);
+        self.playback_control.lock().await.skip_current();
 
         for unit in [Decoder, Encoder, Ingest] {
             self.stop(unit).await;

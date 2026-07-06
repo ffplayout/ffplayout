@@ -37,4 +37,4 @@ export type Storage = { filler: string, extensions: Array<string>, shuffle: bool
 
 export type Task = { enable: boolean, path: string, };
 
-export type Text = { add_text: boolean, font: string, text_from_filename: boolean, style: string, regex: string, };
+export type Text = { preset_id: number | null, };

@@ -37,7 +37,7 @@ pub async fn update_configuration(
     id: i32,
     config: PlayoutConfig,
 ) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "UPDATE configurations SET general_stop_threshold = $2, mail_subject = $3, mail_recipient = $4, mail_level = $5, mail_interval = $6, logging_ffmpeg_level = $7, logging_ingest_level = $8, logging_detect_silence = $9, logging_ignore = $10, processing_mode = $11, processing_add_logo = $12, processing_logo = $13, processing_logo_scale = $14, processing_logo_opacity = $15, processing_logo_position = $16, processing_volume = $17, processing_vtt_enable = $18, processing_vtt_dummy = $19, processing_vtt_name = $20, processing_vtt_language = $21, processing_vtt_default = $22, ingest_enable = $23, ingest_url = $24, playlist_day_start = $25, playlist_length = $26, playlist_infinit = $27, storage_filler = $28, storage_extensions = $29, storage_shuffle = $30, text_add = $31, text_from_filename = $32, text_font = $33, text_style = $34, text_regex = $35, task_enable = $36, task_path = $37, output_id = $38 WHERE id = $1";
+    const QUERY: &str = "UPDATE configurations SET general_stop_threshold = $2, mail_subject = $3, mail_recipient = $4, mail_level = $5, mail_interval = $6, logging_ffmpeg_level = $7, logging_ingest_level = $8, logging_detect_silence = $9, logging_ignore = $10, processing_mode = $11, processing_add_logo = $12, processing_logo = $13, processing_logo_scale = $14, processing_logo_opacity = $15, processing_logo_position = $16, processing_volume = $17, processing_vtt_enable = $18, processing_vtt_dummy = $19, processing_vtt_name = $20, processing_vtt_language = $21, processing_vtt_default = $22, ingest_enable = $23, ingest_url = $24, playlist_day_start = $25, playlist_length = $26, playlist_infinit = $27, storage_filler = $28, storage_extensions = $29, storage_shuffle = $30, text_preset_id = $31, task_enable = $32, task_path = $33, output_id = $34 WHERE id = $1";
 
     let result = sqlx::query(QUERY)
         .bind(id)
@@ -70,11 +70,7 @@ pub async fn update_configuration(
         .bind(config.storage.filler)
         .bind(config.storage.extensions.join(";"))
         .bind(config.storage.shuffle)
-        .bind(config.text.add_text)
-        .bind(config.text.text_from_filename)
-        .bind(config.text.font)
-        .bind(config.text.style)
-        .bind(config.text.regex)
+        .bind(config.text.preset_id)
         .bind(config.task.enable)
         .bind(config.task.path.to_string_lossy().to_string())
         .bind(config.output.id)

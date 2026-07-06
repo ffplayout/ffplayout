@@ -80,11 +80,19 @@ pub async fn update_playout_config(
 
     let (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
     let (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
-    let (_, _, font) = norm_abs_path(storage, &data.text.font)?;
 
     data.processing.logo = logo;
     data.storage.filler = filler;
-    data.text.font = font;
+    if let Some(preset_id) = data.text.preset_id {
+        let preset = handles::select_preset(&state.pool, id, preset_id)
+            .await
+            .map_err(|_| ServiceError::BadRequest("invalid text preset".to_string()))?;
+        if !preset.use_filename {
+            return Err(ServiceError::BadRequest(
+                "automatic text preset must use the clip filename".to_string(),
+            ));
+        }
+    }
     data.processing
         .hls_subtitle()
         .map_err(ServiceError::BadRequest)?;

@@ -47,6 +47,7 @@ pub fn routes() -> Router<AppState> {
                     get(get_playout_config).put(update_playout_config),
                 )
                 .route("/playout/outputs/{id}", get(get_playout_outputs))
+                .route("/text/fonts", get(get_font_families))
                 .route("/presets/{id}", get(get_presets))
                 .route(
                     "/presets/{channel}/{id}",

@@ -1,4 +1,8 @@
 use anyhow::{Context, Result, anyhow};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 #[cfg(feature = "tokio")]
 use std::{
     sync::mpsc,
@@ -19,11 +23,13 @@ use input::live::{LiveEnded, LiveOverrideOutput};
 pub use input::live::{LiveReceiver, spawn_rtmp_listener};
 pub use output::resolved_variant_playlist_path;
 use output::{FrameOutput, Output, PlaybackStopped};
-use playout::{Timeline, play_clip, write_fallback};
+use playout::{PlaybackSkipped, Timeline, play_clip, write_fallback};
 pub use utils::{
     clock,
     config::{
         HlsSubtitle, HlsVariant, LogLevel, LogoConfig, OutputConfig, OutputSize, RateControl,
+        RgbaColor, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition, TextScroll,
+        TextWeight,
     },
     logging,
     media_info::{
@@ -32,9 +38,14 @@ pub use utils::{
     },
 };
 
+pub fn available_font_families() -> Vec<String> {
+    compositor::text::available_font_families()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClipResult {
     Played,
+    Skipped,
     LiveEnded,
     Fallback { reason: String },
     Stopped,
@@ -51,6 +62,22 @@ pub struct Playout {
     output: Output,
     timeline: Timeline,
     fallback_duration: f64,
+    playback_control: PlaybackControl,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PlaybackControl {
+    skip_current: Arc<AtomicBool>,
+}
+
+impl PlaybackControl {
+    pub fn skip_current(&self) {
+        self.skip_current.store(true, Ordering::SeqCst);
+    }
+
+    pub(crate) fn take_skip_current(&self) -> bool {
+        self.skip_current.swap(false, Ordering::SeqCst)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -65,6 +92,7 @@ struct PlayOptions<'a> {
 pub struct AsyncPlayout {
     commands: mpsc::Sender<AsyncCommand>,
     completion: WorkerCompletion,
+    playback_control: PlaybackControl,
 }
 
 /// How to wait for the playout worker to finish. Desktop-output sessions run
@@ -118,10 +146,13 @@ impl AsyncPlayout {
         let (commands, command_rx) = mpsc::channel();
         let (ready_tx, ready_rx) = oneshot::channel();
         let (done_tx, done_rx) = oneshot::channel();
+        let playback_control = PlaybackControl::default();
+        let worker_playback_control = playback_control.clone();
 
         output::sdl_thread::spawn(move || {
             match Playout::open_desktop(config, fallback_duration) {
-                Ok(playout) => {
+                Ok(mut playout) => {
+                    playout.playback_control = worker_playback_control;
                     let _ = ready_tx.send(Ok(()));
                     run_async_playout_worker(playout, command_rx);
                 }
@@ -139,6 +170,7 @@ impl AsyncPlayout {
         Ok(Self {
             commands,
             completion: WorkerCompletion::SdlThread(done_rx),
+            playback_control,
         })
     }
 
@@ -148,9 +180,12 @@ impl AsyncPlayout {
     {
         let (commands, command_rx) = mpsc::channel();
         let (ready_tx, ready_rx) = oneshot::channel();
+        let playback_control = PlaybackControl::default();
+        let worker_playback_control = playback_control.clone();
 
         let worker = thread::spawn(move || match open() {
-            Ok(playout) => {
+            Ok(mut playout) => {
+                playout.playback_control = worker_playback_control;
                 let _ = ready_tx.send(Ok(()));
                 run_async_playout_worker(playout, command_rx);
             }
@@ -166,7 +201,12 @@ impl AsyncPlayout {
         Ok(Self {
             commands,
             completion: WorkerCompletion::Thread(worker),
+            playback_control,
         })
+    }
+
+    pub fn playback_control(&self) -> PlaybackControl {
+        self.playback_control.clone()
     }
 
     pub async fn play(&self, path: impl Into<String>) -> Result<ClipResult> {
@@ -245,7 +285,7 @@ impl AsyncPlayout {
         self.commands
             .send(AsyncCommand::StartRtmpLive {
                 url,
-                config,
+                config: Box::new(config),
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
@@ -256,6 +296,7 @@ impl AsyncPlayout {
     }
 
     pub async fn stop_live(&self) -> Result<()> {
+        self.playback_control.skip_current();
         let (response, result) = oneshot::channel();
         self.commands
             .send(AsyncCommand::StopLive { response })
@@ -267,6 +308,7 @@ impl AsyncPlayout {
     }
 
     pub async fn finish(self) -> Result<()> {
+        self.playback_control.skip_current();
         let (response, result) = oneshot::channel();
         self.commands
             .send(AsyncCommand::Finish { response })
@@ -306,7 +348,7 @@ enum AsyncCommand {
     },
     StartRtmpLive {
         url: String,
-        config: OutputConfig,
+        config: Box<OutputConfig>,
         response: oneshot::Sender<Result<()>>,
     },
     StopLive {
@@ -345,7 +387,7 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 config,
                 response,
             } => {
-                live = Some(spawn_rtmp_listener(url, config));
+                live = Some(spawn_rtmp_listener(url, *config));
                 let _ = response.send(Ok(()));
             }
             AsyncCommand::StopLive { response } => {
@@ -414,6 +456,7 @@ impl Playout {
             output,
             timeline: Timeline::new(),
             fallback_duration,
+            playback_control: PlaybackControl::default(),
         }
     }
 
@@ -496,6 +539,7 @@ impl Playout {
         if self.output.is_desktop() {
             let config = self.config.clone();
             let fallback_duration = self.fallback_duration;
+            let playback_control = self.playback_control.clone();
             let mut timeline = self.timeline;
             let path = path.to_string();
             let mut live_for_worker = live.take();
@@ -508,6 +552,7 @@ impl Playout {
                         &mut timeline,
                         &mut output,
                         fallback_duration,
+                        &playback_control,
                         PlayOptions {
                             seek_seconds,
                             duration_seconds,
@@ -522,6 +567,7 @@ impl Playout {
                         &mut timeline,
                         output,
                         fallback_duration,
+                        &playback_control,
                         PlayOptions {
                             seek_seconds,
                             duration_seconds,
@@ -554,6 +600,7 @@ impl Playout {
                 &mut self.timeline,
                 &mut output,
                 self.fallback_duration,
+                &self.playback_control,
                 PlayOptions {
                     seek_seconds,
                     duration_seconds,
@@ -568,6 +615,7 @@ impl Playout {
                 &mut self.timeline,
                 &mut self.output,
                 self.fallback_duration,
+                &self.playback_control,
                 PlayOptions {
                     seek_seconds,
                     duration_seconds,
@@ -584,6 +632,7 @@ impl Playout {
 }
 
 fn init_ffmpeg(config: &OutputConfig) -> Result<()> {
+    compositor::text::init();
     ffmpeg_next::init().context("failed to initialize FFmpeg")?;
     logging::init(
         config.ffmpeg_log_level,
@@ -599,6 +648,7 @@ fn play_to_output<O: FrameOutput>(
     timeline: &mut Timeline,
     output: &mut O,
     fallback_duration: f64,
+    playback_control: &PlaybackControl,
     options: PlayOptions<'_>,
 ) -> Result<ClipResult> {
     match play_clip(
@@ -610,8 +660,10 @@ fn play_to_output<O: FrameOutput>(
         options.duration_seconds,
         options.subtitles_media_path,
         options.logo_fade,
+        playback_control,
     ) {
         Ok(()) => Ok(ClipResult::Played),
+        Err(error) if error.downcast_ref::<PlaybackSkipped>().is_some() => Ok(ClipResult::Skipped),
         Err(error) if error.downcast_ref::<LiveEnded>().is_some() => Ok(ClipResult::LiveEnded),
         Err(error) if error.downcast_ref::<PlaybackStopped>().is_some() => Ok(ClipResult::Stopped),
         Err(error) => {
@@ -620,7 +672,7 @@ fn play_to_output<O: FrameOutput>(
                 .duration_seconds
                 .filter(|duration| duration.is_finite() && *duration > 0.0)
                 .unwrap_or(fallback_duration);
-            write_fallback(config, timeline, output, duration)
+            write_fallback(path, config, timeline, output, duration, playback_control)
                 .with_context(|| format!("failed to generate fallback for {path}"))?;
             timeline.finish_logo_fade(options.logo_fade);
             Ok(ClipResult::Fallback { reason })

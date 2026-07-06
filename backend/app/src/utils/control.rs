@@ -1,18 +1,17 @@
-use std::{error::Error, fmt, str::FromStr, sync::atomic::Ordering};
+use std::{fmt, str::FromStr, sync::atomic::Ordering};
 
 use log::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sqlx::{Pool, Sqlite};
-use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
 
 use crate::{
-    db::handles,
+    db::{handles, models::TextPreset},
     player::{
-        controller::{ChannelManager, ProcessUnit::*},
+        controller::ChannelManager,
         utils::{get_delta, get_media_map},
     },
-    utils::{TextFilter, config::OutputMode::*, errors::ServiceError},
+    utils::{errors::ServiceError, text::text_config},
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -92,65 +91,24 @@ pub struct Process {
     pub command: ProcessCtl,
 }
 
-async fn zmq_send(msg: &str, socket_addr: &str) -> Result<String, Box<dyn Error>> {
-    let mut socket = zeromq::ReqSocket::new();
-    socket.connect(&format!("tcp://{socket_addr}")).await?;
-    socket.send(msg.into()).await?;
-    let repl: ZmqMessage = socket.recv().await?;
-    let response = String::from_utf8(repl.into_vec()[0].to_vec())?;
-
-    Ok(response)
-}
-
 pub async fn send_message(
     manager: ChannelManager,
-    message: TextFilter,
+    message: TextPreset,
 ) -> Result<Map<String, Value>, ServiceError> {
-    let filter = message.to_string();
     let mut data_map = Map::new();
-    let config = manager.config.read().await.clone();
 
-    if config.text.zmq_stream_socket.is_some() {
-        if let Some(ref clips_filter) = manager.filter_chain {
-            *clips_filter.lock().await = vec![filter.clone()];
-        }
-
-        if config.output.mode == HLS {
-            if manager.ingest_is_alive.load(Ordering::SeqCst) {
-                let filter_server = format!("drawtext@dyntext reinit {filter}");
-
-                if let Ok(reply) = zmq_send(
-                    &filter_server,
-                    &config.text.zmq_server_socket.clone().unwrap(),
-                )
-                .await
-                {
-                    data_map.insert("message".to_string(), json!(reply));
-                    return Ok(data_map);
-                };
-            } else {
-                manager.stop(Ingest).await;
-            }
-        }
-
-        if config.output.mode != HLS || !manager.ingest_is_alive.load(Ordering::SeqCst) {
-            let filter_stream = format!("drawtext@dyntext reinit {filter}");
-
-            if let Ok(reply) = zmq_send(
-                &filter_stream,
-                &config.text.zmq_stream_socket.clone().unwrap(),
-            )
-            .await
-            {
-                data_map.insert("message".to_string(), json!(reply));
-                return Ok(data_map);
-            };
-        }
+    let text = (!message.text.trim().is_empty()).then(|| message.text.clone());
+    if text.is_none() && !message.use_filename {
+        manager.text_overlay.clear();
+        data_map.insert("message".to_string(), json!("text overlay cleared"));
+        return Ok(data_map);
     }
 
-    Err(ServiceError::ServiceUnavailable(
-        "text message missing!".to_string(),
-    ))
+    manager
+        .text_overlay
+        .set(Some(text_config(&message, text, message.use_filename)));
+    data_map.insert("message".to_string(), json!("text overlay updated"));
+    Ok(data_map)
 }
 
 pub async fn control_state(
@@ -214,7 +172,7 @@ pub async fn control_state(
 
     manager.channel.lock().await.time_shift = shift;
     handles::update_stat(conn, id, &Some(current_date), shift).await?;
-    manager.stop(Decoder).await;
+    manager.playback_control.lock().await.skip_current();
 
     Ok(data_map)
 }

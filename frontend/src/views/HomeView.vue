@@ -68,11 +68,7 @@ async function changeLang(lang: any) {
                 <RouterLink to="/media" class="btn btn-primary join-item px-2">
                     {{ t('button.media') }}
                 </RouterLink>
-                <RouterLink
-                    v-if="configStore.playout?.text?.add_text && !configStore.playout?.text?.text_from_filename"
-                    to="/message"
-                    class="btn btn-primary join-item px-2"
-                >
+                <RouterLink to="/message" class="btn btn-primary join-item px-2">
                     {{ t('button.message') }}
                 </RouterLink>
                 <RouterLink to="/logging" class="btn btn-primary join-item px-2">

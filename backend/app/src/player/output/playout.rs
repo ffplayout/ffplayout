@@ -7,7 +7,7 @@ use std::{
 
 use ff_engine::{
     AsyncPlayout, ClipResult, LogLevel, LogoConfig, LogoFade, OutputConfig, RateControl,
-    resolved_variant_playlist_path,
+    TextOverlayState, resolved_variant_playlist_path,
 };
 use log::*;
 use tokio::time::sleep;
@@ -24,6 +24,7 @@ use crate::{
         config::{OutputMode, PlayoutConfig},
         errors::ServiceError,
         task_runner,
+        text::text_config,
     },
 };
 
@@ -35,8 +36,13 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         .audio_effects
         .set_volume(config.processing.volume)
         .map_err(engine_error)?;
-    let output_config = engine_output_config(&config, manager.audio_effects.clone())?;
+    let output_config = engine_output_config(
+        &config,
+        manager.audio_effects.clone(),
+        manager.text_overlay.clone(),
+    )?;
     let playout = open_playout(&config, output_config.clone()).await?;
+    *manager.playback_control.lock().await = playout.playback_control();
     if config.output.mode == OutputMode::Desktop {
         info!(channel = config.general.channel_id;
             "Desktop output uses backend/engine SDL2 renderer"
@@ -210,6 +216,9 @@ async fn play_loop(
                 continue;
             }
             ClipResult::Played => {}
+            ClipResult::Skipped => {
+                debug!(channel = id; "Skipped current clip by control command");
+            }
             ClipResult::Fallback { reason } => {
                 error!(channel = id;
                     "failed while playing {}: {reason}; fallback generated",
@@ -319,6 +328,7 @@ async fn open_desktop_playout(
 fn engine_output_config(
     config: &PlayoutConfig,
     audio_effects: ff_engine::AudioEffectsControl,
+    text_overlay_state: TextOverlayState,
 ) -> Result<OutputConfig, ServiceError> {
     let width = config.output.width;
     let height = config.output.height;
@@ -341,6 +351,12 @@ fn engine_output_config(
         opacity: config.processing.logo_opacity,
         position: config.processing.logo_position.clone(),
     });
+    let text = config
+        .text
+        .preset
+        .as_ref()
+        .filter(|preset| preset.use_filename)
+        .map(|preset| text_config(preset, None, true));
 
     let rate_control = if config.output.rate_control == "crf" {
         RateControl::Crf
@@ -361,6 +377,8 @@ fn engine_output_config(
     Ok(OutputConfig::new(width, height, fps, 48_000)
         .with_audio_effects(audio_effects)
         .with_logo(logo)
+        .with_text(text)
+        .with_text_overlay_state(text_overlay_state)
         .with_logging(ffmpeg_log_level, ingest_log_level)
         .with_channel_id(config.general.channel_id)
         .with_encoding(
@@ -381,21 +399,7 @@ fn validate_supported_config(config: &PlayoutConfig) -> Result<(), ServiceError>
             "processing volume must be between 0.0 and 1.0".to_string(),
         ));
     }
-    let unsupported = [(config.text.add_text, "text overlay")];
-
-    let unsupported = unsupported
-        .into_iter()
-        .filter_map(|(enabled, name)| enabled.then_some(name))
-        .collect::<Vec<_>>();
-
-    if unsupported.is_empty() {
-        Ok(())
-    } else {
-        Err(ServiceError::Conflict(format!(
-            "backend/engine integration does not support these ffmpeg-binary features yet: {}",
-            unsupported.join(", ")
-        )))
-    }
+    Ok(())
 }
 
 fn validate_supported_node(

@@ -23,6 +23,7 @@ use ffmpeg_next::{
 use log::{error, info, warn};
 
 use crate::{
+    PlaybackControl,
     output::FrameOutput,
     playout::{InputPlaybackOptions, LogoFadePlan, Timeline, play_opened_input},
     utils::{config::OutputConfig, logging},
@@ -39,6 +40,7 @@ static STUCK_LIVE_WORKERS: AtomicU64 = AtomicU64::new(0);
 
 pub struct LiveReceiver {
     rx: Receiver<LiveEvent>,
+    abort: Arc<AtomicBool>,
     fps: u32,
     sample_rate: u32,
     active: bool,
@@ -80,10 +82,15 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
     let fps = cfg.fps;
     let sample_rate = cfg.sample_rate;
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || run_rtmp_listener(url, cfg, tx));
+    let abort = Arc::new(AtomicBool::new(false));
+    thread::spawn({
+        let abort = Arc::clone(&abort);
+        move || run_rtmp_listener(url, cfg, tx, abort)
+    });
 
     LiveReceiver {
         rx,
+        abort,
         fps,
         sample_rate,
         active: false,
@@ -101,6 +108,12 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
         returned_to_file: false,
         video_pts: 0,
         audio_pts: 0,
+    }
+}
+
+impl Drop for LiveReceiver {
+    fn drop(&mut self) {
+        self.abort.store(true, Ordering::Relaxed);
     }
 }
 
@@ -571,16 +584,24 @@ impl FrameOutput for LiveFrameSender {
     }
 }
 
-fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
+fn run_rtmp_listener(
+    url: String,
+    cfg: OutputConfig,
+    tx: Sender<LiveEvent>,
+    listener_abort: Arc<AtomicBool>,
+) {
     let mut session_id = 0;
 
-    loop {
+    while !listener_abort.load(Ordering::Relaxed) {
         let abort = Arc::new(AtomicBool::new(false));
-
         match logging::with_ingest_logs(cfg.channel_id, || {
-            open_rtmp_listener(&url, Arc::clone(&abort))
+            open_rtmp_listener(&url, Arc::clone(&abort), Arc::clone(&listener_abort))
         }) {
             Ok(ictx) => {
+                if listener_abort.load(Ordering::Relaxed) {
+                    abort.store(true, Ordering::Relaxed);
+                    return;
+                }
                 session_id += 1;
                 let last_frame_ms = Arc::new(AtomicU64::new(monotonic_millis()));
                 let frame_seen = Arc::new(AtomicBool::new(false));
@@ -608,6 +629,7 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
                 let worker_cfg = cfg.clone();
                 let worker = thread::spawn(move || {
                     let mut timeline = Timeline::new();
+                    let playback_control = PlaybackControl::default();
                     let logo_fade_plan = LogoFadePlan::none(timeline.video_pts(), &worker_cfg);
                     let result = logging::with_ingest_logs(worker_cfg.channel_id, || {
                         play_opened_input(
@@ -621,6 +643,7 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
                                 duration_seconds: None,
                                 subtitles_media_path: None,
                                 logo_fade_plan,
+                                playback_control: &playback_control,
                             },
                         )
                     });
@@ -628,7 +651,7 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
                 });
 
                 let mut worker_finished = false;
-                while !abort.load(Ordering::Relaxed) {
+                while !abort.load(Ordering::Relaxed) && !listener_abort.load(Ordering::Relaxed) {
                     if let Ok(result) = done_rx.try_recv() {
                         worker_finished = true;
                         if let Err(error) = result {
@@ -669,6 +692,9 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
             }
             Err(error) => {
                 abort.store(true, Ordering::Relaxed);
+                if listener_abort.load(Ordering::Relaxed) {
+                    return;
+                }
                 error!("RTMP listener failed: {error:#}; retrying");
                 thread::sleep(Duration::from_secs(1));
             }
@@ -705,7 +731,11 @@ fn spawn_live_watchdog(
     })
 }
 
-fn open_rtmp_listener(url: &str, abort: Arc<AtomicBool>) -> Result<format::context::Input> {
+fn open_rtmp_listener(
+    url: &str,
+    abort: Arc<AtomicBool>,
+    listener_abort: Arc<AtomicBool>,
+) -> Result<format::context::Input> {
     let mut options = Dictionary::new();
     options.set("listen", "1");
     options.set("timeout", "0");
@@ -713,8 +743,9 @@ fn open_rtmp_listener(url: &str, abort: Arc<AtomicBool>) -> Result<format::conte
 
     let url_cstring =
         CString::new(url).with_context(|| format!("RTMP input URL contains NUL byte: {url}"))?;
-    let interrupt_abort = Arc::clone(&abort);
-    let interrupt = interrupt::new(Box::new(move || interrupt_abort.load(Ordering::Relaxed)));
+    let interrupt = interrupt::new(Box::new(move || {
+        abort.load(Ordering::Relaxed) || listener_abort.load(Ordering::Relaxed)
+    }));
 
     // `ffmpeg-next`'s safe `format::input_with*` helpers open a file/stream and
     // return only once the input is fully ready; they provide no way to attach

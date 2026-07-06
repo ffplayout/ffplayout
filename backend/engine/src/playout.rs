@@ -1,3 +1,5 @@
+use std::{error::Error, fmt};
+
 use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{
     Rational, Rescale, codec, format, frame, media,
@@ -7,18 +9,33 @@ use ffmpeg_next::{
 use log::{debug, trace};
 
 use crate::{
-    LogoFade,
-    compositor::logo::*,
+    LogoFade, PlaybackControl,
+    compositor::{logo::*, text::TextOverlay},
     output::FrameOutput,
-    utils::{config::OutputConfig, helper::even},
+    utils::{
+        config::{OutputConfig, TextOverlayState},
+        helper::even,
+    },
 };
 
 const LOGO_FADE_SECONDS: f64 = 1.0;
+
+#[derive(Debug)]
+pub(crate) struct PlaybackSkipped;
+
+impl fmt::Display for PlaybackSkipped {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("playback skipped")
+    }
+}
+
+impl Error for PlaybackSkipped {}
 
 #[derive(Clone, Copy)]
 pub(crate) struct Timeline {
     video_pts: i64,
     audio_pts: i64,
+    text_pts: i64,
     logo_opacity: f64,
 }
 
@@ -27,6 +44,7 @@ impl Timeline {
         Self {
             video_pts: 0,
             audio_pts: 0,
+            text_pts: 0,
             logo_opacity: 1.0,
         }
     }
@@ -58,6 +76,7 @@ pub(crate) fn play_clip<O: FrameOutput>(
     duration_seconds: Option<f64>,
     subtitles_media_path: Option<&str>,
     logo_fade: LogoFade,
+    playback_control: &PlaybackControl,
 ) -> Result<()> {
     let logo_fade_plan = LogoFadePlan::new(timeline.video_pts, duration_seconds, cfg, logo_fade);
 
@@ -72,6 +91,7 @@ pub(crate) fn play_clip<O: FrameOutput>(
             duration_seconds,
             subtitles_media_path,
             logo_fade_plan,
+            playback_control,
         )
     } else {
         let ictx = format::input(path)?;
@@ -86,6 +106,7 @@ pub(crate) fn play_clip<O: FrameOutput>(
                 duration_seconds,
                 subtitles_media_path,
                 logo_fade_plan,
+                playback_control,
             },
         )
     };
@@ -107,6 +128,7 @@ fn play_looped_clip<O: FrameOutput>(
     duration_seconds: f64,
     subtitles_media_path: Option<&str>,
     logo_fade_plan: LogoFadePlan,
+    playback_control: &PlaybackControl,
 ) -> Result<()> {
     if !duration_seconds.is_finite() {
         return Err(anyhow!("clip duration must be a finite number"));
@@ -118,6 +140,9 @@ fn play_looped_clip<O: FrameOutput>(
     let minimum_progress = (1.0 / f64::from(cfg.fps)).min(1.0 / f64::from(cfg.sample_rate));
 
     while remaining > minimum_progress {
+        if playback_control.take_skip_current() {
+            return Err(PlaybackSkipped.into());
+        }
         let before_video_pts = timeline.video_pts;
         let before_audio_pts = timeline.audio_pts;
         let ictx = format::input(path)?;
@@ -132,6 +157,7 @@ fn play_looped_clip<O: FrameOutput>(
                 duration_seconds: Some(remaining),
                 subtitles_media_path: first_iteration.then_some(subtitles_media_path).flatten(),
                 logo_fade_plan,
+                playback_control,
             },
         )?;
 
@@ -175,6 +201,7 @@ pub(crate) struct InputPlaybackOptions<'a> {
     pub(crate) duration_seconds: Option<f64>,
     pub(crate) subtitles_media_path: Option<&'a str>,
     pub(crate) logo_fade_plan: LogoFadePlan,
+    pub(crate) playback_control: &'a PlaybackControl,
 }
 
 #[derive(Clone, Copy)]
@@ -263,22 +290,6 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         return Err(anyhow!("{label} contains no audio or video stream"));
     }
 
-    let trim_start_us = (seek_us > 0).then_some(seek_us);
-    let mut video = match video_stream {
-        Some(ref stream) => Some(VideoDecoder::new(stream, cfg, trim_start_us)?),
-        None => None,
-    };
-    let mut audio = match audio_stream {
-        Some(ref stream) => Some(AudioDecoder::new(stream, cfg, trim_start_us)?),
-        None => None,
-    };
-
-    let video_index = video_stream.as_ref().map(format::stream::Stream::index);
-    let audio_index = audio_stream.as_ref().map(format::stream::Stream::index);
-    let video_duration_us = video_stream.as_ref().and_then(stream_duration_us);
-    let mut video_finished = video.is_none();
-    let mut decoded_video_frames = 0_i64;
-    let mut decoded_audio_samples = 0_i64;
     let duration_us = options.duration_seconds.map(seconds_to_microseconds);
     let video_limit_pts = duration_us.map(|duration_us| {
         timeline.video_pts
@@ -292,6 +303,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             ) as i64
     });
 
+    let video_duration_us = video_stream.as_ref().and_then(stream_duration_us);
     let video_end_pts = video_duration_us.map(|duration_us| {
         let duration_us = duration_us.saturating_sub(seek_us);
         timeline.video_pts
@@ -300,6 +312,30 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     let logo_fade_plan = options
         .logo_fade_plan
         .with_end_pts(video_limit_pts.or(video_end_pts));
+
+    let trim_start_us = (seek_us > 0).then_some(seek_us);
+    let mut video = match video_stream {
+        Some(ref stream) => Some(VideoDecoder::new(
+            stream,
+            cfg,
+            label,
+            trim_start_us,
+            timeline.video_pts,
+            timeline.text_pts,
+            video_limit_pts.or(video_end_pts),
+        )?),
+        None => None,
+    };
+    let mut audio = match audio_stream {
+        Some(ref stream) => Some(AudioDecoder::new(stream, cfg, trim_start_us)?),
+        None => None,
+    };
+
+    let video_index = video_stream.as_ref().map(format::stream::Stream::index);
+    let audio_index = audio_stream.as_ref().map(format::stream::Stream::index);
+    let mut video_finished = video.is_none();
+    let mut decoded_video_frames = 0_i64;
+    let mut decoded_audio_samples = 0_i64;
     output.set_video_end(video_end_pts)?;
     if let Some(media_path) = options.subtitles_media_path {
         output.write_vtt_subtitles(
@@ -314,6 +350,9 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     }
 
     for (stream, packet) in ictx.packets() {
+        if options.playback_control.take_skip_current() {
+            return Err(PlaybackSkipped.into());
+        }
         if Some(stream.index()) == video_index {
             if !video_finished && let Some(video) = video.as_mut() {
                 video.decoder.send_packet(&packet)?;
@@ -324,6 +363,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
                     &mut decoded_video_frames,
                     video_limit_pts,
                     logo_fade_plan,
+                    options.playback_control,
                 )?;
             }
         } else if Some(stream.index()) == audio_index
@@ -336,6 +376,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
                 output,
                 &mut decoded_audio_samples,
                 audio_limit_pts,
+                options.playback_control,
             )?;
         }
 
@@ -355,6 +396,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         &mut video_finished,
         video_limit_pts,
         logo_fade_plan,
+        options.playback_control,
     )?;
     if let Some(audio) = audio.as_mut() {
         audio.decoder.send_eof()?;
@@ -364,6 +406,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             output,
             &mut decoded_audio_samples,
             audio_limit_pts,
+            options.playback_control,
         )?;
     }
 
@@ -403,6 +446,7 @@ fn finish_video<O: FrameOutput>(
     finished: &mut bool,
     limit_pts: Option<i64>,
     logo_fade_plan: LogoFadePlan,
+    playback_control: &PlaybackControl,
 ) -> Result<()> {
     if *finished {
         return Ok(());
@@ -417,6 +461,7 @@ fn finish_video<O: FrameOutput>(
             decoded_frames,
             limit_pts,
             logo_fade_plan,
+            playback_control,
         )?;
     }
     repeat_single_video_frame_to_limit(
@@ -426,6 +471,7 @@ fn finish_video<O: FrameOutput>(
         decoded_frames,
         limit_pts,
         logo_fade_plan,
+        playback_control,
     )?;
     output.video_finished()?;
     *finished = true;
@@ -439,6 +485,7 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
     decoded_frames: &mut i64,
     limit_pts: Option<i64>,
     logo_fade_plan: LogoFadePlan,
+    playback_control: &PlaybackControl,
 ) -> Result<()> {
     let Some(limit_pts) = limit_pts else {
         return Ok(());
@@ -460,8 +507,11 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
     );
 
     while timeline.video_pts < limit_pts {
+        if playback_control.take_skip_current() {
+            return Err(PlaybackSkipped.into());
+        }
         let mut frame = frame.clone();
-        apply_logo(&mut frame, video, timeline, logo_fade_plan);
+        apply_overlays(&mut frame, video, timeline, logo_fade_plan);
         frame.set_pts(Some(timeline.video_pts));
         video.last_composited_frame = Some(frame.clone());
         output.encode_video(&frame)?;
@@ -515,9 +565,13 @@ fn receive_video_frames<O: FrameOutput>(
     decoded_frames: &mut i64,
     limit_pts: Option<i64>,
     logo_fade_plan: LogoFadePlan,
+    playback_control: &PlaybackControl,
 ) -> Result<()> {
     let mut raw = frame::Video::empty();
     while video.decoder.receive_frame(&mut raw).is_ok() {
+        if playback_control.take_skip_current() {
+            return Err(PlaybackSkipped.into());
+        }
         if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
             return Ok(());
         }
@@ -554,13 +608,16 @@ fn receive_video_frames<O: FrameOutput>(
             None
         };
         for _ in 0..output_frames {
+            if playback_control.take_skip_current() {
+                return Err(PlaybackSkipped.into());
+            }
             if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
                 return Ok(());
             }
 
             let frame = padded.as_mut().unwrap_or(&mut scaled);
             video.last_output_frame = Some(frame.clone());
-            apply_logo(frame, video, timeline, logo_fade_plan);
+            apply_overlays(frame, video, timeline, logo_fade_plan);
             frame.set_pts(Some(timeline.video_pts));
             video.last_composited_frame = Some(frame.clone());
             output.encode_video(frame)?;
@@ -571,9 +628,9 @@ fn receive_video_frames<O: FrameOutput>(
     Ok(())
 }
 
-fn apply_logo(
+fn apply_overlays(
     frame: &mut frame::Video,
-    video: &VideoDecoder,
+    video: &mut VideoDecoder,
     timeline: &mut Timeline,
     logo_fade_plan: LogoFadePlan,
 ) {
@@ -583,6 +640,14 @@ fn apply_logo(
     if let Some(logo) = &video.logo {
         blend_logo(frame, logo, opacity);
     }
+    if let Some(text) = &mut video.text {
+        text.blend(frame, timeline.video_pts, timeline.text_pts);
+    }
+    video.update_runtime_text(timeline.video_pts, timeline.text_pts);
+    if let Some(text) = &mut video.runtime_text {
+        text.blend(frame, timeline.video_pts, timeline.text_pts);
+    }
+    timeline.text_pts += 1;
 }
 
 fn receive_audio_frames<O: FrameOutput>(
@@ -591,9 +656,13 @@ fn receive_audio_frames<O: FrameOutput>(
     output: &mut O,
     decoded_samples: &mut i64,
     limit_pts: Option<i64>,
+    playback_control: &PlaybackControl,
 ) -> Result<()> {
     let mut raw = frame::Audio::empty();
     while audio.decoder.receive_frame(&mut raw).is_ok() {
+        if playback_control.take_skip_current() {
+            return Err(PlaybackSkipped.into());
+        }
         if limit_pts.is_some_and(|limit| timeline.audio_pts >= limit) {
             return Ok(());
         }
@@ -604,6 +673,10 @@ fn receive_audio_frames<O: FrameOutput>(
             audio.trim_start_us,
         ) {
             continue;
+        }
+
+        if raw.channel_layout().is_empty() {
+            raw.set_channel_layout(audio.input_channel_layout);
         }
 
         let mut converted = frame::Audio::empty();
@@ -642,6 +715,11 @@ struct VideoDecoder {
     x_offset: u32,
     y_offset: u32,
     logo: Option<LogoOverlay>,
+    text: Option<TextOverlay>,
+    runtime_text_state: TextOverlayState,
+    runtime_text_revision: u64,
+    runtime_text: Option<TextOverlay>,
+    label: String,
     frame_rate_converter: FrameRateConverter,
     output_fps: u32,
     trim_start_us: Option<i64>,
@@ -653,7 +731,11 @@ impl VideoDecoder {
     fn new(
         stream: &format::stream::Stream,
         cfg: &OutputConfig,
+        label: &str,
         trim_start_us: Option<i64>,
+        start_pts: i64,
+        scroll_pts: i64,
+        end_pts: Option<i64>,
     ) -> Result<Self> {
         let mut ctx = codec::context::Context::from_parameters(stream.parameters())?;
         ctx.set_threading(codec::threading::Config::kind(
@@ -670,6 +752,26 @@ impl VideoDecoder {
             scale.scaled_height,
             scaling::flag::Flags::BILINEAR,
         )?;
+        let runtime_text_snapshot = cfg.text_overlay_state.snapshot_at(scroll_pts);
+        let runtime_text = runtime_text_snapshot
+            .config
+            .as_ref()
+            .map(|text| {
+                let text_start_pts = runtime_text_snapshot.start_pts.unwrap_or(scroll_pts);
+                TextOverlay::load(
+                    text,
+                    label,
+                    cfg.width,
+                    cfg.height,
+                    cfg.fps,
+                    start_pts,
+                    text_start_pts,
+                    None,
+                )
+            })
+            .transpose()?
+            .flatten();
+
         Ok(Self {
             decoder,
             scaler,
@@ -684,6 +786,20 @@ impl VideoDecoder {
                 .as_ref()
                 .map(|logo| LogoOverlay::load(logo, cfg.width, cfg.height))
                 .transpose()?,
+            text: cfg
+                .text
+                .as_ref()
+                .map(|text| {
+                    TextOverlay::load(
+                        text, label, cfg.width, cfg.height, cfg.fps, start_pts, 0, end_pts,
+                    )
+                })
+                .transpose()?
+                .flatten(),
+            runtime_text_state: cfg.text_overlay_state.clone(),
+            runtime_text_revision: runtime_text_snapshot.revision,
+            runtime_text,
+            label: label.to_string(),
             frame_rate_converter: FrameRateConverter::new(stream.time_base(), cfg.fps),
             output_fps: cfg.fps,
             trim_start_us,
@@ -697,6 +813,33 @@ impl VideoDecoder {
             || self.scaled_height != self.output_height
             || self.x_offset != 0
             || self.y_offset != 0
+    }
+
+    fn update_runtime_text(&mut self, pts: i64, scroll_pts: i64) {
+        let snapshot = self.runtime_text_state.snapshot_at(scroll_pts);
+        if snapshot.revision == self.runtime_text_revision {
+            return;
+        }
+        self.runtime_text_revision = snapshot.revision;
+        self.runtime_text = snapshot.config.and_then(|config| {
+            let text_start_pts = snapshot.start_pts.unwrap_or(scroll_pts);
+            TextOverlay::load(
+                &config,
+                &self.label,
+                self.output_width,
+                self.output_height,
+                self.output_fps,
+                pts,
+                text_start_pts,
+                None,
+            )
+            .map_err(|error| {
+                debug!("failed to render runtime text overlay: {error:#}");
+                error
+            })
+            .ok()
+            .flatten()
+        });
     }
 }
 
@@ -784,6 +927,7 @@ impl FrameRateConverter {
 struct AudioDecoder {
     decoder: codec::decoder::Audio,
     resampler: resampling::Context,
+    input_channel_layout: ChannelLayout,
     input_time_base: Rational,
     trim_start_us: Option<i64>,
 }
@@ -796,9 +940,10 @@ impl AudioDecoder {
     ) -> Result<Self> {
         let ctx = codec::context::Context::from_parameters(stream.parameters())?;
         let decoder = ctx.decoder().audio()?;
+        let channel_layout = audio_channel_layout(&decoder);
         let resampler = resampling::Context::get(
             decoder.format(),
-            decoder.channel_layout(),
+            channel_layout,
             decoder.rate(),
             Sample::F32(format::sample::Type::Planar),
             ChannelLayout::STEREO,
@@ -807,29 +952,51 @@ impl AudioDecoder {
         Ok(Self {
             decoder,
             resampler,
+            input_channel_layout: channel_layout,
             input_time_base: stream.time_base(),
             trim_start_us,
         })
     }
 }
 
+fn audio_channel_layout(decoder: &codec::decoder::Audio) -> ChannelLayout {
+    let channel_layout = decoder.channel_layout();
+    if channel_layout.is_empty() {
+        ChannelLayout::default(i32::from(decoder.channels()).max(1))
+    } else {
+        channel_layout
+    }
+}
+
 pub(crate) fn write_fallback<O: FrameOutput>(
+    label: &str,
     cfg: &OutputConfig,
     timeline: &mut Timeline,
     output: &mut O,
     duration: f64,
+    playback_control: &PlaybackControl,
 ) -> Result<()> {
     let video_end = timeline.video_pts + (duration * f64::from(cfg.fps)).ceil() as i64;
     let audio_end = timeline.audio_pts + (duration * f64::from(cfg.sample_rate)).ceil() as i64;
+    let mut overlays = FallbackOverlays::new(
+        label,
+        cfg,
+        timeline.video_pts,
+        timeline.text_pts,
+        Some(video_end),
+    )?;
 
     while timeline.video_pts < video_end || timeline.audio_pts < audio_end {
+        if playback_control.take_skip_current() {
+            return Err(PlaybackSkipped.into());
+        }
         let video_time = timeline.video_pts as f64 / f64::from(cfg.fps);
         let audio_time = timeline.audio_pts as f64 / f64::from(cfg.sample_rate);
 
         if timeline.video_pts < video_end
             && (timeline.audio_pts >= audio_end || video_time <= audio_time)
         {
-            write_black_frames(cfg, timeline, output, 1)?;
+            write_black_frames(cfg, timeline, output, 1, Some(&mut overlays))?;
         } else {
             let remaining = (audio_end - timeline.audio_pts) as usize;
             let samples = remaining.min(output.audio_frame_size().max(1));
@@ -915,14 +1082,124 @@ fn write_black_frames<O: FrameOutput>(
     timeline: &mut Timeline,
     output: &mut O,
     frames: i64,
+    mut overlays: Option<&mut FallbackOverlays>,
 ) -> Result<()> {
     for _ in 0..frames {
         let mut black = black_video_frame_for_config(cfg);
+        if let Some(overlays) = overlays.as_mut() {
+            overlays.apply(&mut black, timeline);
+        }
         black.set_pts(Some(timeline.video_pts));
         output.encode_video(&black)?;
         timeline.video_pts += 1;
     }
     Ok(())
+}
+
+struct FallbackOverlays {
+    text: Option<TextOverlay>,
+    runtime_text_state: TextOverlayState,
+    runtime_text_revision: u64,
+    runtime_text: Option<TextOverlay>,
+    label: String,
+    output_width: u32,
+    output_height: u32,
+    output_fps: u32,
+}
+
+impl FallbackOverlays {
+    fn new(
+        label: &str,
+        cfg: &OutputConfig,
+        fade_start_pts: i64,
+        scroll_pts: i64,
+        end_pts: Option<i64>,
+    ) -> Result<Self> {
+        let runtime_text_snapshot = cfg.text_overlay_state.snapshot_at(scroll_pts);
+        let runtime_text = runtime_text_snapshot
+            .config
+            .as_ref()
+            .map(|text| {
+                let text_start_pts = runtime_text_snapshot.start_pts.unwrap_or(scroll_pts);
+                TextOverlay::load(
+                    text,
+                    label,
+                    cfg.width,
+                    cfg.height,
+                    cfg.fps,
+                    fade_start_pts,
+                    text_start_pts,
+                    None,
+                )
+            })
+            .transpose()?
+            .flatten();
+
+        Ok(Self {
+            text: cfg
+                .text
+                .as_ref()
+                .map(|text| {
+                    TextOverlay::load(
+                        text,
+                        label,
+                        cfg.width,
+                        cfg.height,
+                        cfg.fps,
+                        fade_start_pts,
+                        0,
+                        end_pts,
+                    )
+                })
+                .transpose()?
+                .flatten(),
+            runtime_text_state: cfg.text_overlay_state.clone(),
+            runtime_text_revision: runtime_text_snapshot.revision,
+            runtime_text,
+            label: label.to_string(),
+            output_width: cfg.width,
+            output_height: cfg.height,
+            output_fps: cfg.fps,
+        })
+    }
+
+    fn apply(&mut self, frame: &mut frame::Video, timeline: &mut Timeline) {
+        if let Some(text) = &mut self.text {
+            text.blend(frame, timeline.video_pts, timeline.text_pts);
+        }
+        self.update_runtime_text(timeline.video_pts, timeline.text_pts);
+        if let Some(text) = &mut self.runtime_text {
+            text.blend(frame, timeline.video_pts, timeline.text_pts);
+        }
+        timeline.text_pts += 1;
+    }
+
+    fn update_runtime_text(&mut self, pts: i64, scroll_pts: i64) {
+        let snapshot = self.runtime_text_state.snapshot_at(scroll_pts);
+        if snapshot.revision == self.runtime_text_revision {
+            return;
+        }
+        self.runtime_text_revision = snapshot.revision;
+        self.runtime_text = snapshot.config.and_then(|config| {
+            let text_start_pts = snapshot.start_pts.unwrap_or(scroll_pts);
+            TextOverlay::load(
+                &config,
+                &self.label,
+                self.output_width,
+                self.output_height,
+                self.output_fps,
+                pts,
+                text_start_pts,
+                None,
+            )
+            .map_err(|error| {
+                debug!("failed to render fallback runtime text overlay: {error:#}");
+                error
+            })
+            .ok()
+            .flatten()
+        });
+    }
 }
 
 fn write_padding_video_frames<O: FrameOutput>(
@@ -941,7 +1218,7 @@ fn write_padding_video_frames<O: FrameOutput>(
         }
         Ok(())
     } else {
-        write_black_frames(cfg, timeline, output, frames)
+        write_black_frames(cfg, timeline, output, frames, None)
     }
 }
 

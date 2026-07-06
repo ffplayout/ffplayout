@@ -91,6 +91,11 @@ pub async fn get_program(
             before.format("%Y-%m-%d")
         ],
     );
+    let filename_regex = config
+        .text
+        .preset
+        .as_ref()
+        .and_then(|preset| Regex::new(&preset.filename_regex).ok());
 
     for date in date_range {
         let mut naive = NaiveDateTime::parse_from_str(
@@ -110,9 +115,9 @@ pub async fn get_program(
         for item in playlist.program {
             let start: DateTime<Local> = Local.from_local_datetime(&naive).unwrap();
 
-            let source = match Regex::new(&config.text.regex)
-                .ok()
-                .and_then(|r| r.captures(&item.source))
+            let source = match filename_regex
+                .as_ref()
+                .and_then(|regex| regex.captures(&item.source))
             {
                 Some(t) => t[1].to_string(),
                 None => item.source,

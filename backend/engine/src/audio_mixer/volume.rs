@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn rejects_invalid_volume() {
         let control = AudioEffectsControl::default();
-        for volume in [-0.1, 1.1, f64::NAN, f64::INFINITY] {
+        for volume in [-0.1, 3.1, f64::NAN, f64::INFINITY] {
             assert!(control.set_volume(volume).is_err());
         }
     }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import GenericModal from '@/components/utils/GenericModal.vue'
@@ -27,6 +27,17 @@ const videoPresets = [
     'veryslow',
     'placebo',
 ]
+const textPresets = ref<TextPreset[]>([])
+
+async function loadTextPresets() {
+    const channelId = configStore.channels[configStore.i]?.id
+    if (!channelId) return
+    const response = await fetch(`/api/presets/${channelId}`, { headers: authStore.authHeader })
+    textPresets.value = response.ok ? await response.json() : []
+}
+
+onMounted(loadTextPresets)
+watch(() => configStore.i, loadTextPresets)
 
 const extensions = computed({
     get() {
@@ -503,57 +514,18 @@ async function onSubmitPlayout() {
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.text') }}:</div>
             <div class="md:pt-4">
-                <label class="form-control mb-2">
-                    <div class="whitespace-pre-line">
-                        {{ t('config.textHelp') }}
-                    </div>
-                </label>
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
-                        <input v-model="configStore.playout.text.add_text" type="checkbox" class="checkbox" />
-                        Add Text
-                    </label>
-                </fieldset>
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Font</legend>
-                    <input
-                        v-model="configStore.playout.text.font"
-                        type="text"
-                        name="font"
-                        class="input input-sm w-full max-w-lg"
-                    />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.textFont') }}</span>
-                    </div>
-                </fieldset>
-
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
-                        <input v-model="configStore.playout.text.text_from_filename" type="checkbox" class="checkbox" />
-                        Text from File
-                    </label>
-                    <p class="fieldset-label items-baseline">{{ t('config.textFromFile') }}</p>
-                </fieldset>
-
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Style</legend>
-                    <input
-                        v-model="configStore.playout.text.style"
-                        type="text"
-                        name="style"
-                        class="input input-sm w-full truncate"
-                    />
-                    <p class="fieldset-label items-baseline">{{ t('config.textStyle') }}</p>
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Regex</legend>
-                    <input
-                        v-model="configStore.playout.text.regex"
-                        type="text"
-                        name="regex"
-                        class="input input-sm w-full max-w-lg"
-                    />
-                    <p class="fieldset-label items-baseline">{{ t('config.textRegex') }}</p>
+                    <legend class="fieldset-legend">Automatic filename overlay</legend>
+                    <select v-model="configStore.playout.text.preset_id" class="select select-sm w-full max-w-lg">
+                        <option :value="null">Disabled</option>
+                        <option
+                            v-for="preset in textPresets.filter((item) => item.use_filename)"
+                            :key="preset.id"
+                            :value="preset.id"
+                        >
+                            {{ preset.name }}
+                        </option>
+                    </select>
                 </fieldset>
             </div>
 

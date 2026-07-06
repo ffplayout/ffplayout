@@ -17,7 +17,7 @@ use crate::{
     ARGS,
     db::{handles, models},
     file::norm_abs_path,
-    utils::{errors::ServiceError, gen_tcp_socket, time_to_sec},
+    utils::{errors::ServiceError, time_to_sec},
 };
 
 pub const DUMMY_LEN: f64 = 60.0;
@@ -457,38 +457,17 @@ impl Storage {
 #[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Text {
-    pub add_text: bool,
+    pub preset_id: Option<i32>,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
-    pub node_pos: Option<usize>,
-    #[ts(skip)]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub zmq_stream_socket: Option<String>,
-    #[ts(skip)]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub zmq_server_socket: Option<String>,
-    #[serde(alias = "fontfile")]
-    pub font: String,
-    #[ts(skip)]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub font_path: String,
-    pub text_from_filename: bool,
-    pub style: String,
-    pub regex: String,
+    pub preset: Option<models::TextPreset>,
 }
 
 impl Text {
-    fn new(config: &models::Configuration) -> Self {
+    fn new(config: &models::Configuration, preset: Option<models::TextPreset>) -> Self {
         Self {
-            add_text: config.text_add,
-            node_pos: None,
-            zmq_stream_socket: None,
-            zmq_server_socket: None,
-            font: config.text_font.clone(),
-            font_path: config.text_font.clone(),
-            text_from_filename: config.text_from_filename,
-            style: config.text_style.clone(),
-            regex: config.text_regex.clone(),
+            preset_id: config.text_preset_id,
+            preset,
         }
     }
 }
@@ -783,13 +762,17 @@ impl PlayoutConfig {
         }
 
         let channel = Channel::new(&global, channel);
+        let text_preset = match config.text_preset_id {
+            Some(id) => Some(handles::select_preset(pool, channel_id, id).await?),
+            None => None,
+        };
         let general = General::new(&config);
         let mail = Mail::new(&global, &config);
         let logging = Logging::new(&config);
         let mut processing = Processing::new(&config);
         let ingest = Ingest::new(&config);
         let mut playlist = Playlist::new(&config);
-        let mut text = Text::new(&config);
+        let text = Text::new(&config, text_preset);
         let task = Task::new(&config);
         let output = Output::new(&config, outputs);
         let mut storage = Storage::new(&config, channel.storage.clone(), channel.shared);
@@ -823,23 +806,6 @@ impl PlayoutConfig {
 
         processing.logo = logo;
         processing.logo_path = logo_path.to_string_lossy().to_string();
-
-        // when text overlay without text_from_filename is on, turn also the RPC server on,
-        // to get text messages from it
-        if text.add_text && !text.text_from_filename {
-            text.zmq_stream_socket = gen_tcp_socket("").await;
-            text.zmq_server_socket =
-                gen_tcp_socket(&text.zmq_stream_socket.clone().unwrap_or_default()).await;
-            text.node_pos = Some(2);
-        } else {
-            text.zmq_stream_socket = None;
-            text.zmq_server_socket = None;
-            text.node_pos = None;
-        }
-
-        let (font_path, _, font) = norm_abs_path(&channel.storage, &text.font)?;
-        text.font = font;
-        text.font_path = font_path.to_string_lossy().to_string();
 
         Ok(Self {
             channel,

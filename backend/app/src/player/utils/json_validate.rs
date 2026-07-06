@@ -126,7 +126,7 @@ async fn check_vtt(source: &str, duration: f64, channel_id: i32) -> Result<(), P
 ///
 /// This function we run in a thread, to don't block the main function.
 pub async fn validate_playlist(
-    mut config: PlayoutConfig,
+    config: PlayoutConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     mut playlist: JsonPlaylist,
     is_alive: Arc<AtomicBool>,
@@ -134,11 +134,6 @@ pub async fn validate_playlist(
 ) {
     let id = config.general.channel_id;
     let date = playlist.date;
-
-    if config.text.add_text && !config.text.text_from_filename {
-        // Turn of drawtext filter with zmq, because its port is needed by the decoder instance.
-        config.text.add_text = false;
-    }
 
     let mut length = config.playlist.length_sec.unwrap();
     let mut begin = config.playlist.start_sec.unwrap();

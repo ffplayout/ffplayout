@@ -2,10 +2,7 @@ use std::{error::Error, fmt, str::FromStr};
 
 use chrono_tz::Tz;
 use regex::Regex;
-use serde::{
-    Deserialize, Serialize,
-    de::{self, Visitor},
-};
+use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Pool, Row, Sqlite, sqlite::SqliteRow};
 
 use crate::{
@@ -226,6 +223,7 @@ impl FromRow<'_, SqliteRow> for Role {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, sqlx::FromRow)]
+#[serde(default)]
 pub struct TextPreset {
     #[sqlx(default)]
     #[serde(skip_deserializing)]
@@ -233,55 +231,109 @@ pub struct TextPreset {
     pub channel_id: i32,
     pub name: String,
     pub text: String,
-    pub x: String,
-    pub y: String,
-    #[serde(deserialize_with = "deserialize_number_or_string")]
-    pub fontsize: String,
-    #[serde(deserialize_with = "deserialize_number_or_string")]
-    pub line_spacing: String,
-    pub fontcolor: String,
-    pub r#box: String,
-    pub boxcolor: String,
-    #[serde(deserialize_with = "deserialize_number_or_string")]
-    pub boxborderw: String,
-    #[serde(deserialize_with = "deserialize_number_or_string")]
-    pub alpha: String,
+    pub use_filename: bool,
+    pub font_family: String,
+    pub font_weight: String,
+    pub filename_regex: String,
+    pub position_x: String,
+    pub position_y: String,
+    pub font_size: f32,
+    pub line_spacing: f32,
+    pub text_color: String,
+    pub text_opacity: f64,
+    pub background_enabled: bool,
+    pub background_color: String,
+    pub background_opacity: f64,
+    pub background_padding: u32,
+    pub opacity: f64,
+    pub scroll_direction: String,
+    pub scroll_speed: u32,
+    pub scroll_repeat: i32,
+    pub fade_in_seconds: f64,
+    pub fade_out_seconds: f64,
 }
 
-/// Deserialize number or string
-pub fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    struct StringOrNumberVisitor;
-
-    impl Visitor<'_> for StringOrNumberVisitor {
-        type Value = String;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("a string or a number")
-        }
-
-        fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
-            let re = Regex::new(r"0,([0-9]+)").unwrap();
-            let clean_string = re.replace_all(value, "0.$1").to_string();
-            Ok(clean_string)
-        }
-
-        fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
-            Ok(value.to_string())
-        }
-
-        fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
-            Ok(value.to_string())
-        }
-
-        fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
-            Ok(value.to_string())
+impl Default for TextPreset {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            channel_id: 1,
+            name: String::new(),
+            text: String::new(),
+            use_filename: false,
+            font_family: "DejaVu Sans".to_string(),
+            font_weight: "normal".to_string(),
+            filename_regex: r"^.+[/\\](.*)(.mp4|.mkv|.webm)$".to_string(),
+            position_x: "center".to_string(),
+            position_y: "end:72".to_string(),
+            font_size: 24.0,
+            line_spacing: 4.0,
+            text_color: "#ffffff".to_string(),
+            text_opacity: 1.0,
+            background_enabled: false,
+            background_color: "#000000".to_string(),
+            background_opacity: 0.8,
+            background_padding: 4,
+            opacity: 1.0,
+            scroll_direction: "none".to_string(),
+            scroll_speed: 100,
+            scroll_repeat: -1,
+            fade_in_seconds: 0.0,
+            fade_out_seconds: 0.0,
         }
     }
+}
 
-    deserializer.deserialize_any(StringOrNumberVisitor)
+impl TextPreset {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.name.trim().is_empty() {
+            return Err("text preset name must not be empty".to_string());
+        }
+        if !self.font_size.is_finite() || self.font_size <= 0.0 {
+            return Err("text font size must be a positive number".to_string());
+        }
+        if self.font_family.trim().is_empty() {
+            return Err("text font family must not be empty".to_string());
+        }
+        if !matches!(self.font_weight.as_str(), "normal" | "semibold" | "bold") {
+            return Err("invalid text font weight".to_string());
+        }
+        if !self.line_spacing.is_finite() || self.line_spacing < 0.0 {
+            return Err("text line spacing must not be negative".to_string());
+        }
+        for (name, value) in [
+            ("text opacity", self.text_opacity),
+            ("background opacity", self.background_opacity),
+            ("opacity", self.opacity),
+        ] {
+            if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                return Err(format!("{name} must be between 0 and 1"));
+            }
+        }
+        if !self.fade_in_seconds.is_finite() || self.fade_in_seconds < 0.0 {
+            return Err("fade-in duration must not be negative".to_string());
+        }
+        if !self.fade_out_seconds.is_finite() || self.fade_out_seconds < 0.0 {
+            return Err("fade-out duration must not be negative".to_string());
+        }
+        if !matches!(
+            self.scroll_direction.as_str(),
+            "none" | "left_to_right" | "right_to_left"
+        ) {
+            return Err("invalid text scroll direction".to_string());
+        }
+        if self.scroll_direction != "none" && self.scroll_speed == 0 {
+            return Err("text scroll speed must be greater than zero".to_string());
+        }
+        if self.scroll_repeat < -1 {
+            return Err("text scroll repeat must be -1 or greater".to_string());
+        }
+        if self.use_filename {
+            Regex::new(&self.filename_regex)
+                .map_err(|error| format!("invalid filename regex: {error}"))?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, sqlx::FromRow)]
@@ -330,11 +382,7 @@ pub struct Configuration {
     pub storage_extensions: String,
     pub storage_shuffle: bool,
 
-    pub text_add: bool,
-    pub text_from_filename: bool,
-    pub text_font: String,
-    pub text_style: String,
-    pub text_regex: String,
+    pub text_preset_id: Option<i32>,
 
     pub task_enable: bool,
     pub task_path: String,
@@ -376,11 +424,7 @@ impl Configuration {
             storage_filler: config.storage.filler,
             storage_extensions: config.storage.extensions.join(";"),
             storage_shuffle: config.storage.shuffle,
-            text_add: config.text.add_text,
-            text_font: config.text.font,
-            text_from_filename: config.text.text_from_filename,
-            text_style: config.text.style,
-            text_regex: config.text.regex,
+            text_preset_id: config.text.preset_id,
             task_enable: config.task.enable,
             task_path: config.task.path.to_string_lossy().to_string(),
             output_id: config.output.id,
