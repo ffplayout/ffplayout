@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque, hash_map},
-    env,
+    env, fmt,
     io::{self, Write},
     path::PathBuf,
     sync::{Arc, RwLock},
@@ -43,19 +43,21 @@ use crate::{
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.6f%:z";
 
 #[derive(Debug)]
-pub struct Target;
+pub enum Target {
+    Console,
+}
 
 impl Target {
-    pub fn all() -> &'static str {
-        if ARGS.log_to_console {
-            "{_Default}"
-        } else {
-            "{file,mail,_Default}"
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Console => "{console}",
         }
     }
+}
 
-    pub fn file_mail() -> &'static str {
-        "{file,mail}"
+impl fmt::Display for Target {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
     }
 }
 
@@ -199,6 +201,38 @@ impl LogWriter for LogMailer {
     }
     fn flush(&self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+pub struct LogDefault {
+    file: Box<dyn LogWriter>,
+    mail: LogMailer,
+}
+
+impl LogDefault {
+    pub fn new(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> Self {
+        let file: Box<dyn LogWriter> = if ARGS.log_to_console {
+            Box::new(LogConsole)
+        } else {
+            Box::new(MultiFileLogger::new(log_file_path()))
+        };
+
+        Self {
+            file,
+            mail: LogMailer::new(mail_queues),
+        }
+    }
+}
+
+impl LogWriter for LogDefault {
+    fn write(&self, now: &mut DeferredNow, record: &Record<'_>) -> std::io::Result<()> {
+        self.file.write(now, record)?;
+        self.mail.write(now, record)
+    }
+
+    fn flush(&self) -> std::io::Result<()> {
+        self.file.flush()?;
+        self.mail.flush()
     }
 }
 
@@ -362,19 +396,10 @@ pub fn log_file_path() -> PathBuf {
     log_path
 }
 
-fn file_logger() -> Box<dyn LogWriter> {
-    if ARGS.log_to_console {
-        Box::new(LogConsole)
-    } else {
-        Box::new(MultiFileLogger::new(log_file_path()))
-    }
-}
-
 /// Initialize our logging, to have:
 ///
-/// - console logger
-/// - file logger
-/// - mail logger
+/// - default file and mail logger
+/// - explicit console logger
 pub fn init_logging(
     mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> io::Result<flexi_logger::LoggerHandle> {
@@ -409,9 +434,8 @@ pub fn init_logging(
 
     let logger = Logger::with(builder.build())
         .write_mode(WriteMode::Async)
-        .log_to_writer(Box::new(LogConsole))
-        .add_writer("file", file_logger())
-        .add_writer("mail", Box::new(LogMailer::new(mail_queues)))
+        .log_to_writer(Box::new(LogDefault::new(mail_queues)))
+        .add_writer("console", Box::new(LogConsole))
         .start()
         .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -421,12 +445,12 @@ pub fn init_logging(
 /// Format ingest and HLS logging output
 pub fn log_line(id: i32, line: &str, level: &str) {
     if line.contains("[info]") && level.to_lowercase() == "info" {
-        info!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[info] ", ""));
+        info!(channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[info] ", ""));
     } else if line.contains("[warning]")
         && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
     {
         warn!(
-            target: Target::file_mail(), channel = id;
+            channel = id;
             "<span class=\"log-gray\">[Server]</span> {}",
             line.replace("[warning] ", "")
         );
@@ -434,9 +458,9 @@ pub fn log_line(id: i32, line: &str, level: &str) {
         && !line.contains("Input/output error")
         && !line.contains("Broken pipe")
     {
-        error!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[error] ", ""));
+        error!(channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[error] ", ""));
     } else if line.contains("[fatal]") {
-        error!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[fatal] ", ""));
+        error!(channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[fatal] ", ""));
     }
 }
 
@@ -533,17 +557,17 @@ impl LogDedup {
 
 pub fn stderr_log(line: &str, suffix: ProcessUnit, channel_id: i32) -> Result<(), ServiceError> {
     if line.contains("[info]") {
-        info!(target: Target::file_mail(), channel = channel_id;
+        info!(channel = channel_id;
             "<span class=\"log-gray\">[{suffix}]</span> {}",
             line.replace("[info] ", "")
         );
     } else if line.contains("[warning]") {
-        warn!(target: Target::file_mail(), channel = channel_id;
+        warn!(channel = channel_id;
             "<span class=\"log-gray\">[{suffix}]</span> {}",
             line.replace("[warning] ", "")
         );
     } else if line.contains("[error]") || line.contains("[fatal]") {
-        error!(target: Target::file_mail(), channel = channel_id;
+        error!(channel = channel_id;
             "<span class=\"log-gray\">[{suffix}]</span> {}",
             line.replace("[error] ", "").replace("[fatal] ", "")
         );
@@ -559,7 +583,7 @@ pub fn stderr_log(line: &str, suffix: ProcessUnit, channel_id: i32) -> Result<()
             ));
         }
     } else {
-        warn!(target: Target::file_mail(), channel = channel_id;
+        warn!(channel = channel_id;
             "<span class=\"log-gray\">[{suffix}]</span> {line}"
         );
     }

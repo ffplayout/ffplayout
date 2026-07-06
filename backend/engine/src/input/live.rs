@@ -577,7 +577,7 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
     loop {
         let abort = Arc::new(AtomicBool::new(false));
 
-        match open_rtmp_listener(&url, Arc::clone(&abort)) {
+        match logging::with_ingest_logs(|| open_rtmp_listener(&url, Arc::clone(&abort))) {
             Ok(ictx) => {
                 session_id += 1;
                 let last_frame_ms = Arc::new(AtomicU64::new(monotonic_millis()));
@@ -607,19 +607,21 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
                 let worker = thread::spawn(move || {
                     let mut timeline = Timeline::new();
                     let logo_fade_plan = LogoFadePlan::none(timeline.video_pts(), &worker_cfg);
-                    let result = play_opened_input(
-                        &worker_url,
-                        ictx,
-                        &worker_cfg,
-                        &mut timeline,
-                        &mut output,
-                        InputPlaybackOptions {
-                            seek_seconds: None,
-                            duration_seconds: None,
-                            subtitles_media_path: None,
-                            logo_fade_plan,
-                        },
-                    );
+                    let result = logging::with_ingest_logs(|| {
+                        play_opened_input(
+                            &worker_url,
+                            ictx,
+                            &worker_cfg,
+                            &mut timeline,
+                            &mut output,
+                            InputPlaybackOptions {
+                                seek_seconds: None,
+                                duration_seconds: None,
+                                subtitles_media_path: None,
+                                logo_fade_plan,
+                            },
+                        )
+                    });
                     let _ = done_tx.send(result.map_err(|error| format!("{error:#}")));
                 });
 

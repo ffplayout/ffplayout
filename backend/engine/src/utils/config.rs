@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use ffmpeg_next::Rational;
+use ffmpeg_next::{Rational, util::log::Level as FfmpegLevel};
 
 use crate::AudioEffectsControl;
 
@@ -142,6 +142,23 @@ mod hls_subtitle_tests {
     }
 }
 
+#[cfg(test)]
+mod log_level_tests {
+    use super::LogLevel;
+
+    #[test]
+    fn parses_ui_log_levels() {
+        assert_eq!("INFO".parse::<LogLevel>(), Ok(LogLevel::Info));
+        assert_eq!("WARNING".parse::<LogLevel>(), Ok(LogLevel::Warning));
+        assert_eq!("ERROR".parse::<LogLevel>(), Ok(LogLevel::Error));
+    }
+
+    #[test]
+    fn rejects_unknown_log_levels() {
+        assert!("everything".parse::<LogLevel>().is_err());
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct OutputConfig {
     pub width: u32,
@@ -157,12 +174,68 @@ pub struct OutputConfig {
     pub video_quality: u8,
     pub video_maxrate: u64,
     pub audio_bitrate: u64,
+    pub ffmpeg_log_level: LogLevel,
+    pub ingest_log_level: LogLevel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RateControl {
     Crf,
     Cbr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Quiet,
+    Panic,
+    Fatal,
+    Error,
+    Warning,
+    Info,
+    Verbose,
+    Debug,
+    Trace,
+}
+
+impl LogLevel {
+    pub(crate) fn as_ffmpeg_level(self) -> FfmpegLevel {
+        match self {
+            Self::Quiet => FfmpegLevel::Quiet,
+            Self::Panic => FfmpegLevel::Panic,
+            Self::Fatal => FfmpegLevel::Fatal,
+            Self::Error => FfmpegLevel::Error,
+            Self::Warning => FfmpegLevel::Warning,
+            Self::Info => FfmpegLevel::Info,
+            Self::Verbose => FfmpegLevel::Verbose,
+            Self::Debug => FfmpegLevel::Debug,
+            Self::Trace => FfmpegLevel::Trace,
+        }
+    }
+}
+
+impl Default for LogLevel {
+    fn default() -> Self {
+        Self::Warning
+    }
+}
+
+impl FromStr for LogLevel {
+    type Err = String;
+
+    fn from_str(level: &str) -> Result<Self, Self::Err> {
+        match level.to_ascii_lowercase().as_str() {
+            "quiet" | "off" => Ok(Self::Quiet),
+            "panic" => Ok(Self::Panic),
+            "fatal" => Ok(Self::Fatal),
+            "error" => Ok(Self::Error),
+            "warn" | "warning" => Ok(Self::Warning),
+            "info" => Ok(Self::Info),
+            "verbose" => Ok(Self::Verbose),
+            "debug" => Ok(Self::Debug),
+            "trace" => Ok(Self::Trace),
+            _ => Err(format!("unsupported log level {level:?}")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -189,6 +262,8 @@ impl OutputConfig {
             video_quality: 23,
             video_maxrate: 2_400_000,
             audio_bitrate: 128_000,
+            ffmpeg_log_level: LogLevel::Warning,
+            ingest_log_level: LogLevel::Warning,
         }
     }
 
@@ -220,6 +295,12 @@ impl OutputConfig {
         self.video_quality = quality;
         self.video_maxrate = maxrate;
         self.audio_bitrate = audio_bitrate;
+        self
+    }
+
+    pub fn with_logging(mut self, ffmpeg_log_level: LogLevel, ingest_log_level: LogLevel) -> Self {
+        self.ffmpeg_log_level = ffmpeg_log_level;
+        self.ingest_log_level = ingest_log_level;
         self
     }
 }

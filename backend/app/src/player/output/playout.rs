@@ -6,7 +6,7 @@ use std::{
 };
 
 use ff_engine::{
-    AsyncPlayout, ClipResult, LogoConfig, LogoFade, OutputConfig, RateControl,
+    AsyncPlayout, ClipResult, LogLevel, LogoConfig, LogoFade, OutputConfig, RateControl,
     resolved_variant_playlist_path,
 };
 use log::*;
@@ -269,12 +269,17 @@ async fn open_playout(
                 .processing
                 .hls_subtitle()
                 .map_err(ServiceError::Conflict)?;
+            let hls_muxer_streams = if hls_subtitle.is_some() || hls_streams.len() > 1 {
+                hls_streams
+            } else {
+                Vec::new()
+            };
 
             AsyncPlayout::open_hls(
                 hls_playlist_path(config)?.to_string_lossy().to_string(),
                 output_config,
                 fallback_duration,
-                hls_streams,
+                hls_muxer_streams,
                 hls_subtitle,
                 config.output.hls_segment_duration,
                 config.output.hls_list_size,
@@ -343,9 +348,21 @@ fn engine_output_config(
     } else {
         RateControl::Cbr
     };
+    let ffmpeg_log_level = config
+        .logging
+        .ffmpeg_level
+        .parse::<LogLevel>()
+        .map_err(ServiceError::Conflict)?;
+    let ingest_log_level = config
+        .logging
+        .ingest_level
+        .parse::<LogLevel>()
+        .map_err(ServiceError::Conflict)?;
+
     Ok(OutputConfig::new(width, height, fps, 48_000)
         .with_audio_effects(audio_effects)
         .with_logo(logo)
+        .with_logging(ffmpeg_log_level, ingest_log_level)
         .with_encoding(
             config.output.video_preset.clone(),
             rate_control,
@@ -446,8 +463,9 @@ fn hls_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
     Ok(path)
 }
 
-/// Resolves the actual playlist file the watchdog should observe. When
-/// The base output is always the first HLS rendition. The muxer substitutes
+/// Resolves the actual playlist file the watchdog should observe. For a
+/// standalone HLS output this is the configured playlist path. With a master
+/// playlist, the base output is the first rendition and the muxer substitutes
 /// its name into the `%v` playlist pattern.
 fn watchdog_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
     let base_path = hls_playlist_path(config)?;

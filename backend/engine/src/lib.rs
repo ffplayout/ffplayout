@@ -22,7 +22,9 @@ use output::{FrameOutput, Output, PlaybackStopped};
 use playout::{Timeline, play_clip, write_fallback};
 pub use utils::{
     clock,
-    config::{HlsSubtitle, HlsVariant, LogoConfig, OutputConfig, OutputSize, RateControl},
+    config::{
+        HlsSubtitle, HlsVariant, LogLevel, LogoConfig, OutputConfig, OutputSize, RateControl,
+    },
     logging,
     media_info::{
         AudioStream as EngineAudioStream, MediaInfo, MediaProbe as EngineMediaProbe, ProbeFormat,
@@ -361,7 +363,7 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
 impl Playout {
     pub fn open(output_url: &str, config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
-        init_ffmpeg()?;
+        init_ffmpeg(&config)?;
         let output = Output::open(output_url, &config)?;
 
         Ok(Self::with_output(config, output, fallback_duration))
@@ -370,7 +372,7 @@ impl Playout {
     #[cfg(feature = "desktop")]
     pub fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
-        init_ffmpeg()?;
+        init_ffmpeg(&config)?;
         let output = Output::open_desktop(&config)?;
 
         Ok(Self::with_output(config, output, fallback_duration))
@@ -386,7 +388,7 @@ impl Playout {
         hls_list_size: u32,
     ) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
-        init_ffmpeg()?;
+        init_ffmpeg(&config)?;
         let output = Output::open_hls(
             playlist,
             &config,
@@ -581,9 +583,9 @@ impl Playout {
     }
 }
 
-fn init_ffmpeg() -> Result<()> {
+fn init_ffmpeg(config: &OutputConfig) -> Result<()> {
     ffmpeg_next::init().context("failed to initialize FFmpeg")?;
-    logging::init();
+    logging::init(config.ffmpeg_log_level, config.ingest_log_level);
     Ok(())
 }
 

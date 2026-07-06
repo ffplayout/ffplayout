@@ -640,9 +640,8 @@ impl Output {
             .collect()
     }
 
-    /// Returns no explicit variants for a standalone base output. Once
-    /// additional variants are configured, the base output is prepended so
-    /// all renditions are included in the master playlist.
+    /// Returns all HLS renditions, with the configured base output first and
+    /// additional variants appended.
     pub fn hls_streams(&self) -> Result<Vec<ff_engine::HlsVariant>, String> {
         let base = ff_engine::HlsVariant {
             name: self.hls_playlist_name.trim().to_string(),
@@ -662,11 +661,6 @@ impl Output {
             if !names.insert(stream.name.as_str()) {
                 return Err(format!("duplicate HLS stream name {:?}", stream.name));
             }
-        }
-
-        // TODO: we need one stream at least
-        if additional.is_empty() {
-            return Ok(Vec::new());
         }
 
         let mut streams = Vec::with_capacity(additional.len() + 1);
@@ -1059,9 +1053,13 @@ mod output_tests {
     }
 
     #[test]
-    fn standalone_hls_output_uses_no_explicit_variants() {
+    fn standalone_hls_output_uses_base_stream() {
         let output = output(OutputMode::HLS);
-        assert!(output.hls_streams().unwrap().is_empty());
+        let streams = output.hls_streams().unwrap();
+
+        assert_eq!(streams.len(), 1);
+        assert_eq!(streams[0].name, "stream");
+        assert_eq!(streams[0].width, 1280);
     }
 
     #[test]
