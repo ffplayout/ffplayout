@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     player::utils::{Media, include_file_extension},
-    utils::{config::PlayoutConfig, logging::Target},
+    utils::config::PlayoutConfig,
 };
 
 /// Create a watcher, which monitor file changes.
@@ -34,11 +34,11 @@ pub async fn watch(
     let path = Path::new(&config.channel.storage);
 
     if !path.exists() {
-        error!(target: Target::file_mail(), channel = id; "Folder path not exists: '{path:?}'");
+        error!(channel = id; "Folder path not exists: '{path:?}'");
         panic!("Folder path not exists: '{path:?}'");
     }
 
-    debug!(target: Target::file_mail(), channel = id;
+    debug!(channel = id;
         "Monitor folder: <span class=\"log-addr\">{:?}</span>",
         config.channel.storage
     );
@@ -63,7 +63,7 @@ pub async fn watch(
                                         Media::new(index, &new_path.to_string_lossy(), false).await;
 
                                     sources.lock().await.push(media);
-                                    info!(target: Target::file_mail(), channel = id; "Create new file: <span class=\"log-addr\">{new_path:?}</span>");
+                                    info!(channel = id; "Create new file: <span class=\"log-addr\">{new_path:?}</span>");
                                 }
                             }
                             Remove(RemoveKind::File)
@@ -76,7 +76,7 @@ pub async fn watch(
                                         .lock()
                                         .await
                                         .retain(|x| x.source != old_path.to_string_lossy());
-                                    info!(target: Target::file_mail(), channel = id; "Remove file: <span class=\"log-addr\">{old_path:?}</span>");
+                                    info!(channel = id; "Remove file: <span class=\"log-addr\">{old_path:?}</span>");
                                 }
                             }
                             Modify(ModifyKind::Name(RenameMode::Both)) => {
@@ -92,14 +92,14 @@ pub async fn watch(
                                     let media =
                                         Media::new(index, &new_path.to_string_lossy(), false).await;
                                     media_list[index] = media;
-                                    info!(target: Target::file_mail(), channel = id; "Move file: <span class=\"log-addr\">{old_path:?}</span> to <span class=\"log-addr\">{new_path:?}</span>");
+                                    info!(channel = id; "Move file: <span class=\"log-addr\">{old_path:?}</span> to <span class=\"log-addr\">{new_path:?}</span>");
                                 } else if include_file_extension(&config, new_path) {
                                     let index = media_list.len();
                                     let media =
                                         Media::new(index, &new_path.to_string_lossy(), false).await;
 
                                     media_list.push(media);
-                                    info!(target: Target::file_mail(), channel = id; "Create new file: <span class=\"log-addr\">{new_path:?}</span>");
+                                    info!(channel = id; "Create new file: <span class=\"log-addr\">{new_path:?}</span>");
                                 }
                             }
                             _ => {
@@ -108,9 +108,9 @@ pub async fn watch(
                         }
                     }
                 }
-                Err(errors) => errors.iter().for_each(
-                    |error| error!(target: Target::file_mail(), channel = id; "{error:?}"),
-                ),
+                Err(errors) => errors
+                    .iter()
+                    .for_each(|error| error!(channel = id; "{error:?}")),
             }
         }
 

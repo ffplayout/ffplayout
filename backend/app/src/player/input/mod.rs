@@ -7,7 +7,7 @@ pub use playlist::CurrentProgram;
 
 use crate::{
     player::{controller::ChannelManager, input::folder::FolderSource, utils::Media},
-    utils::{config::ProcessMode::*, logging::Target},
+    utils::config::ProcessMode::*,
 };
 
 pub enum SourceIterator {
@@ -33,7 +33,7 @@ pub async fn source_generator(manager: ChannelManager) -> SourceIterator {
 
     match config.processing.mode {
         Folder => {
-            info!(target: Target::file_mail(), channel = id; "Playout in folder mode");
+            info!(channel = id; "Playout in folder mode");
             let config_clone = config.clone();
 
             manager
@@ -46,7 +46,7 @@ pub async fn source_generator(manager: ChannelManager) -> SourceIterator {
             SourceIterator::Folder(Box::new(folder_source.await))
         }
         Playlist => {
-            info!(target: Target::file_mail(), channel = id; "Playout in playlist mode");
+            info!(channel = id; "Playout in playlist mode");
             let program = CurrentProgram::new(manager);
 
             SourceIterator::Playlist(Box::new(program.await))

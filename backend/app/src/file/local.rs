@@ -28,7 +28,7 @@ use crate::file::{
     watcher::watch,
 };
 use crate::player::utils::{Media, file_extension, include_file_extension, probe_media};
-use crate::utils::{config::PlayoutConfig, errors::ServiceError, logging::Target};
+use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 
 #[derive(Clone, Debug)]
 pub struct LocalStorage {
@@ -363,7 +363,7 @@ impl LocalStorage {
                     if fillers.is_none()
                         && let Err(e) = media.add_probe(false).await
                     {
-                        error!(target: Target::file_mail(), channel = id; "{e:?}");
+                        error!(channel = id; "{e:?}");
                     };
 
                     filler_list.push(media);
@@ -393,7 +393,7 @@ impl LocalStorage {
             if fillers.is_none()
                 && let Err(e) = media.add_probe(false).await
             {
-                error!(target: Target::file_mail(), channel = id; "{e:?}");
+                error!(channel = id; "{e:?}");
             };
 
             filler_list.push(media);

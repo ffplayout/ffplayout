@@ -29,7 +29,6 @@ declare global {
         hls_list_size: number | null
         width: number
         height: number
-        aspect: number
         fps: number
         video_preset: string | null
         rate_control: string | null

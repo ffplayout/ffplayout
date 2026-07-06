@@ -106,7 +106,6 @@ pub async fn update_playout_config(
         is_hls.then_some(i64::from(data.output.hls_list_size)),
         i64::from(data.output.width),
         i64::from(data.output.height),
-        data.output.aspect,
         data.output.fps,
         is_encoded.then_some(data.output.video_preset.as_str()),
         is_encoded.then_some(data.output.rate_control.as_str()),

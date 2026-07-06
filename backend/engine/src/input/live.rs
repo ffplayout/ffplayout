@@ -577,7 +577,9 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
     loop {
         let abort = Arc::new(AtomicBool::new(false));
 
-        match logging::with_ingest_logs(|| open_rtmp_listener(&url, Arc::clone(&abort))) {
+        match logging::with_ingest_logs(cfg.channel_id, || {
+            open_rtmp_listener(&url, Arc::clone(&abort))
+        }) {
             Ok(ictx) => {
                 session_id += 1;
                 let last_frame_ms = Arc::new(AtomicU64::new(monotonic_millis()));
@@ -607,7 +609,7 @@ fn run_rtmp_listener(url: String, cfg: OutputConfig, tx: Sender<LiveEvent>) {
                 let worker = thread::spawn(move || {
                     let mut timeline = Timeline::new();
                     let logo_fade_plan = LogoFadePlan::none(timeline.video_pts(), &worker_cfg);
-                    let result = logging::with_ingest_logs(|| {
+                    let result = logging::with_ingest_logs(worker_cfg.channel_id, || {
                         play_opened_input(
                             &worker_url,
                             ictx,

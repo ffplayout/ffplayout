@@ -18,7 +18,7 @@ tokio = ["dep:tokio"]
 [dependencies]
 anyhow = "1"
 ffmpeg-next = "8"
-log = "0.4"
+log = { version = "0.4", features = ["kv"] }
 sdl2 = { version = "0.38", optional = true, features = ["unsafe_textures"] }
 tokio = { version = "1.44", optional = true, features = ["rt", "sync"] }
 

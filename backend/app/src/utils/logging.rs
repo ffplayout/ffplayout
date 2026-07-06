@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque, hash_map},
+    collections::{HashMap, hash_map},
     env, fmt,
     io::{self, Write},
     path::PathBuf,
@@ -31,10 +31,7 @@ use tokio::sync::Mutex;
 use crate::{
     ARGS,
     db::GLOBAL_SETTINGS,
-    player::controller::ProcessUnit,
     utils::{
-        ServiceError,
-        config::FFMPEG_UNRECOVERABLE_ERRORS,
         mail::{MailQueue, mail_queue},
         time_machine::time_now,
     },
@@ -45,12 +42,14 @@ const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.6f%:z";
 #[derive(Debug)]
 pub enum Target {
     Console,
+    All,
 }
 
 impl Target {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Console => "{console}",
+            Self::All => "{console,_Default}",
         }
     }
 }
@@ -155,6 +154,57 @@ impl LogMailer {
     pub fn new(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> Self {
         Self { mail_queues }
     }
+
+    async fn push_mail_async(
+        mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
+        id: i32,
+        level: Level,
+        now: String,
+        msg: String,
+    ) {
+        let mut queues_guard = mail_queues.lock().await;
+
+        for queue_arc in queues_guard.iter_mut() {
+            let mut queue = queue_arc.lock().await;
+            if push_mail_line(&mut queue, id, level, &now, &msg) {
+                break;
+            }
+        }
+    }
+
+    fn push_mail_blocking(
+        mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
+        id: i32,
+        level: Level,
+        now: String,
+        msg: String,
+    ) {
+        let mut queues_guard = mail_queues.blocking_lock();
+
+        for queue_arc in queues_guard.iter_mut() {
+            let mut queue = queue_arc.blocking_lock();
+            if push_mail_line(&mut queue, id, level, &now, &msg) {
+                break;
+            }
+        }
+    }
+}
+
+fn push_mail_line(queue: &mut MailQueue, id: i32, level: Level, now: &str, msg: &str) -> bool {
+    if queue.id != id || !queue.level_eq(level) || queue.raw_lines.contains(&msg.to_string()) {
+        return false;
+    }
+
+    queue.push_raw(msg.to_string());
+    queue.push(format!("[{now}] [{:>5}] {}", level, msg));
+
+    if queue.raw_lines.len() > 1000 {
+        let last = queue.raw_lines.pop().unwrap();
+        queue.clear_raw();
+        queue.push_raw(last);
+    }
+
+    true
 }
 
 impl LogWriter for LogMailer {
@@ -171,31 +221,14 @@ impl LogWriter for LogMailer {
         let message = record.args().to_string();
         let level = record.level();
         let mail_queues = self.mail_queues.clone();
-        let now = now.now().format("%Y-%m-%d %H:%M:%S");
+        let now = now.now().format("%Y-%m-%d %H:%M:%S").to_string();
         let msg = strip_tags(&message);
 
-        tokio::spawn({
-            async move {
-                let mut queues_guard = mail_queues.lock().await;
-
-                for queue_arc in queues_guard.iter_mut() {
-                    let mut queue = queue_arc.lock().await;
-
-                    if queue.id == id && queue.level_eq(level) && !queue.raw_lines.contains(&msg) {
-                        queue.push_raw(msg.clone());
-                        queue.push(format!("[{now}] [{:>5}] {}", level, msg));
-
-                        if queue.raw_lines.len() > 1000 {
-                            let last = queue.raw_lines.pop().unwrap();
-                            queue.clear_raw();
-                            queue.push_raw(last);
-                        }
-
-                        break;
-                    }
-                }
-            }
-        });
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(Self::push_mail_async(mail_queues, id, level, now, msg));
+        } else {
+            Self::push_mail_blocking(mail_queues, id, level, now, msg);
+        }
 
         Ok(())
     }
@@ -464,133 +497,6 @@ pub fn log_line(id: i32, line: &str, level: &str) {
     }
 }
 
-pub fn fmt_cmd(cmd: &[String]) -> String {
-    let mut formatted_cmd = Vec::new();
-    let mut quote_next = false;
-
-    for (i, arg) in cmd.iter().enumerate() {
-        if quote_next
-            || (i == cmd.len() - 1)
-            || ["ts", "m3u8"].contains(
-                &arg.rsplit('.')
-                    .next()
-                    .unwrap_or_default()
-                    .to_lowercase()
-                    .as_str(),
-            )
-        {
-            formatted_cmd.push(format!("\"{}\"", arg));
-            quote_next = false;
-        } else {
-            formatted_cmd.push(arg.to_string());
-            if [
-                "-i",
-                "-filter_complex",
-                "-map",
-                "-metadata",
-                "-var_stream_map",
-            ]
-            .contains(&arg.as_str())
-            {
-                quote_next = true;
-            }
-        }
-    }
-
-    formatted_cmd.join(" ")
-}
-
-/// Deduplicate log lines
-/// This struct is used for ffmpeg logging because it can happen that too many repeated lines are written in a very short time.
-pub struct LogDedup {
-    repeat_counts: HashMap<String, usize>,
-    seen_recently: VecDeque<String>,
-    suffix: ProcessUnit,
-    channel_id: i32,
-}
-
-impl LogDedup {
-    pub fn new(suffix: ProcessUnit, channel_id: i32) -> Self {
-        Self {
-            repeat_counts: HashMap::new(),
-            seen_recently: VecDeque::with_capacity(5),
-            suffix,
-            channel_id,
-        }
-    }
-
-    pub fn log(&mut self, msg: &str) -> Result<(), ServiceError> {
-        if self.seen_recently.contains(&msg.to_string()) {
-            *self.repeat_counts.entry(msg.to_string()).or_insert(1) += 1;
-
-            return Ok(());
-        }
-
-        for (msg, count) in self.repeat_counts.drain() {
-            if count > 1 {
-                let result = format!("{msg} (repeated <span class=\"log-number\">{count}x</span>)");
-                stderr_log(&result, self.suffix, self.channel_id)?;
-            }
-        }
-
-        stderr_log(msg, self.suffix, self.channel_id)?;
-
-        if self.seen_recently.len() == 5 {
-            self.seen_recently.pop_front();
-        }
-        self.seen_recently.push_back(msg.to_string());
-
-        Ok(())
-    }
-
-    pub fn flush(&mut self) -> Result<(), ServiceError> {
-        for (msg, count) in self.repeat_counts.drain() {
-            if count > 1 {
-                let result = format!("{msg} (repeated <span class=\"log-number\">{count}x</span>)");
-                stderr_log(&result, self.suffix, self.channel_id)?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-pub fn stderr_log(line: &str, suffix: ProcessUnit, channel_id: i32) -> Result<(), ServiceError> {
-    if line.contains("[info]") {
-        info!(channel = channel_id;
-            "<span class=\"log-gray\">[{suffix}]</span> {}",
-            line.replace("[info] ", "")
-        );
-    } else if line.contains("[warning]") {
-        warn!(channel = channel_id;
-            "<span class=\"log-gray\">[{suffix}]</span> {}",
-            line.replace("[warning] ", "")
-        );
-    } else if line.contains("[error]") || line.contains("[fatal]") {
-        error!(channel = channel_id;
-            "<span class=\"log-gray\">[{suffix}]</span> {}",
-            line.replace("[error] ", "").replace("[fatal] ", "")
-        );
-
-        if FFMPEG_UNRECOVERABLE_ERRORS
-            .iter()
-            .any(|i| line.contains(*i))
-            || (line.contains("No such file or directory")
-                && !line.contains("failed to delete old segment"))
-        {
-            return Err(ServiceError::Conflict(
-                "Hit unrecoverable error!".to_string(),
-            ));
-        }
-    } else {
-        warn!(channel = channel_id;
-            "<span class=\"log-gray\">[{suffix}]</span> {line}"
-        );
-    }
-
-    Ok(())
-}
-
 pub async fn log_middleware(real_ip: RealIp, req: Request<Body>, next: Next) -> Response<Body> {
     let start = Instant::now();
     let ip = real_ip.ip();
@@ -633,13 +539,13 @@ pub async fn log_middleware(real_ip: RealIp, req: Request<Body>, next: Next) -> 
 
     match status {
         500..=599 => {
-            error!(r#"{ip} "{m} {uri} {v:?}" {status} {size} "{r}" "{a}" {l:.6}"#);
+            error!(target: Target::Console.as_str(), r#"{ip} "{m} {uri} {v:?}" {status} {size} "{r}" "{a}" {l:.6}"#);
         }
         401 | 403 | 429 => {
-            warn!(r#"{ip} "{m} {uri} {v:?}" {status} {size} "{r}" "{a}" {l:.6}"#);
+            warn!(target: Target::Console.as_str(), r#"{ip} "{m} {uri} {v:?}" {status} {size} "{r}" "{a}" {l:.6}"#);
         }
         _ => {
-            info!(r#"{ip} "{m} {uri} {v:?}" {status} {size} "{r}" "{a}" {l:.6}"#);
+            info!(target: Target::Console.as_str(), r#"{ip} "{m} {uri} {v:?}" {status} {size} "{r}" "{a}" {l:.6}"#);
         }
     }
 

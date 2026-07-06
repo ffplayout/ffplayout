@@ -524,7 +524,6 @@ pub struct Output {
     pub hls_list_size: u32,
     pub width: u32,
     pub height: u32,
-    pub aspect: f64,
     pub fps: f64,
     #[serde(default = "default_video_preset")]
     pub video_preset: String,
@@ -602,7 +601,6 @@ impl Output {
                 .unwrap_or_else(default_hls_list_size),
             width: u32::try_from(output.width).unwrap_or(1280),
             height: u32::try_from(output.height).unwrap_or(720),
-            aspect: output.aspect,
             fps: output.fps,
             video_preset: output.video_preset.unwrap_or_else(default_video_preset),
             rate_control: output.rate_control.unwrap_or_else(default_rate_control),
@@ -672,9 +670,6 @@ impl Output {
     pub fn validate(&self) -> Result<(), String> {
         if self.width == 0 || self.height == 0 {
             return Err("output size must be greater than zero".to_string());
-        }
-        if !self.aspect.is_finite() || self.aspect <= 0.0 {
-            return Err("output aspect must be a positive number".to_string());
         }
         if !self.fps.is_finite() || self.fps < 1.0 || self.fps > f64::from(u32::MAX) {
             return Err("output fps must be a positive number".to_string());
@@ -1001,7 +996,6 @@ mod output_tests {
             hls_list_size: 600,
             width: 1280,
             height: 720,
-            aspect: 1.778,
             fps: 25.0,
             video_preset: "faster".to_string(),
             rate_control: "crf".to_string(),

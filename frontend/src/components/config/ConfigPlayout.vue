@@ -52,7 +52,6 @@ const output = computed({
         configStore.playout.output.hls_list_size = output?.hls_list_size ?? 600
         configStore.playout.output.width = output?.width ?? 1280
         configStore.playout.output.height = output?.height ?? 720
-        configStore.playout.output.aspect = output?.aspect ?? 1.778
         configStore.playout.output.fps = output?.fps ?? 25
         configStore.playout.output.video_preset = output?.video_preset ?? 'faster'
         configStore.playout.output.rate_control = output?.rate_control ?? 'crf'
@@ -629,16 +628,6 @@ async function onSubmitPlayout() {
                                 type="number"
                                 min="1"
                                 step="1"
-                                class="input input-sm w-full"
-                            />
-                        </label>
-                        <label class="fieldset">
-                            <span class="fieldset-legend">Aspect</span>
-                            <input
-                                v-model.number="configStore.playout.output.aspect"
-                                type="number"
-                                min="0.001"
-                                step="0.001"
                                 class="input input-sm w-full"
                             />
                         </label>

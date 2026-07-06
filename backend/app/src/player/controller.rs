@@ -231,7 +231,7 @@ impl ChannelManager {
                 }
 
                 if let Err(e) = run_channel(self_clone).await {
-                    error!(target: Target::all(), channel = channel_id; "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e}");
+                    error!(target: Target::All.as_str(), channel = channel_id; "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e}");
                 };
             });
 
@@ -247,7 +247,7 @@ impl ChannelManager {
 
     async fn log_dev_task(&self, task: &str, event: &str, generation: usize) {
         if cfg!(feature = "dev-metrics") {
-            debug!(target: Target::file_mail(), channel = self.id; "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">{task}</span> event=<span class=\"log-addr\">{event}</span> generation=<span class=\"log-number\">{generation}</span>");
+            debug!(channel = self.id; "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">{task}</span> event=<span class=\"log-addr\">{event}</span> generation=<span class=\"log-number\">{generation}</span>");
         }
     }
 
@@ -411,7 +411,7 @@ impl ChannelManager {
                     }
                     Err(e) => {
                         if !e.to_string().contains("exited process") {
-                            error!(target: Target::all(), channel = self.id; "{unit}: {e}");
+                            error!(target: Target::All.as_str(), channel = self.id; "{unit}: {e}");
                         }
                     }
                 }
@@ -429,17 +429,17 @@ impl ChannelManager {
 
         if permanent {
             if self.is_alive.load(Ordering::SeqCst) {
-                debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <span class=\"log-number\">{channel_id}</span>");
+                debug!(target: Target::All.as_str(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <span class=\"log-number\">{channel_id}</span>");
             }
 
             if let Err(e) = handles::update_player(&self.db_pool, channel_id, false).await {
-                error!(target: Target::all(), channel = channel_id; "Player status cannot be written: {e}");
+                error!(target: Target::All.as_str(), channel = channel_id; "Player status cannot be written: {e}");
             };
 
             self.stop_validation().await;
             self.stop_dev_metrics_snapshot().await;
         } else {
-            debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel: <span class=\"log-number\">{channel_id}</span>");
+            debug!(target: Target::All.as_str(), channel = channel_id; "Stop all child processes from channel: <span class=\"log-number\">{channel_id}</span>");
         }
 
         self.is_alive.store(false, Ordering::SeqCst);
@@ -547,7 +547,7 @@ async fn supervisor_loop(
                 retry_delay.as_secs()
             );
 
-            error!(target: Target::all(), channel = channel_id; "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e} | {retry_msg}");
+            error!(target: Target::All.as_str(), channel = channel_id; "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e} | {retry_msg}");
 
             trace!(
                 "Runtime has <span class=\"log-number\">{}</span> active tasks",
@@ -559,7 +559,7 @@ async fn supervisor_loop(
             if manager.config.read().await.output.mode == OutputMode::HLS
                 && let Err(d_e) = delete_segments(public_path, &[], true).await
             {
-                error!(target: Target::all(), channel = channel_id; "{d_e}");
+                error!(target: Target::All.as_str(), channel = channel_id; "{d_e}");
             };
 
             tokio::select! {
@@ -592,7 +592,7 @@ async fn metrics_snapshot_loop(
                 let (thread_count, rss) = system.process_snapshot().await;
                 #[cfg(tokio_unstable)]
                 debug!(
-                    target: Target::file_mail(),
+
                     channel = manager.id;
                     "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">runtime_snapshot</span> event=<span class=\"log-addr\">tick</span> generation=<span class=\"log-number\">{generation}</span> tokio_alive=<span class=\"log-number\">{}</span> tokio_workers=<span class=\"log-number\">{}</span> global_queue_depth=<span class=\"log-number\">{}</span> blocking_queue_depth=<span class=\"log-number\">{}</span> threads=<span class=\"log-number\">{thread_count}</span> rss=<span class=\"log-number\">{rss}</span>",
                     metrics.num_alive_tasks(),
@@ -602,7 +602,7 @@ async fn metrics_snapshot_loop(
                 );
                 #[cfg(not(tokio_unstable))]
                 debug!(
-                    target: Target::file_mail(),
+
                     channel = manager.id;
                     "<span class=\"log-gray\">[Dev Metrics]</span> task=<span class=\"log-addr\">runtime_snapshot</span> event=<span class=\"log-addr\">tick</span> generation=<span class=\"log-number\">{generation}</span> tokio_alive=<span class=\"log-number\">{}</span> tokio_workers=<span class=\"log-number\">{}</span> global_queue_depth=<span class=\"log-number\">{}</span> threads=<span class=\"log-number\">{thread_count}</span> rss=<span class=\"log-number\">{rss}</span>",
                     metrics.num_alive_tasks(),
@@ -632,7 +632,7 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
 
     drain_hls_path(&config.channel.public).await?;
 
-    debug!(target: Target::all(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <span class=\"log-number\">{channel_id}</span>");
+    debug!(target: Target::All.as_str(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <span class=\"log-number\">{channel_id}</span>");
 
     let need_fill = {
         let list = filler_list.lock().await;

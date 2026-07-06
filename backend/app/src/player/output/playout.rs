@@ -23,7 +23,6 @@ use crate::{
     utils::{
         config::{OutputMode, PlayoutConfig},
         errors::ServiceError,
-        logging::Target,
         task_runner,
     },
 };
@@ -39,7 +38,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let output_config = engine_output_config(&config, manager.audio_effects.clone())?;
     let playout = open_playout(&config, output_config.clone()).await?;
     if config.output.mode == OutputMode::Desktop {
-        info!(target: Target::file_mail(), channel = config.general.channel_id;
+        info!(channel = config.general.channel_id;
             "Desktop output uses backend/engine SDL2 renderer"
         );
     }
@@ -50,7 +49,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             .start_rtmp_live(url.clone(), output_config)
             .await
             .map_err(engine_error)?;
-        info!(target: Target::file_mail(), channel = config.general.channel_id;
+        info!(channel = config.general.channel_id;
             "Start ingest server, listening on: <span class=\"log-addr\">{url}</span>"
         );
     }
@@ -132,7 +131,7 @@ async fn hls_watchdog(
                 .unwrap_or_default();
 
             if age > timeout {
-                error!(target: Target::file_mail(), channel = channel_id;
+                error!(channel = channel_id;
                     "HLS segment write timeout! Last update: <span class=\"log-number\">{:.3}s</span>", age.as_secs_f32()
                 );
                 return Err(ServiceError::Conflict("Timeout".to_string()));
@@ -169,7 +168,7 @@ async fn play_loop(
 
         validate_supported_node(config, &node.source, &node.audio)?;
 
-        info!(target: Target::file_mail(), channel = id;
+        info!(channel = id;
             "Play for <span class=\"log-number\">{}</span>: <span class=\"log-addr\">{}</span>",
             sec_to_time(node.out - node.seek),
             node.source
@@ -179,7 +178,7 @@ async fn play_loop(
             if config.task.path.is_file() {
                 tokio::spawn(task_runner::run(manager.clone()));
             } else {
-                error!(target: Target::file_mail(), channel = id;
+                error!(channel = id;
                     "<span class=\"log-cmd\">{:?}</span> executable not exists!",
                     config.task.path
                 );
@@ -203,7 +202,7 @@ async fn play_loop(
             .map_err(engine_error)?
         {
             ClipResult::LiveEnded => {
-                info!(target: Target::file_mail(), channel = id;
+                info!(channel = id;
                     "Live input ended; reinitialize playlist at current time"
                 );
                 manager.list_init.store(true, Ordering::SeqCst);
@@ -212,7 +211,7 @@ async fn play_loop(
             }
             ClipResult::Played => {}
             ClipResult::Fallback { reason } => {
-                error!(target: Target::file_mail(), channel = id;
+                error!(channel = id;
                     "failed while playing {}: {reason}; fallback generated",
                     node.source
                 );
@@ -233,7 +232,7 @@ async fn play_loop(
                 // `process::exit` is ever reached. `process::exit`
                 // terminates the whole process unconditionally, so there is
                 // no need to cancel the current (or any other) task first.
-                info!(target: Target::file_mail(), channel = id;
+                info!(channel = id;
                     "Desktop player window closed; shutting down ffplayout"
                 );
                 manager.channel.lock().await.active = false;
@@ -363,6 +362,7 @@ fn engine_output_config(
         .with_audio_effects(audio_effects)
         .with_logo(logo)
         .with_logging(ffmpeg_log_level, ingest_log_level)
+        .with_channel_id(config.general.channel_id)
         .with_encoding(
             config.output.video_preset.clone(),
             rate_control,
@@ -412,7 +412,7 @@ fn validate_supported_node(
         && !Path::new(source).with_extension("vtt").is_file()
         && subtitle_media_path(config, source).is_none()
     {
-        warn!(target: Target::file_mail(), channel = config.general.channel_id;
+        warn!(channel = config.general.channel_id;
             "WebVTT enabled, but no sidecar or dummy subtitle file found for <span class=\"log-addr\">{source}</span>"
         );
     }

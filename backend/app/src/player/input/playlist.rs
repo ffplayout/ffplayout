@@ -18,7 +18,7 @@ use crate::{
             modified_time, probe_media, time_in_seconds,
         },
     },
-    utils::{config::PlayoutConfig, logging::Target},
+    utils::config::PlayoutConfig,
 };
 
 const NEXT_START_THRESHOLD: f64 = 1.5;
@@ -94,7 +94,7 @@ impl CurrentProgram {
             if (Path::new(&path).is_file() || is_remote(&path))
                 && self.json_playlist.modified != modified_time(&path).await
             {
-                info!(target: Target::file_mail(), channel = self.channel_id; "Reload playlist <span class=\"log-addr\">{path}</span>");
+                info!(channel = self.channel_id; "Reload playlist <span class=\"log-addr\">{path}</span>");
                 self.manager.list_init.store(true, Ordering::SeqCst);
                 get_current = true;
                 reload = true;
@@ -116,7 +116,7 @@ impl CurrentProgram {
 
             if !reload {
                 if let Some(file) = &self.json_playlist.path {
-                    info!(target: Target::file_mail(), channel = self.channel_id; "Read playlist: <span class=\"log-addr\">{file}</span>");
+                    info!(channel = self.channel_id; "Read playlist: <span class=\"log-addr\">{file}</span>");
                 }
 
                 let new_date = self.json_playlist.date.clone();
@@ -200,7 +200,7 @@ impl CurrentProgram {
             .await;
 
             if let Some(file) = &self.json_playlist.path {
-                info!(target: Target::file_mail(), channel = self.channel_id; "Read next playlist: <span class=\"log-addr\">{file}</span>");
+                info!(channel = self.channel_id; "Read next playlist: <span class=\"log-addr\">{file}</span>");
             }
 
             self.manager.list_init.store(false, Ordering::SeqCst);
@@ -230,7 +230,7 @@ impl CurrentProgram {
 
             if channel.last_date != *date && channel.time_shift != 0.0 {
                 shift = 0.0;
-                info!(target: Target::file_mail(), channel = self.channel_id; "Reset playout status");
+                info!(channel = self.channel_id; "Reset playout status");
             }
 
             if let Some(d) = date {
@@ -244,7 +244,7 @@ impl CurrentProgram {
         if let Err(e) =
             handles::update_stat(&self.manager.db_pool, self.channel_id, date, shift).await
         {
-            error!(target: Target::file_mail(), channel = self.channel_id; "Unable to write status: {e}");
+            error!(channel = self.channel_id; "Unable to write status: {e}");
         };
     }
 
@@ -283,7 +283,7 @@ impl CurrentProgram {
 
         if time_shift != 0.0 {
             info!(
-                target: Target::file_mail(),
+
                 channel = self.channel_id;
                 "Shift playlist start for <span class=\"log-number\">{time_shift:.3}</span> seconds"
             );
@@ -381,7 +381,7 @@ impl CurrentProgram {
     }
 
     async fn recalculate_begin(&mut self, extend: bool) {
-        debug!(target: Target::file_mail(), channel = self.channel_id; "Infinit playlist reaches end, recalculate clip begins. Extend: <span class=\"log-number\">{extend}</span>");
+        debug!(channel = self.channel_id; "Infinit playlist reaches end, recalculate clip begins. Extend: <span class=\"log-number\">{extend}</span>");
 
         let mut time_sec = time_in_seconds(&self.config.channel.timezone);
 
@@ -412,7 +412,7 @@ impl CurrentProgram {
     /// Handle init clip, but this clip can be the last one in playlist,
     /// this we have to figure out and calculate the right length.
     async fn handle_list_init(&mut self, mut node: Media, last_index: usize) {
-        debug!(target: Target::file_mail(), channel = self.channel_id; "Playlist init");
+        debug!(channel = self.channel_id; "Playlist init");
         let (_, total_delta) = get_delta(&self.config, &node.begin.unwrap());
 
         if !self.config.playlist.infinit && node.out - node.seek > total_delta {
@@ -426,13 +426,13 @@ impl CurrentProgram {
     /// or when we reached total playtime,
     /// we end up here
     async fn handle_list_end(&mut self, mut node: Media, total_delta: f64, last_index: usize) {
-        debug!(target: Target::file_mail(), channel = self.channel_id; "Handle last clip from day");
+        debug!(channel = self.channel_id; "Handle last clip from day");
 
         let out = if node.seek > 0.0 {
             node.seek + total_delta
         } else {
             if node.duration > total_delta {
-                info!(target: Target::file_mail(), channel = self.channel_id; "Adjust clip duration to: <span class=\"log-number\">{total_delta:.2}</span>");
+                info!(channel = self.channel_id; "Adjust clip duration to: <span class=\"log-number\">{total_delta:.2}</span>");
             }
 
             total_delta
@@ -444,7 +444,7 @@ impl CurrentProgram {
         {
             node.out = out;
         } else if total_delta > node.out - node.seek {
-            warn!(target: Target::file_mail(), channel = self.channel_id; "Playlist is not long enough: <span class=\"log-number\">{:.2}</span> seconds needed", total_delta - (node.out - node.seek));
+            warn!(channel = self.channel_id; "Playlist is not long enough: <span class=\"log-number\">{:.2}</span> seconds needed", total_delta - (node.out - node.seek));
         }
 
         node.skip = false;
@@ -479,7 +479,7 @@ impl CurrentProgram {
                 shifted_msg = format!("shifted: <span class=\"log-number\">{delta:.3}</span>");
             }
 
-            debug!(target: Target::file_mail(), channel = self.channel_id; "Delta: <span class=\"log-number\">{shifted_delta:.3}</span> {shifted_msg}");
+            debug!(channel = self.channel_id; "Delta: <span class=\"log-number\">{shifted_delta:.3}</span> {shifted_msg}");
 
             if self.config.general.stop_threshold > 0.0
                 && shifted_delta.abs() > self.config.general.stop_threshold
@@ -493,13 +493,13 @@ impl CurrentProgram {
                     self.config.general.stop_threshold,
                 ) {
                     warn!(
-                        target: Target::file_mail(), channel = self.channel_id;
+                        channel = self.channel_id;
                         "A time change seemed to have occurred, apply time shift: <span class=\"log-number\">{shifted_delta:.3}</span> seconds."
                     );
 
                     self.set_status(&None, time_shift + shifted_delta).await;
                 } else if self.manager.is_alive.load(Ordering::SeqCst) {
-                    error!(target: Target::file_mail(), channel = self.channel_id; "Clip begin out of sync for <span class=\"log-number\">{delta:.3}</span> seconds.");
+                    error!(channel = self.channel_id; "Clip begin out of sync for <span class=\"log-number\">{delta:.3}</span> seconds.");
 
                     self.set_status(&Some(current_date), 0.0).await;
                     self.manager.list_init.store(true, Ordering::SeqCst);
@@ -521,7 +521,7 @@ impl CurrentProgram {
 
             return;
         } else if total_delta <= 0.0 {
-            info!(target: Target::file_mail(), channel = self.channel_id; "Begin is over play time, skip: {}", node.source);
+            info!(channel = self.channel_id; "Begin is over play time, skip: {}", node.source);
         } else if total_delta < node.duration - node.seek || last {
             self.handle_list_end(node, total_delta, last_index).await;
 
@@ -539,7 +539,7 @@ impl CurrentProgram {
 
         if node.duration > 0.0 && duration < 1.0 {
             warn!(
-                target: Target::file_mail(), channel = self.channel_id;
+                channel = self.channel_id;
                 "Skip clip that is less then one second long (<span class=\"log-number\">{duration:.3}</span>)."
             );
 
@@ -574,7 +574,7 @@ impl CurrentProgram {
 
             if node_index < last_index {
                 error!(
-                    target: Target::file_mail(), channel = self.channel_id;
+                    channel = self.channel_id;
                     "Source not found: <span class=\"log-addr\">{}</span>", node.source
                 );
             }
@@ -603,7 +603,7 @@ impl CurrentProgram {
                 if filler_media.probe.is_none()
                     && let Err(e) = filler_media.add_probe(false).await
                 {
-                    error!(target: Target::file_mail(), channel = self.channel_id; "{e:?}");
+                    error!(channel = self.channel_id; "{e:?}");
                 };
 
                 node.source = filler_media.source;
@@ -645,7 +645,7 @@ impl CurrentProgram {
                         }
                     }
                     Err(e) => {
-                        error!(target: Target::file_mail(), channel = self.channel_id; "Filler error: {e}");
+                        error!(channel = self.channel_id; "Filler error: {e}");
 
                         let mut dummy_duration = 60.0;
 
@@ -661,7 +661,7 @@ impl CurrentProgram {
             }
 
             warn!(
-                target: Target::file_mail(), channel = self.channel_id;
+                channel = self.channel_id;
                 "Generate filler with <span class=\"log-number\">{:.2}</span> seconds length!",
                 node.out
             );

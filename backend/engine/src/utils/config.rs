@@ -176,6 +176,7 @@ pub struct OutputConfig {
     pub audio_bitrate: u64,
     pub ffmpeg_log_level: LogLevel,
     pub ingest_log_level: LogLevel,
+    pub channel_id: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,12 +185,13 @@ pub enum RateControl {
     Cbr,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
     Quiet,
     Panic,
     Fatal,
     Error,
+    #[default]
     Warning,
     Info,
     Verbose,
@@ -210,12 +212,6 @@ impl LogLevel {
             Self::Debug => FfmpegLevel::Debug,
             Self::Trace => FfmpegLevel::Trace,
         }
-    }
-}
-
-impl Default for LogLevel {
-    fn default() -> Self {
-        Self::Warning
     }
 }
 
@@ -264,6 +260,7 @@ impl OutputConfig {
             audio_bitrate: 128_000,
             ffmpeg_log_level: LogLevel::Warning,
             ingest_log_level: LogLevel::Warning,
+            channel_id: None,
         }
     }
 
@@ -301,6 +298,11 @@ impl OutputConfig {
     pub fn with_logging(mut self, ffmpeg_log_level: LogLevel, ingest_log_level: LogLevel) -> Self {
         self.ffmpeg_log_level = ffmpeg_log_level;
         self.ingest_log_level = ingest_log_level;
+        self
+    }
+
+    pub fn with_channel_id(mut self, channel_id: i32) -> Self {
+        self.channel_id = Some(channel_id);
         self
     }
 }

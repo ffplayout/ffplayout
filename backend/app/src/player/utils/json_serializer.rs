@@ -12,7 +12,7 @@ use crate::{
         controller::ChannelManager,
         utils::{Media, PlayoutConfig, is_remote, modified_time, time_from_header},
     },
-    utils::{config::DUMMY_LEN, logging::Target},
+    utils::config::DUMMY_LEN,
 };
 
 /// This is our main playlist object, it holds all necessary information for the current day.
@@ -137,7 +137,7 @@ pub async fn read_json(
                 let mut playlist: JsonPlaylist = match serde_json::from_str(&body) {
                     Ok(p) => p,
                     Err(e) => {
-                        error!(target: Target::file_mail(), channel = id; "Could't read remote json playlist. {e:?}");
+                        error!(channel = id; "Could't read remote json playlist. {e:?}");
                         JsonPlaylist::new(date, start_sec)
                     }
                 };
@@ -178,7 +178,7 @@ pub async fn read_json(
         let mut playlist: JsonPlaylist = match serde_json::from_str(&contents) {
             Ok(p) => p,
             Err(e) => {
-                error!(target: Target::file_mail(), channel = id; "Playlist file not readable! {e}");
+                error!(channel = id; "Playlist file not readable! {e}");
                 JsonPlaylist::new(date.clone(), start_sec)
             }
         };
@@ -206,7 +206,7 @@ pub async fn read_json(
         return playlist;
     }
 
-    error!(target: Target::file_mail(), channel = id; "Playlist <span class=\"log-addr\">{current_file}</span> not exist!");
+    error!(channel = id; "Playlist <span class=\"log-addr\">{current_file}</span> not exist!");
 
     JsonPlaylist::new(date, start_sec)
 }

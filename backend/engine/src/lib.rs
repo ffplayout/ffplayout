@@ -585,7 +585,11 @@ impl Playout {
 
 fn init_ffmpeg(config: &OutputConfig) -> Result<()> {
     ffmpeg_next::init().context("failed to initialize FFmpeg")?;
-    logging::init(config.ffmpeg_log_level, config.ingest_log_level);
+    logging::init(
+        config.ffmpeg_log_level,
+        config.ingest_log_level,
+        config.channel_id,
+    );
     Ok(())
 }
 

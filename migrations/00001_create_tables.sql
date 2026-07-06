@@ -79,7 +79,6 @@ CREATE TABLE IF NOT EXISTS outputs (
     hls_list_size INTEGER,
     width INTEGER NOT NULL DEFAULT 1280,
     height INTEGER NOT NULL DEFAULT 720,
-    aspect REAL NOT NULL DEFAULT 1.778,
     fps REAL NOT NULL DEFAULT 25.0,
     video_preset TEXT,
     rate_control TEXT,
@@ -228,7 +227,6 @@ INSERT OR IGNORE INTO
         hls_list_size,
         width,
         height,
-        aspect,
         fps,
         video_preset,
         rate_control,
@@ -237,7 +235,7 @@ INSERT OR IGNORE INTO
         audio_bitrate
     )
 VALUES
-    (1, 1, 'hls', '', '', 'stream', 6, 600, 1280, 720, 1.778, 25.0, 'faster', 'crf', 23, 2400, 128),
+    (1, 1, 'hls', '', '', 'stream', 6, 600, 1280, 720, 25.0, 'faster', 'crf', 23, 2400, 128),
     (
         2,
         1,
@@ -249,7 +247,6 @@ VALUES
         NULL,
         1280,
         720,
-        1.778,
         25.0,
         'faster',
         'crf',
@@ -257,7 +254,7 @@ VALUES
         2400,
         128
     ),
-    (3, 1, 'desktop', '', '', NULL, NULL, NULL, 1280, 720, 1.778, 25.0, NULL, NULL, NULL, NULL, NULL);
+    (3, 1, 'desktop', '', '', NULL, NULL, NULL, 1280, 720, 25.0, NULL, NULL, NULL, NULL, NULL);
 
 INSERT OR IGNORE INTO
     configurations (id, channel_id, output_id)

@@ -11,7 +11,7 @@ use crate::{
         controller::ChannelManager,
         utils::{Media, include_file_extension, time_in_seconds},
     },
-    utils::{config::PlayoutConfig, logging::Target},
+    utils::config::PlayoutConfig,
 };
 
 /// Folder Sources
@@ -37,14 +37,14 @@ impl FolderSource {
         }
 
         if let Some(dates) = &config.general.generate {
-            debug!(target: Target::file_mail(), channel = id;
+            debug!(channel = id;
                 "generate: {dates:?}, paths: {path_list:?}"
             );
         }
 
         for path in &path_list {
             if !path.is_dir() {
-                error!(target: Target::file_mail(), channel = id; "Path not exists: <span class=\"log-addr\">{path:?}</span>");
+                error!(channel = id; "Path not exists: <span class=\"log-addr\">{path:?}</span>");
             }
 
             let mut entries = WalkDir::new(path);
@@ -58,14 +58,14 @@ impl FolderSource {
         }
 
         if media_list.is_empty() {
-            error!(target: Target::file_mail(), channel = id;
+            error!(channel = id;
                 "no playable files found under: <span class=\"log-addr\">{:?}</span>",
                 path_list
             );
         }
 
         if config.storage.shuffle {
-            info!(target: Target::file_mail(), channel = id; "Shuffle files");
+            info!(channel = id; "Shuffle files");
             let mut rng = SmallRng::from_rng(&mut rand::rng());
             media_list.shuffle(&mut rng);
         } else {
@@ -134,13 +134,13 @@ impl FolderSource {
         } else {
             if config.storage.shuffle {
                 if config.general.generate.is_none() {
-                    info!(target: Target::file_mail(), channel = id; "Shuffle files");
+                    info!(channel = id; "Shuffle files");
                 }
 
                 self.shuffle().await;
             } else {
                 if config.general.generate.is_none() {
-                    info!(target: Target::file_mail(), channel = id; "Sort files");
+                    info!(channel = id; "Sort files");
                 }
 
                 self.sort().await;

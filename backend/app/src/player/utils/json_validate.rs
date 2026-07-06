@@ -19,7 +19,7 @@ use crate::{
     player::utils::{
         JsonPlaylist, Media, is_close, is_remote, sec_to_time, time_in_seconds, time_to_sec,
     },
-    utils::{config::PlayoutConfig, errors::ProcessError, logging::Target},
+    utils::{config::PlayoutConfig, errors::ProcessError},
 };
 
 /// Validate a single media file.
@@ -61,13 +61,13 @@ async fn check_media(
     }
 
     if config.logging.detect_silence {
-        debug!(target: Target::file_mail(), channel = id;
+        debug!(channel = id;
             "<span class=\"log-gray\">[Validation]</span> Silence detection is skipped because app validation no longer starts the ffmpeg binary."
         );
     }
 
     if !error_list.is_empty() {
-        error!(target: Target::file_mail(), channel = id;
+        error!(channel = id;
             "<span class=\"log-gray\">[Validator]</span> Engine probe error on position <span class=\"log-number\">{pos}</span> - {}: <span class=\"log-addr\">{}</span>: {}",
             sec_to_time(begin),
             node.source,
@@ -107,7 +107,7 @@ async fn check_vtt(source: &str, duration: f64, channel_id: i32) -> Result<(), P
             let last_sec = time_to_sec(&timestamp, &None);
 
             if last_sec > duration {
-                error!(target: Target::file_mail(), channel = channel_id;
+                error!(channel = channel_id;
                     "<span class=\"log-gray\">[Validation]</span> Webvtt <span class=\"log-addr\">{vtt_path:?}</span> is longer, <span class=\"log-number\">{timestamp}</span> versus <span class=\"log-number\">{}</span> video duration.",
                     sec_to_time(duration)
                 );
@@ -150,7 +150,7 @@ pub async fn validate_playlist(
         time_sec += 86400.0;
     }
 
-    debug!(target: Target::file_mail(), channel = id; "Validate playlist from: <span class=\"log-number\">{date}</span>");
+    debug!(channel = id; "Validate playlist from: <span class=\"log-number\">{date}</span>");
     let timer = Instant::now();
 
     for (index, item) in playlist.program.iter_mut().enumerate() {
@@ -175,13 +175,13 @@ pub async fn validate_playlist(
 
             if item.audio.is_empty() {
                 if let Err(e) = item.add_probe(false).await {
-                    error!(target: Target::file_mail(), channel = id;
+                    error!(channel = id;
                         "<span class=\"log-gray\">[Validation]</span> Error on position <span class=\"log-number\">{pos:0>3}</span> - <span class=\"log-number\">{}</span>: {e}",
                         sec_to_time(begin)
                     );
                 }
             } else if let Err(e) = item.add_probe(true).await {
-                error!(target: Target::file_mail(), channel = id;
+                error!(channel = id;
                     "<span class=\"log-gray\">[Validation]</span> Error on position <span class=\"log-number\">{pos:0>3}</span> - <span class=\"log-number\">{}</span>: {e}",
                     sec_to_time(begin)
                 );
@@ -191,12 +191,12 @@ pub async fn validate_playlist(
         if item.probe.is_some() {
             match check_media(&config, item.clone(), pos, begin, cancel_token.clone()).await {
                 Err(e) => {
-                    error!(target: Target::file_mail(), channel = id; "{e}");
+                    error!(channel = id; "{e}");
                 }
                 Ok(()) => {
                     if config.general.validate {
                         debug!(
-                            target: Target::file_mail(), channel = id;
+                            channel = id;
                             "<span class=\"log-gray\">[Validation]</span> Source at <span class=\"log-number\">{}</span>, seems fine: <span class=\"log-addr\">{}</span>",
                             sec_to_time(begin),
                             item.source
@@ -212,7 +212,7 @@ pub async fn validate_playlist(
                                 && !is_close(o.duration, probe_duration, 1.2)
                             {
                                 error!(
-                                    target: Target::file_mail(),
+
                                     channel = id;
                                     "<span class=\"log-gray\">[Validation]</span> File duration (at: <span class=\"log-number\">{}</span>) differs from playlist value. File duration: <span class=\"log-number\">{}</span>, playlist value: <span class=\"log-number\">{}</span>, source <span class=\"log-addr\">{}</span>",
                                     sec_to_time(o.begin.unwrap_or_default()),
@@ -235,7 +235,7 @@ pub async fn validate_playlist(
             if config.processing.vtt_enable
                 && let Err(e) = check_vtt(&item.source, item.duration, id).await
             {
-                error!(target: Target::file_mail(), channel = id; "{e}");
+                error!(channel = id; "{e}");
             }
         }
 
@@ -243,20 +243,20 @@ pub async fn validate_playlist(
     }
 
     if !config.playlist.infinit && length > begin + 1.2 {
-        error!(target: Target::file_mail(), channel = id;
+        error!(channel = id;
             "<span class=\"log-gray\">[Validation]</span> Playlist from <span class=\"log-number\">{date}</span> not long enough, <span class=\"log-number\">{}</span> needed!",
             sec_to_time(length - begin),
         );
     }
 
     if config.general.validate {
-        info!(target: Target::file_mail(), channel = id;
+        info!(channel = id;
             "<span class=\"log-gray\">[Validation]</span> Playlist length: <span class=\"log-number\">{}</span>",
             sec_to_time(begin - config.playlist.start_sec.unwrap())
         );
     }
 
-    debug!(target: Target::file_mail(), channel = id;
+    debug!(channel = id;
         "Validation done, in <span class=\"log-number\">{:.3?}</span>, playlist length: <span class=\"log-number\">{}</span> ...",
         timer.elapsed(),
         sec_to_time(begin - config.playlist.start_sec.unwrap())

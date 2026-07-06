@@ -18,7 +18,7 @@ pub async fn insert_output(
     channel_id: i32,
     output: &Output,
 ) -> Result<i32, ProcessError> {
-    const QUERY: &str = "INSERT INTO outputs (channel_id, name, hls_variants, stream_url, hls_playlist_name, hls_segment_duration, hls_list_size, width, height, aspect, fps, video_preset, rate_control, video_quality, video_maxrate, audio_bitrate) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id";
+    const QUERY: &str = "INSERT INTO outputs (channel_id, name, hls_variants, stream_url, hls_playlist_name, hls_segment_duration, hls_list_size, width, height, fps, video_preset, rate_control, video_quality, video_maxrate, audio_bitrate) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id";
 
     let output_id = sqlx::query(QUERY)
         .bind(channel_id)
@@ -30,7 +30,6 @@ pub async fn insert_output(
         .bind(output.hls_list_size)
         .bind(output.width)
         .bind(output.height)
-        .bind(output.aspect)
         .bind(output.fps)
         .bind(&output.video_preset)
         .bind(&output.rate_control)
@@ -56,7 +55,6 @@ pub async fn update_output(
     hls_list_size: Option<i64>,
     width: i64,
     height: i64,
-    aspect: f64,
     fps: f64,
     video_preset: Option<&str>,
     rate_control: Option<&str>,
@@ -64,7 +62,7 @@ pub async fn update_output(
     video_maxrate: Option<i64>,
     audio_bitrate: Option<i64>,
 ) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "UPDATE outputs SET hls_variants = $3, stream_url = $4, hls_playlist_name = $5, hls_segment_duration = $6, hls_list_size = $7, width = $8, height = $9, aspect = $10, fps = $11, video_preset = $12, rate_control = $13, video_quality = $14, video_maxrate = $15, audio_bitrate = $16 WHERE id = $1 AND channel_id = $2";
+    const QUERY: &str = "UPDATE outputs SET hls_variants = $3, stream_url = $4, hls_playlist_name = $5, hls_segment_duration = $6, hls_list_size = $7, width = $8, height = $9, fps = $10, video_preset = $11, rate_control = $12, video_quality = $13, video_maxrate = $14, audio_bitrate = $15 WHERE id = $1 AND channel_id = $2";
 
     let result = sqlx::query(QUERY)
         .bind(id)
@@ -76,7 +74,6 @@ pub async fn update_output(
         .bind(hls_list_size)
         .bind(width)
         .bind(height)
-        .bind(aspect)
         .bind(fps)
         .bind(video_preset)
         .bind(rate_control)

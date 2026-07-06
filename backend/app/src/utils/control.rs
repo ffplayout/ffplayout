@@ -12,7 +12,7 @@ use crate::{
         controller::{ChannelManager, ProcessUnit::*},
         utils::{get_delta, get_media_map},
     },
-    utils::{TextFilter, config::OutputMode::*, errors::ServiceError, logging::Target},
+    utils::{TextFilter, config::OutputMode::*, errors::ServiceError},
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -172,12 +172,12 @@ pub async fn control_state(
                 let mut media = current_list[index - 2].clone();
                 (shift, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
 
-                info!(target: Target::file_mail(), channel = id; "Move to last clip");
+                info!(channel = id; "Move to last clip");
 
                 manager.current_index.fetch_sub(2, Ordering::SeqCst);
 
                 if let Err(e) = media.add_probe(false).await {
-                    error!(target: Target::file_mail(), channel = id; "{e:?}");
+                    error!(channel = id; "{e:?}");
                 };
 
                 data_map.insert("operation".to_string(), json!("move_to_last"));
@@ -191,10 +191,10 @@ pub async fn control_state(
                 let mut media = current_list[index].clone();
                 (shift, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
 
-                info!(target: Target::file_mail(), channel = id; "Move to next clip");
+                info!(channel = id; "Move to next clip");
 
                 if let Err(e) = media.add_probe(false).await {
-                    error!(target: Target::file_mail(), channel = id; "{e:?}");
+                    error!(channel = id; "{e:?}");
                 };
 
                 data_map.insert("operation".to_string(), json!("move_to_next"));
@@ -204,7 +204,7 @@ pub async fn control_state(
         }
 
         PlayerCtl::Reset => {
-            info!(target: Target::file_mail(), channel = id; "Reset playout to original state");
+            info!(channel = id; "Reset playout to original state");
 
             manager.list_init.store(true, Ordering::SeqCst);
 

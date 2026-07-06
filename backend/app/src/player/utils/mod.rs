@@ -34,7 +34,6 @@ use crate::{
     utils::{
         config::{OutputMode::*, PlayoutConfig},
         errors::ProcessError,
-        logging::Target,
         time_machine::time_now,
     },
 };
@@ -565,7 +564,7 @@ pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
     let start = match NaiveDate::parse_from_str(&date_range[0], "%Y-%m-%d") {
         Ok(s) => s,
         Err(_) => {
-            error!(target: Target::file_mail(), channel = id; "date format error in: <span class=\"log-number\">{:?}</span>", date_range[0]);
+            error!(channel = id; "date format error in: <span class=\"log-number\">{:?}</span>", date_range[0]);
             exit(1);
         }
     };
@@ -573,7 +572,7 @@ pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
     let end = match NaiveDate::parse_from_str(&date_range[2], "%Y-%m-%d") {
         Ok(e) => e,
         Err(_) => {
-            error!(target: Target::file_mail(), channel = id; "date format error in: <span class=\"log-number\">{:?}</span>", date_range[2]);
+            error!(channel = id; "date format error in: <span class=\"log-number\">{:?}</span>", date_range[2]);
             exit(1);
         }
     };
@@ -698,19 +697,6 @@ pub fn fraction(d: f64, max_denominator: u32) -> (u32, u32) {
 
     let divisor = gcd(best_numerator, best_denominator);
     (best_numerator / divisor, best_denominator / divisor)
-}
-
-pub fn calc_aspect(config: &PlayoutConfig, aspect_string: &Option<String>) -> f64 {
-    let mut source_aspect = config.output.aspect;
-
-    if let Some(aspect) = aspect_string {
-        let aspect_vec: Vec<&str> = aspect.split(':').collect();
-        let w = aspect_vec[0].parse::<f64>().unwrap();
-        let h = aspect_vec[1].parse::<f64>().unwrap();
-        source_aspect = w / h;
-    }
-
-    source_aspect
 }
 
 #[cfg(test)]
