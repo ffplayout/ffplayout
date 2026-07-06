@@ -438,6 +438,7 @@ fn seconds_to_microseconds(seconds: f64) -> i64 {
     (seconds * 1_000_000.0).round().max(0.0) as i64
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finish_video<O: FrameOutput>(
     video: &mut Option<VideoDecoder>,
     timeline: &mut Timeline,

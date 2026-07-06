@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS configurations (
     processing_vtt_enable INTEGER NOT NULL DEFAULT 0,
     processing_vtt_dummy TEXT DEFAULT '00-assets/dummy.vtt',
     processing_vtt_name TEXT NOT NULL DEFAULT 'Subtitles',
-    processing_vtt_language TEXT NOT NULL DEFAULT 'und',
+    processing_vtt_language TEXT NOT NULL DEFAULT 'en-US',
     processing_vtt_default INTEGER NOT NULL DEFAULT 0,
     ingest_enable INTEGER NOT NULL DEFAULT 0,
     ingest_url TEXT NOT NULL DEFAULT 'rtmp://127.0.0.1:1936/live/stream',
@@ -154,7 +154,7 @@ VALUES
     (
         1,
         'Channel 1',
-        'http://127.0.0.1:8787/public/1/live/master.m3u8',
+        'http://127.0.0.1:8787/public/1/live/stream.m3u8',
         'jpg,jpeg,png',
         0
     );

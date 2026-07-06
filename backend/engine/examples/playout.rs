@@ -234,6 +234,7 @@ fn main() -> Result<()> {
         let seek_seconds = (index == 0 && args.seek > 0.0).then_some(args.seek);
         match playout.play_with_live(path, seek_seconds, &mut live)? {
             ClipResult::Played => {}
+            ClipResult::Skipped => {}
             ClipResult::LiveEnded => {}
             ClipResult::Fallback { reason } => {
                 log::error!("failed while playing {path}: {reason}; fallback generated");

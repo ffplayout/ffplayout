@@ -4,7 +4,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
 
     env:
@@ -13,10 +13,11 @@ jobs:
       CARGO_BUILD_JOBS: 1
 
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
       - name: Set Build Tools and update Rust
         run: |
           rustup update stable
@@ -30,6 +31,9 @@ jobs:
       - name: Tests and build on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
+          npm ci
+          npm run type-check
+          npm run build
           cargo test --all-features
           cargo clippy --all-features --all-targets -- --deny warnings
           cargo fmt --all -- --check
