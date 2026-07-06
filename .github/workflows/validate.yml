@@ -29,7 +29,6 @@ jobs:
         uses: FedericoCarboni/setup-ffmpeg@v3
         with:
           ffmpeg-version: 8.1.0
-          linking-type: static
 
       - name: Tests and build on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
