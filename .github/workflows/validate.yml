@@ -49,15 +49,13 @@ jobs:
           brew update
           brew install ffmpeg pkg-config
 
-      - name: Setup vcpkg on Windows
-        if: runner.os == 'Windows'
-        uses: lukka/run-vcpkg@v11
-
       - name: Install FFmpeg libraries on Windows
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
           vcpkg install ffmpeg:x64-windows
           echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          echo "VCPKGRS_DYNAMIC=1" >> $env:GITHUB_ENV
 
       - name: Frontend checks
         if: runner.os == 'Linux'
@@ -80,4 +78,5 @@ jobs:
 
       - name: Rust build on Windows
         if: runner.os == 'Windows'
+        shell: pwsh
         run: cargo build --release --all-features
