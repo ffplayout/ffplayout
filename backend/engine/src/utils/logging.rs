@@ -3,23 +3,36 @@ use std::{
     ffi::CStr,
     os::raw::{c_char, c_int, c_void},
     sync::{
-        Mutex, PoisonError,
+        Mutex, OnceLock, PoisonError,
         atomic::{AtomicI32, Ordering},
     },
 };
 
 use ffmpeg_next::{ffi, util::log::Level as FfmpegLevel};
 use log::{debug, error, info, trace, warn};
+use regex::Regex;
+
+use super::config::LogLevel;
 
 const FFMPEG_LOG_TARGET: &str = "ffmpeg";
 const SKIPPED_FFMPEG_LOG_MESSAGES: &[&str] = &[
-    "Could not update timestamps for skipped samples",
-    "for writing",
-    "for reading",
+    r"Opening '.*' for reading",
+    r"Opening '.*' for writing",
+    r"Could not update timestamps for skipped samples",
+    r"ac-tex damaged",
+    r"corrupt decoded frame in stream",
+    r"corrupt input packet in stream",
+    r"end mismatch left",
+    r"Invalid mb type in I-frame at",
+    r"Packet corrupt",
+    r"Referenced QT chapter track not found",
+    r"skipped MB in I-frame at",
+    r"Thread message queue blocking",
+    r"Warning MVs not available",
+    r"frame size not set",
+    r"Error parsing Opus packet header.",
 ];
 const LOG_DEDUP_FLUSH_THRESHOLD: usize = 100;
-
-use super::config::LogLevel;
 
 thread_local! {
     static UNEXPECTED_RTMP_STREAM: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
@@ -30,6 +43,7 @@ static FFMPEG_LOG_LEVEL: AtomicI32 = AtomicI32::new(ffi::AV_LOG_WARNING);
 static INGEST_LOG_LEVEL: AtomicI32 = AtomicI32::new(ffi::AV_LOG_WARNING);
 static CHANNEL_ID: AtomicI32 = AtomicI32::new(0);
 static LOG_DEDUP: Mutex<LogDedup> = Mutex::new(LogDedup::new());
+static SKIPPED_FFMPEG_LOG_PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
 
 pub(crate) fn init(ffmpeg_level: LogLevel, ingest_level: LogLevel, channel_id: Option<i32>) {
     let ffmpeg_level = ffmpeg_level.as_ffmpeg_level();
@@ -138,9 +152,22 @@ unsafe extern "C" fn log_callback(
 }
 
 fn should_skip_ffmpeg_log(message: &str) -> bool {
-    SKIPPED_FFMPEG_LOG_MESSAGES
+    skipped_ffmpeg_log_patterns()
         .iter()
-        .any(|skipped| message.contains(skipped))
+        .any(|pattern| pattern.is_match(message))
+}
+
+fn skipped_ffmpeg_log_patterns() -> &'static [Regex] {
+    SKIPPED_FFMPEG_LOG_PATTERNS.get_or_init(|| {
+        SKIPPED_FFMPEG_LOG_MESSAGES
+            .iter()
+            .map(|pattern| {
+                Regex::new(pattern).unwrap_or_else(|error| {
+                    panic!("invalid skipped FFmpeg log pattern {pattern:?}: {error}")
+                })
+            })
+            .collect()
+    })
 }
 
 fn log_line(level: c_int, message: &str) {
@@ -253,7 +280,7 @@ fn remember_unexpected_rtmp_stream(message: &str) {
 mod tests {
     use ffmpeg_next::{ffi, util::log::Level as FfmpegLevel};
 
-    use super::{DedupLine, LogDedup, level_value};
+    use super::{DedupLine, LogDedup, level_value, should_skip_ffmpeg_log};
 
     #[test]
     fn deduplicates_consecutive_identical_lines() {
@@ -305,5 +332,19 @@ mod tests {
         assert_eq!(level_value(FfmpegLevel::Info), ffi::AV_LOG_INFO);
         assert_eq!(level_value(FfmpegLevel::Warning), ffi::AV_LOG_WARNING);
         assert_eq!(level_value(FfmpegLevel::Error), ffi::AV_LOG_ERROR);
+    }
+
+    #[test]
+    fn skips_ffmpeg_logs_with_regex_patterns() {
+        assert!(should_skip_ffmpeg_log(
+            "Opening '/tmp/input.mp4' for reading"
+        ));
+        assert!(should_skip_ffmpeg_log(
+            "Opening 'rtmp://127.0.0.1/live/in' for reading"
+        ));
+        assert!(should_skip_ffmpeg_log(
+            "Opening '/tmp/out.ts.tmp' for writing"
+        ));
+        assert!(!should_skip_ffmpeg_log("Unexpected stream 1, expecting 0"));
     }
 }

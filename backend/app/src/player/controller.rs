@@ -7,21 +7,16 @@ use std::{
     },
 };
 
-use async_walkdir::WalkDir;
 use ff_engine::{AudioEffectsControl, PlaybackControl, TextOverlayState};
 use log::*;
-use m3u8_rs::Playlist;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::{
-    fs,
-    io::{self, AsyncReadExt},
     process::{Child, ChildStdout},
     sync::{Mutex, RwLock},
     task::JoinHandle,
     time::{Duration, Instant, sleep},
 };
-use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -29,12 +24,7 @@ use crate::{
     db::{handles, models::Channel},
     file::{init_storage, local::LocalStorage},
     player::{output::player, utils::Media},
-    utils::{
-        config::{OutputMode, PlayoutConfig},
-        errors::ServiceError,
-        logging::Target,
-        system::SystemStat,
-    },
+    utils::{config::PlayoutConfig, errors::ServiceError, logging::Target, system::SystemStat},
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -531,9 +521,9 @@ async fn supervisor_loop(
         if let Err(e) = run_channel(manager.clone()).await {
             manager.stop_all(false).await;
 
-            let (active, public_path) = {
+            let active = {
                 let channel = manager.channel.lock().await;
-                (channel.active, channel.public.clone())
+                channel.active
             };
 
             if !active {
@@ -561,12 +551,6 @@ async fn supervisor_loop(
                     .metrics()
                     .num_alive_tasks()
             );
-
-            if manager.config.read().await.output.mode == OutputMode::HLS
-                && let Err(d_e) = delete_segments(public_path, &[], true).await
-            {
-                error!(target: Target::All.as_str(), channel = channel_id; "{d_e}");
-            };
 
             tokio::select! {
                 _ = token.cancelled() => break,
@@ -636,8 +620,6 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
     let filler_list = manager.filler_list.clone();
     let channel_id = config.general.channel_id;
 
-    drain_hls_path(&config.channel.public).await?;
-
     debug!(target: Target::All.as_str(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <span class=\"log-number\">{channel_id}</span>");
 
     let need_fill = {
@@ -657,63 +639,4 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
 
     // 4. Player starten
     player(manager).await
-}
-
-pub async fn drain_hls_path(path: &Path) -> io::Result<()> {
-    let m3u8_files = find_m3u8_files(path).await?;
-    let mut pl_segments = vec![];
-
-    for file in m3u8_files {
-        let mut file = fs::File::open(file).await?;
-        let mut bytes: Vec<u8> = Vec::new();
-        file.read_to_end(&mut bytes).await?;
-
-        if let Ok(Playlist::MediaPlaylist(pl)) = m3u8_rs::parse_playlist_res(&bytes) {
-            for segment in pl.segments {
-                pl_segments.push(segment.uri);
-            }
-        };
-    }
-
-    delete_segments(path, &pl_segments, false).await
-}
-
-/// Recursively searches for all files with the .m3u8 extension in the specified path.
-async fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
-    let mut m3u8_files = Vec::new();
-    let mut entries = WalkDir::new(path);
-
-    while let Some(Ok(entry)) = entries.next().await {
-        if entry.path().is_file() && entry.path().extension().is_some_and(|ext| ext == "m3u8") {
-            m3u8_files.push(entry.path().to_string_lossy().to_string());
-        }
-    }
-
-    Ok(m3u8_files)
-}
-
-/// Check if segment is in playlist, if not, delete it.
-async fn delete_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
-    path: P,
-    pl_segments: &[String],
-    all: bool,
-) -> io::Result<()> {
-    let mut entries = WalkDir::new(path);
-
-    while let Some(Ok(entry)) = entries.next().await {
-        if entry.path().is_file()
-            && entry
-                .path()
-                .extension()
-                .is_some_and(|ext| ext == "ts" || ext == "vtt" || (all && ext == "m3u8"))
-        {
-            let filename = entry.file_name().to_string_lossy().to_string();
-
-            if !pl_segments.contains(&filename) || all {
-                fs::remove_file(entry.path()).await?;
-            }
-        }
-    }
-
-    Ok(())
 }

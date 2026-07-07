@@ -116,6 +116,18 @@ impl EncodedOutput {
         if matches!(output_format, EncodedFormat::Hls { .. }) && !uses_var_stream_map {
             hls::remove_master_playlist(path)?;
         }
+        let hls_start_number = if matches!(output_format, EncodedFormat::Hls { .. }) {
+            let resume_playlists =
+                hls_resume_playlist_paths(path, &hls_playlist_path, hls_variants)?;
+            let master_playlist = uses_var_stream_map.then(|| {
+                hls::master_playlist_path(path)
+                    .to_string_lossy()
+                    .into_owned()
+            });
+            hls::prepare_resume_start_number(&resume_playlists, master_playlist.as_deref())?
+        } else {
+            None
+        };
         let mut octx = match output_format {
             EncodedFormat::Hls { .. } => format::output_as(&hls_playlist_path, "hls")?,
             EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
@@ -163,22 +175,32 @@ impl EncodedOutput {
                 list_size,
                 ..
             } => {
+                let hls_flags = if hls_start_number.is_some() {
+                    "delete_segments+omit_endlist+temp_file+discont_start"
+                } else {
+                    "delete_segments+omit_endlist+temp_file"
+                };
                 let mut options = ffmpeg::Dictionary::new();
                 options.set("hls_time", &segment_seconds.to_string());
                 options.set("hls_list_size", &list_size.to_string());
-                options.set(
-                    "hls_flags",
-                    "append_list+delete_segments+omit_endlist+temp_file",
-                );
+                options.set("hls_flags", hls_flags);
+                let segment_filename = if uses_var_stream_map {
+                    hls::segment_pattern(path)
+                } else {
+                    hls::standalone_segment_pattern(path)
+                };
+                options.set("hls_segment_filename", &segment_filename);
+                if let Some(start_number) = hls_start_number {
+                    options.set("start_number", &start_number.to_string());
+                }
                 if uses_var_stream_map {
-                    options.set("hls_segment_filename", &hls::segment_pattern(path));
                     options.set("master_pl_name", "master.m3u8");
                     options.set(
                         "var_stream_map",
                         &hls::var_stream_map(variants_for_naming, hls_subtitle),
                     );
                 }
-                let _unused_options = octx.write_header_with(options)?;
+                reject_unused_options(octx.write_header_with(options)?)?;
             }
         }
 
@@ -437,6 +459,36 @@ impl EncodedOutput {
     }
 }
 
+fn reject_unused_options(options: ffmpeg::Dictionary<'_>) -> Result<()> {
+    let unused = options
+        .iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect::<Vec<_>>();
+    if unused.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "unused FFmpeg output option(s): {}",
+            unused.join(", ")
+        ))
+    }
+}
+
+fn hls_resume_playlist_paths(
+    path: &str,
+    hls_playlist_path: &str,
+    variants: &[HlsVariant],
+) -> Result<Vec<String>> {
+    if variants.is_empty() {
+        Ok(vec![hls_playlist_path.to_string()])
+    } else {
+        variants
+            .iter()
+            .map(|variant| hls::resolved_variant_playlist_path(path, &variant.name))
+            .collect()
+    }
+}
+
 fn open_video_stream(
     octx: &mut format::context::Output,
     cfg: &OutputConfig,
@@ -664,6 +716,65 @@ mod open_tests {
 
         assert!(output.is_ok(), "expected CBR encoder options to be valid");
         drop(output);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn standalone_hls_appends_after_existing_playlist_sequence() {
+        ffmpeg::init().ok();
+        let dir = std::env::temp_dir().join(format!("hls_append_test_{}", std::process::id()));
+        fs::remove_dir_all(&dir).ok();
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("stream.m3u8");
+
+        let cfg = OutputConfig::new(320, 240, 25, 44100);
+
+        for brightness in [16, 160] {
+            let mut output = EncodedOutput::open(
+                path.to_str().unwrap(),
+                &cfg,
+                EncodedFormat::Hls {
+                    variants: vec![],
+                    subtitle: None,
+                    segment_seconds: 1,
+                    list_size: 60,
+                },
+            )
+            .unwrap();
+
+            for index in 0..60 {
+                let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
+                video.set_pts(Some(index));
+                video.data_mut(0).fill(brightness);
+                output.encode_video(&video).unwrap();
+                let mut audio = frame::Audio::new(
+                    Sample::F32(ffmpeg::format::sample::Type::Planar),
+                    output.audio_frame_size(),
+                    ChannelLayout::STEREO,
+                );
+                audio.set_rate(44100);
+                audio.set_pts(Some(index * output.audio_frame_size() as i64));
+                for channel in 0..2 {
+                    audio.plane_mut::<f32>(channel).fill(0.0);
+                }
+                output.encode_audio(&audio).unwrap();
+            }
+            output.finish().unwrap();
+
+            if brightness == 16 {
+                let first_segment = fs::read(dir.join("stream_0.ts")).unwrap();
+                assert!(!first_segment.is_empty());
+                fs::write(dir.join("stream_0.snapshot"), first_segment).unwrap();
+            }
+        }
+
+        let playlist = fs::read_to_string(&path).unwrap();
+        assert!(playlist.contains("stream_2.ts"), "{playlist}");
+        assert_eq!(
+            fs::read(dir.join("stream_0.ts")).unwrap(),
+            fs::read(dir.join("stream_0.snapshot")).unwrap()
+        );
+        assert!(dir.join("stream_2.ts").exists());
         fs::remove_dir_all(&dir).ok();
     }
 
