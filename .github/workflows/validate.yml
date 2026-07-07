@@ -9,23 +9,27 @@ jobs:
 
     env:
       CARGO_INCREMENTAL: 0
-      RUSTFLAGS: "-Csplit-debuginfo=packed"
       CARGO_BUILD_JOBS: 1
+      VCPKGRS_DYNAMIC: 1
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
       - name: Set Build Tools and update Rust
         run: |
           rustup update stable
-          rustup component add rustfmt
-          rustup component add clippy
+          rustup component add rustfmt clippy
+
+      - name: Set macOS Rust flags
+        if: runner.os == 'macOS'
+        run: echo 'RUSTFLAGS=-Csplit-debuginfo=packed' >> $GITHUB_ENV
 
       - name: Install FFmpeg libraries on Linux
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -39,21 +43,41 @@ jobs:
             libswscale-dev \
             pkg-config
 
-      - name: Tests and build on Linux
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Install FFmpeg libraries on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install ffmpeg pkg-config
+
+      - name: Setup vcpkg on Windows
+        if: runner.os == 'Windows'
+        uses: lukka/run-vcpkg@v11
+
+      - name: Install FFmpeg libraries on Windows
+        if: runner.os == 'Windows'
+        run: |
+          vcpkg install ffmpeg:x64-windows
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+
+      - name: Frontend checks
+        if: runner.os == 'Linux'
         run: |
           npm ci
           npm run type-check
           npm run build
+
+      - name: Rust tests and lint on Linux
+        if: runner.os == 'Linux'
+        run: |
           cargo test --all-features
           cargo clippy --all-features --all-targets -- --deny warnings
           cargo fmt --all -- --check
           cargo build --all-features
 
-      - name: Run build on macOS
-        if: ${{ matrix.os == 'macos-latest' }}
+      - name: Rust build on macOS
+        if: runner.os == 'macOS'
         run: cargo build --all-features
 
-      - name: Run build on Windows (with MSVC fixes)
-        if: ${{ matrix.os == 'windows-latest' }}
+      - name: Rust build on Windows
+        if: runner.os == 'Windows'
         run: cargo build --release --all-features
