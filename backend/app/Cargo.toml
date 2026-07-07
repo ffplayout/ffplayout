@@ -58,7 +58,6 @@ log = { version = "0.4", features = [
     "kv_sval",
     "kv_serde",
 ] }
-m3u8-rs = "6"
 mime_guess = "2"
 nix = { version = "0.31", features = ["user", "fs"] }
 notify = "8.0"
@@ -73,7 +72,6 @@ reqwest = { version = "0.13", default-features = false, features = ["json"] }
 sanitize-filename = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-shlex = "2.0"
 sysinfo = { version = "0.39", features = ["linux-netdevs", "linux-tmpfs"] }
 sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.44", features = ["full"] }

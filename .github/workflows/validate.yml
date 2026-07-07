@@ -24,11 +24,20 @@ jobs:
           rustup component add rustfmt
           rustup component add clippy
 
-      - name: Use ffmpeg on Linux
+      - name: Install FFmpeg libraries on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        uses: AnimMouse/setup-ffmpeg@v1
-        with:
-          version: 8.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            libavcodec-dev \
+            libavdevice-dev \
+            libavfilter-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libswresample-dev \
+            libswscale-dev \
+            pkg-config
 
       - name: Tests and build on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
