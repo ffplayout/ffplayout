@@ -37,10 +37,10 @@ const LIVE_WATCHDOG_INTERVAL: Duration = Duration::from_millis(100);
 /// the session instead, so the output never gets stuck writing filler.
 const MAX_LIVE_GAP_SECONDS: f64 = 5.0;
 /// The live channel carries decoded raw frames (several MB each for video);
-/// it must be bounded so a stalled consumer cannot exhaust memory. Roughly
-/// two seconds of video at 25 fps.
-const LIVE_CHANNEL_CAPACITY: usize = 50;
-const DROPPED_FRAME_LOG_INTERVAL: u64 = 250;
+/// it must be bounded so a stalled consumer cannot exhaust memory.
+const LIVE_CHANNEL_SECONDS: usize = 2;
+const LIVE_SEND_RETRY_INTERVAL: Duration = Duration::from_millis(10);
+const LIVE_BACKPRESSURE_LOG_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Number of RTMP reader threads that outlived their `abort` signal and are
 /// being reaped in the background. Exposed only via log messages for now;
@@ -91,7 +91,8 @@ enum LiveEvent {
 pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
     let fps = cfg.fps;
     let sample_rate = cfg.sample_rate;
-    let (tx, rx) = mpsc::sync_channel(LIVE_CHANNEL_CAPACITY);
+    let capacity = live_channel_capacity(cfg.fps);
+    let (tx, rx) = mpsc::sync_channel(capacity);
     let abort = Arc::new(AtomicBool::new(false));
     thread::spawn({
         let abort = Arc::clone(&abort);
@@ -616,37 +617,25 @@ struct LiveFrameSender {
     session_id: u64,
     last_frame_ms: Arc<AtomicU64>,
     frame_seen: Arc<AtomicBool>,
-    dropped_frames: u64,
+    abort: Arc<AtomicBool>,
+    listener_abort: Arc<AtomicBool>,
 }
 
 impl LiveFrameSender {
-    /// Sends a decoded live frame without ever blocking the RTMP reader.
-    /// When the (bounded) channel is full — the consumer is stalled or cannot
-    /// keep up — the frame is dropped; the consumer bridges the resulting PTS
-    /// gap with filler, which is the correct behavior for a live source.
+    /// Sends a decoded live frame with bounded backpressure. A full queue slows
+    /// the RTMP reader instead of dropping frames, but the retry loop keeps
+    /// checking abort flags so shutdown/restart cannot hang on a blocked send.
     fn send_frame(&mut self, event: LiveEvent) -> Result<()> {
         self.frame_seen.store(true, Ordering::Relaxed);
         self.last_frame_ms
             .store(monotonic_millis(), Ordering::Relaxed);
-        match self.tx.try_send(event) {
-            Ok(()) => Ok(()),
-            Err(TrySendError::Full(_)) => {
-                if self
-                    .dropped_frames
-                    .is_multiple_of(DROPPED_FRAME_LOG_INTERVAL)
-                {
-                    warn!(
-                        "live frame channel is full; dropping live frames ({} dropped so far)",
-                        self.dropped_frames + 1
-                    );
-                }
-                self.dropped_frames += 1;
-                Ok(())
-            }
-            Err(TrySendError::Disconnected(_)) => {
-                Err(anyhow::anyhow!("live frame channel disconnected"))
-            }
-        }
+        send_live_event(
+            &self.tx,
+            event,
+            Some(&self.abort),
+            &self.listener_abort,
+            "live frame",
+        )
     }
 }
 
@@ -693,7 +682,15 @@ fn run_rtmp_listener(
                     Arc::clone(&abort),
                 );
 
-                if tx.send(LiveEvent::Started(session_id)).is_err() {
+                if send_live_event(
+                    &tx,
+                    LiveEvent::Started(session_id),
+                    Some(&abort),
+                    &listener_abort,
+                    "live start",
+                )
+                .is_err()
+                {
                     abort.store(true, Ordering::Relaxed);
                     let _ = watchdog.join();
                     return;
@@ -705,7 +702,8 @@ fn run_rtmp_listener(
                     session_id,
                     last_frame_ms,
                     frame_seen,
-                    dropped_frames: 0,
+                    abort: Arc::clone(&abort),
+                    listener_abort: Arc::clone(&listener_abort),
                 };
 
                 let worker_url = url.clone();
@@ -775,7 +773,15 @@ fn run_rtmp_listener(
                 }
 
                 info!("Restart ingest server after live input ended");
-                if tx.send(LiveEvent::Ended(session_id)).is_err() {
+                if send_live_event(
+                    &tx,
+                    LiveEvent::Ended(session_id),
+                    None,
+                    &listener_abort,
+                    "live end",
+                )
+                .is_err()
+                {
                     return;
                 }
             }
@@ -786,6 +792,50 @@ fn run_rtmp_listener(
                 }
                 error!("RTMP listener failed: {error:#}; retrying");
                 thread::sleep(Duration::from_secs(1));
+            }
+        }
+    }
+}
+
+fn live_channel_capacity(fps: u32) -> usize {
+    (fps as usize).saturating_mul(LIVE_CHANNEL_SECONDS).max(1)
+}
+
+fn send_live_event(
+    tx: &SyncSender<LiveEvent>,
+    mut event: LiveEvent,
+    abort: Option<&AtomicBool>,
+    listener_abort: &AtomicBool,
+    label: &str,
+) -> Result<()> {
+    let mut backpressure_since = None;
+    let mut next_log_at = Instant::now() + LIVE_BACKPRESSURE_LOG_INTERVAL;
+    loop {
+        match tx.try_send(event) {
+            Ok(()) => return Ok(()),
+            Err(TrySendError::Disconnected(_)) => {
+                return Err(anyhow::anyhow!("live event channel disconnected"));
+            }
+            Err(TrySendError::Full(returned_event)) => {
+                if abort.is_some_and(|abort| abort.load(Ordering::Relaxed))
+                    || listener_abort.load(Ordering::Relaxed)
+                {
+                    return Err(anyhow::anyhow!(
+                        "aborted while waiting to send {label} event"
+                    ));
+                }
+
+                event = returned_event;
+                let now = Instant::now();
+                let since = *backpressure_since.get_or_insert(now);
+                if now >= next_log_at {
+                    warn!(
+                        "live event channel is full; applying backpressure to {label} sender for {:.3} s",
+                        since.elapsed().as_secs_f64()
+                    );
+                    next_log_at = now + LIVE_BACKPRESSURE_LOG_INTERVAL;
+                }
+                thread::sleep(LIVE_SEND_RETRY_INTERVAL);
             }
         }
     }
@@ -957,13 +1007,14 @@ mod tests {
             atomic::{AtomicBool, AtomicU64, Ordering},
             mpsc::{self, TryRecvError},
         },
-        time::Instant,
+        thread,
+        time::{Duration, Instant},
     };
 
     use anyhow::Result;
     use ffmpeg_next::frame;
 
-    use super::{LIVE_CHANNEL_CAPACITY, LiveEvent, LiveFrameSender, LiveReceiver, resume_pts};
+    use super::{LiveEvent, LiveFrameSender, LiveReceiver, live_channel_capacity, resume_pts};
     use crate::output::FrameOutput;
 
     struct CountingOutput {
@@ -1048,28 +1099,70 @@ mod tests {
     }
 
     #[test]
-    fn live_frame_sender_drops_frames_when_channel_is_full() {
+    fn live_frame_sender_waits_until_full_channel_has_capacity() {
         let (tx, rx) = mpsc::sync_channel(1);
         tx.try_send(LiveEvent::Started(1)).unwrap();
         let frame_seen = Arc::new(AtomicBool::new(false));
         let last_frame_ms = Arc::new(AtomicU64::new(u64::MAX));
-        let mut sender = LiveFrameSender {
-            tx,
-            session_id: 1,
-            last_frame_ms: Arc::clone(&last_frame_ms),
-            frame_seen: Arc::clone(&frame_seen),
-            dropped_frames: 0,
-        };
+        let abort = Arc::new(AtomicBool::new(false));
+        let listener_abort = Arc::new(AtomicBool::new(false));
+        let send_finished = Arc::new(AtomicBool::new(false));
+        let worker_finished = Arc::clone(&send_finished);
+        let worker = thread::spawn({
+            let frame_seen = Arc::clone(&frame_seen);
+            let last_frame_ms = Arc::clone(&last_frame_ms);
+            let abort = Arc::clone(&abort);
+            let listener_abort = Arc::clone(&listener_abort);
+            move || {
+                let mut sender = LiveFrameSender {
+                    tx,
+                    session_id: 1,
+                    last_frame_ms,
+                    frame_seen,
+                    abort,
+                    listener_abort,
+                };
+                sender
+                    .send_frame(LiveEvent::Video(1, frame::Video::empty()))
+                    .unwrap();
+                worker_finished.store(true, Ordering::Relaxed);
+            }
+        });
 
-        sender
-            .send_frame(LiveEvent::Video(1, frame::Video::empty()))
-            .unwrap();
+        thread::sleep(Duration::from_millis(30));
+        assert!(!send_finished.load(Ordering::Relaxed));
 
         assert!(frame_seen.load(Ordering::Relaxed));
         assert_ne!(last_frame_ms.load(Ordering::Relaxed), u64::MAX);
-        assert_eq!(sender.dropped_frames, 1);
         assert!(matches!(rx.try_recv(), Ok(LiveEvent::Started(1))));
-        assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+        worker.join().unwrap();
+        assert!(send_finished.load(Ordering::Relaxed));
+        assert!(matches!(rx.try_recv(), Ok(LiveEvent::Video(1, _))));
+        assert!(matches!(
+            rx.try_recv(),
+            Err(TryRecvError::Empty | TryRecvError::Disconnected)
+        ));
+    }
+
+    #[test]
+    fn live_frame_sender_stops_waiting_when_aborted() {
+        let (tx, _rx) = mpsc::sync_channel(1);
+        tx.try_send(LiveEvent::Started(1)).unwrap();
+        let abort = Arc::new(AtomicBool::new(true));
+        let mut sender = LiveFrameSender {
+            tx,
+            session_id: 1,
+            last_frame_ms: Arc::new(AtomicU64::new(0)),
+            frame_seen: Arc::new(AtomicBool::new(false)),
+            abort,
+            listener_abort: Arc::new(AtomicBool::new(false)),
+        };
+
+        assert!(
+            sender
+                .send_frame(LiveEvent::Video(1, frame::Video::empty()))
+                .is_err()
+        );
     }
 
     #[test]
@@ -1081,7 +1174,8 @@ mod tests {
             session_id: 1,
             last_frame_ms: Arc::new(AtomicU64::new(0)),
             frame_seen: Arc::new(AtomicBool::new(false)),
-            dropped_frames: 0,
+            abort: Arc::new(AtomicBool::new(false)),
+            listener_abort: Arc::new(AtomicBool::new(false)),
         };
 
         assert!(
@@ -1093,7 +1187,7 @@ mod tests {
 
     #[test]
     fn pump_live_ignores_frames_from_stale_sessions() {
-        let (tx, rx) = mpsc::sync_channel(LIVE_CHANNEL_CAPACITY);
+        let (tx, rx) = mpsc::sync_channel(live_channel_capacity(25));
         tx.send(LiveEvent::Video(2, frame::Video::empty())).unwrap();
         tx.send(LiveEvent::Audio(2, frame::Audio::empty())).unwrap();
         tx.send(LiveEvent::Ended(2)).unwrap();
