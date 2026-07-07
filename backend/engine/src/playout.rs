@@ -19,6 +19,7 @@ use crate::{
 };
 
 const LOGO_FADE_SECONDS: f64 = 1.0;
+const MIN_LOOP_REMAINING_SECONDS: f64 = 3.0;
 
 #[derive(Debug)]
 pub(crate) struct PlaybackSkipped;
@@ -139,7 +140,7 @@ fn play_looped_clip<O: FrameOutput>(
     let mut iterations = 0_u32;
     let minimum_progress = (1.0 / f64::from(cfg.fps)).min(1.0 / f64::from(cfg.sample_rate));
 
-    while remaining > minimum_progress {
+    while should_play_loop_iteration(first_iteration, remaining, minimum_progress) {
         if playback_control.take_skip_current() {
             return Err(PlaybackSkipped.into());
         }
@@ -172,7 +173,7 @@ fn play_looped_clip<O: FrameOutput>(
         first_iteration = false;
         iterations += 1;
 
-        if remaining > minimum_progress {
+        if remaining >= MIN_LOOP_REMAINING_SECONDS {
             debug!(
                 "looping {path} to fill requested duration; iteration {iterations}, remaining {:.6} s",
                 remaining
@@ -181,6 +182,18 @@ fn play_looped_clip<O: FrameOutput>(
     }
 
     Ok(())
+}
+
+fn should_play_loop_iteration(
+    first_iteration: bool,
+    remaining: f64,
+    minimum_progress: f64,
+) -> bool {
+    if first_iteration {
+        remaining > minimum_progress
+    } else {
+        remaining >= MIN_LOOP_REMAINING_SECONDS
+    }
 }
 
 fn elapsed_timeline_seconds(
@@ -1322,7 +1335,7 @@ fn write_silence<O: FrameOutput>(
 mod tests {
     use super::{
         FrameRateConverter, Rational, fit_dimensions, padding_to_sync, parse_duration_us,
-        single_frame_repeat_frames,
+        should_play_loop_iteration, single_frame_repeat_frames,
     };
 
     #[test]
@@ -1340,6 +1353,13 @@ mod tests {
         assert_eq!(single_frame_repeat_frames(1, 1, 250), 249);
         assert_eq!(single_frame_repeat_frames(2, 2, 250), 0);
         assert_eq!(single_frame_repeat_frames(1, 250, 250), 0);
+    }
+
+    #[test]
+    fn looped_clip_allows_small_remaining_duration() {
+        assert!(should_play_loop_iteration(true, 0.5, 0.04));
+        assert!(!should_play_loop_iteration(false, 2.999, 0.04));
+        assert!(should_play_loop_iteration(false, 3.0, 0.04));
     }
 
     #[test]
