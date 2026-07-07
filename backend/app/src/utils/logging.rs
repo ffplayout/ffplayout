@@ -22,9 +22,8 @@ use flexi_logger::{
     WriteMode,
     writers::{FileLogWriter, LogWriter},
 };
-use real::RealIp;
-
 use log::{kv::Value, *};
+use real::RealIp;
 use regex::{Captures, Regex};
 use tokio::sync::Mutex;
 
@@ -46,9 +45,11 @@ pub enum Target {
 }
 
 impl Target {
-    pub const fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
+            Self::Console if ARGS.log_to_console => "{_Default}",
             Self::Console => "{console}",
+            Self::All if ARGS.log_to_console => "{_Default}",
             Self::All => "{console,_Default}",
         }
     }
@@ -244,14 +245,8 @@ pub struct LogDefault {
 
 impl LogDefault {
     pub fn new(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> Self {
-        let file: Box<dyn LogWriter> = if ARGS.log_to_console {
-            Box::new(LogConsole)
-        } else {
-            Box::new(MultiFileLogger::new(log_file_path()))
-        };
-
         Self {
-            file,
+            file: Box::new(MultiFileLogger::new(log_file_path())),
             mail: LogMailer::new(mail_queues),
         }
     }
@@ -466,10 +461,17 @@ pub fn init_logging(
         .module("sqlx", LevelFilter::Error)
         .module("tokio", LevelFilter::Error);
 
-    let logger = Logger::with(builder.build())
-        .write_mode(WriteMode::Async)
-        .log_to_writer(Box::new(LogDefault::new(mail_queues)))
-        .add_writer("console", Box::new(LogConsole))
+    let mut logger = Logger::with(builder.build()).write_mode(WriteMode::Async);
+
+    if ARGS.log_to_console {
+        logger = logger.log_to_writer(Box::new(LogConsole));
+    } else {
+        logger = logger
+            .log_to_writer(Box::new(LogDefault::new(mail_queues)))
+            .add_writer("console", Box::new(LogConsole));
+    }
+
+    let logger = logger
         .start()
         .map_err(|e| io::Error::other(e.to_string()))?;
 
