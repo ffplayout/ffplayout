@@ -1,4 +1,4 @@
-**ffplayout-engine Documentation**
+**ffplayout Documentation**
 ================
 
 ### **[For Developer](/docs/developer.md)**
@@ -25,28 +25,10 @@ The different output modes.
 
 Generate playlists based on template.
 
-### **[Multi Audio Tracks](/docs/multi_audio.md)**
-
-Output multiple audio tracks.
-
-### **[Custom Filter](/docs/custom_filters.md)**
-
-Apply self defined audio/video filters.
-
-### **[Preview Stream](/docs/preview_stream.md)**
-
-Setup and use a preview stream.
-
 ### **[Remote Sources](/docs/remote_source.md)**
 
 Use of remote sources, like https://example.org/video.mp4
 
 ### **[ffplayout API](/docs/api.md)**
 
-Control the engine, playlist and config with a ~REST API
-
-### **[Stream Copy](/docs/stream_copy.md)**
-
-Copy audio and or video stream
-
-### **[Advanced Settings](/docs/advanced_settings.md)**
+Control the engine, playlist and config with the API.

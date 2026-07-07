@@ -1,6 +1,6 @@
 # Run ffplayout in container
 
-The image is build with a default user/pass `admin/admin`.
+The image is built with a default user/pass `admin/admin`.
 
 You can take a look at the [Dockerfile](Dockerfile)
 
@@ -26,11 +26,11 @@ docker build -t ffplayout-image .
 docker build -f docker/Dockerfile -t ffplayout-image .
 
 # build ffmpeg from source
-docker build -f ffmpeg.Dockerfile -t ffmpeg-build .
-docker build -f nonfree.Dockerfile -t ffplayout-image:nonfree .
+docker build -f docker/ffmpeg.Dockerfile -t ffmpeg-build .
+docker build -f docker/nonfree.Dockerfile -t ffplayout-image:nonfree .
 
 # build with nvidia image for hardware support
-docker build -f nvidia.Dockerfile -t ffplayout-image:nvidia .
+docker build -f docker/nvidia.Dockerfile -t ffplayout-image:nvidia .
 ```
 
 example of command to start the container:

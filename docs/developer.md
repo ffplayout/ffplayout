@@ -1,6 +1,6 @@
 ## Build ffplayout
 
-For compiling use always the news Rust version, the best is to install it from [rustup](https://rustup.rs/).
+For compiling, use the latest stable Rust version from [rustup](https://rustup.rs/).
 
 ### Cross Compile
 
@@ -31,7 +31,6 @@ Build then with:
 cross build --release --target aarch64-apple-darwin
 ```
 
-```
 ### Create debian DEB and RHEL RPM packages
 
 install:
@@ -42,13 +41,13 @@ Compile to your target system with cargo or cross, and run:
 
 ```Bash
 # for debian based systems:
-cargo deb --no-build --target=x86_64-unknown-linux-musl
+cargo deb --no-build -p ffplayout
 
 # for armhf
-cargo deb --no-build --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
+cargo deb --no-build --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout
 
 # for arm64
-cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
+cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout
 
 # for rhel based systems:
 cargo generate-rpm --target=x86_64-unknown-linux-musl
@@ -57,7 +56,7 @@ cargo generate-rpm --target=x86_64-unknown-linux-musl
 ## Generate types for Frontend
 The frontend uses TypeScript, to generate types for the rust structs run: `cargo test`.
 
-The generated types are then in [types folder](/frontend/types).
+The generated types are written next to the frontend sources that import them.
 
 ## Setup Frontend
 
@@ -97,6 +96,6 @@ Check out the [deployment documentation](https://vuejs.org/guide/quick-start.htm
 1. initialize database: `cargo run -- -i`
 2. run backend: `cargo run -- -l 127.0.0.1:8787`
 3. in second terminal:
-    1. install packages: `npm i`
+    1. install packages: `npm ci`
     2. run frontend: `npm run dev`
 4. in browser navigate to: `127.0.0.1:5757`
