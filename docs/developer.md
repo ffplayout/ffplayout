@@ -2,33 +2,35 @@
 
 For compiling, use the latest stable Rust version from [rustup](https://rustup.rs/).
 
-### Cross Compile
+### FFmpeg libraries
 
-For cross compiling install docker or podman and latest [cross-rs](https://github.com/cross-rs/cross):
+ffplayout links against FFmpeg through `ffmpeg-next`, so local builds need the FFmpeg runtime tools and development libraries. FFmpeg 7.0+ is required.
 
-```
-cargo install cross --git https://github.com/cross-rs/cross
-```
+On Debian/Ubuntu based systems install:
 
-To build for windows, run: `cross build --release --target x86_64-pc-windows-gnu`\
-To build for linux aarch64: `cross build --release --target aarch64-unknown-linux-gnu`
-Etc.
-
-### Compile from Linux for macOS
-
-Follow [cross-toolchains](https://github.com/cross-rs/cross-toolchains) instruction to add macOS support to cross.
-
-I created my image with:
-
-```
-cargo build-docker-image x86_64-apple-darwin-cross \
-    --build-arg 'MACOS_SDK_URL=https://github.com/joseluisq/macosx-sdks/releases/download/12.3/MacOSX12.3.sdk.tar.xz'
+```bash
+sudo apt install \
+    ffmpeg \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavfilter-dev \
+    libavformat-dev \
+    libavutil-dev \
+    libswresample-dev \
+    libswscale-dev \
+    pkg-config
 ```
 
-Build then with:
+On macOS install:
 
+```bash
+brew install ffmpeg pkg-config
 ```
-cross build --release --target aarch64-apple-darwin
+
+When compiling against a manually installed FFmpeg, make sure `pkg-config` can find the `.pc` files, for example:
+
+```bash
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 ```
 
 ### Create debian DEB and RHEL RPM packages
@@ -37,7 +39,7 @@ install:
 - `cargo install cargo-deb`
 - `cargo install cargo-generate-rpm`
 
-Compile to your target system with cargo or cross, and run:
+Compile to your target system with cargo, and run:
 
 ```Bash
 # for debian based systems:
