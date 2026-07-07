@@ -34,7 +34,8 @@ pub use utils::{
     logging,
     media_info::{
         AudioStream as EngineAudioStream, MediaInfo, MediaProbe as EngineMediaProbe, ProbeFormat,
-        VideoStream as EngineVideoStream, print_media_info, probe_media, probe_media_info,
+        SilenceDetection, VideoStream as EngineVideoStream, detect_audio_silence, print_media_info,
+        probe_media, probe_media_info,
     },
 };
 
@@ -637,6 +638,7 @@ fn init_ffmpeg(config: &OutputConfig) -> Result<()> {
     logging::init(
         config.ffmpeg_log_level,
         config.ingest_log_level,
+        &config.ffmpeg_ignore_lines,
         config.channel_id,
     );
     Ok(())

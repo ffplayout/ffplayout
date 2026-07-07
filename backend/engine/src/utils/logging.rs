@@ -1,11 +1,15 @@
 use std::{
     cell::RefCell,
-    ffi::CStr,
-    os::raw::{c_char, c_int, c_void},
+    os::raw::c_int,
     sync::{
         Mutex, OnceLock, PoisonError,
         atomic::{AtomicI32, Ordering},
     },
+};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::{
+    ffi::CStr,
+    os::raw::{c_char, c_void},
 };
 
 use ffmpeg_next::{ffi, util::log::Level as FfmpegLevel};
@@ -44,18 +48,45 @@ static INGEST_LOG_LEVEL: AtomicI32 = AtomicI32::new(ffi::AV_LOG_WARNING);
 static CHANNEL_ID: AtomicI32 = AtomicI32::new(0);
 static LOG_DEDUP: Mutex<LogDedup> = Mutex::new(LogDedup::new());
 static SKIPPED_FFMPEG_LOG_PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
+static USER_SKIPPED_FFMPEG_LOG_LINES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-pub(crate) fn init(ffmpeg_level: LogLevel, ingest_level: LogLevel, channel_id: Option<i32>) {
+#[cfg(target_os = "linux")]
+type FfmpegVaList = *mut ffi::__va_list_tag;
+#[cfg(target_os = "macos")]
+type FfmpegVaList = ffi::va_list;
+
+pub(crate) fn init(
+    ffmpeg_level: LogLevel,
+    ingest_level: LogLevel,
+    ignore_lines: &[String],
+    channel_id: Option<i32>,
+) {
     let ffmpeg_level = ffmpeg_level.as_ffmpeg_level();
     let ingest_level = ingest_level.as_ffmpeg_level();
     FFMPEG_LOG_LEVEL.store(level_value(ffmpeg_level), Ordering::Relaxed);
     INGEST_LOG_LEVEL.store(level_value(ingest_level), Ordering::Relaxed);
     CHANNEL_ID.store(channel_id.unwrap_or(0), Ordering::Relaxed);
+    *USER_SKIPPED_FFMPEG_LOG_LINES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = ignore_lines
+        .iter()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect();
     ffmpeg_next::util::log::set_level(max_level(ffmpeg_level, ingest_level));
+    set_log_callback();
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn set_log_callback() {
     unsafe {
         ffi::av_log_set_callback(Some(log_callback));
     }
 }
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn set_log_callback() {}
 
 pub(crate) fn with_ingest_logs<T>(channel_id: Option<i32>, operation: impl FnOnce() -> T) -> T {
     INGEST_LOG_CONTEXT.with(|context| {
@@ -106,11 +137,12 @@ fn level_value(level: FfmpegLevel) -> c_int {
     c_int::from(level)
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 unsafe extern "C" fn log_callback(
     avcl: *mut c_void,
     level: c_int,
     fmt: *const c_char,
-    vl: *mut ffi::__va_list_tag,
+    vl: FfmpegVaList,
 ) {
     if level > unsafe { ffi::av_log_get_level() } || level > configured_level() {
         return;
@@ -155,6 +187,11 @@ fn should_skip_ffmpeg_log(message: &str) -> bool {
     skipped_ffmpeg_log_patterns()
         .iter()
         .any(|pattern| pattern.is_match(message))
+        || USER_SKIPPED_FFMPEG_LOG_LINES
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .any(|line| message.contains(line))
 }
 
 fn skipped_ffmpeg_log_patterns() -> &'static [Regex] {

@@ -181,6 +181,7 @@ pub struct OutputConfig {
     pub audio_bitrate: u64,
     pub ffmpeg_log_level: LogLevel,
     pub ingest_log_level: LogLevel,
+    pub ffmpeg_ignore_lines: Vec<String>,
     pub channel_id: Option<i32>,
 }
 
@@ -396,6 +397,7 @@ impl OutputConfig {
             audio_bitrate: 128_000,
             ffmpeg_log_level: LogLevel::Warning,
             ingest_log_level: LogLevel::Warning,
+            ffmpeg_ignore_lines: Vec::new(),
             channel_id: None,
         }
     }
@@ -444,6 +446,11 @@ impl OutputConfig {
     pub fn with_logging(mut self, ffmpeg_log_level: LogLevel, ingest_log_level: LogLevel) -> Self {
         self.ffmpeg_log_level = ffmpeg_log_level;
         self.ingest_log_level = ingest_log_level;
+        self
+    }
+
+    pub fn with_ffmpeg_ignore_lines(mut self, ignore_lines: Vec<String>) -> Self {
+        self.ffmpeg_ignore_lines = ignore_lines;
         self
     }
 

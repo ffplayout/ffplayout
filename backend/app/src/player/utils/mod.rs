@@ -40,10 +40,25 @@ use crate::{
 pub use json_serializer::{JsonPlaylist, read_json};
 
 pub type MediaProbe = ff_engine::EngineMediaProbe;
+pub type SilenceDetection = ff_engine::SilenceDetection;
 
 pub async fn probe_media(input: impl AsRef<std::path::Path>) -> Result<MediaProbe, ProcessError> {
     let path = input.as_ref().to_string_lossy().to_string();
     ff_engine::probe_media(&path).map_err(|error| ProcessError::Ffprobe(error.to_string()))
+}
+
+pub async fn detect_audio_silence(
+    input: impl AsRef<std::path::Path>,
+    seek_seconds: f64,
+    duration_seconds: f64,
+) -> Result<SilenceDetection, ProcessError> {
+    let path = input.as_ref().to_string_lossy().to_string();
+    tokio::task::spawn_blocking(move || {
+        ff_engine::detect_audio_silence(&path, seek_seconds, duration_seconds, -30.0, 15.0)
+            .map_err(|error| ProcessError::Ffprobe(error.to_string()))
+    })
+    .await
+    .map_err(|error| ProcessError::Custom(error.to_string()))?
 }
 
 /// Compare incoming stream name with expecting name, but ignore question mark.

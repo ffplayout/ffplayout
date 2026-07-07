@@ -22,18 +22,6 @@ use crate::{
 
 pub const DUMMY_LEN: f64 = 60.0;
 
-pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 9] = [
-    "Address already in use",
-    "Device creation failed",
-    "Invalid argument",
-    "Numerical result",
-    "No such filter",
-    "Error initializing complex filters",
-    "Error while decoding stream #0:0: Invalid data found when processing input",
-    "Unrecognized option",
-    "Option not found",
-];
-
 #[derive(Debug, Clone, Default, Eq, PartialEq, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 #[serde(rename_all = "lowercase")]
@@ -303,7 +291,13 @@ impl Logging {
             ffmpeg_level: config.logging_ffmpeg_level.clone(),
             ingest_level: config.logging_ingest_level.clone(),
             detect_silence: config.logging_detect_silence,
-            ignore_lines: config.logging_ignore.split(';').map(String::from).collect(),
+            ignore_lines: config
+                .logging_ignore
+                .split(';')
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(String::from)
+                .collect(),
         }
     }
 }

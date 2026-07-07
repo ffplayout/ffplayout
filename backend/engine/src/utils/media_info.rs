@@ -1,6 +1,19 @@
 use anyhow::Result;
-use ffmpeg_next::{Rational, Rescale, codec, format, media};
+use ffmpeg_next::{
+    Rational, Rescale, codec, format, frame, media,
+    software::resampling,
+    util::{channel_layout::ChannelLayout, format::sample::Sample},
+};
 use log::{error, info};
+
+const SILENCE_SAMPLE_RATE: u32 = 48_000;
+const SILENCE_CHANNEL_LAYOUT: ChannelLayout = ChannelLayout::STEREO;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SilenceDetection {
+    pub silent: bool,
+    pub analyzed_seconds: f64,
+}
 
 pub struct MediaInfo {
     pub duration_seconds: Option<f64>,
@@ -114,6 +127,124 @@ pub fn probe_media(path: &str) -> Result<MediaProbe> {
     })
 }
 
+pub fn detect_audio_silence(
+    path: &str,
+    seek_seconds: f64,
+    duration_seconds: f64,
+    threshold_db: f32,
+    min_silence_seconds: f64,
+) -> Result<SilenceDetection> {
+    let mut ictx = format::input(path)?;
+    let stream = ictx
+        .streams()
+        .best(media::Type::Audio)
+        .ok_or_else(|| anyhow::anyhow!("input has no audio stream"))?;
+    let stream_index = stream.index();
+    let context = codec::context::Context::from_parameters(stream.parameters())?;
+    let mut decoder = context.decoder().audio()?;
+    let input_layout = audio_channel_layout(&decoder);
+    let mut resampler = resampling::Context::get(
+        decoder.format(),
+        input_layout,
+        decoder.rate(),
+        Sample::F32(format::sample::Type::Planar),
+        SILENCE_CHANNEL_LAYOUT,
+        SILENCE_SAMPLE_RATE,
+    )?;
+
+    if seek_seconds.is_finite() && seek_seconds > 0.0 {
+        let seek_ts = (seek_seconds * 1_000_000.0).round().max(0.0) as i64;
+        ictx.seek(seek_ts, ..seek_ts)
+            .or_else(|_| ictx.seek(seek_ts, ..))?;
+    }
+
+    let max_seconds = duration_seconds.min(min_silence_seconds).max(0.0);
+    let max_samples = (max_seconds * f64::from(SILENCE_SAMPLE_RATE)).ceil() as usize;
+    let threshold = 10.0_f32.powf(threshold_db / 20.0).abs();
+    let mut analyzed_samples = 0_usize;
+    let mut has_loud_sample = false;
+
+    for (stream, packet) in ictx.packets() {
+        if stream.index() != stream_index {
+            continue;
+        }
+
+        decoder.send_packet(&packet)?;
+        receive_silence_frames(
+            &mut decoder,
+            &mut resampler,
+            input_layout,
+            threshold,
+            max_samples,
+            &mut analyzed_samples,
+            &mut has_loud_sample,
+        )?;
+
+        if has_loud_sample || analyzed_samples >= max_samples {
+            break;
+        }
+    }
+
+    decoder.send_eof()?;
+    receive_silence_frames(
+        &mut decoder,
+        &mut resampler,
+        input_layout,
+        threshold,
+        max_samples,
+        &mut analyzed_samples,
+        &mut has_loud_sample,
+    )?;
+
+    let analyzed_seconds = analyzed_samples as f64 / f64::from(SILENCE_SAMPLE_RATE);
+    Ok(SilenceDetection {
+        silent: !has_loud_sample && analyzed_seconds >= min_silence_seconds,
+        analyzed_seconds,
+    })
+}
+
+fn receive_silence_frames(
+    decoder: &mut codec::decoder::Audio,
+    resampler: &mut resampling::Context,
+    input_layout: ChannelLayout,
+    threshold: f32,
+    max_samples: usize,
+    analyzed_samples: &mut usize,
+    has_loud_sample: &mut bool,
+) -> Result<()> {
+    let mut raw = frame::Audio::empty();
+    while decoder.receive_frame(&mut raw).is_ok() {
+        if raw.channel_layout().is_empty() {
+            raw.set_channel_layout(input_layout);
+        }
+
+        let mut converted = frame::Audio::empty();
+        resampler.run(&raw, &mut converted)?;
+        let remaining = max_samples.saturating_sub(*analyzed_samples);
+        if remaining == 0 {
+            return Ok(());
+        }
+
+        let samples = converted.samples().min(remaining);
+        for channel in 0..converted.planes() {
+            if converted.plane::<f32>(channel)[..samples]
+                .iter()
+                .any(|sample| sample.abs() > threshold)
+            {
+                *has_loud_sample = true;
+                break;
+            }
+        }
+        *analyzed_samples += samples;
+
+        if *has_loud_sample || *analyzed_samples >= max_samples {
+            return Ok(());
+        }
+    }
+
+    Ok(())
+}
+
 fn probe_audio_stream(stream: &format::stream::Stream) -> AudioStream {
     let parameters = stream.parameters();
     let codec_name = codec::decoder::find(parameters.id()).map(|codec| codec.name().to_string());
@@ -132,6 +263,15 @@ fn probe_audio_stream(stream: &format::stream::Stream) -> AudioStream {
     }
 
     result
+}
+
+fn audio_channel_layout(decoder: &codec::decoder::Audio) -> ChannelLayout {
+    let channel_layout = decoder.channel_layout();
+    if channel_layout.is_empty() {
+        ChannelLayout::default(i32::from(decoder.channels()).max(1))
+    } else {
+        channel_layout
+    }
 }
 
 fn probe_video_stream(stream: &format::stream::Stream) -> VideoStream {
@@ -232,4 +372,31 @@ fn format_resolution(resolution: Option<(u32, u32)>) -> String {
     resolution
         .map(|(width, height)| format!("{width}x{height}"))
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::detect_audio_silence;
+
+    fn media_mix_asset(name: &str) -> String {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/assets/storage/media_mix")
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[test]
+    fn silence_detection_rejects_media_without_audio_stream() {
+        ffmpeg_next::init().ok();
+        let error = detect_audio_silence(&media_mix_asset("no_audio.mp4"), 0.0, 15.0, -30.0, 15.0)
+            .expect_err("no_audio.mp4 must not be analyzed as silent audio");
+
+        assert!(
+            error.to_string().contains("input has no audio stream"),
+            "{error:#}"
+        );
+    }
 }

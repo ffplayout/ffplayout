@@ -380,6 +380,7 @@ fn engine_output_config(
         .with_text(text)
         .with_text_overlay_state(text_overlay_state)
         .with_logging(ffmpeg_log_level, ingest_log_level)
+        .with_ffmpeg_ignore_lines(config.logging.ignore_lines.clone())
         .with_channel_id(config.general.channel_id)
         .with_encoding(
             config.output.video_preset.clone(),

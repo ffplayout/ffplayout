@@ -17,7 +17,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     player::utils::{
-        JsonPlaylist, Media, is_close, is_remote, sec_to_time, time_in_seconds, time_to_sec,
+        JsonPlaylist, Media, detect_audio_silence, is_close, is_remote, sec_to_time,
+        time_in_seconds, time_to_sec,
     },
     utils::{config::PlayoutConfig, errors::ProcessError},
 };
@@ -60,10 +61,22 @@ async fn check_media(
         ));
     }
 
-    if config.logging.detect_silence {
-        debug!(channel = id;
-            "<span class=\"log-gray\">[Validation]</span> Silence detection is skipped because app validation no longer starts the ffmpeg binary."
-        );
+    if config.logging.detect_silence
+        && let Some(audio_source) = silence_check_source(&node)
+    {
+        match detect_audio_silence(audio_source, node.seek, node.out - node.seek).await {
+            Ok(result) if result.silent => {
+                error_list.push("Audio is totally silent!".to_string());
+            }
+            Ok(_) => {}
+            Err(error) => {
+                error!(channel = id;
+                    "<span class=\"log-gray\">[Validation]</span> Silence detection failed on position <span class=\"log-number\">{pos}</span> - {}: <span class=\"log-addr\">{}</span>: {error}",
+                    sec_to_time(begin),
+                    node.source
+                );
+            }
+        }
     }
 
     if !error_list.is_empty() {
@@ -76,6 +89,20 @@ async fn check_media(
     }
 
     Ok(())
+}
+
+fn silence_check_source(node: &Media) -> Option<&str> {
+    if !node.audio.is_empty() && node.probe_audio.is_some() {
+        Some(&node.audio)
+    } else if node
+        .probe
+        .as_ref()
+        .is_some_and(|probe| !probe.audio.is_empty())
+    {
+        Some(&node.source)
+    } else {
+        None
+    }
 }
 
 /// Validate Webvtt.
