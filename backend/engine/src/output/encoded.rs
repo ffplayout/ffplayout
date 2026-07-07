@@ -632,7 +632,10 @@ fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOu
 #[cfg(test)]
 mod open_tests {
     use super::*;
-    use crate::utils::config::{HlsSubtitle, OutputConfig};
+    use crate::utils::{
+        config::{HlsSubtitle, OutputConfig},
+        ffmpeg_features::ffmpeg_features,
+    };
     use std::fs;
 
     #[test]
@@ -663,7 +666,11 @@ mod open_tests {
         );
         assert!(path.exists(), "expected literal index.m3u8 to exist");
         let master = fs::read_to_string(dir.join("master.m3u8")).unwrap();
-        assert!(master.contains("NAME=\"Subtitles\""), "{master}");
+        if ffmpeg_features().hls_subtitle_name {
+            assert!(master.contains("NAME=\"Subtitles\""), "{master}");
+        } else {
+            assert!(master.contains("TYPE=SUBTITLES"), "{master}");
+        }
         assert!(master.contains("LANGUAGE=\"und\""), "{master}");
         assert!(master.contains("DEFAULT=NO"), "{master}");
         fs::remove_dir_all(&dir).ok();
