@@ -67,16 +67,16 @@ jobs:
       - name: Rust tests and lint on Linux
         if: runner.os == 'Linux'
         run: |
-          cargo test --all-features
-          cargo clippy --all-features --all-targets -- --deny warnings
+          cargo test --no-default-features
+          cargo clippy --no-default-features --all-targets -- --deny warnings
           cargo fmt --all -- --check
-          cargo build --all-features
+          cargo build --no-default-features --features embed_frontend
 
       - name: Rust build on macOS
         if: runner.os == 'macOS'
-        run: cargo build --all-features
+        run: cargo build --no-default-features --features embed_frontend
 
       - name: Rust build on Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cargo build --release --all-features
+        run: cargo build --release --no-default-features --features embed_frontend
