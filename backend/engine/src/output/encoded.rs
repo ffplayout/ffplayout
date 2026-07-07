@@ -81,17 +81,21 @@ impl EncodedOutput {
 
         // ffmpeg's HLS muxer only emits a master playlist (with the
         // `EXT-X-MEDIA:TYPE=SUBTITLES` entry HLS players need to discover the
-        // VTT track) when `var_stream_map` is used. With a single, implicit
-        // variant this does *not* require `%v` in the main playlist file
-        // name (ffmpeg just uses the literal name), so when VTT subtitles
-        // are enabled without explicit bitrate variants we only synthesize
-        // a single default variant to drive the `var_stream_map` string -
-        // the playlist path itself stays untouched. It doesn't affect real
-        // encoder settings: `open_video_stream`/`open_audio_stream` still
-        // fall back to `cfg` because they receive `None` for their
-        // `variant` argument below.
+        // VTT track) when `var_stream_map` is used. Some ffmpeg versions also
+        // require a `%v` playlist template whenever `var_stream_map` is set,
+        // even if there is only one implicit variant. For VTT-only output we
+        // therefore synthesize a single default variant named after the
+        // requested playlist stem, so `%v.m3u8` still resolves to the literal
+        // target such as `index.m3u8`. It doesn't affect real encoder
+        // settings: `open_video_stream`/`open_audio_stream` still fall back to
+        // `cfg` because they receive `None` for their `variant` argument below.
+        let default_variant_name = Path::new(path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("stream")
+            .to_string();
         let default_variant = [HlsVariant {
-            name: "stream".to_string(),
+            name: default_variant_name,
             width: cfg.width,
             height: cfg.height,
             video_bitrate: 0,
@@ -105,6 +109,11 @@ impl EncodedOutput {
         };
 
         let hls_playlist_path = hls::playlist_path(path, hls_variants)?;
+        let hls_output_path = if uses_var_stream_map {
+            hls::playlist_path(path, variants_for_naming)?
+        } else {
+            hls_playlist_path.clone()
+        };
 
         if matches!(output_format, EncodedFormat::Hls { .. })
             && let Some(parent) = Path::new(path).parent()
@@ -129,18 +138,17 @@ impl EncodedOutput {
             None
         };
         let mut octx = match output_format {
-            EncodedFormat::Hls { .. } => format::output_as(&hls_playlist_path, "hls")?,
+            EncodedFormat::Hls { .. } => format::output_as(&hls_output_path, "hls")?,
             EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
                 format::output_as(path, "flv")?
             }
             EncodedFormat::Auto => format::output(path)?,
         };
-        // Only real bitrate variants rename the playlist path (`%v.m3u8`),
-        // leaving a bogus placeholder file opened at the old name that must
-        // be closed and removed. With no explicit variants the path is
-        // unchanged, so the preopened output is already the correct file.
-        if !hls_variants.is_empty() {
-            hls::close_preopened_output(&mut octx, &hls_playlist_path)?;
+        // `format::output_as` preopens the `%v.m3u8` template path before the
+        // HLS muxer substitutes the concrete variant name. Close and remove
+        // that placeholder so only the real media playlists remain.
+        if uses_var_stream_map {
+            hls::close_preopened_output(&mut octx, &hls_output_path)?;
         }
 
         let global_header = octx
