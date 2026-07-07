@@ -122,21 +122,6 @@ curl -X DELETE http://127.0.0.1:8787/api/channel/2 -H "Authorization: Bearer <TO
 
 #### ffplayout Config
 
-**Get Advanced Config**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/playout/advanced/1 -H 'Authorization: Bearer <TOKEN>'
-```
-
-Response is a JSON object
-
-**Update Advanced Config**
-
-```BASH
-curl -X PUT http://127.0.0.1:8787/api/playout/advanced/1 -H "Content-Type: application/json" \
--d { <CONFIG DATA> } -H 'Authorization: Bearer <TOKEN>'
-```
-
 **Get Config**
 
 ```BASH
@@ -159,30 +144,37 @@ Text presets are made for sending text messages to the ffplayout engine, to over
 **Get all Presets**
 
 ```BASH
-curl -X GET http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
+curl -X GET http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
+-H 'Authorization: Bearer <TOKEN>'
+```
+
+**Get Font Families**
+
+```BASH
+curl -X GET http://127.0.0.1:8787/api/text/fonts -H 'Content-Type: application/json' \
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Update Preset**
 
 ```BASH
-curl -X PUT http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
--d '{ "name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
+curl -X PUT http://127.0.0.1:8787/api/presets/1/1 -H 'Content-Type: application/json' \
+-d '{ "name": "Lower third", "text": "Message", "position_x": "center", "position_y": "end:72", "font_family": "DejaVu Sans", "font_weight": "normal", "font_size": 24, "line_spacing": 4, "text_color": "#ffffff", "text_opacity": 1.0, "background_enabled": true, "background_color": "#000000", "background_opacity": 0.8, "background_padding": 4, "opacity": 1.0, "scroll_direction": "none", "scroll_speed": 100, "scroll_repeat": -1, "fade_in_seconds": 0.0, "fade_out_seconds": 0.0 }' \
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Add new Preset**
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/presets/1/ -H 'Content-Type: application/json' \
--d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
+curl -X POST http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
+-d '{ "name": "Lower third", "text": "Message", "position_x": "center", "position_y": "end:72", "font_family": "DejaVu Sans", "font_weight": "normal", "font_size": 24, "line_spacing": 4, "text_color": "#ffffff", "background_enabled": true }' \
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Delete Preset**
 
 ```BASH
-curl -X DELETE http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
+curl -X DELETE http://127.0.0.1:8787/api/presets/1/1 -H 'Content-Type: application/json' \
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
@@ -197,9 +189,9 @@ here we communicate with the engine for:
 **Send Text to ffplayout**
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/control/1/text/ \
+curl -X POST http://127.0.0.1:8787/api/control/1/text \
 -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>' \
--d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
+-d '{"name": "Message", "text": "Hello from ffplayout", "position_x": "center", "position_y": "end:72", "font_size": 24, "text_color": "#ffffff", "background_enabled": true}'
 ```
 
 **Control Playout**
@@ -309,35 +301,35 @@ curl -X GET http://127.0.0.1:8787/api/log/1?date=2022-06-20
 **Get File/Folder List**
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/browse/ -H 'Content-Type: application/json'
+curl -X POST http://127.0.0.1:8787/api/file/1/browse -H 'Content-Type: application/json'
 -d '{ "source": "/" }' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Create Folder**
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/create-folder/ -H 'Content-Type: application/json'
+curl -X POST http://127.0.0.1:8787/api/file/1/create-folder -H 'Content-Type: application/json'
 -d '{"source": "<FOLDER PATH>"}' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Rename File**
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/rename/ -H 'Content-Type: application/json'
+curl -X POST http://127.0.0.1:8787/api/file/1/rename -H 'Content-Type: application/json'
 -d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Remove File/Folder**
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/remove/ -H 'Content-Type: application/json'
+curl -X POST http://127.0.0.1:8787/api/file/1/remove -H 'Content-Type: application/json'
 -d '{"source": "<SOURCE>"}' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Upload File**
 
 ```BASH
-curl -X PUT http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <TOKEN>'
+curl -X PUT http://127.0.0.1:8787/api/file/1/upload -H 'Authorization: Bearer <TOKEN>'
 -F "file=@file.mp4"
 ```
 
@@ -351,7 +343,7 @@ curl -X GET http://127.0.0.1:8787/file/1/path/to/file.mp4
 
 **Get Public**
 
-Can be used for HLS Playlist and other static files in public folder
+Can be used for HLS playlists and other static files from the public directory.
 
 ```BASH
 curl -X GET http://127.0.0.1:8787/live/stream.m3u8
@@ -363,7 +355,7 @@ Import text/m3u file and convert it to a playlist
 lines with leading "#" will be ignore
 
 ```BASH
-curl -X PUT http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
+curl -X PUT http://127.0.0.1:8787/api/file/1/import -H 'Authorization: Bearer <TOKEN>'
 -F "file=@list.m3u"
 ```
 
@@ -398,4 +390,3 @@ Get statistics about CPU, Ram, Disk, etc. usage.
 curl -X GET http://127.0.0.1:8787/api/system/1
 -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 ```
-

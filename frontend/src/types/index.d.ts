@@ -1,5 +1,4 @@
 import type { JwtPayload } from 'jwt-decode'
-// import type { AdvancedConfig } from './advanced_config'
 import type { PlayoutConfig, Playlist as Ply } from './playout_config'
 
 export {}
@@ -23,8 +22,47 @@ declare global {
     interface PlayoutOutput {
         id: number
         name: string
-        parameters: string
+        hls_variants: string
+        stream_url: string
+        hls_playlist_name: string | null
+        hls_segment_duration: number | null
+        hls_list_size: number | null
+        width: number
+        height: number
+        fps: number
+        video_preset: string | null
+        rate_control: string | null
+        video_quality: number | null
+        video_maxrate: number | null
+        audio_bitrate: number | null
         channel_id: number
+    }
+
+    interface TextPreset {
+        id: number
+        channel_id: number
+        name: string
+        text: string
+        use_filename: boolean
+        font_family: string
+        font_weight: 'normal' | 'semibold' | 'bold'
+        filename_regex: string
+        position_x: string
+        position_y: string
+        font_size: number
+        line_spacing: number
+        text_color: string
+        text_opacity: number
+        background_enabled: boolean
+        background_color: string
+        background_opacity: number
+        background_padding: number
+        opacity: number
+        scroll_direction: 'none' | 'left_to_right' | 'right_to_left'
+        scroll_speed: number
+        scroll_repeat: number
+        fade_in_seconds: number
+        fade_out_seconds: number
     }
 
     interface Token {
@@ -85,9 +123,7 @@ declare global {
         duration: number
         in: number
         out: number
-        audio?: string
         category?: string
-        custom_filter?: string
         overtime?: boolean
     }
 

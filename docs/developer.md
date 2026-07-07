@@ -1,54 +1,55 @@
 ## Build ffplayout
 
-For compiling use always the news Rust version, the best is to install it from [rustup](https://rustup.rs/).
+For compiling, use the latest stable Rust version from [rustup](https://rustup.rs/).
 
-### Cross Compile
+### FFmpeg libraries
 
-For cross compiling install docker or podman and latest [cross-rs](https://github.com/cross-rs/cross):
+ffplayout links against FFmpeg through `ffmpeg-next`, so local builds need the FFmpeg runtime tools and development libraries. FFmpeg 7.0+ is required.
 
-```
-cargo install cross --git https://github.com/cross-rs/cross
-```
+On Debian/Ubuntu based systems install:
 
-To build for windows, run: `cross build --release --target x86_64-pc-windows-gnu`\
-To build for linux aarch64: `cross build --release --target aarch64-unknown-linux-gnu`
-Etc.
-
-### Compile from Linux for macOS
-
-Follow [cross-toolchains](https://github.com/cross-rs/cross-toolchains) instruction to add macOS support to cross.
-
-I created my image with:
-
-```
-cargo build-docker-image x86_64-apple-darwin-cross \
-    --build-arg 'MACOS_SDK_URL=https://github.com/joseluisq/macosx-sdks/releases/download/12.3/MacOSX12.3.sdk.tar.xz'
+```bash
+sudo apt install \
+    ffmpeg \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavfilter-dev \
+    libavformat-dev \
+    libavutil-dev \
+    libswresample-dev \
+    libswscale-dev \
+    pkg-config
 ```
 
-Build then with:
+On macOS install:
 
-```
-cross build --release --target aarch64-apple-darwin
+```bash
+brew install ffmpeg pkg-config
 ```
 
+When compiling against a manually installed FFmpeg, make sure `pkg-config` can find the `.pc` files, for example:
+
+```bash
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 ```
+
 ### Create debian DEB and RHEL RPM packages
 
 install:
 - `cargo install cargo-deb`
 - `cargo install cargo-generate-rpm`
 
-Compile to your target system with cargo or cross, and run:
+Compile to your target system with cargo, and run:
 
 ```Bash
 # for debian based systems:
-cargo deb --no-build --target=x86_64-unknown-linux-musl
+cargo deb --no-build -p ffplayout
 
 # for armhf
-cargo deb --no-build --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
+cargo deb --no-build --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout
 
 # for arm64
-cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
+cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout
 
 # for rhel based systems:
 cargo generate-rpm --target=x86_64-unknown-linux-musl
@@ -57,7 +58,7 @@ cargo generate-rpm --target=x86_64-unknown-linux-musl
 ## Generate types for Frontend
 The frontend uses TypeScript, to generate types for the rust structs run: `cargo test`.
 
-The generated types are then in [types folder](/frontend/types).
+The generated types are written next to the frontend sources that import them.
 
 ## Setup Frontend
 
@@ -97,6 +98,6 @@ Check out the [deployment documentation](https://vuejs.org/guide/quick-start.htm
 1. initialize database: `cargo run -- -i`
 2. run backend: `cargo run -- -l 127.0.0.1:8787`
 3. in second terminal:
-    1. install packages: `npm i`
+    1. install packages: `npm ci`
     2. run frontend: `npm run dev`
 4. in browser navigate to: `127.0.0.1:5757`

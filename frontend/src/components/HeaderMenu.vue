@@ -69,10 +69,6 @@ function logout() {
 function selectChannel(index: number) {
     configStore.i = index
 
-    if (authStore.role === 'global_admin') {
-        configStore.getAdvancedConfig()
-    }
-
     configStore.getPlayoutConfig()
     configStore.getPlayoutOutputs()
 }
@@ -111,13 +107,7 @@ function toggleTheme() {
                 </summary>
                 <ul class="menu menu-sm dropdown-content mt-1 z-1 p-2 shadow-sm bg-base-100 rounded-box w-52">
                     <template v-for="item in menuItems" :key="item.name">
-                        <li
-                            v-if="
-                                item.label !== 'message' ||
-                                (configStore.playout?.text?.add_text && !configStore.playout?.text?.text_from_filename)
-                            "
-                            class="bg-base-100 rounded-md py-1"
-                        >
+                        <li class="bg-base-100 rounded-md py-1">
                             <RouterLink
                                 :to="item.link"
                                 class="h-6.75 text-base"
@@ -176,13 +166,7 @@ function toggleTheme() {
         <div class="navbar-end hidden 2sm:flex w-4/5 min-w-187.5">
             <ul class="menu menu-sm menu-horizontal px-1">
                 <template v-for="item in menuItems" :key="item.name">
-                    <li
-                        v-if="
-                            item.label !== 'message' ||
-                            (configStore.playout?.text?.add_text && !configStore.playout?.text?.text_from_filename)
-                        "
-                        class="bg-base-100 rounded-md p-0"
-                    >
+                    <li class="bg-base-100 rounded-md p-0">
                         <RouterLink
                             :to="item.link"
                             class="px-2 h-6.75 relative text-base text-base-content"

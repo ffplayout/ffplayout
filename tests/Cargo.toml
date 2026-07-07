@@ -11,13 +11,15 @@ publish = false
 workspace = true
 
 [dev-dependencies]
-ffplayout = { path = "../engine" }
+ffplayout = { path = "../backend/app", default-features = false, features = [
+    "embed_frontend",
+] }
 
 axum = "0.8"
 chrono = "0.4"
 serde_json = "1.0"
 serial_test = "3.0"
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.29", features = ["full"] }
 tower = { version = "0.5", features = ["util"] }
 
@@ -32,14 +34,6 @@ path = "src/utils.rs"
 [[test]]
 name = "engine_playlist"
 path = "src/engine_playlist.rs"
-
-[[test]]
-name = "engine_cmd"
-path = "src/engine_cmd.rs"
-
-[[test]]
-name = "engine_filter"
-path = "src/engine_filter.rs"
 
 [[test]]
 name = "engine_generator"

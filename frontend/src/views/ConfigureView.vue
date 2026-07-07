@@ -15,7 +15,6 @@ useHead({
 })
 
 const isChannelRoute = computed(() => route.name === 'configure-channel')
-const isAdvancedRoute = computed(() => route.name === 'configure-advanced')
 const isPlayoutRoute = computed(() => route.name === 'configure-playout')
 const isUserRoute = computed(() => route.name === 'configure-user')
 </script>
@@ -28,14 +27,6 @@ const isUserRoute = computed(() => route.name === 'configure-user')
                 :class="isChannelRoute && 'bg-base-100/40'"
             >
                 {{ t('config.channel') }}
-            </RouterLink>
-            <RouterLink
-                v-if="authStore.role === 'global_admin'"
-                :to="{ name: 'configure-advanced' }"
-                class="join-item btn btn-sm btn-primary duration-500"
-                :class="isAdvancedRoute && 'bg-base-100/40'"
-            >
-                Advanced
             </RouterLink>
             <RouterLink
                 v-if="authStore.role !== 'user'"

@@ -61,7 +61,7 @@ ffplayout -g 2023-09-04 - 2023-09-10 --template 'path/to/playlist_template.json'
 Or through API:
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/playlist/1/generate/2023-00-05
+curl -X POST http://127.0.0.1:8787/api/playlist/1/generate/2023-09-05
     -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
     --data '{"template": {"sources": [\
                 {"start": "00:00:00", "duration": "10:00:00", "shuffle": true, "paths": ["path/1", "path/2"]}, \

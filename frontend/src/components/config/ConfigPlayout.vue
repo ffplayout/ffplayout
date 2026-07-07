@@ -15,6 +15,18 @@ const indexStore = useIndex()
 
 const logLevels = ['INFO', 'WARNING', 'ERROR']
 const processingMode = ['folder', 'playlist']
+const videoPresets = [
+    'ultrafast',
+    'superfast',
+    'veryfast',
+    'faster',
+    'fast',
+    'medium',
+    'slow',
+    'slower',
+    'veryslow',
+    'placebo',
+]
 
 const extensions = computed({
     get() {
@@ -28,15 +40,79 @@ const extensions = computed({
 
 const output = computed({
     get() {
-        return configStore.outputs.find(o => o.id === configStore.playout.output.id)?.name
+        return configStore.outputs.find((o) => o.id === configStore.playout.output.id)?.name
     },
 
     set(value: string) {
-        const output = configStore.outputs.find(o => o.name === value)
-        configStore.playout.output.output_param = output?.parameters ?? ''
+        const output = configStore.outputs.find((o) => o.name === value)
         configStore.playout.output.id = output?.id ?? 0
+        configStore.playout.output.stream_url = output?.stream_url ?? ''
+        configStore.playout.output.hls_playlist_name = output?.hls_playlist_name ?? 'stream'
+        configStore.playout.output.hls_segment_duration = output?.hls_segment_duration ?? 6
+        configStore.playout.output.hls_list_size = output?.hls_list_size ?? 600
+        configStore.playout.output.width = output?.width ?? 1280
+        configStore.playout.output.height = output?.height ?? 720
+        configStore.playout.output.fps = output?.fps ?? 25
+        configStore.playout.output.video_preset = output?.video_preset ?? 'faster'
+        configStore.playout.output.rate_control = output?.rate_control ?? 'crf'
+        configStore.playout.output.video_quality = output?.video_quality ?? 23
+        configStore.playout.output.video_maxrate = output?.video_maxrate ?? 2400
+        configStore.playout.output.audio_bitrate = output?.audio_bitrate ?? 128
+        configStore.playout.output.hls_variants = (output?.hls_variants ?? '')
+            .split(';')
+            .map((v) => v.trim())
+            .filter((v) => v.length > 0)
     },
 })
+
+interface HlsVariantRow {
+    name: string
+    width: string
+    height: string
+    videoBitrate: string
+    audioBitrate: string
+}
+
+function parseHlsVariant(spec: string): HlsVariantRow {
+    const [name = '', resolution = '', videoBitrate = '', audioBitrate = ''] = spec.split(':')
+    const [width = '', height = ''] = resolution.split('x')
+
+    return { name, width, height, videoBitrate, audioBitrate }
+}
+
+function serializeHlsVariant(row: HlsVariantRow): string {
+    const base = `${row.name}:${row.width}x${row.height}:${row.videoBitrate}`
+    return row.audioBitrate ? `${base}:${row.audioBitrate}` : base
+}
+
+const hlsVariants = computed<HlsVariantRow[]>({
+    get() {
+        return configStore.playout.output.hls_variants.map(parseHlsVariant)
+    },
+
+    set(rows: HlsVariantRow[]) {
+        configStore.playout.output.hls_variants = rows.map(serializeHlsVariant)
+    },
+})
+
+function addHlsVariant() {
+    hlsVariants.value = [
+        ...hlsVariants.value,
+        { name: '', width: '1280', height: '720', videoBitrate: '2500k', audioBitrate: '128k' },
+    ]
+}
+
+function removeHlsVariant(index: number) {
+    const rows = [...hlsVariants.value]
+    rows.splice(index, 1)
+    hlsVariants.value = rows
+}
+
+function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: string) {
+    const rows = [...hlsVariants.value]
+    rows[index] = { ...rows[index], [field]: value }
+    hlsVariants.value = rows
+}
 
 const formatIgnoreLines = computed({
     get() {
@@ -48,12 +124,29 @@ const formatIgnoreLines = computed({
     },
 })
 
+async function applyVolume() {
+    try {
+        const response = await configStore.applyAudioEffects(configStore.playout.processing.volume)
+        if (!response.ok) {
+            throw new Error(await response.text())
+        }
+        indexStore.msgAlert('success', t('config.volumeApplied'), 2)
+    } catch {
+        indexStore.msgAlert('error', t('config.volumeApplyFailed'), 3)
+    }
+}
+
 async function onSubmitPlayout() {
+    const { requiresRestart, volumeChanged } = configStore.playoutChangeSummary()
     const update = await configStore.setPlayoutConfig(configStore.playout)
     configStore.onetimeInfo = true
 
     if (update.status === 200) {
         indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
+
+        if (volumeChanged) {
+            await applyVolume()
+        }
 
         const id = configStore.channels[configStore.i]?.id
 
@@ -70,7 +163,7 @@ async function onSubmitPlayout() {
                 return response.json()
             })
             .then(async (response) => {
-                if (response === 'active') {
+                if (response === 'active' && requiresRestart) {
                     configStore.showRestartModal = true
                 }
 
@@ -209,66 +302,6 @@ async function onSubmitPlayout() {
 
                 <fieldset class="fieldset mt-2 rounded-box w-full">
                     <label class="fieldset-label text-base-content">
-                        <input v-model="configStore.playout.processing.audio_only" type="checkbox" class="checkbox" />
-                        Audio Only
-                    </label>
-                </fieldset>
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
-                        <input v-model="configStore.playout.processing.copy_audio" type="checkbox" class="checkbox" />
-                        Copy Audio
-                    </label>
-                </fieldset>
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
-                        <input v-model="configStore.playout.processing.copy_video" type="checkbox" class="checkbox" />
-                        Copy Video
-                    </label>
-                </fieldset>
-
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Width</legend>
-                    <input
-                        v-model="configStore.playout.processing.width"
-                        type="number"
-                        min="-1"
-                        step="1"
-                        class="input input-sm w-full max-w-36"
-                    />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Height</legend>
-                    <input
-                        v-model="configStore.playout.processing.height"
-                        type="number"
-                        min="-1"
-                        step="1"
-                        class="input input-sm w-full max-w-36"
-                    />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Aspect</legend>
-                    <input
-                        v-model="configStore.playout.processing.aspect"
-                        type="number"
-                        min="1"
-                        step="0.001"
-                        class="input input-sm w-full max-w-36"
-                    />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">FPS</legend>
-                    <input
-                        v-model="configStore.playout.processing.fps"
-                        type="number"
-                        min="1"
-                        step="0.01"
-                        class="input input-sm w-full max-w-36"
-                    />
-                </fieldset>
-
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
                         <input v-model="configStore.playout.processing.add_logo" type="checkbox" class="checkbox" />
                         Add Logo
                     </label>
@@ -316,76 +349,21 @@ async function onSubmitPlayout() {
                     <p class="fieldset-label items-baseline">{{ t('config.processingLogoPosition') }}</p>
                 </fieldset>
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Audio Tracks</legend>
-                    <input
-                        v-model="configStore.playout.processing.audio_tracks"
-                        type="number"
-                        min="1"
-                        max="255"
-                        step="1"
-                        class="input input-sm w-full max-w-36"
-                    />
-                    <p class="fieldset-label items-baseline">{{ t('config.processingAudioTracks') }}</p>
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Audio Track Index</legend>
-                    <input
-                        v-model="configStore.playout.processing.audio_track_index"
-                        type="number"
-                        min="-1"
-                        max="255"
-                        step="1"
-                        class="input input-sm w-full max-w-36"
-                    />
-                    <p class="fieldset-label items-baseline">{{ t('config.processingAudioIndex') }}</p>
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Audio Channels</legend>
-                    <input
-                        v-model="configStore.playout.processing.audio_channels"
-                        type="number"
-                        min="1"
-                        max="255"
-                        step="1"
-                        class="input input-sm w-full max-w-36"
-                    />
-                    <p class="fieldset-label items-baseline">{{ t('config.processingAudioChannels') }}</p>
-                </fieldset>
-                <fieldset class="fieldset">
                     <legend class="fieldset-legend">Volumen</legend>
-                    <input
-                        v-model="configStore.playout.processing.volume"
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.001"
-                        class="input input-sm w-full max-w-36"
-                    />
-                </fieldset>
-
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Custom Filter</legend>
-                    <textarea v-model="configStore.playout.processing.custom_filter" class="textarea w-full" rows="3" />
-                    <p class="fieldset-label items-baseline">{{ t('config.processingCustomFilter') }}</p>
-                </fieldset>
-
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
+                    <div class="flex items-center gap-2">
                         <input
-                            v-model="configStore.playout.processing.override_filter"
-                            type="checkbox"
-                            class="checkbox"
+                            v-model.number="configStore.playout.processing.volume"
+                            type="number"
+                            min="0"
+                            max="3"
+                            step="0.001"
+                            class="input input-sm w-36"
                         />
-                        Override custom Filter
-                    </label>
-                    <p class="fieldset-label items-baseline">{{ t('config.processingOverrideFilter') }}</p>
+                        <button type="button" class="btn btn-sm btn-outline" @click="applyVolume">
+                            {{ t('config.apply') }}
+                        </button>
+                    </div>
                 </fieldset>
-
-                <div v-if="configStore.playout.processing.override_filter" class="w-full py-0">
-                    <span class="text-sm select-text font-bold text-orange-500">
-                        {{ t('config.processingOverrideFilter') }}
-                    </span>
-                </div>
 
                 <fieldset class="fieldset mt-2 rounded-box w-full">
                     <label class="fieldset-label text-base-content">
@@ -405,6 +383,29 @@ async function onSubmitPlayout() {
                     />
                     <p class="fieldset-label items-baseline">{{ t('config.processingVTTDummy') }}</p>
                 </fieldset>
+
+                <div v-if="configStore.playout.processing.vtt_enable" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <label class="fieldset">
+                        <span class="fieldset-legend">{{ t('config.hlsSubtitleName') }}</span>
+                        <input
+                            v-model.trim="configStore.playout.processing.vtt_name"
+                            type="text"
+                            class="input input-sm w-full"
+                        />
+                    </label>
+                    <label class="fieldset">
+                        <span class="fieldset-legend">{{ t('config.hlsSubtitleLanguage') }}</span>
+                        <input
+                            v-model.trim="configStore.playout.processing.vtt_language"
+                            type="text"
+                            class="input input-sm w-full"
+                        />
+                    </label>
+                    <label class="fieldset">
+                        <span class="fieldset-legend">{{ t('config.hlsSubtitleDefault') }}</span>
+                        <input v-model="configStore.playout.processing.vtt_default" type="checkbox" class="toggle" />
+                    </label>
+                </div>
             </div>
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.ingest') }}:</div>
@@ -422,17 +423,12 @@ async function onSubmitPlayout() {
                     </label>
                 </fieldset>
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Input Param</legend>
+                    <legend class="fieldset-legend">Input URL</legend>
                     <input
-                        v-model="configStore.playout.ingest.input_param"
+                        v-model="configStore.playout.ingest.ingest_url"
                         type="text"
                         class="input input-sm w-full max-w-lg"
                     />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Custom Filter</legend>
-                    <textarea v-model="configStore.playout.ingest.custom_filter" class="textarea w-full" rows="3" />
-                    <p class="fieldset-label items-baseline">{{ t('config.ingestCustomFilter') }}</p>
                 </fieldset>
             </div>
 
@@ -505,62 +501,6 @@ async function onSubmitPlayout() {
                 </fieldset>
             </div>
 
-            <div class="text-xl pt-3 md:text-right">{{ t('config.text') }}:</div>
-            <div class="md:pt-4">
-                <label class="form-control mb-2">
-                    <div class="whitespace-pre-line">
-                        {{ t('config.textHelp') }}
-                    </div>
-                </label>
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
-                        <input v-model="configStore.playout.text.add_text" type="checkbox" class="checkbox" />
-                        Add Text
-                    </label>
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Font</legend>
-                    <input
-                        v-model="configStore.playout.text.font"
-                        type="text"
-                        name="font"
-                        class="input input-sm w-full max-w-lg"
-                    />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.textFont') }}</span>
-                    </div>
-                </fieldset>
-
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
-                        <input v-model="configStore.playout.text.text_from_filename" type="checkbox" class="checkbox" />
-                        Text from File
-                    </label>
-                    <p class="fieldset-label items-baseline">{{ t('config.textFromFile') }}</p>
-                </fieldset>
-
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Style</legend>
-                    <input
-                        v-model="configStore.playout.text.style"
-                        type="text"
-                        name="style"
-                        class="input input-sm w-full truncate"
-                    />
-                    <p class="fieldset-label items-baseline">{{ t('config.textStyle') }}</p>
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Regex</legend>
-                    <input
-                        v-model="configStore.playout.text.regex"
-                        type="text"
-                        name="regex"
-                        class="input input-sm w-full max-w-lg"
-                    />
-                    <p class="fieldset-label items-baseline">{{ t('config.textRegex') }}</p>
-                </fieldset>
-            </div>
-
             <div class="text-xl pt-3 md:text-right">{{ t('config.task') }}:</div>
             <div class="md:pt-4">
                 <label class="form-control mb-2">
@@ -598,13 +538,191 @@ async function onSubmitPlayout() {
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Mode</legend>
                     <select v-model="output" class="select select-sm w-full max-w-xs">
-                        <option v-for="output in configStore.outputs" :key="output.id" :value="output.name">{{ output.name }}</option>
+                        <option v-for="output in configStore.outputs" :key="output.id" :value="output.name">
+                            {{ output.name }}
+                        </option>
                     </select>
                 </fieldset>
+                <fieldset v-if="output === 'stream'" class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.streamUrl') }}</legend>
+                    <input
+                        v-model="configStore.playout.output.stream_url"
+                        type="url"
+                        class="input input-sm w-full max-w-lg"
+                    />
+                </fieldset>
+
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Output Parameter</legend>
-                    <textarea v-model="configStore.playout.output.output_param" class="textarea w-full" rows="6" />
+                    <legend class="fieldset-legend">{{ t('config.outputFormat') }}</legend>
+                    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <label class="fieldset">
+                            <span class="fieldset-legend">Width</span>
+                            <input
+                                v-model.number="configStore.playout.output.width"
+                                type="number"
+                                min="1"
+                                step="1"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">Height</span>
+                            <input
+                                v-model.number="configStore.playout.output.height"
+                                type="number"
+                                min="1"
+                                step="1"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">FPS</span>
+                            <input
+                                v-model.number="configStore.playout.output.fps"
+                                type="number"
+                                min="1"
+                                step="0.01"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                    </div>
+                </fieldset>
+
+                <fieldset v-if="output === 'hls' || output === 'stream'" class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.encodingSettings') }}</legend>
+                    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.videoPreset') }}</span>
+                            <select v-model="configStore.playout.output.video_preset" class="select select-sm w-full">
+                                <option v-for="preset in videoPresets" :key="preset" :value="preset">
+                                    {{ preset }}
+                                </option>
+                            </select>
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.rateControl') }}</span>
+                            <select v-model="configStore.playout.output.rate_control" class="select select-sm w-full">
+                                <option value="crf">CRF</option>
+                                <option value="cbr">CBR</option>
+                            </select>
+                        </label>
+                        <label v-if="configStore.playout.output.rate_control === 'crf'" class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.videoQuality') }}</span>
+                            <input
+                                v-model.number="configStore.playout.output.video_quality"
+                                type="number"
+                                min="0"
+                                max="51"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.videoMaxrate') }}</span>
+                            <input
+                                v-model.number="configStore.playout.output.video_maxrate"
+                                type="number"
+                                min="1"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.audioBitrate') }}</span>
+                            <input
+                                v-model.number="configStore.playout.output.audio_bitrate"
+                                type="number"
+                                min="1"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                    </div>
+                </fieldset>
+
+                <fieldset v-if="output === 'hls'" class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.hlsSettings') }}</legend>
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.hlsPlaylistName') }}</span>
+                            <input
+                                v-model.trim="configStore.playout.output.hls_playlist_name"
+                                type="text"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.hlsSegmentDuration') }}</span>
+                            <input
+                                v-model.number="configStore.playout.output.hls_segment_duration"
+                                type="number"
+                                min="1"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.hlsListSize') }}</span>
+                            <input
+                                v-model.number="configStore.playout.output.hls_list_size"
+                                type="number"
+                                min="0"
+                                class="input input-sm w-full"
+                            />
+                        </label>
+                    </div>
                     <p class="fieldset-label items-baseline">{{ t('config.outputParam') }}</p>
+                </fieldset>
+
+                <fieldset v-if="output === 'hls'" class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.hlsVariants') }}</legend>
+                    <p class="fieldset-label items-baseline mb-2">{{ t('config.hlsVariantsHelp') }}</p>
+
+                    <div
+                        v-for="(variant, index) in hlsVariants"
+                        :key="index"
+                        class="flex flex-wrap items-center gap-2 mb-2"
+                    >
+                        <input
+                            :value="variant.name"
+                            @input="updateHlsVariant(index, 'name', ($event.target as HTMLInputElement).value)"
+                            type="text"
+                            placeholder="name"
+                            class="input input-sm w-24"
+                        />
+                        <input
+                            :value="variant.width"
+                            @input="updateHlsVariant(index, 'width', ($event.target as HTMLInputElement).value)"
+                            type="number"
+                            placeholder="width"
+                            class="input input-sm w-20"
+                        />
+                        <span>x</span>
+                        <input
+                            :value="variant.height"
+                            @input="updateHlsVariant(index, 'height', ($event.target as HTMLInputElement).value)"
+                            type="number"
+                            placeholder="height"
+                            class="input input-sm w-20"
+                        />
+                        <input
+                            :value="variant.videoBitrate"
+                            @input="updateHlsVariant(index, 'videoBitrate', ($event.target as HTMLInputElement).value)"
+                            type="text"
+                            placeholder="video bitrate, e.g. 5000k"
+                            class="input input-sm w-32"
+                        />
+                        <input
+                            :value="variant.audioBitrate"
+                            @input="updateHlsVariant(index, 'audioBitrate', ($event.target as HTMLInputElement).value)"
+                            type="text"
+                            placeholder="audio bitrate, e.g. 128k"
+                            class="input input-sm w-32"
+                        />
+                        <button type="button" class="btn btn-sm btn-error btn-outline" @click="removeHlsVariant(index)">
+                            {{ t('config.remove') }}
+                        </button>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-outline mt-1" @click="addHlsVariant">
+                        {{ t('config.addHlsVariant') }}
+                    </button>
                 </fieldset>
             </div>
             <div class="mt-5 mb-10">

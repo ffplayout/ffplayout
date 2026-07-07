@@ -44,6 +44,7 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager, Pool<Sqlite>) {
         role_id: Some(1),
         channel_ids: Some(vec![1]),
         token: None,
+        two_factor: false,
     };
 
     handles::insert_user(&pool, user.clone()).await.unwrap();

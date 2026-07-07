@@ -86,9 +86,7 @@ const newSource = ref({
     out: 0,
     duration: 0,
     category: '',
-    custom_filter: '',
     source: '',
-    audio: '',
     uid: '',
 } as PlaylistItem)
 
@@ -256,9 +254,7 @@ function processSource(process: boolean) {
         out: 0,
         duration: 0,
         category: '',
-        custom_filter: '',
         source: '',
-        audio: '',
         uid: genUID(),
     }
 
@@ -277,9 +273,7 @@ function editPlaylistItem(i: number) {
         out: playlistStore.playlist[i]?.out ?? 0,
         duration: playlistStore.playlist[i]?.duration ?? 0,
         category: playlistStore.playlist[i]?.category,
-        custom_filter: playlistStore.playlist[i]?.custom_filter,
         source: playlistStore.playlist[i]?.source ?? '',
-        audio: playlistStore.playlist[i]?.audio,
         uid: playlistStore.playlist[i]?.uid ?? '',
     }
 }
@@ -581,19 +575,6 @@ async function deletePlaylist(del: boolean) {
                         name="source"
                         class="input input-sm w-full"
                         :disabled="newSource.source.includes(configStore.channels[configStore.i]?.storage ?? 'xyz123')"
-                    />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.audio') }}</legend>
-                    <input v-model="newSource.audio" type="text" name="audio" class="input input-sm w-full" />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.customFilter') }}</legend>
-                    <input
-                        v-model="newSource.custom_filter"
-                        type="text"
-                        name="custom_filter"
-                        class="input input-sm w-full"
                     />
                 </fieldset>
                 <fieldset class="fieldset mt-2 rounded-box w-full">
