@@ -358,6 +358,19 @@ impl TextOverlayState {
     }
 
     pub(crate) fn snapshot_at(&self, pts: i64) -> TextOverlaySnapshot {
+        // Fast path with a read lock: this is called once per rendered frame,
+        // the write lock is only needed right after a new config was set.
+        {
+            let inner = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+            if inner.config.is_none() || inner.start_pts.is_some() {
+                return TextOverlaySnapshot {
+                    revision: inner.revision,
+                    config: inner.config.clone(),
+                    start_pts: inner.start_pts,
+                };
+            }
+        }
+
         let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
         if inner.config.is_some() && inner.start_pts.is_none() {
             inner.start_pts = Some(pts);

@@ -10,6 +10,7 @@ pub struct GainEffect {
     target: f32,
     ramp_samples: usize,
     remaining_samples: usize,
+    gain_buffer: Vec<f32>,
 }
 
 impl GainEffect {
@@ -22,6 +23,7 @@ impl GainEffect {
             ramp_samples: ((sample_rate as u64 * u64::from(GAIN_RAMP_MILLISECONDS)) / 1_000).max(1)
                 as usize,
             remaining_samples: 0,
+            gain_buffer: Vec::new(),
         }
     }
 
@@ -47,10 +49,35 @@ impl GainEffect {
 
 impl AudioEffect for GainEffect {
     fn process(&mut self, frame: &mut frame::Audio) {
-        for sample_index in 0..frame.samples() {
-            let gain = self.next_gain();
+        let samples = frame.samples();
+        let ramping =
+            self.remaining_samples > 0 || self.control.volume_f32() != self.target;
+
+        if !ramping {
+            let gain = self.current;
             for plane in 0..frame.planes() {
-                let sample = &mut frame.plane_mut::<f32>(plane)[sample_index];
+                for sample in frame.plane_mut::<f32>(plane) {
+                    *sample = if sample.is_finite() {
+                        *sample * gain
+                    } else {
+                        0.0
+                    };
+                }
+            }
+            return;
+        }
+
+        self.gain_buffer.clear();
+        for _ in 0..samples {
+            let gain = self.next_gain();
+            self.gain_buffer.push(gain);
+        }
+        for plane in 0..frame.planes() {
+            for (sample, gain) in frame
+                .plane_mut::<f32>(plane)
+                .iter_mut()
+                .zip(&self.gain_buffer)
+            {
                 *sample = if sample.is_finite() {
                     *sample * gain
                 } else {

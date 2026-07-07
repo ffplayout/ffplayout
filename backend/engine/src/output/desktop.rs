@@ -335,7 +335,18 @@ impl DesktopRenderer {
     fn finish(mut self) -> Result<()> {
         self.flush_pending_audio()?;
         self.start_audio_if_ready(true);
+        // Bound the drain phase: if the audio device stops consuming (e.g. it
+        // was unplugged), `audio.size()` never reaches zero and this loop
+        // would otherwise spin forever.
+        let remaining_samples = self.pending_audio_samples + self.queued_audio_samples();
+        let deadline = Instant::now()
+            + Duration::from_secs_f64(remaining_samples as f64 / f64::from(self.sample_rate))
+            + Duration::from_secs(2);
         while !self.pending_audio.is_empty() || self.audio.size() > 0 {
+            if Instant::now() >= deadline {
+                log::warn!("desktop audio did not drain in time; finishing playback anyway");
+                break;
+            }
             self.handle_events()?;
             self.flush_pending_audio()?;
             self.render_due_video()?;

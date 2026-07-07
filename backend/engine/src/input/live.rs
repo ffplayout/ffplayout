@@ -5,7 +5,7 @@ use std::{
     sync::{
         Arc, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc::{self, Receiver, Sender, TryRecvError},
+        mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError},
     },
     thread,
     time::{Duration, Instant},
@@ -32,6 +32,15 @@ use crate::{
 const LIVE_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const LIVE_IDLE_TIMEOUT: Duration = Duration::from_secs(3);
 const LIVE_WATCHDOG_INTERVAL: Duration = Duration::from_millis(100);
+/// Maximum PTS discontinuity in the live source that is bridged with filler
+/// frames. Larger jumps (buggy publisher encoders can leap by hours) re-anchor
+/// the session instead, so the output never gets stuck writing filler.
+const MAX_LIVE_GAP_SECONDS: f64 = 5.0;
+/// The live channel carries decoded raw frames (several MB each for video);
+/// it must be bounded so a stalled consumer cannot exhaust memory. Roughly
+/// two seconds of video at 25 fps.
+const LIVE_CHANNEL_CAPACITY: usize = 50;
+const DROPPED_FRAME_LOG_INTERVAL: u64 = 250;
 
 /// Number of RTMP reader threads that outlived their `abort` signal and are
 /// being reaped in the background. Exposed only via log messages for now;
@@ -45,6 +54,7 @@ pub struct LiveReceiver {
     sample_rate: u32,
     active: bool,
     connecting: bool,
+    connecting_since: Option<Instant>,
     session_id: u64,
     session_output_start_seconds: Option<f64>,
     session_source_start_seconds: Option<f64>,
@@ -81,7 +91,7 @@ enum LiveEvent {
 pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
     let fps = cfg.fps;
     let sample_rate = cfg.sample_rate;
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = mpsc::sync_channel(LIVE_CHANNEL_CAPACITY);
     let abort = Arc::new(AtomicBool::new(false));
     thread::spawn({
         let abort = Arc::clone(&abort);
@@ -95,6 +105,7 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
         sample_rate,
         active: false,
         connecting: false,
+        connecting_since: None,
         session_id: 0,
         session_output_start_seconds: None,
         session_source_start_seconds: None,
@@ -139,6 +150,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     self.live.last_media_at = Some(Instant::now());
                     self.live.active = false;
                     self.live.connecting = true;
+                    self.live.connecting_since = Some(Instant::now());
                     info!("live input connected; waiting for first video frame");
                 }
                 Ok(LiveEvent::Video(session_id, frame)) => {
@@ -147,6 +159,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                             info!("first live video frame received; switching to RTMP live");
                             self.live.active = true;
                             self.live.connecting = false;
+                            self.live.connecting_since = None;
                             self.start_live_session(video_seconds(
                                 self.live.fps,
                                 frame.pts().unwrap_or(0),
@@ -180,6 +193,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                         }
                         self.live.active = false;
                         self.live.connecting = false;
+                        self.live.connecting_since = None;
                         self.live.pending_audio.clear();
                     }
                 }
@@ -193,6 +207,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     }
                     self.live.active = false;
                     self.live.connecting = false;
+                    self.live.connecting_since = None;
                     self.live.pending_audio.clear();
                     return Ok(received_event);
                 }
@@ -200,9 +215,14 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         }
     }
 
+    /// Blocks file playback while a live session is active. While the live
+    /// input is merely *connecting* (waiting for its first video frame), file
+    /// playback keeps running so the output never stalls; the switch happens
+    /// as soon as the first live video frame arrives.
     fn wait_for_file_playback(&mut self) -> Result<()> {
         self.pump_live()?;
-        while self.live.active || self.live.connecting {
+        self.expire_stalled_connect();
+        while self.live.active {
             thread::sleep(Duration::from_millis(10));
             self.pump_live()?;
             let idle_for = self
@@ -210,23 +230,15 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 .last_media_at
                 .map(|last_media_at| last_media_at.elapsed())
                 .unwrap_or_default();
-            let timeout = if self.live.connecting {
-                LIVE_STARTUP_TIMEOUT
-            } else {
-                LIVE_IDLE_TIMEOUT
-            };
-            if idle_for >= timeout {
-                if self.live.active {
-                    info!("live input idle; switching back to file playback");
-                    self.fill_live_gap(idle_for)?;
-                    self.align_live_pts_to_common_time();
-                    self.prepare_file_resume();
-                    self.live.returned_to_file = true;
-                } else {
-                    info!("live input produced no video frame; switching back to file playback");
-                }
+            if self.live.active && idle_for >= LIVE_IDLE_TIMEOUT {
+                info!("live input idle; switching back to file playback");
+                self.fill_live_gap(idle_for)?;
+                self.align_live_pts_to_common_time();
+                self.prepare_file_resume();
+                self.live.returned_to_file = true;
                 self.live.active = false;
                 self.live.connecting = false;
+                self.live.connecting_since = None;
                 self.live.pending_audio.clear();
             }
         }
@@ -237,6 +249,23 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         Ok(())
     }
 
+    /// Gives up on a connect attempt that never produced a video frame
+    /// (e.g. an audio-only publisher), so buffered audio cannot pile up
+    /// indefinitely while file playback continues.
+    fn expire_stalled_connect(&mut self) {
+        if self.live.connecting
+            && self
+                .live
+                .connecting_since
+                .is_some_and(|since| since.elapsed() >= LIVE_STARTUP_TIMEOUT)
+        {
+            info!("live input produced no video frame; staying on file playback");
+            self.live.connecting = false;
+            self.live.connecting_since = None;
+            self.live.pending_audio.clear();
+        }
+    }
+
     fn fill_live_gap_since_last_media(&mut self) -> Result<()> {
         if let Some(last_media_at) = self.live.last_media_at {
             self.fill_live_gap(last_media_at.elapsed())?;
@@ -245,6 +274,10 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
     }
 
     fn fill_live_gap(&mut self, duration: Duration) -> Result<()> {
+        // The gap is measured with a wall clock; if the consumer was not
+        // pumping for a while (e.g. between clips) it can be arbitrarily
+        // large. Cap it so the output never gets stuck writing filler.
+        let duration = duration.min(Duration::from_secs_f64(MAX_LIVE_GAP_SECONDS));
         let video_frames = (duration.as_secs_f64() * f64::from(self.live.fps)).ceil() as i64;
         if let Some(last_video_frame) = self.live.last_video_frame.clone() {
             for _ in 0..video_frames {
@@ -378,11 +411,24 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
 
     fn encode_live_video_frame(&mut self, mut frame: frame::Video) -> Result<()> {
         let source_pts = frame.pts().unwrap_or(0);
-        let pts = seconds_to_video_pts(
-            self.live.fps,
-            self.live_output_seconds(video_seconds(self.live.fps, source_pts)),
-        )
-        .max(self.live.video_pts);
+        let source_seconds = video_seconds(self.live.fps, source_pts);
+        let mut pts =
+            seconds_to_video_pts(self.live.fps, self.live_output_seconds(source_seconds));
+        // A buggy publisher can jump its PTS forward by minutes or hours
+        // mid-stream; bridging that with filler frames would stall the output
+        // for the whole gap. Re-anchor the session instead and continue
+        // seamlessly. Backward jumps are already handled by the `.max()`
+        // floor below and need no filler.
+        let max_gap = seconds_to_video_pts(self.live.fps, MAX_LIVE_GAP_SECONDS);
+        if pts - self.live.video_pts > max_gap {
+            warn!(
+                "live video pts jumped by {:.3} s; re-anchoring live session",
+                video_seconds(self.live.fps, pts - self.live.video_pts)
+            );
+            self.start_live_session(source_seconds);
+            pts = seconds_to_video_pts(self.live.fps, self.live_output_seconds(source_seconds));
+        }
+        let pts = pts.max(self.live.video_pts);
         self.fill_video_until(pts)?;
         frame.set_pts(Some(pts));
         self.output.encode_video(&frame)?;
@@ -394,11 +440,24 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
     fn encode_live_audio_frame(&mut self, mut frame: frame::Audio) -> Result<()> {
         let samples = frame.samples() as i64;
         let source_pts = frame.pts().unwrap_or(0);
-        let pts = seconds_to_audio_pts(
+        let source_seconds = audio_seconds(self.live.sample_rate, source_pts);
+        let mut pts = seconds_to_audio_pts(
             self.live.sample_rate,
-            self.live_output_seconds(audio_seconds(self.live.sample_rate, source_pts)),
-        )
-        .max(self.live.audio_pts);
+            self.live_output_seconds(source_seconds),
+        );
+        let max_gap = seconds_to_audio_pts(self.live.sample_rate, MAX_LIVE_GAP_SECONDS);
+        if pts - self.live.audio_pts > max_gap {
+            warn!(
+                "live audio pts jumped by {:.3} s; re-anchoring live session",
+                audio_seconds(self.live.sample_rate, pts - self.live.audio_pts)
+            );
+            self.start_live_session(source_seconds);
+            pts = seconds_to_audio_pts(
+                self.live.sample_rate,
+                self.live_output_seconds(source_seconds),
+            );
+        }
+        let pts = pts.max(self.live.audio_pts);
         self.fill_audio_until(pts)?;
         frame.set_pts(Some(pts));
         self.output.encode_audio(&frame)?;
@@ -554,10 +613,39 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
 }
 
 struct LiveFrameSender {
-    tx: Sender<LiveEvent>,
+    tx: SyncSender<LiveEvent>,
     session_id: u64,
     last_frame_ms: Arc<AtomicU64>,
     frame_seen: Arc<AtomicBool>,
+    dropped_frames: u64,
+}
+
+impl LiveFrameSender {
+    /// Sends a decoded live frame without ever blocking the RTMP reader.
+    /// When the (bounded) channel is full — the consumer is stalled or cannot
+    /// keep up — the frame is dropped; the consumer bridges the resulting PTS
+    /// gap with filler, which is the correct behavior for a live source.
+    fn send_frame(&mut self, event: LiveEvent) -> Result<()> {
+        self.frame_seen.store(true, Ordering::Relaxed);
+        self.last_frame_ms
+            .store(monotonic_millis(), Ordering::Relaxed);
+        match self.tx.try_send(event) {
+            Ok(()) => Ok(()),
+            Err(TrySendError::Full(_)) => {
+                if self.dropped_frames.is_multiple_of(DROPPED_FRAME_LOG_INTERVAL) {
+                    warn!(
+                        "live frame channel is full; dropping live frames ({} dropped so far)",
+                        self.dropped_frames + 1
+                    );
+                }
+                self.dropped_frames += 1;
+                Ok(())
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                Err(anyhow::anyhow!("live frame channel disconnected"))
+            }
+        }
+    }
 }
 
 impl FrameOutput for LiveFrameSender {
@@ -566,20 +654,12 @@ impl FrameOutput for LiveFrameSender {
     }
 
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
-        self.frame_seen.store(true, Ordering::Relaxed);
-        self.last_frame_ms
-            .store(monotonic_millis(), Ordering::Relaxed);
-        self.tx
-            .send(LiveEvent::Video(self.session_id, frame.clone()))
+        self.send_frame(LiveEvent::Video(self.session_id, frame.clone()))
             .context("failed to send live video frame")
     }
 
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
-        self.frame_seen.store(true, Ordering::Relaxed);
-        self.last_frame_ms
-            .store(monotonic_millis(), Ordering::Relaxed);
-        self.tx
-            .send(LiveEvent::Audio(self.session_id, frame.clone()))
+        self.send_frame(LiveEvent::Audio(self.session_id, frame.clone()))
             .context("failed to send live audio frame")
     }
 }
@@ -587,7 +667,7 @@ impl FrameOutput for LiveFrameSender {
 fn run_rtmp_listener(
     url: String,
     cfg: OutputConfig,
-    tx: Sender<LiveEvent>,
+    tx: SyncSender<LiveEvent>,
     listener_abort: Arc<AtomicBool>,
 ) {
     let mut session_id = 0;
@@ -623,6 +703,7 @@ fn run_rtmp_listener(
                     session_id,
                     last_frame_ms,
                     frame_seen,
+                    dropped_frames: 0,
                 };
 
                 let worker_url = url.clone();
@@ -652,14 +733,20 @@ fn run_rtmp_listener(
 
                 let mut worker_finished = false;
                 while !abort.load(Ordering::Relaxed) && !listener_abort.load(Ordering::Relaxed) {
-                    if let Ok(result) = done_rx.try_recv() {
-                        worker_finished = true;
-                        if let Err(error) = result {
-                            error!("live input failed: {error}");
+                    match done_rx.recv_timeout(Duration::from_millis(10)) {
+                        Ok(result) => {
+                            worker_finished = true;
+                            if let Err(error) = result {
+                                error!("live input failed: {error}");
+                            }
+                            break;
                         }
-                        break;
+                        Err(RecvTimeoutError::Timeout) => {}
+                        Err(RecvTimeoutError::Disconnected) => {
+                            worker_finished = true;
+                            break;
+                        }
                     }
-                    thread::sleep(Duration::from_millis(10));
                 }
 
                 abort.store(true, Ordering::Relaxed);
