@@ -364,8 +364,7 @@ impl EncodedOutput {
                 let (front, back) = buffer.as_slices();
                 let from_front = front.len().min(frame_size);
                 plane[..from_front].copy_from_slice(&front[..from_front]);
-                plane[from_front..frame_size]
-                    .copy_from_slice(&back[..frame_size - from_front]);
+                plane[from_front..frame_size].copy_from_slice(&back[..frame_size - from_front]);
                 buffer.drain(..frame_size);
             }
 

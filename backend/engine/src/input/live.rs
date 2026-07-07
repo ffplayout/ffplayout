@@ -951,7 +951,66 @@ fn monotonic_millis() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::resume_pts;
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicU64, Ordering},
+            mpsc::{self, TryRecvError},
+        },
+        time::Instant,
+    };
+
+    use anyhow::Result;
+    use ffmpeg_next::frame;
+
+    use super::{LIVE_CHANNEL_CAPACITY, LiveEvent, LiveFrameSender, LiveReceiver, resume_pts};
+    use crate::output::FrameOutput;
+
+    struct CountingOutput {
+        video_frames: usize,
+        audio_frames: usize,
+    }
+
+    impl FrameOutput for CountingOutput {
+        fn audio_frame_size(&self) -> usize {
+            1024
+        }
+
+        fn encode_video(&mut self, _frame: &frame::Video) -> Result<()> {
+            self.video_frames += 1;
+            Ok(())
+        }
+
+        fn encode_audio(&mut self, _frame: &frame::Audio) -> Result<()> {
+            self.audio_frames += 1;
+            Ok(())
+        }
+    }
+
+    fn test_live_receiver(rx: mpsc::Receiver<LiveEvent>) -> LiveReceiver {
+        LiveReceiver {
+            rx,
+            abort: Arc::new(AtomicBool::new(false)),
+            fps: 25,
+            sample_rate: 48_000,
+            active: false,
+            connecting: false,
+            connecting_since: None,
+            session_id: 0,
+            session_output_start_seconds: None,
+            session_source_start_seconds: None,
+            pending_audio: Vec::new(),
+            last_media_at: None,
+            last_video_frame: None,
+            last_video_output_pts: None,
+            last_audio_output_end_pts: None,
+            file_resume_at_seconds: None,
+            file_resume_shift_seconds: None,
+            returned_to_file: false,
+            video_pts: 0,
+            audio_pts: 0,
+        }
+    }
 
     #[test]
     fn passes_through_source_pts_before_resume_is_prepared() {
@@ -986,5 +1045,74 @@ mod tests {
         let mut shift = Some(-5.0);
         let pts = resume_pts(25, Some(1.0), &mut shift, 0, 1_000);
         assert_eq!(pts, 1_000);
+    }
+
+    #[test]
+    fn live_frame_sender_drops_frames_when_channel_is_full() {
+        let (tx, rx) = mpsc::sync_channel(1);
+        tx.try_send(LiveEvent::Started(1)).unwrap();
+        let frame_seen = Arc::new(AtomicBool::new(false));
+        let last_frame_ms = Arc::new(AtomicU64::new(u64::MAX));
+        let mut sender = LiveFrameSender {
+            tx,
+            session_id: 1,
+            last_frame_ms: Arc::clone(&last_frame_ms),
+            frame_seen: Arc::clone(&frame_seen),
+            dropped_frames: 0,
+        };
+
+        sender
+            .send_frame(LiveEvent::Video(1, frame::Video::empty()))
+            .unwrap();
+
+        assert!(frame_seen.load(Ordering::Relaxed));
+        assert_ne!(last_frame_ms.load(Ordering::Relaxed), u64::MAX);
+        assert_eq!(sender.dropped_frames, 1);
+        assert!(matches!(rx.try_recv(), Ok(LiveEvent::Started(1))));
+        assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn live_frame_sender_reports_disconnected_channel() {
+        let (tx, rx) = mpsc::sync_channel(1);
+        drop(rx);
+        let mut sender = LiveFrameSender {
+            tx,
+            session_id: 1,
+            last_frame_ms: Arc::new(AtomicU64::new(0)),
+            frame_seen: Arc::new(AtomicBool::new(false)),
+            dropped_frames: 0,
+        };
+
+        assert!(
+            sender
+                .send_frame(LiveEvent::Video(1, frame::Video::empty()))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn pump_live_ignores_frames_from_stale_sessions() {
+        let (tx, rx) = mpsc::sync_channel(LIVE_CHANNEL_CAPACITY);
+        tx.send(LiveEvent::Video(2, frame::Video::empty())).unwrap();
+        tx.send(LiveEvent::Audio(2, frame::Audio::empty())).unwrap();
+        tx.send(LiveEvent::Ended(2)).unwrap();
+        let mut live = test_live_receiver(rx);
+        live.session_id = 1;
+        live.active = true;
+        live.last_media_at = Some(Instant::now());
+        let mut output = CountingOutput {
+            video_frames: 0,
+            audio_frames: 0,
+        };
+
+        let received_event = super::LiveOverrideOutput::new(&mut output, &mut live)
+            .pump_live()
+            .unwrap();
+
+        assert!(!received_event);
+        assert!(live.active);
+        assert_eq!(output.video_frames, 0);
+        assert_eq!(output.audio_frames, 0);
     }
 }

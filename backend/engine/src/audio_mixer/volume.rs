@@ -50,8 +50,7 @@ impl GainEffect {
 impl AudioEffect for GainEffect {
     fn process(&mut self, frame: &mut frame::Audio) {
         let samples = frame.samples();
-        let ramping =
-            self.remaining_samples > 0 || self.control.volume_f32() != self.target;
+        let ramping = self.remaining_samples > 0 || self.control.volume_f32() != self.target;
 
         if !ramping {
             let gain = self.current;
