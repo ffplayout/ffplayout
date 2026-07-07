@@ -31,6 +31,10 @@ pub use utils::{
         RgbaColor, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition, TextScroll,
         TextWeight,
     },
+    ffmpeg_capabilities::{
+        FfmpegCapabilities, FfmpegCodec, FfmpegFeatureSet, FfmpegMediaType, FfmpegMuxer,
+        FfmpegOutputTarget, ffmpeg_capabilities,
+    },
     logging,
     media_info::{
         AudioStream as EngineAudioStream, MediaInfo, MediaProbe as EngineMediaProbe, ProbeFormat,

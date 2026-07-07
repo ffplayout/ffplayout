@@ -12,7 +12,7 @@ use ffmpeg_next as ffmpeg;
 
 use crate::utils::{
     config::{HlsSubtitle, HlsVariant},
-    ffmpeg_features::ffmpeg_features,
+    ffmpeg_capabilities::ffmpeg_capabilities,
 };
 
 const HLS_RESUME_MAX_AGE: Duration = Duration::from_secs(60);
@@ -356,7 +356,7 @@ pub(super) fn var_stream_map(variants: &[HlsVariant], subtitle: Option<&HlsSubti
         .map(|(index, variant)| {
             if let Some(subtitle) = subtitle.filter(|_| index == 0) {
                 let default = if subtitle.default { "YES" } else { "NO" };
-                let subtitle_name = if ffmpeg_features().hls_subtitle_name {
+                let subtitle_name = if ffmpeg_capabilities().features.hls_subtitle_name {
                     format!(",sname:{}", subtitle.name)
                 } else {
                     String::new()
@@ -507,7 +507,7 @@ mod tests {
     fn var_stream_map_links_subtitles_to_first_variant_only() {
         let subtitle = subtitle();
         let map = var_stream_map(&[variant("high"), variant("low")], Some(&subtitle));
-        let expected = if ffmpeg_features().hls_subtitle_name {
+        let expected = if ffmpeg_capabilities().features.hls_subtitle_name {
             "v:0,a:0,s:0,sgroup:subs,name:high,sname:Deutsch,language:de-DE,default:NO v:1,a:1,name:low"
         } else {
             "v:0,a:0,s:0,sgroup:subs,name:high,language:de-DE,default:NO v:1,a:1,name:low"

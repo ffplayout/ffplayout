@@ -634,7 +634,7 @@ mod open_tests {
     use super::*;
     use crate::utils::{
         config::{HlsSubtitle, OutputConfig},
-        ffmpeg_features::ffmpeg_features,
+        ffmpeg_capabilities::ffmpeg_capabilities,
     };
     use std::fs;
 
@@ -666,7 +666,7 @@ mod open_tests {
         );
         assert!(path.exists(), "expected literal index.m3u8 to exist");
         let master = fs::read_to_string(dir.join("master.m3u8")).unwrap();
-        if ffmpeg_features().hls_subtitle_name {
+        if ffmpeg_capabilities().features.hls_subtitle_name {
             assert!(master.contains("NAME=\"Subtitles\""), "{master}");
         } else {
             assert!(master.contains("TYPE=SUBTITLES"), "{master}");
