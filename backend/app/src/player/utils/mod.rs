@@ -53,9 +53,25 @@ pub async fn detect_audio_silence(
     duration_seconds: f64,
 ) -> Result<SilenceDetection, ProcessError> {
     let path = input.as_ref().to_string_lossy().to_string();
+    let window_seconds = 20.0_f64;
+    let duration_seconds = duration_seconds.max(0.0);
+    if duration_seconds < window_seconds {
+        return Ok(SilenceDetection {
+            silent: false,
+            analyzed_seconds: duration_seconds,
+        });
+    }
+    let analysis_seconds = window_seconds;
+    let analysis_seek_seconds = seek_seconds.max(0.0) + (duration_seconds - analysis_seconds) / 2.0;
     tokio::task::spawn_blocking(move || {
-        ff_engine::detect_audio_silence(&path, seek_seconds, duration_seconds, -30.0, 15.0)
-            .map_err(|error| ProcessError::Ffprobe(error.to_string()))
+        ff_engine::detect_audio_silence(
+            &path,
+            analysis_seek_seconds,
+            analysis_seconds,
+            -30.0,
+            analysis_seconds,
+        )
+        .map_err(|error| ProcessError::Ffprobe(error.to_string()))
     })
     .await
     .map_err(|error| ProcessError::Custom(error.to_string()))?

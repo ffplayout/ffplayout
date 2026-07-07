@@ -11,7 +11,9 @@ publish = false
 workspace = true
 
 [dev-dependencies]
-ffplayout = { path = "../backend/app" }
+ffplayout = { path = "../backend/app", default-features = false, features = [
+    "embed_frontend",
+] }
 
 axum = "0.8"
 chrono = "0.4"
