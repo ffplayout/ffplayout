@@ -412,8 +412,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
     fn encode_live_video_frame(&mut self, mut frame: frame::Video) -> Result<()> {
         let source_pts = frame.pts().unwrap_or(0);
         let source_seconds = video_seconds(self.live.fps, source_pts);
-        let mut pts =
-            seconds_to_video_pts(self.live.fps, self.live_output_seconds(source_seconds));
+        let mut pts = seconds_to_video_pts(self.live.fps, self.live_output_seconds(source_seconds));
         // A buggy publisher can jump its PTS forward by minutes or hours
         // mid-stream; bridging that with filler frames would stall the output
         // for the whole gap. Re-anchor the session instead and continue
@@ -632,7 +631,10 @@ impl LiveFrameSender {
         match self.tx.try_send(event) {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(_)) => {
-                if self.dropped_frames.is_multiple_of(DROPPED_FRAME_LOG_INTERVAL) {
+                if self
+                    .dropped_frames
+                    .is_multiple_of(DROPPED_FRAME_LOG_INTERVAL)
+                {
                     warn!(
                         "live frame channel is full; dropping live frames ({} dropped so far)",
                         self.dropped_frames + 1
