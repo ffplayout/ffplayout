@@ -380,14 +380,19 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 logo_fade,
                 response,
             } => {
-                let _ = response.send(playout.play_timed_with_live(
+                let result = playout.play_timed_with_live(
                     &path,
                     seek_seconds,
                     duration_seconds,
                     subtitles_media_path.as_deref(),
                     logo_fade,
                     &mut live,
-                ));
+                );
+                let stopped = matches!(result, Ok(ClipResult::Stopped));
+                let _ = response.send(result);
+                if stopped {
+                    break;
+                }
             }
             AsyncCommand::StartRtmpLive {
                 url,

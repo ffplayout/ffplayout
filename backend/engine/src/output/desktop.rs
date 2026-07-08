@@ -17,14 +17,15 @@ use sdl2::{
     event::Event,
     keyboard::Keycode,
     pixels::{Color, PixelFormatEnum},
+    rect::Rect,
     render::{Canvas, Texture},
-    video::Window,
+    video::{FullscreenType, Window},
 };
 
 use super::{FrameOutput, PlaybackStopped};
 use crate::{
     analysis::audio_level::{AudioLevelCallback, AudioLevelMeter},
-    audio_mixer::AudioEffectChain,
+    audio_mixer::{AudioEffectChain, AudioEffectsControl},
     utils::config::OutputConfig,
 };
 
@@ -37,6 +38,10 @@ const VIDEO_DROP_THRESHOLD_FRAMES: i64 = 3;
 const VIDEO_STARVATION_GRACE_FRAMES: i64 = 2;
 const SCHEDULER_INTERVAL: Duration = Duration::from_millis(2);
 const OUTPUT_CHANNEL_CAPACITY: usize = 64;
+const DESKTOP_VOLUME_STEP: f64 = 0.05;
+const DESKTOP_VOLUME_MIN: f64 = 0.0;
+const DESKTOP_VOLUME_MAX: f64 = 1.5;
+const VOLUME_OVERLAY_DURATION: Duration = Duration::from_millis(900);
 
 fn video_prebuffer_ready(queue_len: usize, video_finished: bool, force: bool) -> bool {
     force || video_finished || queue_len >= VIDEO_PREBUFFER_FRAMES
@@ -80,6 +85,7 @@ struct DesktopRenderer {
     texture: Texture,
     canvas: Canvas<Window>,
     audio: AudioQueue<f32>,
+    audio_effects_control: AudioEffectsControl,
     event_pump: sdl2::EventPump,
     video_queue: VecDeque<frame::Video>,
     pending_audio: VecDeque<(Vec<f32>, usize)>,
@@ -95,6 +101,8 @@ struct DesktopRenderer {
     last_rendered_video_pts: Option<i64>,
     last_video_present: Option<Instant>,
     last_starvation_report: Option<Instant>,
+    fullscreen: bool,
+    volume_overlay_until: Option<Instant>,
     // SDL context must outlive all resources above.
     _sdl: Sdl,
 }
@@ -156,10 +164,23 @@ impl DesktopOutput {
             .map_err(|error| anyhow!("failed to start decode worker: {error}"))?;
 
         let render_result = self.renderer.run_clip(receiver);
+        if let Err(error) = render_result {
+            if error.downcast_ref::<PlaybackStopped>().is_some() {
+                thread::spawn(move || {
+                    if worker.join().is_err() {
+                        log::warn!("decode worker panicked after desktop playback stopped");
+                    }
+                });
+                return Err(error);
+            }
+
+            let _ = worker.join();
+            return Err(error);
+        }
+
         let worker_result = worker
             .join()
             .map_err(|_| anyhow!("decode worker panicked"))?;
-        render_result?;
         Ok(worker_result)
     }
 
@@ -279,6 +300,7 @@ impl DesktopRenderer {
         Ok(Self {
             canvas,
             audio,
+            audio_effects_control: cfg.audio_effects.clone(),
             event_pump,
             video_queue: VecDeque::new(),
             pending_audio: VecDeque::new(),
@@ -294,6 +316,8 @@ impl DesktopRenderer {
             last_rendered_video_pts: None,
             last_video_present: None,
             last_starvation_report: None,
+            fullscreen: false,
+            volume_overlay_until: None,
             texture,
             _sdl: sdl,
         })
@@ -524,6 +548,7 @@ impl DesktopRenderer {
         self.canvas
             .copy(&self.texture, None, None)
             .map_err(anyhow::Error::msg)?;
+        self.draw_volume_overlay()?;
         self.canvas.present();
         Ok(())
     }
@@ -531,6 +556,7 @@ impl DesktopRenderer {
     fn render_black_frame(&mut self) {
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         self.canvas.clear();
+        let _ = self.draw_volume_overlay();
         self.canvas.present();
     }
 
@@ -559,18 +585,93 @@ impl DesktopRenderer {
     }
 
     fn handle_events(&mut self) -> Result<()> {
-        if self.event_pump.poll_iter().any(|event| {
-            matches!(
-                event,
-                Event::Quit { .. }
-                    | Event::KeyDown {
-                        keycode: Some(Keycode::Escape),
-                        ..
-                    }
-            )
-        }) {
-            return Err(PlaybackStopped.into());
+        while let Some(event) = self.event_pump.poll_event() {
+            match event {
+                Event::Quit { .. } => return Err(PlaybackStopped.into()),
+                Event::KeyDown {
+                    keycode: Some(Keycode::F),
+                    repeat: false,
+                    ..
+                } => self.toggle_fullscreen()?,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Left),
+                    ..
+                } => self.adjust_volume(-DESKTOP_VOLUME_STEP)?,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Right),
+                    ..
+                } => self.adjust_volume(DESKTOP_VOLUME_STEP)?,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => return Err(PlaybackStopped.into()),
+                _ => {}
+            }
         }
+        Ok(())
+    }
+
+    fn adjust_volume(&mut self, delta: f64) -> Result<()> {
+        let volume = adjusted_volume(self.audio_effects_control.volume(), delta);
+        self.audio_effects_control.set_volume(volume)?;
+        self.volume_overlay_until = Some(Instant::now() + VOLUME_OVERLAY_DURATION);
+        Ok(())
+    }
+
+    fn toggle_fullscreen(&mut self) -> Result<()> {
+        self.set_fullscreen(!self.fullscreen)
+    }
+
+    fn set_fullscreen(&mut self, fullscreen: bool) -> Result<()> {
+        let mode = if fullscreen {
+            FullscreenType::Desktop
+        } else {
+            FullscreenType::Off
+        };
+        self.canvas
+            .window_mut()
+            .set_fullscreen(mode)
+            .map_err(anyhow::Error::msg)?;
+        self.fullscreen = fullscreen;
+        Ok(())
+    }
+
+    fn draw_volume_overlay(&mut self) -> Result<()> {
+        if self
+            .volume_overlay_until
+            .is_none_or(|until| Instant::now() >= until)
+        {
+            self.volume_overlay_until = None;
+            return Ok(());
+        }
+
+        let (width, height) = self.canvas.output_size().map_err(anyhow::Error::msg)?;
+        let panel_width = (width / 3).clamp(180, 360);
+        let panel_height = 28;
+        let margin = 24;
+        let x = ((width - panel_width) / 2) as i32;
+        let y = height.saturating_sub(panel_height + margin) as i32;
+        let panel = Rect::new(x, y, panel_width, panel_height);
+        let track_margin = 8;
+        let track_height = 6;
+        let track_width = panel_width - track_margin * 2;
+        let track_x = x + track_margin as i32;
+        let track_y = y + ((panel_height - track_height) / 2) as i32;
+        let fill_width = ((self.audio_effects_control.volume() / DESKTOP_VOLUME_MAX)
+            .clamp(0.0, 1.0)
+            * f64::from(track_width))
+        .round() as u32;
+
+        self.canvas.set_draw_color(Color::RGB(16, 18, 20));
+        self.canvas.fill_rect(panel).map_err(anyhow::Error::msg)?;
+        self.canvas.set_draw_color(Color::RGB(78, 86, 96));
+        self.canvas
+            .fill_rect(Rect::new(track_x, track_y, track_width, track_height))
+            .map_err(anyhow::Error::msg)?;
+        self.canvas.set_draw_color(Color::RGB(238, 238, 238));
+        self.canvas
+            .fill_rect(Rect::new(track_x, track_y, fill_width, track_height))
+            .map_err(anyhow::Error::msg)?;
         Ok(())
     }
 }
@@ -620,6 +721,10 @@ fn video_pts_in_audio_samples(video_pts: i64, video_time_base: Rational, sample_
     video_pts
         .rescale(video_time_base, Rational(1, sample_rate as i32))
         .max(0) as u64
+}
+
+fn adjusted_volume(volume: f64, delta: f64) -> f64 {
+    (volume + delta).clamp(DESKTOP_VOLUME_MIN, DESKTOP_VOLUME_MAX)
 }
 
 #[cfg(test)]
@@ -688,5 +793,12 @@ mod tests {
         assert!(!video_frame_is_too_late(10, 13, 2));
         assert!(video_frame_is_too_late(10, 14, 2));
         assert!(!video_frame_is_too_late(10, 20, 1));
+    }
+
+    #[test]
+    fn desktop_volume_adjustment_is_clamped() {
+        assert_eq!(adjusted_volume(1.0, 0.05), 1.05);
+        assert_eq!(adjusted_volume(1.49, 0.05), DESKTOP_VOLUME_MAX);
+        assert_eq!(adjusted_volume(0.01, -0.05), DESKTOP_VOLUME_MIN);
     }
 }
