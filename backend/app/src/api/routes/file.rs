@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, io};
 
 use axum::{
     Json,
@@ -7,12 +7,14 @@ use axum::{
     response::Response,
 };
 use protect_axum::authorities::AuthDetails;
+use real::RealIp;
 use serde::Deserialize;
 use tokio::fs;
 
 use crate::{
     api::{
         auth::decode_jwt,
+        file_access::{FileAccessData, FileAccessResponse, check_file_access, prune_file_access},
         routes::{AuthUser, FileObj, ImportObj, ensure_any_authority, stream_file},
         state::AppState,
     },
@@ -25,7 +27,12 @@ use crate::{
 #[derive(Debug, Deserialize)]
 pub struct FileQuery {
     #[serde(default)]
-    token: Option<String>,
+    access: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FileAccessRequest {
+    filename: String,
 }
 
 /// ### File Operations
@@ -194,38 +201,19 @@ pub async fn upload_file(
     Ok(StatusCode::OK)
 }
 
-/// **Get File**
-///
-/// Can be used for preview video files
-///
-/// ```BASH
-/// curl -X GET http://127.0.0.1:8787/file/1/path/to/file.mp4
-/// ```
-pub async fn get_file(
+pub async fn create_file_access_token(
+    real_ip: RealIp,
     State(state): State<AppState>,
-    Path((id, filename)): Path<(i32, String)>,
-    Query(query): Query<FileQuery>,
-    headers: HeaderMap,
-) -> Result<Response, ServiceError> {
-    // Media elements (e.g. <video src>) cannot send an Authorization header,
-    // so the access token may also be supplied as a `?token=` query parameter.
-    // Either way a valid token is required and the caller must have access to
-    // the requested channel.
-    let token = headers
-        .get(AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .map(str::to_string)
-        .or(query.token)
-        .ok_or_else(|| ServiceError::Unauthorized("Missing token".to_string()))?;
-
-    let claims = decode_jwt(&token).await?;
-    let auth = AuthUser {
-        id: claims.id,
-        channels: claims.channels,
-        role: claims.role,
-    };
-    auth.ensure_channel_or_admin(id)?;
+    Path(id): Path<i32>,
+    user: AuthUser,
+    details: AuthDetails<Role>,
+    Json(request): Json<FileAccessRequest>,
+) -> Result<Json<FileAccessResponse>, ServiceError> {
+    ensure_any_authority(
+        &details,
+        &[&Role::GlobalAdmin, &Role::ChannelAdmin, &Role::User],
+    )?;
+    user.ensure_channel_or_admin(id)?;
 
     let manager = {
         let guard = state.controller.read().await;
@@ -235,7 +223,72 @@ pub async fn get_file(
 
     let config = manager.config.read().await;
     let storage = config.channel.storage.clone();
+    let (path, _, _) = norm_abs_path(&storage, &request.filename)?;
+    drop(config);
+
+    let metadata = match fs::metadata(&path).await {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Err(ServiceError::NotFound("File not found".to_string()));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.is_file() {
+        return Err(ServiceError::NotFound("File not found".to_string()));
+    }
+
+    let access_data = FileAccessData::new(real_ip.ip().to_string(), user.id, id, &path);
+    let response = FileAccessResponse::from(&access_data);
+    let mut tokens = state.file_access.tokens.lock().await;
+    prune_file_access(&mut tokens);
+    tokens.insert(access_data);
+
+    Ok(Json(response))
+}
+
+/// **Get File**
+///
+/// Can be used for preview video files
+///
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/file/1/path/to/file.mp4
+/// ```
+pub async fn get_file(
+    real_ip: RealIp,
+    State(state): State<AppState>,
+    Path((id, filename)): Path<(i32, String)>,
+    Query(query): Query<FileQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ServiceError> {
+    let manager = {
+        let guard = state.controller.read().await;
+        guard.get(id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    let config = manager.config.read().await;
+    let storage = config.channel.storage.clone();
     let (path, _, _) = norm_abs_path(&storage, &filename)?;
+    drop(config);
+
+    if let Some(token) = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+    {
+        let claims = decode_jwt(token).await?;
+        let auth = AuthUser {
+            id: claims.id,
+            channels: claims.channels,
+            role: claims.role,
+        };
+        auth.ensure_channel_or_admin(id)?;
+    } else if let Some(access) = query.access.as_deref() {
+        let mut tokens = state.file_access.tokens.lock().await;
+        check_file_access(&mut tokens, access, &real_ip.ip().to_string(), id, &path)?;
+    } else {
+        return Err(ServiceError::Unauthorized("Missing token".to_string()));
+    }
 
     stream_file(&path, &headers).await
 }

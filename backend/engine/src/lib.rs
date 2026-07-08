@@ -11,6 +11,7 @@ use std::{
 #[cfg(feature = "tokio")]
 use tokio::sync::oneshot;
 
+mod analysis;
 mod audio_mixer;
 mod compositor;
 mod input;
@@ -18,6 +19,7 @@ mod output;
 mod playout;
 mod utils;
 
+pub use analysis::audio_level::{AudioLevel, AudioLevelCallback};
 pub use audio_mixer::AudioEffectsControl;
 use input::live::{LiveEnded, LiveOverrideOutput};
 pub use input::live::{LiveReceiver, spawn_rtmp_listener};

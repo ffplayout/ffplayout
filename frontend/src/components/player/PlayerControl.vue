@@ -53,6 +53,7 @@ playlistStore.current = currentDefault
 const timeStr = ref('00:00:00')
 const timer = ref()
 const errorCounter = ref(0)
+const volumeLevel = ref(configStore.playout.processing?.volume ?? 1)
 const streamExtension = ref(configStore.channels[configStore.i]?.preview_url.split('.').pop())
 const httpStreamFlv = ref(null)
 const httpFlvSource = ref({
@@ -141,6 +142,7 @@ watch([data], () => {
 
 watch([i], () => {
     resetStatus()
+    volumeLevel.value = configStore.playout.processing?.volume ?? 1
 
     streamUrl.value = `/data/event/${configStore.channels[configStore.i]?.id}?endpoint=playout&uuid=${authStore.uuid}`
 
@@ -159,6 +161,55 @@ function timeRemaining() {
     return remaining
 }
 
+function audioMeterValue() {
+    const peak = playlistStore.audioLevel?.peak_db ?? -100
+
+    return Math.min(100, Math.max(0, ((peak + 60) / 60) * 100))
+}
+
+function volumeIcon() {
+    if (volumeLevel.value <= 0) {
+        return 'bi-volume-mute'
+    }
+
+    if (volumeLevel.value < 1) {
+        return 'bi-volume-off'
+    }
+
+    if (volumeLevel.value < 2) {
+        return 'bi-volume-down'
+    }
+
+    return 'bi-volume-up'
+}
+
+const applyVolumeControl = throttle(async () => {
+    const volume = Math.min(1.5, Math.max(0, Number(volumeLevel.value) || 0))
+    volumeLevel.value = volume
+    configStore.playout.processing.volume = volume
+
+    try {
+        const response = await configStore.applyAudioEffects(volume)
+
+        if (!response.ok) {
+            throw new Error(await response.text())
+        }
+    } catch (error) {
+        indexStore.msgAlert('error', error instanceof Error ? error.message : String(error), 3)
+    }
+}, 250)
+
+function muteAudio() {
+    if (configStore.playout.processing.volume === 0) {
+        volumeLevel.value = 1
+    } else {
+        volumeLevel.value = 0
+    }
+
+    configStore.playout.processing.volume = volumeLevel.value
+    configStore.applyAudioEffects(volumeLevel.value)
+}
+
 async function clock() {
     async function setTime(resolve: any) {
         timeStr.value = dayjs().tz(configStore.timezone).format('HH:mm:ss')
@@ -170,6 +221,7 @@ async function clock() {
 function resetStatus() {
     playlistStore.elapsedSec = 0
     playlistStore.shift = 0
+    playlistStore.audioLevel = null
     playlistStore.current = currentDefault
 }
 
@@ -213,8 +265,8 @@ const controlPlayout = throttle(async (state: string) => {
 </script>
 <template>
     <div class="w-full">
-        <div class="grid grid-cols-1 md:grid-cols-[auto_512px] xl:grid-cols-[512px_auto_450px]">
-            <div class="order-1 p-1">
+        <div class="grid grid-cols-[48px_auto] md:grid-cols-[auto_50px_512px] xl:grid-cols-[512px_auto_48px_450px]">
+            <div class="order-1 col-span-2 md:col-span-1 p-1">
                 <div class="bg-base-100 w-full h-full rounded-sm shadow-sm flex items-center p-2">
                     <div class="w-full aspect-video">
                         <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
@@ -242,7 +294,7 @@ const controlPlayout = throttle(async (state: string) => {
             </div>
 
             <div
-                class="order-3 xl:order-2 col-span-1 md:col-span-2 xl:col-span-1 bg-base-200 h-full grid grid-cols-1 xs:grid-cols-2"
+                class="order-2 md:order-4 xl:order-2 col-span-2 md:col-span-3 xl:col-span-1 bg-base-200 h-full grid grid-cols-1 xs:grid-cols-2"
             >
                 <div class="col-span-1 p-1">
                     <div
@@ -323,9 +375,22 @@ const controlPlayout = throttle(async (state: string) => {
                 </div>
             </div>
 
-            <div class="order-2 xl:order-3 p-1">
-                <div class="bg-base-100 h-full flex justify-center rounded-sm shadow">
-                    <div class="w-full h-full grid grid-cols-3">
+            <div class="order-3 md:order-2 xl:order-3 p-1">
+                <div class="bg-base-100 h-full min-h-24 rounded-sm shadow flex items-center justify-center px-3 py-2">
+                    <div
+                        class="relative h-full min-h-20 w-4 rounded-sm overflow-hidden bg-linear-to-t from-success from-70% via-warning via-80% to-error to-100%"
+                    >
+                        <div
+                            class="absolute top-0 left-0 w-full bg-base-300 transition-[height] duration-300"
+                            :style="{ height: `${100 - audioMeterValue()}%` }"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <div class="order-3 xl:order-4 p-1">
+                <div class="bg-base-100 h-full flex flex-col justify-center rounded-sm shadow">
+                    <div class="w-full flex-1 grid grid-cols-3">
                         <div class="text-center">
                             <div class="w-full h-1/2 aspect-square p-2">
                                 <button
@@ -390,6 +455,25 @@ const controlPlayout = throttle(async (state: string) => {
                                     <i class="bi-skip-end" />
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                    <div class="w-full px-2 pb-3">
+                        <div class="flex items-center gap-2">
+                            <button
+                                class="btn btn-sm px-1 btn-primary text-xl text-base-content/70"
+                                :class="volumeIcon()"
+                                @click="muteAudio"
+                            />
+                            <input
+                                v-model.number="volumeLevel"
+                                type="range"
+                                min="0"
+                                max="1.5"
+                                step="0.01"
+                                class="range range-primary range-sm flex-1 bg-base-300"
+                                @input="applyVolumeControl"
+                            />
+                            <span class="w-7 text-right text-xs tabular-nums">{{ volumeLevel.toFixed(2) }}</span>
                         </div>
                     </div>
                 </div>

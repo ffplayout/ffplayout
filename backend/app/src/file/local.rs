@@ -454,10 +454,18 @@ impl LocalStorage {
                                     )?;
                                 }
                                 if font_target.is_file() {
-                                    nix::unistd::chown(&font_target, Some(user.uid), Some(user.gid))?;
+                                    nix::unistd::chown(
+                                        &font_target,
+                                        Some(user.uid),
+                                        Some(user.gid),
+                                    )?;
                                 }
                                 if logo_target.is_file() {
-                                    nix::unistd::chown(&logo_target, Some(user.uid), Some(user.gid))?;
+                                    nix::unistd::chown(
+                                        &logo_target,
+                                        Some(user.uid),
+                                        Some(user.gid),
+                                    )?;
                                 }
                             }
                             Ok(None) => {

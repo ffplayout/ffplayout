@@ -22,7 +22,11 @@ use sdl2::{
 };
 
 use super::{FrameOutput, PlaybackStopped};
-use crate::{audio_mixer::AudioEffectChain, utils::config::OutputConfig};
+use crate::{
+    analysis::audio_level::{AudioLevelCallback, AudioLevelMeter},
+    audio_mixer::AudioEffectChain,
+    utils::config::OutputConfig,
+};
 
 const AUDIO_CHANNELS: usize = 2;
 const AUDIO_PREBUFFER_MS: u64 = 100;
@@ -49,6 +53,8 @@ fn video_frame_is_too_late(frame_pts: i64, expected_pts: i64, queue_len: usize) 
 pub(super) struct DesktopOutput {
     renderer: DesktopRenderer,
     audio_effects: Arc<Mutex<AudioEffectChain>>,
+    audio_level_callback: Option<AudioLevelCallback>,
+    audio_sample_rate: u32,
 }
 
 enum DesktopMessage {
@@ -66,6 +72,7 @@ enum DesktopMessage {
 pub(crate) struct DesktopFrameSender {
     sender: SyncSender<DesktopMessage>,
     audio_effects: Arc<Mutex<AudioEffectChain>>,
+    audio_level_meter: AudioLevelMeter,
 }
 
 struct DesktopRenderer {
@@ -100,6 +107,8 @@ impl DesktopOutput {
                 cfg.audio_effects.clone(),
                 cfg.sample_rate,
             ))),
+            audio_level_callback: cfg.audio_level_callback.clone(),
+            audio_sample_rate: cfg.sample_rate,
         })
     }
 
@@ -126,12 +135,18 @@ impl DesktopOutput {
     {
         let (sender, receiver) = sync_channel(OUTPUT_CHANNEL_CAPACITY);
         let audio_effects = Arc::clone(&self.audio_effects);
+        let audio_level_callback = self.audio_level_callback.clone();
+        let audio_sample_rate = self.audio_sample_rate;
         let worker = thread::Builder::new()
             .name("ffplayout-decode".to_string())
             .spawn(move || {
                 let mut output = DesktopFrameSender {
                     sender,
                     audio_effects,
+                    audio_level_meter: AudioLevelMeter::new(
+                        audio_sample_rate,
+                        audio_level_callback,
+                    ),
                 };
                 let _ = output.sender.send(DesktopMessage::ClipStarted);
                 let result = operation(&mut output);
@@ -174,6 +189,7 @@ impl FrameOutput for DesktopFrameSender {
             .lock()
             .map_err(|_| anyhow!("audio effect chain lock poisoned"))?
             .process(&mut frame);
+        self.audio_level_meter.process_frame(&frame);
         let left = frame.plane::<f32>(0);
         let right = frame.plane::<f32>(1);
         let mut interleaved = Vec::with_capacity(frame.samples() * AUDIO_CHANNELS);

@@ -82,9 +82,7 @@ pub async fn stream_file(path: &Path, headers: &HeaderMap) -> Result<Response, S
             file.seek(std::io::SeekFrom::Start(start)).await?;
             response_headers.insert(
                 CONTENT_RANGE,
-                format!("bytes {start}-{end}/{total_size}")
-                    .parse()
-                    .unwrap(),
+                format!("bytes {start}-{end}/{total_size}").parse().unwrap(),
             );
             (StatusCode::PARTIAL_CONTENT, start, end - start + 1)
         }

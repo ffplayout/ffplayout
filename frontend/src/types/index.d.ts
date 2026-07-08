@@ -185,11 +185,17 @@ declare global {
     interface PlayoutStatus {
         media: PlaylistItem
         index: number
+        audio?: AudioLevel
         ingest: boolean
         mode: string
         elapsed: number
         shift: number
         title?: string
+    }
+
+    interface AudioLevel {
+        rms_db: number
+        peak_db: number
     }
 
     interface SplitTime {

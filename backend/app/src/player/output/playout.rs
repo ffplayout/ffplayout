@@ -6,8 +6,8 @@ use std::{
 };
 
 use ff_engine::{
-    AsyncPlayout, ClipResult, LogLevel, LogoConfig, LogoFade, OutputConfig, RateControl,
-    TextOverlayState, resolved_variant_playlist_path,
+    AsyncPlayout, AudioLevelCallback, ClipResult, LogLevel, LogoConfig, LogoFade, OutputConfig,
+    RateControl, TextOverlayState, resolved_variant_playlist_path,
 };
 use log::*;
 use tokio::time::sleep;
@@ -36,9 +36,13 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         .audio_effects
         .set_volume(config.processing.volume)
         .map_err(engine_error)?;
+    if let Ok(mut audio_level) = manager.audio_level.lock() {
+        *audio_level = None;
+    }
     let output_config = engine_output_config(
         &config,
         manager.audio_effects.clone(),
+        manager.audio_level.clone(),
         manager.text_overlay.clone(),
     )?;
     let playout = open_playout(&config, output_config.clone()).await?;
@@ -328,6 +332,7 @@ async fn open_desktop_playout(
 fn engine_output_config(
     config: &PlayoutConfig,
     audio_effects: ff_engine::AudioEffectsControl,
+    audio_level: std::sync::Arc<std::sync::Mutex<Option<ff_engine::AudioLevel>>>,
     text_overlay_state: TextOverlayState,
 ) -> Result<OutputConfig, ServiceError> {
     let width = config.output.width;
@@ -376,6 +381,11 @@ fn engine_output_config(
 
     Ok(OutputConfig::new(width, height, fps, 48_000)
         .with_audio_effects(audio_effects)
+        .with_audio_level_callback(Some(AudioLevelCallback::new(move |level| {
+            if let Ok(mut audio_level) = audio_level.lock() {
+                *audio_level = Some(level);
+            }
+        })))
         .with_logo(logo)
         .with_text(text)
         .with_text_overlay_state(text_overlay_state)
@@ -395,9 +405,9 @@ fn validate_supported_config(config: &PlayoutConfig) -> Result<(), ServiceError>
     config.output.validate().map_err(ServiceError::Conflict)?;
 
     let processing = &config.processing;
-    if !processing.volume.is_finite() || !(0.0..=1.0).contains(&processing.volume) {
+    if !processing.volume.is_finite() || !(0.0..=1.5).contains(&processing.volume) {
         return Err(ServiceError::Conflict(
-            "processing volume must be between 0.0 and 1.0".to_string(),
+            "processing volume must be between 0.0 and 1.5".to_string(),
         ));
     }
     Ok(())

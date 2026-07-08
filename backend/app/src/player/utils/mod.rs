@@ -142,6 +142,17 @@ pub async fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
         json!((played_time * 1000.0).round() / 1000.0),
     );
     data_map.insert("media".to_string(), get_media_map(media));
+    if let Ok(audio_level) = manager.audio_level.lock()
+        && let Some(audio_level) = *audio_level
+    {
+        data_map.insert(
+            "audio".to_string(),
+            json!({
+                "rms_db": (f64::from(audio_level.rms_db) * 10.0).round() / 10.0,
+                "peak_db": (f64::from(audio_level.peak_db) * 10.0).round() / 10.0,
+            }),
+        );
+    }
 
     data_map
 }

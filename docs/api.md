@@ -335,10 +335,14 @@ curl -X PUT http://127.0.0.1:8787/api/file/1/upload -H 'Authorization: Bearer <T
 
 **Get File**
 
-Can be used for preview video files
+Can be used for preview video files. Browser media elements should use a short-lived file access token instead of the normal JWT.
 
 ```BASH
-curl -X GET http://127.0.0.1:8787/file/1/path/to/file.mp4
+curl -X POST http://127.0.0.1:8787/api/file/1/access-token \
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>' \
+-d '{"filename": "path/to/file.mp4"}'
+
+curl -X GET 'http://127.0.0.1:8787/file/1/path/to/file.mp4?access=<ACCESS_TOKEN>'
 ```
 
 **Get Public**

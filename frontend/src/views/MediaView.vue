@@ -17,6 +17,7 @@ import GenericModal from '@/components/utils/GenericModal.vue'
 import VideoPlayer from '@/components/utils/VideoPlayer.vue'
 
 import { stringFormatter } from '@/composables/helper'
+import { createFilePreviewUrl } from '@/composables/fileAccess'
 import { useFileUpload } from '@/composables/useFileUpload'
 
 const { t } = useI18n()
@@ -161,7 +162,7 @@ async function handleDrop(event: any, targetFolder: any, isParent: boolean | nul
     }
 }
 
-function setPreviewData(path: string) {
+async function setPreviewData(path: string) {
     /*
         Set path and player options for video preview.
     */
@@ -171,9 +172,18 @@ function setPreviewData(path: string) {
     }
 
     previewName.value = fullPath.split('/').slice(-1)[0] || ''
-    previewUrl.value =
-        encodeURIComponent(`/file/${configStore.channels[configStore.i]?.id}${fullPath}`).replace(/%2F/g, '/') +
-        `?token=${encodeURIComponent(authStore.jwtToken ?? '')}`
+
+    try {
+        previewUrl.value = await createFilePreviewUrl(
+            configStore.channels[configStore.i]?.id,
+            fullPath,
+            authStore.authHeader
+        )
+    }
+    catch (error) {
+        indexStore.msgAlert('error', error instanceof Error ? error.message : String(error), 5)
+        return
+    }
 
     const ext = previewName.value.split('.').slice(-1)[0]?.toLowerCase()
     const fileType =

@@ -12,7 +12,7 @@ use tokio::sync::{Mutex, RwLock};
 use tower::util::ServiceExt;
 
 use ffplayout::{
-    api::{auth::login, state::AppState},
+    api::{auth::login, file_access::FileAccessState, state::AppState},
     db::{handles, init_globales, models::User},
     player::controller::{ChannelController, ChannelManager},
     sse::{SseAuthState, broadcast::Broadcaster},
@@ -57,13 +57,9 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager, Pool<Sqlite>) {
     (config, manager, pool)
 }
 
-async fn get_handler() -> StatusCode {
-    StatusCode::OK
-}
-
 #[tokio::test]
 async fn test_get() {
-    let app = Router::new().route("/", get(get_handler));
+    let app = Router::new().route("/", get(StatusCode::OK));
 
     let res = app
         .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
@@ -80,6 +76,7 @@ async fn test_login() {
         auth_state: Arc::new(SseAuthState::default()),
         broadcaster: Broadcaster::create(manager.system.clone()),
         controller: Arc::new(RwLock::new(ChannelController::new())),
+        file_access: Arc::new(FileAccessState::default()),
         mail_queues: Arc::new(Mutex::new(vec![])),
         pool: pool.clone(),
         system: manager.system.clone(),

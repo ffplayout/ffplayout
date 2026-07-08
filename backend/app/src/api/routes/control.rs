@@ -12,7 +12,10 @@ use crate::{
         routes::{AuthUser, ensure_any_authority},
         state::AppState,
     },
-    db::models::{Role, TextPreset},
+    db::{
+        handles,
+        models::{Role, TextPreset},
+    },
     player::utils::get_data_map,
     utils::{
         control::{ControlParams, Process, ProcessCtl, control_state, send_message},
@@ -41,10 +44,18 @@ pub async fn update_audio_effects(
     }
     .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
+    ff_engine::AudioEffectsControl::new(update.volume)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
+
+    let config_id = manager.config.read().await.general.id;
+    handles::update_configuration_volume(&state.pool, config_id, update.volume).await?;
+
     manager
         .audio_effects
         .set_volume(update.volume)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
+
+    manager.config.write().await.processing.volume = update.volume;
 
     Ok(Json("Success"))
 }

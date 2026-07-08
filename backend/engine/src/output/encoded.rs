@@ -13,6 +13,7 @@ use ffmpeg_next as ffmpeg;
 
 use super::{hls, vtt};
 use crate::{
+    analysis::audio_level::AudioLevelMeter,
     audio_mixer::AudioEffectChain,
     clock::PlayoutClock,
     utils::{
@@ -28,6 +29,7 @@ pub(super) struct EncodedOutput {
     subtitle_streams: Vec<SubtitleOutputStream>,
     vtt_subtitles: bool,
     audio_effects: AudioEffectChain,
+    audio_level_meter: AudioLevelMeter,
     audio_buffer: [VecDeque<f32>; 2],
     audio_buffer_pts: Option<i64>,
     audio_sample_rate: u32,
@@ -228,6 +230,10 @@ impl EncodedOutput {
             subtitle_streams,
             vtt_subtitles,
             audio_effects: AudioEffectChain::new(cfg.audio_effects.clone(), cfg.sample_rate),
+            audio_level_meter: AudioLevelMeter::new(
+                cfg.sample_rate,
+                cfg.audio_level_callback.clone(),
+            ),
             audio_buffer: [VecDeque::new(), VecDeque::new()],
             audio_buffer_pts: None,
             audio_sample_rate: cfg.sample_rate,
@@ -267,6 +273,7 @@ impl EncodedOutput {
 
         let mut frame = frame.clone();
         self.audio_effects.process(&mut frame);
+        self.audio_level_meter.process_frame(&frame);
         self.align_audio_buffer_to_frame_pts(frame.pts())?;
         if self.audio_buffer[0].is_empty() {
             self.audio_buffer_pts = frame.pts();

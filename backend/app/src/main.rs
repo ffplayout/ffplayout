@@ -18,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 
 use ffplayout::{
     ARGS,
+    api::file_access::FileAccessState,
     api::{self, state::AppState},
     db::{db_drop, db_pool, handles, init_globales},
     extract,
@@ -85,6 +86,7 @@ async fn async_main() -> Result<(), ProcessError> {
         auth_state: Arc::new(SseAuthState::default()),
         broadcaster: Broadcaster::create(system.clone()),
         controller: Arc::new(RwLock::new(ChannelController::new())),
+        file_access: Arc::new(FileAccessState::default()),
         mail_queues: Arc::new(Mutex::new(vec![])),
         pool: pool.clone(),
         system: system.clone(),

@@ -27,6 +27,7 @@ export const usePlaylist = defineStore('playlist', {
         current: {} as PlaylistItem,
         currentIndex: 0,
         ingestRuns: false,
+        audioLevel: null as AudioLevel | null,
         elapsedSec: 0,
         shift: 0,
         playoutIsRunning: false,
@@ -96,6 +97,7 @@ export const usePlaylist = defineStore('playlist', {
             this.currentIndex = item.index
             this.elapsedSec = item.elapsed
             this.ingestRuns = item.ingest
+            this.audioLevel = item.audio ?? null
             this.shift = item.shift
 
             this.progressValue = (this.elapsedSec * 100) / this.current.out
