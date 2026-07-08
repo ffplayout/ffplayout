@@ -12,7 +12,7 @@ use std::{
 use anyhow::{Result, anyhow};
 use ffmpeg_next::{Rational, Rescale, frame};
 use sdl2::{
-    Sdl,
+    Sdl, VideoSubsystem,
     audio::{AudioQueue, AudioSpecDesired},
     event::Event,
     keyboard::Keycode,
@@ -80,6 +80,11 @@ pub(crate) struct DesktopFrameSender {
     audio_level_meter: AudioLevelMeter,
 }
 
+pub(crate) struct DesktopSdl {
+    sdl: Sdl,
+    video: VideoSubsystem,
+}
+
 struct DesktopRenderer {
     // Texture must be dropped before its parent canvas.
     texture: Texture,
@@ -108,9 +113,9 @@ struct DesktopRenderer {
 }
 
 impl DesktopOutput {
-    pub(super) fn open(cfg: &OutputConfig) -> Result<Self> {
+    pub(super) fn open(cfg: &OutputConfig, desktop_sdl: DesktopSdl) -> Result<Self> {
         Ok(Self {
-            renderer: DesktopRenderer::open(cfg)?,
+            renderer: DesktopRenderer::open(cfg, desktop_sdl)?,
             audio_effects: Arc::new(Mutex::new(AudioEffectChain::new(
                 cfg.audio_effects.clone(),
                 cfg.sample_rate,
@@ -240,30 +245,13 @@ impl FrameOutput for DesktopFrameSender {
 }
 
 impl DesktopRenderer {
-    fn open(cfg: &OutputConfig) -> Result<Self> {
-        // All desktop-output sessions (across restarts and channels) are
-        // routed through the single persistent thread in `sdl_thread`, so SDL
-        // and libdecor/GTK always see the same OS thread for their whole
-        // process lifetime. That thread affinity is what libdecor's GTK
-        // plugin needs; without it window creation can fail with
-        // "Failed to load plugin 'libdecor-gtk.so': failed to init".
-        //
-        // By default SDL installs its own SIGINT/SIGTERM handlers and turns
-        // them into an `Event::Quit`, which `handle_events` treats as "stop
-        // the current clip" (the same as closing the window or pressing
-        // Escape) rather than as a request to terminate the whole process.
-        // Since the channel supervisor automatically restarts a stopped
-        // channel, Ctrl-C would just restart playback instead of exiting the
-        // process. Disabling SDL's signal handlers restores the normal OS
-        // default (Ctrl-C terminates the process), matching the behavior of
-        // the other output modes, which don't use SDL at all.
-        sdl2::hint::set("SDL_NO_SIGNAL_HANDLERS", "1");
-        sdl2::hint::set("SDL_VIDEO_WAYLAND_PREFER_LIBDECOR", "0");
-        let sdl = sdl2::init().map_err(anyhow::Error::msg)?;
-        let video = sdl.video().map_err(anyhow::Error::msg)?;
+    fn open(cfg: &OutputConfig, desktop_sdl: DesktopSdl) -> Result<Self> {
+        let DesktopSdl { sdl, video } = desktop_sdl;
         let audio_subsystem = sdl.audio().map_err(anyhow::Error::msg)?;
+        let (window_width, window_height) =
+            cfg.desktop_window_size.unwrap_or((cfg.width, cfg.height));
         let window = video
-            .window("ffplayout", cfg.width, cfg.height)
+            .window("ffplayout", window_width, window_height)
             .position_centered()
             .resizable()
             .build()
@@ -674,6 +662,59 @@ impl DesktopRenderer {
             .map_err(anyhow::Error::msg)?;
         Ok(())
     }
+}
+
+pub(crate) fn init_sdl() -> Result<DesktopSdl> {
+    // All desktop-output sessions (across restarts and channels) are routed
+    // through the single persistent thread in `sdl_thread`, so SDL and
+    // libdecor/GTK always see the same OS thread for their whole process
+    // lifetime. That thread affinity is what libdecor's GTK plugin needs;
+    // without it window creation can fail with "Failed to load plugin
+    // 'libdecor-gtk.so': failed to init".
+    //
+    // By default SDL installs its own SIGINT/SIGTERM handlers and turns them
+    // into an `Event::Quit`, which `handle_events` treats as "stop the current
+    // clip" (the same as closing the window or pressing Escape) rather than as
+    // a request to terminate the whole process. Since the channel supervisor
+    // automatically restarts a stopped channel, Ctrl-C would just restart
+    // playback instead of exiting the process. Disabling SDL's signal handlers
+    // restores the normal OS default (Ctrl-C terminates the process), matching
+    // the behavior of the other output modes, which don't use SDL at all.
+    sdl2::hint::set("SDL_NO_SIGNAL_HANDLERS", "1");
+    sdl2::hint::set("SDL_VIDEO_WAYLAND_PREFER_LIBDECOR", "0");
+    let sdl = sdl2::init().map_err(anyhow::Error::msg)?;
+    let video = sdl.video().map_err(anyhow::Error::msg)?;
+    Ok(DesktopSdl { sdl, video })
+}
+
+pub(crate) fn config_for_primary_display(
+    mut config: OutputConfig,
+    desktop_sdl: &DesktopSdl,
+) -> OutputConfig {
+    let window_width = config.width;
+    let window_height = config.height;
+    if let Ok((display_width, display_height)) = primary_display_size(&desktop_sdl.video) {
+        config.width = display_width;
+        config.height = display_height;
+        config = config.with_desktop_window_size(window_width, window_height);
+    }
+    config
+}
+
+fn primary_display_size(video: &VideoSubsystem) -> Result<(u32, u32)> {
+    let mode = video.current_display_mode(0).map_err(anyhow::Error::msg)?;
+    if mode.w <= 0 || mode.h <= 0 {
+        return Err(anyhow!(
+            "SDL reported an invalid primary display size: {}x{}",
+            mode.w,
+            mode.h
+        ));
+    }
+    Ok((even_dimension(mode.w as u32), even_dimension(mode.h as u32)))
+}
+
+fn even_dimension(value: u32) -> u32 {
+    (value & !1).max(2)
 }
 
 struct AudioMasterClock {

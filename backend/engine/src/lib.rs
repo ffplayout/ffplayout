@@ -427,7 +427,9 @@ impl Playout {
     pub fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
         init_ffmpeg(&config)?;
-        let output = Output::open_desktop(&config)?;
+        let sdl = output::init_desktop_sdl()?;
+        let config = output::desktop_config_for_primary_display(config, &sdl);
+        let output = Output::open_desktop(&config, sdl)?;
 
         Ok(Self::with_output(config, output, fallback_duration))
     }

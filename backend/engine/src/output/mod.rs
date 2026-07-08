@@ -14,7 +14,7 @@ use anyhow::Result;
 #[cfg(feature = "desktop")]
 use anyhow::anyhow;
 #[cfg(feature = "desktop")]
-use desktop::{DesktopFrameSender, DesktopOutput};
+use desktop::{DesktopFrameSender, DesktopOutput, DesktopSdl};
 use encoded::{EncodedFormat, EncodedOutput};
 use ffmpeg_next::frame;
 
@@ -49,6 +49,19 @@ pub(crate) trait FrameOutput {
     ) -> Result<()> {
         Ok(())
     }
+}
+
+#[cfg(feature = "desktop")]
+pub(crate) fn init_desktop_sdl() -> Result<DesktopSdl> {
+    desktop::init_sdl()
+}
+
+#[cfg(feature = "desktop")]
+pub(crate) fn desktop_config_for_primary_display(
+    config: OutputConfig,
+    desktop_sdl: &DesktopSdl,
+) -> OutputConfig {
+    desktop::config_for_primary_display(config, desktop_sdl)
 }
 
 pub(crate) struct Output {
@@ -91,9 +104,9 @@ impl Output {
     }
 
     #[cfg(feature = "desktop")]
-    pub(crate) fn open_desktop(cfg: &OutputConfig) -> Result<Self> {
+    pub(crate) fn open_desktop(cfg: &OutputConfig, desktop_sdl: DesktopSdl) -> Result<Self> {
         Ok(Self {
-            kind: OutputKind::Desktop(DesktopOutput::open(cfg)?),
+            kind: OutputKind::Desktop(DesktopOutput::open(cfg, desktop_sdl)?),
         })
     }
 
