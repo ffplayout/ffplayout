@@ -46,6 +46,7 @@ export default {
         device: 'Gerät',
         size: 'Größe',
         used: 'Genutzt',
+        free: 'Frei',
     },
     control: {
         noClip: 'Es wird kein Clip abgespielt',

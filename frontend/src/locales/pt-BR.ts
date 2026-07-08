@@ -46,6 +46,7 @@ export default {
         device: 'Dispositivo',
         size: 'Tamanho total',
         used: 'Disponível',
+        free: 'Livre',
     },
     control: {
         noClip: 'Nenhum clipe está sendo reproduzido',

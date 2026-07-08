@@ -177,7 +177,7 @@ declare global {
         load: { one: number; five: number; fifteen: number }
         memory: { total: number; used: number; free: number }
         network?: { name: string; current_in: number; current_out: number; total_in: number; total_out: number }
-        storage?: { path: string; total: number; used: number }
+        storage?: { path: string; total: number; free: number }
         swap: { total: number; used: number; free: number }
         system: { name?: string; kernel?: string; version?: string; ffp_version?: string }
     }

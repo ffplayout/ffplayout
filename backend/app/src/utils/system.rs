@@ -39,7 +39,7 @@ pub struct Cpu {
 pub struct Storage {
     pub path: String,
     pub total: u64,
-    pub used: u64,
+    pub free: u64,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -53,7 +53,6 @@ pub struct Load {
 pub struct Memory {
     pub total: u64,
     pub used: u64,
-    pub free: u64,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -180,7 +179,7 @@ impl SystemStat {
                     {
                         storage.path = disk.name().to_string_lossy().to_string();
                         storage.total = disk.total_space();
-                        storage.used = disk.available_space();
+                        storage.free = disk.available_space();
                     }
                 }
 
@@ -194,7 +193,6 @@ impl SystemStat {
                 let memory = Memory {
                     total: sys.total_memory(),
                     used: sys.used_memory(),
-                    free: sys.total_memory() - sys.used_memory(),
                 };
 
                 let mut network = Network::default();
