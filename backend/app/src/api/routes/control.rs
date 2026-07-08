@@ -225,25 +225,41 @@ pub async fn process_control(
 
     manager.is_processing.store(true, Ordering::SeqCst);
 
-    match proc.command {
-        ProcessCtl::Status => {
-            manager.is_processing.store(false, Ordering::SeqCst);
+    // Run the actual command in a helper so the `is_processing` flag is always
+    // cleared, even when a step returns early with an error. Otherwise a failed
+    // start/restart would leave the channel permanently stuck reporting
+    // "A command is already being processed".
+    let result = run_process_command(&manager, proc.command).await;
 
+    manager.is_processing.store(false, Ordering::SeqCst);
+
+    result
+}
+
+async fn run_process_command(
+    manager: &crate::player::controller::ChannelManager,
+    command: ProcessCtl,
+) -> Result<Json<&'static str>, ServiceError> {
+    match command {
+        ProcessCtl::Status => {
             if manager.is_alive.load(Ordering::SeqCst) {
-                return Ok(Json("active"));
+                Ok(Json("active"))
+            } else {
+                Ok(Json("not running"))
             }
-            return Ok(Json("not running"));
         }
         ProcessCtl::Start => {
             if !manager.is_alive.load(Ordering::SeqCst) {
                 manager.channel.lock().await.active = true;
                 manager.start().await?;
             }
+            Ok(Json("Success"))
         }
         ProcessCtl::Stop => {
             manager.channel.lock().await.active = false;
             manager.stop_all(true).await;
             manager.abort_supervisor().await;
+            Ok(Json("Success"))
         }
         ProcessCtl::Restart => {
             manager.channel.lock().await.active = false;
@@ -254,10 +270,7 @@ pub async fn process_control(
 
             manager.channel.lock().await.active = true;
             manager.start().await?;
+            Ok(Json("Success"))
         }
     }
-
-    manager.is_processing.store(false, Ordering::SeqCst);
-
-    Ok(Json("Success"))
 }

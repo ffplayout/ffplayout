@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use path_clean::PathClean;
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 
@@ -60,19 +61,18 @@ pub fn norm_abs_path(
     root_path: &Path,
     input_path: &str,
 ) -> Result<(PathBuf, String, String), ServiceError> {
-    let path_relative = RelativePath::new(&root_path.to_string_lossy())
-        .normalize()
-        .to_string()
-        .replace("../", "");
+    let path_relative = strip_parent_segments(
+        RelativePath::new(&root_path.to_string_lossy())
+            .normalize()
+            .as_str(),
+    );
     let path_suffix = root_path
         .file_name()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let mut source_relative = RelativePath::new(input_path)
-        .normalize()
-        .to_string()
-        .replace("../", "");
+    let mut source_relative =
+        strip_parent_segments(RelativePath::new(input_path).normalize().as_str());
 
     if input_path.starts_with(&*root_path.to_string_lossy())
         || source_relative.starts_with(&path_relative)
@@ -90,7 +90,28 @@ pub fn norm_abs_path(
             .to_string();
     }
 
-    let path = &root_path.join(&source_relative);
+    let path = root_path.join(&source_relative);
 
-    Ok((path.clone(), path_suffix, source_relative))
+    // Defensive containment check: the cleaned absolute path must never leave
+    // the storage root, regardless of the normalization above.
+    let cleaned = path.clean();
+    let cleaned_root = root_path.clean();
+    if !cleaned.starts_with(&cleaned_root) {
+        return Err(ServiceError::Forbidden("Access denied".to_string()));
+    }
+
+    Ok((path, path_suffix, source_relative))
+}
+
+/// Removes every `../` traversal segment, repeating until the string is stable
+/// so a single non-recursive pass cannot leave a reconstructed `../` behind.
+fn strip_parent_segments(value: &str) -> String {
+    let mut result = value.to_string();
+    loop {
+        let stripped = result.replace("../", "");
+        if stripped == result {
+            return stripped;
+        }
+        result = stripped;
+    }
 }

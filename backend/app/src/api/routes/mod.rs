@@ -1,16 +1,30 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::{
     Json,
+    body::Body,
     extract::FromRequestParts,
-    http::{StatusCode, header::AUTHORIZATION, request::Parts},
+    http::{
+        HeaderMap, StatusCode,
+        header::{
+            ACCEPT_RANGES, AUTHORIZATION, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE,
+            CONTENT_TYPE, RANGE,
+        },
+        request::Parts,
+    },
+    response::{IntoResponse, Response},
 };
 use chrono::{Datelike, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use protect_axum::authorities::{AuthDetails, AuthoritiesCheck};
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncSeekExt},
+    sync::Mutex,
+};
+use tokio_util::io::ReaderStream;
 
 use super::auth::decode_jwt;
 use crate::db::models::Role;
@@ -42,6 +56,84 @@ pub use system::*;
 pub use user::*;
 
 pub type MailQueues = Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>;
+
+/// Streams a file to the client instead of loading it fully into memory, and
+/// honours a single HTTP `Range` request so media players can seek. This keeps
+/// memory usage bounded even for multi-gigabyte video files under many
+/// concurrent requests.
+pub async fn stream_file(path: &Path, headers: &HeaderMap) -> Result<Response, ServiceError> {
+    let metadata = tokio::fs::metadata(path).await?;
+    let total_size = metadata.len();
+
+    let range = headers
+        .get(RANGE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| parse_range(value, total_size));
+
+    let mut file = File::open(path).await?;
+
+    let mut response_headers = HeaderMap::new();
+    response_headers.insert(CONTENT_TYPE, "application/octet-stream".parse().unwrap());
+    response_headers.insert(CONTENT_DISPOSITION, "attachment".parse().unwrap());
+    response_headers.insert(ACCEPT_RANGES, "bytes".parse().unwrap());
+
+    let (status, start, length) = match range {
+        Some((start, end)) => {
+            file.seek(std::io::SeekFrom::Start(start)).await?;
+            response_headers.insert(
+                CONTENT_RANGE,
+                format!("bytes {start}-{end}/{total_size}")
+                    .parse()
+                    .unwrap(),
+            );
+            (StatusCode::PARTIAL_CONTENT, start, end - start + 1)
+        }
+        None => (StatusCode::OK, 0, total_size),
+    };
+
+    response_headers.insert(CONTENT_LENGTH, length.into());
+    let _ = start;
+
+    let stream = ReaderStream::new(file.take(length));
+    Ok((status, response_headers, Body::from_stream(stream)).into_response())
+}
+
+/// Parses a single `bytes=start-end` range against the known file size.
+/// Returns the inclusive `(start, end)` byte offsets, or `None` when the range
+/// is unsatisfiable or uses an unsupported (multi-range) form.
+fn parse_range(value: &str, total_size: u64) -> Option<(u64, u64)> {
+    if total_size == 0 {
+        return None;
+    }
+
+    let spec = value.strip_prefix("bytes=")?;
+    if spec.contains(',') {
+        return None;
+    }
+
+    let (start, end) = spec.split_once('-')?;
+    let last = total_size - 1;
+
+    let (start, end) = match (start.trim(), end.trim()) {
+        ("", "") => return None,
+        // Suffix range: last N bytes.
+        ("", suffix) => {
+            let suffix: u64 = suffix.parse().ok()?;
+            if suffix == 0 {
+                return None;
+            }
+            (total_size.saturating_sub(suffix), last)
+        }
+        (start, "") => (start.parse().ok()?, last),
+        (start, end) => (start.parse().ok()?, end.parse::<u64>().ok()?.min(last)),
+    };
+
+    if start > end || start > last {
+        return None;
+    }
+
+    Some((start, end))
+}
 
 pub fn ensure_any_authority(
     details: &AuthDetails<Role>,

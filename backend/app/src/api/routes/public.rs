@@ -1,17 +1,12 @@
 use axum::{
-    body::Body,
     extract::{Path, State},
-    http::{
-        HeaderMap, StatusCode,
-        header::{CONTENT_DISPOSITION, CONTENT_TYPE},
-    },
-    response::{IntoResponse, Response},
+    http::HeaderMap,
+    response::Response,
 };
 use path_clean::PathClean;
-use tokio::fs;
 
 use crate::{
-    api::state::AppState,
+    api::{routes::stream_file, state::AppState},
     utils::{errors::ServiceError, public_path},
 };
 
@@ -25,8 +20,9 @@ use crate::{
 pub async fn get_public(
     State(state): State<AppState>,
     Path((id, public, file_stem)): Path<(i32, String, String)>,
+    headers: HeaderMap,
 ) -> Result<Response, ServiceError> {
-    let absolute_path = if file_stem.ends_with(".ts")
+    let base_path = if file_stem.ends_with(".ts")
         || file_stem.ends_with(".m3u8")
         || file_stem.ends_with(".vtt")
     {
@@ -43,12 +39,14 @@ pub async fn get_public(
     }
     .clean();
 
-    let path = absolute_path.join(file_stem.as_str());
-    let bytes = fs::read(path).await?;
+    // Join the untrusted wildcard segment, then re-clean and confirm the
+    // result stays inside the base directory. Without this an attacker can
+    // escape with `..` segments (e.g. percent-encoded) and read arbitrary
+    // files, since `PathBuf::join` does not resolve `..` on its own.
+    let path = base_path.join(file_stem.as_str()).clean();
+    if !path.starts_with(&base_path) {
+        return Err(ServiceError::Forbidden("Access denied".to_string()));
+    }
 
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, "application/octet-stream".parse().unwrap());
-    headers.insert(CONTENT_DISPOSITION, "attachment".parse().unwrap());
-
-    Ok((StatusCode::OK, headers, Body::from(bytes)).into_response())
+    stream_file(&path, &headers).await
 }

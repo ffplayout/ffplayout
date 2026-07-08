@@ -2,20 +2,18 @@ use std::env;
 
 use axum::{
     Json,
-    body::Body,
     extract::{Multipart, Path, Query, State},
-    http::{
-        HeaderMap, StatusCode,
-        header::{CONTENT_DISPOSITION, CONTENT_TYPE},
-    },
-    response::{IntoResponse, Response},
+    http::{HeaderMap, StatusCode, header::AUTHORIZATION},
+    response::Response,
 };
 use protect_axum::authorities::AuthDetails;
+use serde::Deserialize;
 use tokio::fs;
 
 use crate::{
     api::{
-        routes::{AuthUser, FileObj, ImportObj, ensure_any_authority},
+        auth::decode_jwt,
+        routes::{AuthUser, FileObj, ImportObj, ensure_any_authority, stream_file},
         state::AppState,
     },
     db::models::Role,
@@ -23,6 +21,12 @@ use crate::{
     player::utils::import::import_file,
     utils::errors::ServiceError,
 };
+
+#[derive(Debug, Deserialize)]
+pub struct FileQuery {
+    #[serde(default)]
+    token: Option<String>,
+}
 
 /// ### File Operations
 ///
@@ -200,7 +204,29 @@ pub async fn upload_file(
 pub async fn get_file(
     State(state): State<AppState>,
     Path((id, filename)): Path<(i32, String)>,
+    Query(query): Query<FileQuery>,
+    headers: HeaderMap,
 ) -> Result<Response, ServiceError> {
+    // Media elements (e.g. <video src>) cannot send an Authorization header,
+    // so the access token may also be supplied as a `?token=` query parameter.
+    // Either way a valid token is required and the caller must have access to
+    // the requested channel.
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::to_string)
+        .or(query.token)
+        .ok_or_else(|| ServiceError::Unauthorized("Missing token".to_string()))?;
+
+    let claims = decode_jwt(&token).await?;
+    let auth = AuthUser {
+        id: claims.id,
+        channels: claims.channels,
+        role: claims.role,
+    };
+    auth.ensure_channel_or_admin(id)?;
+
     let manager = {
         let guard = state.controller.read().await;
         guard.get(id)
@@ -210,13 +236,8 @@ pub async fn get_file(
     let config = manager.config.read().await;
     let storage = config.channel.storage.clone();
     let (path, _, _) = norm_abs_path(&storage, &filename)?;
-    let bytes = fs::read(path).await?;
 
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, "application/octet-stream".parse().unwrap());
-    headers.insert(CONTENT_DISPOSITION, "attachment".parse().unwrap());
-
-    Ok((StatusCode::OK, headers, Body::from(bytes)).into_response())
+    stream_file(&path, &headers).await
 }
 
 /// **Import playlist**

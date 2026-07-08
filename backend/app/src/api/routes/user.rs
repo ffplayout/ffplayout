@@ -114,6 +114,10 @@ pub async fn update_user(
     )?;
     user.ensure_self_or_admin(id)?;
 
+    // Channel assignments are a privileged operation: a non-admin editing
+    // their own account must not be able to grant themselves access to other
+    // channels. Only a global admin may change `channel_ids`.
+    let update_channels = user.is_global_admin();
     let channel_ids = data.channel_ids.clone().unwrap_or_default();
     let two_factor = user.is_global_admin().then_some(data.two_factor);
     let mail = data.mail.clone();
@@ -136,15 +140,17 @@ pub async fn update_user(
 
     handles::update_user(&state.pool, id, two_factor, mail, password_hash).await?;
 
-    let related_channels = handles::select_related_channels(&state.pool, Some(id)).await?;
+    if update_channels {
+        let related_channels = handles::select_related_channels(&state.pool, Some(id)).await?;
 
-    for channel in related_channels {
-        if !channel_ids.contains(&channel.id) {
-            handles::delete_user_channel(&state.pool, id, channel.id).await?;
+        for channel in related_channels {
+            if !channel_ids.contains(&channel.id) {
+                handles::delete_user_channel(&state.pool, id, channel.id).await?;
+            }
         }
-    }
 
-    handles::insert_user_channel(&state.pool, id, channel_ids).await?;
+        handles::insert_user_channel(&state.pool, id, channel_ids).await?;
+    }
 
     Ok("Update Success")
 }

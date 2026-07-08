@@ -171,10 +171,9 @@ function setPreviewData(path: string) {
     }
 
     previewName.value = fullPath.split('/').slice(-1)[0] || ''
-    previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.i]?.id}${fullPath}`).replace(
-        /%2F/g,
-        '/'
-    )
+    previewUrl.value =
+        encodeURIComponent(`/file/${configStore.channels[configStore.i]?.id}${fullPath}`).replace(/%2F/g, '/') +
+        `?token=${encodeURIComponent(authStore.jwtToken ?? '')}`
 
     const ext = previewName.value.split('.').slice(-1)[0]?.toLowerCase()
     const fileType =

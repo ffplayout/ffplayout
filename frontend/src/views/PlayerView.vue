@@ -161,10 +161,9 @@ function setPreviewData(path: string) {
     if (path.match(/^http/)) {
         previewUrl.value = path
     } else {
-        previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.i]?.id}${fullPath}`).replace(
-            /%2F/g,
-            '/',
-        )
+        previewUrl.value =
+            encodeURIComponent(`/file/${configStore.channels[configStore.i]?.id}${fullPath}`).replace(/%2F/g, '/') +
+            `?token=${encodeURIComponent(authStore.jwtToken ?? '')}`
     }
 
     const ext = previewName.value.split('.').slice(-1)[0]?.toLowerCase()

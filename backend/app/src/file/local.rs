@@ -437,23 +437,37 @@ impl LocalStorage {
                 #[cfg(target_family = "unix")]
                 {
                     let uid = nix::unistd::Uid::current();
-                    let parent_owner = root.metadata().unwrap().uid();
+                    let parent_owner = root.metadata()?.uid();
 
                     if uid.is_root() && uid.to_string() != parent_owner.to_string() {
-                        let user = nix::unistd::User::from_uid(parent_owner.into())
-                            .unwrap_or_default()
-                            .unwrap();
+                        // Gracefully skip ownership fixup if the parent UID has
+                        // no matching passwd entry instead of panicking.
+                        match nix::unistd::User::from_uid(parent_owner.into()) {
+                            Ok(Some(user)) => {
+                                nix::unistd::chown(&target, Some(user.uid), Some(user.gid))?;
 
-                        nix::unistd::chown(&target, Some(user.uid), Some(user.gid))?;
-
-                        if dummy_target.is_file() {
-                            nix::unistd::chown(&dummy_target, Some(user.uid), Some(user.gid))?;
-                        }
-                        if font_target.is_file() {
-                            nix::unistd::chown(&font_target, Some(user.uid), Some(user.gid))?;
-                        }
-                        if logo_target.is_file() {
-                            nix::unistd::chown(&logo_target, Some(user.uid), Some(user.gid))?;
+                                if dummy_target.is_file() {
+                                    nix::unistd::chown(
+                                        &dummy_target,
+                                        Some(user.uid),
+                                        Some(user.gid),
+                                    )?;
+                                }
+                                if font_target.is_file() {
+                                    nix::unistd::chown(&font_target, Some(user.uid), Some(user.gid))?;
+                                }
+                                if logo_target.is_file() {
+                                    nix::unistd::chown(&logo_target, Some(user.uid), Some(user.gid))?;
+                                }
+                            }
+                            Ok(None) => {
+                                error!(
+                                    "No passwd entry for uid {parent_owner}; skipping asset ownership fixup"
+                                );
+                            }
+                            Err(e) => {
+                                error!("Failed to look up uid {parent_owner}: {e}");
+                            }
                         }
                     }
                 }
