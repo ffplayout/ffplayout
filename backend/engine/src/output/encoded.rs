@@ -13,9 +13,13 @@ use ffmpeg_next as ffmpeg;
 
 use super::{hls, vtt};
 use crate::{
+    analysis::audio_level::AudioLevelMeter,
     audio_mixer::AudioEffectChain,
     clock::PlayoutClock,
-    utils::config::{HlsSubtitle, HlsVariant, OutputConfig, RateControl},
+    utils::{
+        config::{HlsSubtitle, HlsVariant, OutputConfig, RateControl},
+        helper::{is_network_url, network_io_options},
+    },
 };
 
 pub(super) struct EncodedOutput {
@@ -25,6 +29,7 @@ pub(super) struct EncodedOutput {
     subtitle_streams: Vec<SubtitleOutputStream>,
     vtt_subtitles: bool,
     audio_effects: AudioEffectChain,
+    audio_level_meter: AudioLevelMeter,
     audio_buffer: [VecDeque<f32>; 2],
     audio_buffer_pts: Option<i64>,
     audio_sample_rate: u32,
@@ -46,6 +51,7 @@ struct VideoOutputStream {
     stream_index: usize,
     encoder: codec::encoder::video::Encoder,
     scaler: Option<scaling::Context>,
+    scaled_frame: Option<frame::Video>,
     width: u32,
     height: u32,
 }
@@ -137,10 +143,15 @@ impl EncodedOutput {
         } else {
             None
         };
+        // Network outputs get a write timeout so a stalled TCP connection
+        // surfaces as an error instead of blocking the playout worker forever.
         let mut octx = match output_format {
             EncodedFormat::Hls { .. } => format::output_as(&hls_output_path, "hls")?,
             EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
-                format::output_as(path, "flv")?
+                format::output_as_with(path, "flv", network_io_options())?
+            }
+            EncodedFormat::Auto if is_network_url(path) => {
+                format::output_with(path, network_io_options())?
             }
             EncodedFormat::Auto => format::output(path)?,
         };
@@ -219,6 +230,10 @@ impl EncodedOutput {
             subtitle_streams,
             vtt_subtitles,
             audio_effects: AudioEffectChain::new(cfg.audio_effects.clone(), cfg.sample_rate),
+            audio_level_meter: AudioLevelMeter::new(
+                cfg.sample_rate,
+                cfg.audio_level_callback.clone(),
+            ),
             audio_buffer: [VecDeque::new(), VecDeque::new()],
             audio_buffer_pts: None,
             audio_sample_rate: cfg.sample_rate,
@@ -237,11 +252,12 @@ impl EncodedOutput {
         for index in 0..self.video_streams.len() {
             let stream = &mut self.video_streams[index];
             if let Some(scaler) = &mut stream.scaler {
-                let mut scaled_frame =
-                    frame::Video::new(Pixel::YUV420P, stream.width, stream.height);
+                let scaled_frame = stream.scaled_frame.get_or_insert_with(|| {
+                    frame::Video::new(Pixel::YUV420P, stream.width, stream.height)
+                });
                 scaled_frame.set_pts(frame.pts());
-                scaler.run(frame, &mut scaled_frame)?;
-                stream.encoder.send_frame(&scaled_frame)?;
+                scaler.run(frame, scaled_frame)?;
+                stream.encoder.send_frame(scaled_frame)?;
             } else {
                 stream.encoder.send_frame(frame)?;
             }
@@ -257,6 +273,7 @@ impl EncodedOutput {
 
         let mut frame = frame.clone();
         self.audio_effects.process(&mut frame);
+        self.audio_level_meter.process_frame(&frame);
         self.align_audio_buffer_to_frame_pts(frame.pts())?;
         if self.audio_buffer[0].is_empty() {
             self.audio_buffer_pts = frame.pts();
@@ -335,7 +352,11 @@ impl EncodedOutput {
             return Err(anyhow!("audio encoder reported a frame size of zero"));
         }
 
-        while self.audio_buffer[0].len() >= frame_size {
+        while self
+            .audio_buffer
+            .iter()
+            .all(|channel| channel.len() >= frame_size)
+        {
             let mut frame = frame::Audio::new(
                 Sample::F32(ffmpeg::format::sample::Type::Planar),
                 frame_size,
@@ -345,16 +366,16 @@ impl EncodedOutput {
             frame.set_pts(self.audio_buffer_pts);
 
             for channel in 0..self.audio_buffer.len() {
-                for sample in frame.plane_mut::<f32>(channel) {
-                    *sample = self.audio_buffer[channel]
-                        .pop_front()
-                        .context("audio buffer is unexpectedly incomplete")?;
-                }
+                let plane = frame.plane_mut::<f32>(channel);
+                let buffer = &mut self.audio_buffer[channel];
+                let (front, back) = buffer.as_slices();
+                let from_front = front.len().min(frame_size);
+                plane[..from_front].copy_from_slice(&front[..from_front]);
+                plane[from_front..frame_size].copy_from_slice(&back[..frame_size - from_front]);
+                buffer.drain(..frame_size);
             }
 
-            self.audio_buffer_pts = self
-                .audio_buffer_pts
-                .map(|pts| pts + self.audio_frame_size() as i64);
+            self.audio_buffer_pts = self.audio_buffer_pts.map(|pts| pts + frame_size as i64);
             self.send_audio_frame(&frame)?;
         }
 
@@ -576,6 +597,7 @@ fn open_video_stream(
         stream_index,
         encoder: video_encoder,
         scaler,
+        scaled_frame: None,
         width,
         height,
     })

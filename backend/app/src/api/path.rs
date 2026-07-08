@@ -37,6 +37,7 @@ pub fn routes() -> Router<AppState> {
                 .route("/file/{id}/remove", post(remove))
                 .route("/file/{id}/upload", put(upload_file))
                 .route("/file/{id}/import", put(import_playlist))
+                .route("/file/{id}/access-token", post(create_file_access_token))
                 .route("/log/{id}", get(get_log))
                 .route("/playlist/{id}", get(get_playlist))
                 .route("/playlist/{id}", post(save_playlist))

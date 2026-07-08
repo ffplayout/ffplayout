@@ -33,9 +33,9 @@ const errorCounter = ref(0)
 const defaultStat = {
     cpu: { cores: 1, usage: 0.0 },
     load: { one: 0.0, five: 0.0, fifteen: 0.0 },
-    memory: { total: 0.0, used: 0.0, free: 0.0 },
+    memory: { total: 0.0, used: 0.0 },
     network: { name: '...', current_in: 0.0, current_out: 0.0, total_in: 0.0, total_out: 0.0 },
-    storage: { path: '', total: 0.0, used: 0.0 },
+    storage: { path: '', total: 0.0, free: 0.0 },
     swap: { total: 0.0, used: 0.0, free: 0.0 },
     system: { name: '...', kernel: '...', version: '...', ffp_version: '...' },
 } as SystemStatistics
@@ -158,7 +158,7 @@ watch([data], () => {
                     <strong>{{ t('system.size') }}:</strong> {{ fileSize(sysStat.storage?.total) }}
                 </div>
                 <div>
-                    <strong>{{ t('system.used') }}:</strong> {{ fileSize(sysStat.storage?.used) }}
+                    <strong>{{ t('system.free') }}:</strong> {{ fileSize(sysStat.storage?.free) }}
                 </div>
             </div>
         </div>

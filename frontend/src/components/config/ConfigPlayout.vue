@@ -355,13 +355,10 @@ async function onSubmitPlayout() {
                             v-model.number="configStore.playout.processing.volume"
                             type="number"
                             min="0"
-                            max="3"
+                            max="1.5"
                             step="0.001"
                             class="input input-sm w-36"
                         />
-                        <button type="button" class="btn btn-sm btn-outline" @click="applyVolume">
-                            {{ t('config.apply') }}
-                        </button>
                     </div>
                 </fieldset>
 

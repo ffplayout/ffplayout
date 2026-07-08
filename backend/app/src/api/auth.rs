@@ -3,7 +3,10 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use argon2::{Argon2, PasswordVerifier, password_hash::PasswordHash};
+use argon2::{
+    Argon2, PasswordHasher, PasswordVerifier,
+    password_hash::{PasswordHash, SaltString, rand_core::OsRng},
+};
 use axum::{Json as AxumJson, extract::State, http::StatusCode, response::IntoResponse};
 use chrono::{DateTime, TimeDelta, Utc};
 use jsonwebtoken::{self, DecodingKey, EncodingKey, Header, Validation};
@@ -30,6 +33,16 @@ const REFRESH_LIFETIME: i64 = 30;
 // Global storage for verification codes
 pub static VERIFICATION_CODES: LazyLock<Arc<Mutex<HashMap<String, VerificationCode>>>> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// A throwaway Argon2 hash used to equalize login timing when the username does
+/// not exist, so a failed lookup costs about as much as a real verification.
+static DUMMY_PASSWORD_HASH: LazyLock<String> = LazyLock::new(|| {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(b"ffplayout-dummy-password", &salt)
+        .expect("dummy password hash must be valid")
+        .to_string()
+});
 
 #[derive(Clone, Debug)]
 pub struct VerificationCode {
@@ -195,18 +208,18 @@ pub async fn login(
                         created_at: Utc::now(),
                     };
 
-                    VERIFICATION_CODES
-                        .lock()
-                        .await
-                        .insert(username.clone(), verification_entry);
-
-                    // Start cleanup task for this code
-                    let username_cleanup = username.clone();
-                    tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(300)).await; // 5 minutes
-                        VERIFICATION_CODES.lock().await.remove(&username_cleanup);
-                        debug!("Verification code for {username_cleanup} expired and removed");
-                    });
+                    {
+                        let mut codes = VERIFICATION_CODES.lock().await;
+                        // Drop any expired codes on the way in instead of
+                        // spawning a per-login timer task; that avoids
+                        // accumulating sleeping tasks under login floods and the
+                        // race where a stale timer removes a freshly issued code.
+                        let now = Utc::now();
+                        codes.retain(|_, entry| {
+                            now.signed_duration_since(entry.created_at).num_minutes() <= 5
+                        });
+                        codes.insert(username.clone(), verification_entry);
+                    }
 
                     let text = mail_body(&verification_code);
                     let mail_config = Mail {
@@ -265,12 +278,23 @@ pub async fn login(
                 .into_response())
         }
         Err(e) => {
+            // Spend roughly the same time as a real password verification so an
+            // attacker cannot tell existing usernames apart by timing, and
+            // return the exact same response as a wrong password to avoid user
+            // enumeration through the status code or message.
+            let cred_password = password.clone();
+            let _ = task::spawn_blocking(move || {
+                let hash = PasswordHash::new(&DUMMY_PASSWORD_HASH)?;
+                Argon2::default().verify_password(cred_password.as_bytes(), &hash)
+            })
+            .await;
+
             error!("{ip} Login {username} failed! {e}");
 
             Ok((
-                StatusCode::BAD_REQUEST,
+                StatusCode::FORBIDDEN,
                 AxumJson(serde_json::json!({
-                    "detail": format!("Login {username} failed!"),
+                    "detail": "Incorrect credentials!",
                 })),
             )
                 .into_response())

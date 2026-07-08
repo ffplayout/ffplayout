@@ -1,9 +1,12 @@
 use anyhow::{Context, Result, anyhow};
-use ffmpeg_next::{codec, format, frame, media, software::scaling, util::format::pixel::Pixel};
+use ffmpeg_next::{codec, frame, media, software::scaling, util::format::pixel::Pixel};
 
 use crate::{
     compositor::overlay::{OverlayRef, blend_overlay},
-    utils::{config::LogoConfig, helper::even},
+    utils::{
+        config::LogoConfig,
+        helper::{even, open_media_input},
+    },
 };
 
 pub struct LogoOverlay {
@@ -21,7 +24,7 @@ impl LogoOverlay {
             return Err(anyhow!("logo opacity must be between 0.0 and 1.0"));
         }
 
-        let mut ictx = format::input(&config.path)
+        let mut ictx = open_media_input(&config.path)
             .with_context(|| format!("failed to open logo {}", config.path))?;
 
         let stream = ictx

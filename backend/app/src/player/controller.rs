@@ -2,12 +2,12 @@ use std::{
     cmp, fmt,
     path::Path,
     sync::{
-        Arc,
+        Arc, Mutex as StdMutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
-use ff_engine::{AudioEffectsControl, PlaybackControl, TextOverlayState};
+use ff_engine::{AudioEffectsControl, AudioLevel, PlaybackControl, TextOverlayState};
 use log::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
@@ -80,6 +80,7 @@ pub struct ChannelManager {
     pub metrics_token: Arc<Mutex<Option<CancellationToken>>>,
     pub task_generation: Arc<AtomicUsize>,
     pub audio_effects: AudioEffectsControl,
+    pub audio_level: Arc<StdMutex<Option<AudioLevel>>>,
     pub text_overlay: TextOverlayState,
     pub playback_control: Arc<Mutex<PlaybackControl>>,
     pub system: SystemStat,
@@ -134,6 +135,7 @@ impl ChannelManager {
             metrics_token: Arc::new(Mutex::new(None)),
             task_generation: Arc::new(AtomicUsize::new(0)),
             audio_effects,
+            audio_level: Arc::new(StdMutex::new(None)),
             text_overlay,
             playback_control: Arc::new(Mutex::new(PlaybackControl::default())),
             system,

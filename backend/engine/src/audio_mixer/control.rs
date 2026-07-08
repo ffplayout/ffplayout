@@ -44,8 +44,8 @@ impl Default for AudioEffectsControl {
 }
 
 fn validate_volume(volume: f64) -> Result<()> {
-    if !volume.is_finite() || !(0.0..=3.0).contains(&volume) {
-        return Err(anyhow!("audio volume must be between 0.0 and 3.0"));
+    if !volume.is_finite() || !(0.0..=1.5).contains(&volume) {
+        return Err(anyhow!("audio volume must be between 0.0 and 1.5"));
     }
     Ok(())
 }

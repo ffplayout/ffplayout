@@ -69,12 +69,14 @@ impl Broadcaster {
     /// list if not.
     fn spawn_ping(this: Arc<Self>) {
         tokio::spawn(Box::pin(async move {
-            let mut interval = interval(Duration::from_secs(1));
+            let mut interval = interval(Duration::from_millis(500));
+            let mut tick = 0_u64;
 
             loop {
                 interval.tick().await;
+                tick = tick.wrapping_add(1);
 
-                this.broadcast().await;
+                this.broadcast(tick.is_multiple_of(2)).await;
             }
         }));
     }
@@ -97,7 +99,7 @@ impl Broadcaster {
         Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::default())
     }
 
-    pub async fn broadcast(&self) {
+    pub async fn broadcast(&self, include_system: bool) {
         let clients = {
             let inner = self.inner.lock().await;
             inner.clients.clone()
@@ -125,7 +127,7 @@ impl Broadcaster {
                         failed_clients.push(client.sender.clone());
                     };
                 }
-                Endpoint::System => {
+                Endpoint::System if include_system => {
                     let config = client.manager.config.read().await.clone();
                     let stat = self.system.stat(&config).await;
 
@@ -138,6 +140,7 @@ impl Broadcaster {
                         failed_clients.push(client.sender.clone());
                     };
                 }
+                Endpoint::System => {}
             }
         }
 

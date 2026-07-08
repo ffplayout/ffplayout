@@ -5,7 +5,7 @@ use std::{
 
 use ffmpeg_next::{Rational, util::log::Level as FfmpegLevel};
 
-use crate::AudioEffectsControl;
+use crate::{AudioEffectsControl, AudioLevelCallback};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HlsVariant {
@@ -171,6 +171,7 @@ pub struct OutputConfig {
     pub video_time_base: Rational,
     pub audio_time_base: Rational,
     pub audio_effects: AudioEffectsControl,
+    pub audio_level_callback: Option<AudioLevelCallback>,
     pub logo: Option<LogoConfig>,
     pub text: Option<TextConfig>,
     pub text_overlay_state: TextOverlayState,
@@ -358,6 +359,19 @@ impl TextOverlayState {
     }
 
     pub(crate) fn snapshot_at(&self, pts: i64) -> TextOverlaySnapshot {
+        // Fast path with a read lock: this is called once per rendered frame,
+        // the write lock is only needed right after a new config was set.
+        {
+            let inner = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+            if inner.config.is_none() || inner.start_pts.is_some() {
+                return TextOverlaySnapshot {
+                    revision: inner.revision,
+                    config: inner.config.clone(),
+                    start_pts: inner.start_pts,
+                };
+            }
+        }
+
         let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
         if inner.config.is_some() && inner.start_pts.is_none() {
             inner.start_pts = Some(pts);
@@ -387,6 +401,7 @@ impl OutputConfig {
             video_time_base: Rational(1, fps as i32),
             audio_time_base: Rational(1, sample_rate as i32),
             audio_effects: AudioEffectsControl::default(),
+            audio_level_callback: None,
             logo: None,
             text: None,
             text_overlay_state: TextOverlayState::default(),
@@ -409,6 +424,11 @@ impl OutputConfig {
 
     pub fn with_audio_effects(mut self, audio_effects: AudioEffectsControl) -> Self {
         self.audio_effects = audio_effects;
+        self
+    }
+
+    pub fn with_audio_level_callback(mut self, callback: Option<AudioLevelCallback>) -> Self {
+        self.audio_level_callback = callback;
         self
     }
 

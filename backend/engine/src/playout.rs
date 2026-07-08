@@ -14,7 +14,7 @@ use crate::{
     output::FrameOutput,
     utils::{
         config::{OutputConfig, TextOverlayState},
-        helper::even,
+        helper::{even, open_media_input},
     },
 };
 
@@ -95,7 +95,7 @@ pub(crate) fn play_clip<O: FrameOutput>(
             playback_control,
         )
     } else {
-        let ictx = format::input(path)?;
+        let ictx = open_media_input(path)?;
         play_opened_input(
             path,
             ictx,
@@ -146,7 +146,7 @@ fn play_looped_clip<O: FrameOutput>(
         }
         let before_video_pts = timeline.video_pts;
         let before_audio_pts = timeline.audio_pts;
-        let ictx = format::input(path)?;
+        let ictx = open_media_input(path)?;
         play_opened_input(
             path,
             ictx,
@@ -421,6 +421,13 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             audio_limit_pts,
             options.playback_control,
         )?;
+        flush_audio_resampler(
+            audio,
+            timeline,
+            output,
+            &mut decoded_audio_samples,
+            audio_limit_pts,
+        )?;
     }
 
     if decoded_video_frames == 0 && decoded_audio_samples == 0 {
@@ -527,8 +534,8 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
         let mut frame = frame.clone();
         apply_overlays(&mut frame, video, timeline, logo_fade_plan);
         frame.set_pts(Some(timeline.video_pts));
-        video.last_composited_frame = Some(frame.clone());
         output.encode_video(&frame)?;
+        video.last_composited_frame = Some(frame);
         timeline.video_pts += 1;
         *decoded_frames += 1;
     }
@@ -569,7 +576,8 @@ fn parse_duration_us(duration: &str) -> Option<i64> {
         return None;
     }
 
-    Some(((hours * 3_600.0 + minutes * 60.0 + seconds) * 1_000_000.0).round() as i64)
+    let duration_us = ((hours * 3_600.0 + minutes * 60.0 + seconds) * 1_000_000.0).round();
+    (duration_us > 0.0).then_some(duration_us as i64)
 }
 
 fn receive_video_frames<O: FrameOutput>(
@@ -607,7 +615,7 @@ fn receive_video_frames<O: FrameOutput>(
 
         let mut scaled = frame::Video::empty();
         video.scaler.run(&raw, &mut scaled)?;
-        let mut padded = if video.needs_padding() {
+        let pristine = if video.needs_padding() {
             let mut padded = black_video_frame(video.output_width, video.output_height);
             copy_video_frame(
                 &scaled,
@@ -617,10 +625,16 @@ fn receive_video_frames<O: FrameOutput>(
                 video.scaled_width,
                 video.scaled_height,
             );
-            Some(padded)
+            padded
         } else {
-            None
+            scaled
         };
+        // Only the first decoded frame can become the single-frame repeat
+        // source (see `repeat_single_video_frame_to_limit`); keeping a copy of
+        // every frame would cost a full-frame memcpy per output frame.
+        if *decoded_frames == 0 {
+            video.last_output_frame = Some(pristine.clone());
+        }
         for _ in 0..output_frames {
             if playback_control.take_skip_current() {
                 return Err(PlaybackSkipped.into());
@@ -629,12 +643,15 @@ fn receive_video_frames<O: FrameOutput>(
                 return Ok(());
             }
 
-            let frame = padded.as_mut().unwrap_or(&mut scaled);
-            video.last_output_frame = Some(frame.clone());
-            apply_overlays(frame, video, timeline, logo_fade_plan);
+            // Overlays must be blended onto a fresh copy: blending in place
+            // onto the shared buffer would stack the logo (and scrolling text
+            // positions) on top of each other for duplicated frames during
+            // frame-rate up-conversion.
+            let mut frame = pristine.clone();
+            apply_overlays(&mut frame, video, timeline, logo_fade_plan);
             frame.set_pts(Some(timeline.video_pts));
-            video.last_composited_frame = Some(frame.clone());
-            output.encode_video(frame)?;
+            output.encode_video(&frame)?;
+            video.last_composited_frame = Some(frame);
             timeline.video_pts += 1;
             *decoded_frames += 1;
         }
@@ -702,6 +719,43 @@ fn receive_audio_frames<O: FrameOutput>(
         *decoded_samples += samples;
     }
     Ok(())
+}
+
+/// Drains samples still buffered inside the resampler after decoder EOF;
+/// without this, sample-rate conversion silently truncates a few milliseconds
+/// of audio at the end of every clip.
+fn flush_audio_resampler<O: FrameOutput>(
+    audio: &mut AudioDecoder,
+    timeline: &mut Timeline,
+    output: &mut O,
+    decoded_samples: &mut i64,
+    limit_pts: Option<i64>,
+) -> Result<()> {
+    loop {
+        if limit_pts.is_some_and(|limit| timeline.audio_pts >= limit) {
+            return Ok(());
+        }
+
+        let mut converted = frame::Audio::new(
+            Sample::F32(format::sample::Type::Planar),
+            output.audio_frame_size().max(1),
+            ChannelLayout::STEREO,
+        );
+        let delay = audio.resampler.flush(&mut converted)?;
+        let samples = converted.samples() as i64;
+        if samples == 0 {
+            return Ok(());
+        }
+
+        converted.set_pts(Some(timeline.audio_pts));
+        output.encode_audio(&converted)?;
+        timeline.audio_pts += samples;
+        *decoded_samples += samples;
+
+        if delay.is_none() {
+            return Ok(());
+        }
+    }
 }
 
 fn is_before_trim_start(

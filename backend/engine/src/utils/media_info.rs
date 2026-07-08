@@ -6,6 +6,8 @@ use ffmpeg_next::{
 };
 use log::{error, info};
 
+use crate::utils::helper::open_media_input;
+
 const SILENCE_SAMPLE_RATE: u32 = 48_000;
 const SILENCE_CHANNEL_LAYOUT: ChannelLayout = ChannelLayout::STEREO;
 
@@ -70,7 +72,7 @@ pub fn print_media_info(path: &str) {
 }
 
 pub fn probe_media_info(path: &str) -> Result<MediaInfo> {
-    let ictx = format::input(path)?;
+    let ictx = open_media_input(path)?;
     let duration_seconds = if ictx.duration() > 0 {
         Some(ictx.duration() as f64 / 1_000_000.0)
     } else {
@@ -102,7 +104,7 @@ pub fn probe_media_info(path: &str) -> Result<MediaInfo> {
 }
 
 pub fn probe_media(path: &str) -> Result<MediaProbe> {
-    let ictx = format::input(path)?;
+    let ictx = open_media_input(path)?;
     let format = ProbeFormat {
         duration: (ictx.duration() > 0).then_some(ictx.duration() as f64 / 1_000_000.0),
         nb_streams: ictx.nb_streams() as i64,
@@ -134,7 +136,7 @@ pub fn detect_audio_silence(
     threshold_db: f32,
     min_silence_seconds: f64,
 ) -> Result<SilenceDetection> {
-    let mut ictx = format::input(path)?;
+    let mut ictx = open_media_input(path)?;
     let stream = ictx
         .streams()
         .best(media::Type::Audio)
@@ -334,7 +336,8 @@ fn parse_duration_seconds(duration: &str) -> Option<f64> {
         return None;
     }
 
-    Some(hours * 3_600.0 + minutes * 60.0 + seconds)
+    let duration = hours * 3_600.0 + minutes * 60.0 + seconds;
+    (duration > 0.0).then_some(duration)
 }
 
 fn rational_to_f64(value: Rational) -> Option<f64> {

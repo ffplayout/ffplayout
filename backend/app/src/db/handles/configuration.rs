@@ -79,3 +79,19 @@ pub async fn update_configuration(
 
     Ok(result)
 }
+
+pub async fn update_configuration_volume(
+    pool: &SqlitePool,
+    id: i32,
+    volume: f64,
+) -> Result<SqliteQueryResult, ProcessError> {
+    const QUERY: &str = "UPDATE configurations SET processing_volume = $2 WHERE id = $1";
+
+    let result = sqlx::query(QUERY)
+        .bind(id)
+        .bind(volume)
+        .execute(pool)
+        .await?;
+
+    Ok(result)
+}

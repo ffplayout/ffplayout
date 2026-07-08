@@ -39,6 +39,7 @@ import TimePicker from '@/components/utils/TimePicker.vue'
 import SvgIcon from '@/components/utils/SvgIcon.vue'
 
 import { stringFormatter, playlistOperations } from '@/composables/helper'
+import { createFilePreviewUrl } from '@/composables/fileAccess'
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
 import { useConfig } from '@/stores/config'
@@ -143,7 +144,7 @@ function closePlayer() {
     isVideo.value = false
 }
 
-function setPreviewData(path: string) {
+async function setPreviewData(path: string) {
     let fullPath = path
     const storagePath = configStore.channels[configStore.i]?.storage ?? ''
     const lastIndex = storagePath.lastIndexOf('/')
@@ -161,10 +162,17 @@ function setPreviewData(path: string) {
     if (path.match(/^http/)) {
         previewUrl.value = path
     } else {
-        previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.i]?.id}${fullPath}`).replace(
-            /%2F/g,
-            '/',
-        )
+        try {
+            previewUrl.value = await createFilePreviewUrl(
+                configStore.channels[configStore.i]?.id,
+                fullPath,
+                authStore.authHeader
+            )
+        }
+        catch (error) {
+            indexStore.msgAlert('error', error instanceof Error ? error.message : String(error), 5)
+            return
+        }
     }
 
     const ext = previewName.value.split('.').slice(-1)[0]?.toLowerCase()
