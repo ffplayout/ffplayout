@@ -190,7 +190,7 @@ export default {
         logIgnore: 'Ignorar strings que contenham linhas correspondentes; o formato é uma lista separada por ponto e vírgula.',
         processingHelp: 'O processamento padrão para todos os clipes garante a exclusividade.',
         processingLogoPath: 'O logotipo só é usado se o caminho existir; o caminho é relativo à pasta de armazenamento.',
-        processingLogoScale: `Deixe a escala do logotipo em branco se não for necessário escalonamento. O formato é 'largura:altura', por exemplo: '100:-1' para escalonamento proporcional.`,
+        processingLogoScale: `Deixe a escala do logotipo em branco se não for necessário escalonamento. O formato é 'largura:altura', por exemplo: '100:-1' ou '12%:-1' para escalonamento proporcional.`,
         processingLogoPosition: `A posição é especificada no formato 'x:y'.`,
         processingAudioTracks: 'Especifique quantas faixas de áudio devem ser processadas.',
         processingAudioIndex: 'Qual linha de áudio usar, -1 para todas.',

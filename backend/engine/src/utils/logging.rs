@@ -50,9 +50,13 @@ static LOG_DEDUP: Mutex<LogDedup> = Mutex::new(LogDedup::new());
 static SKIPPED_FFMPEG_LOG_PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
 static USER_SKIPPED_FFMPEG_LOG_LINES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 type FfmpegVaList = *mut ffi::__va_list_tag;
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+type FfmpegVaList = ffi::va_list;
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+type FfmpegVaList = *mut ffi::__va_list_tag;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 type FfmpegVaList = ffi::va_list;
 
 pub(crate) fn init(

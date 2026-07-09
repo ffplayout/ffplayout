@@ -158,13 +158,24 @@ fn parse_logo_dimension(value: &str, input: u32, output: u32) -> Result<Option<u
     if value == "W" || value == "H" || value == "main_w" || value == "main_h" {
         return Ok(Some(output));
     }
+    if let Some(percent) = value.strip_suffix('%') {
+        let percent = percent
+            .trim()
+            .parse::<f64>()
+            .map_err(|_| anyhow!("unsupported logo scale expression {value:?}"))?;
+        if !percent.is_finite() || percent <= 0.0 {
+            return Err(anyhow!("unsupported logo scale expression {value:?}"));
+        }
+
+        return Ok(Some(((f64::from(output) * percent) / 100.0).round() as u32));
+    }
     value
         .parse::<u32>()
         .map(Some)
         .map_err(|_| anyhow!("unsupported logo scale expression {value:?}"))
 }
 
-fn logo_position(
+pub(crate) fn logo_position(
     position: &str,
     output_width: u32,
     output_height: u32,
@@ -214,4 +225,27 @@ fn eval_position_expr(expr: &str, main: u32, overlay: u32) -> Result<i64> {
 
 pub fn blend_logo(target: &mut frame::Video, logo: &LogoOverlay, opacity_factor: f64) {
     blend_overlay(target, logo.as_overlay(), opacity_factor);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::logo_dimensions;
+
+    #[test]
+    fn logo_scale_accepts_output_percentages() {
+        assert_eq!(
+            logo_dimensions(Some("12%:-1"), 400, 200, 1920, 1080).unwrap(),
+            (230, 114)
+        );
+        assert_eq!(
+            logo_dimensions(Some("-1:10%"), 400, 200, 1920, 1080).unwrap(),
+            (216, 108)
+        );
+    }
+
+    #[test]
+    fn logo_scale_rejects_invalid_percentages() {
+        assert!(logo_dimensions(Some("0%:-1"), 400, 200, 1920, 1080).is_err());
+        assert!(logo_dimensions(Some("nan%:-1"), 400, 200, 1920, 1080).is_err());
+    }
 }

@@ -27,6 +27,7 @@ declare global {
         hls_playlist_name: string | null
         hls_segment_duration: number | null
         hls_list_size: number | null
+        desktop_fullscreen: boolean
         width: number
         height: number
         fps: number

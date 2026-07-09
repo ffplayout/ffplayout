@@ -380,14 +380,19 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 logo_fade,
                 response,
             } => {
-                let _ = response.send(playout.play_timed_with_live(
+                let result = playout.play_timed_with_live(
                     &path,
                     seek_seconds,
                     duration_seconds,
                     subtitles_media_path.as_deref(),
                     logo_fade,
                     &mut live,
-                ));
+                );
+                let stopped = matches!(result, Ok(ClipResult::Stopped));
+                let _ = response.send(result);
+                if stopped {
+                    break;
+                }
             }
             AsyncCommand::StartRtmpLive {
                 url,
@@ -422,7 +427,9 @@ impl Playout {
     pub fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
         init_ffmpeg(&config)?;
-        let output = Output::open_desktop(&config)?;
+        let sdl = output::init_desktop_sdl()?;
+        let config = output::desktop_config_for_primary_display(config, &sdl);
+        let output = Output::open_desktop(&config, sdl)?;
 
         Ok(Self::with_output(config, output, fallback_duration))
     }

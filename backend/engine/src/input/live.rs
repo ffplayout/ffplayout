@@ -24,6 +24,7 @@ use log::{error, info, warn};
 
 use crate::{
     PlaybackControl,
+    compositor::logo::LogoOverlay,
     output::FrameOutput,
     playout::{InputPlaybackOptions, LogoFadePlan, Timeline, play_opened_input},
     utils::{config::OutputConfig, logging},
@@ -591,6 +592,15 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
         self.output.encode_audio(&frame)?;
         self.remember_audio_frame_end(pts + samples);
         Ok(())
+    }
+
+    fn apply_logo_overlay(
+        &mut self,
+        frame: &mut frame::Video,
+        logo: &LogoOverlay,
+        opacity_factor: f64,
+    ) {
+        self.output.apply_logo_overlay(frame, logo, opacity_factor);
     }
 
     fn set_video_end(&mut self, video_end_pts: Option<i64>) -> Result<()> {

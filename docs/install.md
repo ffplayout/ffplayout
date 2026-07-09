@@ -24,6 +24,6 @@ ffplayout provides ***.deb** and ***.rpm** packages, which makes it easier to in
 - Give ownership of `/etc/ffplayout` and `/var/log/ffplayout` to **ffpu**
 - Copy **assets/ffplayout.service** to `/etc/systemd/system`
 - Copy **assets/ffplayout.1.gz** to `/usr/share/man/man1/`
-- Copy **assets/dummy.vtt**, **assets/logo.png**, **assets/DejaVuSans.ttf**, and **assets/FONT_LICENSE.txt** to `/usr/share/ffplayout/`
+- Copy **assets/dummy.vtt**, **assets/logo.png** to `/usr/share/ffplayout/`
 - Activate the service and run it: `systemctl enable --now ffplayout`
 - Initialize the defaults and add a global admin user: `sudo -u ffpu ffplayout -i`

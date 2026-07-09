@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS outputs (
     hls_playlist_name TEXT,
     hls_segment_duration INTEGER,
     hls_list_size INTEGER,
+    desktop_fullscreen INTEGER NOT NULL DEFAULT 0,
     width INTEGER NOT NULL DEFAULT 1280,
     height INTEGER NOT NULL DEFAULT 720,
     fps REAL NOT NULL DEFAULT 25.0,

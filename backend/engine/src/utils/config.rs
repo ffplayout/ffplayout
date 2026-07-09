@@ -166,6 +166,8 @@ mod log_level_tests {
 pub struct OutputConfig {
     pub width: u32,
     pub height: u32,
+    pub desktop_window_size: Option<(u32, u32)>,
+    pub desktop_fullscreen: bool,
     pub fps: u32,
     pub sample_rate: u32,
     pub video_time_base: Rational,
@@ -396,6 +398,8 @@ impl OutputConfig {
         Self {
             width,
             height,
+            desktop_window_size: None,
+            desktop_fullscreen: false,
             fps,
             sample_rate,
             video_time_base: Rational(1, fps as i32),
@@ -429,6 +433,17 @@ impl OutputConfig {
 
     pub fn with_audio_level_callback(mut self, callback: Option<AudioLevelCallback>) -> Self {
         self.audio_level_callback = callback;
+        self
+    }
+
+    #[cfg(feature = "desktop")]
+    pub(crate) fn with_desktop_window_size(mut self, width: u32, height: u32) -> Self {
+        self.desktop_window_size = Some((width, height));
+        self
+    }
+
+    pub fn with_desktop_fullscreen(mut self, fullscreen: bool) -> Self {
+        self.desktop_fullscreen = fullscreen;
         self
     }
 
