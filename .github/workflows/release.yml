@@ -155,7 +155,7 @@ jobs:
             cargo install cargo-deb --locked
             cargo install cargo-generate-rpm --locked
             package_version="${GITHUB_REF_NAME#v}"
-            package_version="${package_version//-/~}"
+            package_version="$(printf '%s' "$package_version" | sed 's/-/~/g')"
             cargo_deb_args=(
               --no-build
               -p ffplayout
