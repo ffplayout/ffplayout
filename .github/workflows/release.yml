@@ -154,17 +154,24 @@ jobs:
           if [[ "${{ matrix.variant }}" == "server" ]]; then
             cargo install cargo-deb --locked
             cargo install cargo-generate-rpm --locked
+            package_version="${GITHUB_REF_NAME#v}"
+            package_version="${package_version//-/~}"
             cargo_deb_args=(
               --no-build
               -p ffplayout
               --manifest-path backend/app/Cargo.toml
+              --deb-version "${package_version}-1"
               -o "dist/ffplayout_${{ github.ref_name }}-1_${{ matrix.deb_arch }}.deb"
             )
             if [[ "${{ matrix.deb_arch }}" == "arm64" ]]; then
               cargo_deb_args+=(--variant arm64)
             fi
             cargo deb "${cargo_deb_args[@]}"
-            cargo generate-rpm -p backend/app -o "dist/ffplayout-${{ github.ref_name }}-1.${{ matrix.rpm_arch }}.rpm"
+            cargo generate-rpm \
+              -p backend/app \
+              --set-metadata "version = \"${package_version}\"" \
+              --set-metadata "release = \"1\"" \
+              -o "dist/ffplayout-${{ github.ref_name }}-1.${{ matrix.rpm_arch }}.rpm"
           fi
 
       - name: Build on macOS

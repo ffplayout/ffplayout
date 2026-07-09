@@ -29,7 +29,7 @@ RUN [[ -f "/tmp/ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.gz
     tar xf "ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.gz" && \
     cp ffplayout /usr/bin/ && \
     mkdir -p /usr/share/ffplayout/ && \
-    cp assets/dummy.vtt assets/logo.png assets/DejaVuSans.ttf assets/FONT_LICENSE.txt /usr/share/ffplayout/ && \
+    cp assets/dummy.vtt assets/logo.png /usr/share/ffplayout/ && \
     rm -rf /tmp/* && \
     mkdir ${DB}
 
