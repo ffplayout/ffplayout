@@ -94,8 +94,8 @@ name = "ffplayout"
 priority = "optional"
 section = "net"
 license-file = ["../../LICENSE", "0"]
-depends = ""
-suggests = "ffmpeg"
+depends = "ffmpeg"
+suggests = ""
 copyright = "Copyright (c) 2024, Jonathan Baecker. All rights reserved."
 assets = [
     [
@@ -180,6 +180,7 @@ assets = [
 [package.metadata.generate-rpm]
 name = "ffplayout"
 license = "GPL-3.0"
+requires = ["ffmpeg"]
 assets = [
     { source = "../../target/x86_64-unknown-linux-musl/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
     { source = "../../assets/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },

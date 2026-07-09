@@ -5,11 +5,12 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use cosmic_text::{
-    Align, Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight, Wrap,
-};
+use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
 use ffmpeg_next::{frame, util::format::pixel::Pixel};
 use regex::Regex;
+
+#[cfg(feature = "desktop")]
+use cosmic_text::{Align, Wrap};
 
 use crate::{
     compositor::overlay::{OverlayFrame, blend_overlay},
@@ -55,12 +56,14 @@ pub(crate) fn available_font_families() -> Vec<String> {
         .collect()
 }
 
+#[cfg(feature = "desktop")]
 pub(crate) struct TextBitmap {
     pub pixels: Vec<u8>,
     pub width: u32,
     pub height: u32,
 }
 
+#[cfg(feature = "desktop")]
 pub(crate) fn render_plain_text_bitmap(
     text: &str,
     font_size: f32,
@@ -70,6 +73,7 @@ pub(crate) fn render_plain_text_bitmap(
     render_text_bitmap(text, font_size, font_weight, color, None, None, None)
 }
 
+#[cfg(feature = "desktop")]
 pub(crate) fn render_wrapped_text_bitmap(
     text: &str,
     font_size: f32,
@@ -88,6 +92,7 @@ pub(crate) fn render_wrapped_text_bitmap(
     )
 }
 
+#[cfg(feature = "desktop")]
 fn render_text_bitmap(
     text: &str,
     font_size: f32,
