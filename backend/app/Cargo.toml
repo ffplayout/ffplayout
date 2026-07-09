@@ -94,8 +94,8 @@ name = "ffplayout"
 priority = "optional"
 section = "net"
 license-file = ["../../LICENSE", "0"]
-depends = "ffmpeg"
-suggests = ""
+depends = ""
+suggests = ["ffmpeg", "libsdl2-2.0-0"]
 copyright = "Copyright (c) 2024, Jonathan Baecker. All rights reserved."
 assets = [
     [
@@ -182,7 +182,7 @@ name = "ffplayout"
 license = "GPL-3.0"
 requires = ["ffmpeg"]
 assets = [
-    { source = "../../target/x86_64-unknown-linux-musl/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
+    { source = "../../target/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
     { source = "../../assets/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },
     { source = "../../README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644" },
     { source = "../../assets/ffplayout.1.gz", dest = "/usr/share/man/man1/ffplayout.1.gz", mode = "644", doc = true },
