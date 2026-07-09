@@ -105,6 +105,12 @@ jobs:
             packages+=(sdl2)
           fi
           brew install "${packages[@]}"
+          brew_prefix="$(brew --prefix)"
+          {
+            echo "PKG_CONFIG_PATH=${brew_prefix}/lib/pkgconfig:${brew_prefix}/opt/ffmpeg/lib/pkgconfig:${brew_prefix}/opt/sdl2/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+            echo "LIBRARY_PATH=${brew_prefix}/lib:${brew_prefix}/opt/ffmpeg/lib:${brew_prefix}/opt/sdl2/lib:${LIBRARY_PATH:-}"
+            echo "DYLD_FALLBACK_LIBRARY_PATH=${brew_prefix}/lib:${brew_prefix}/opt/ffmpeg/lib:${brew_prefix}/opt/sdl2/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
+          } >> "$GITHUB_ENV"
 
       - name: Install build dependencies on Windows
         if: runner.os == 'Windows'
@@ -140,9 +146,10 @@ jobs:
               -p ffplayout \
               --manifest-path backend/app/Cargo.toml \
               -o "dist/ffplayout_${{ github.ref_name }}-1_amd64.deb"
-            cargo generate-rpm \
-              --manifest-path backend/app/Cargo.toml \
-              -o "dist/ffplayout-${{ github.ref_name }}-1.x86_64.rpm"
+            (
+              cd backend/app
+              cargo generate-rpm -p ffplayout -o "../../dist/ffplayout-${{ github.ref_name }}-1.x86_64.rpm"
+            )
           fi
 
       - name: Build on macOS
