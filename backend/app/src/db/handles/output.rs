@@ -18,7 +18,7 @@ pub async fn insert_output(
     channel_id: i32,
     output: &Output,
 ) -> Result<i32, ProcessError> {
-    const QUERY: &str = "INSERT INTO outputs (channel_id, name, hls_variants, stream_url, hls_playlist_name, hls_segment_duration, hls_list_size, width, height, fps, video_preset, rate_control, video_quality, video_maxrate, audio_bitrate) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id";
+    const QUERY: &str = "INSERT INTO outputs (channel_id, name, hls_variants, stream_url, hls_playlist_name, hls_segment_duration, hls_list_size, desktop_fullscreen, width, height, fps, video_preset, rate_control, video_quality, video_maxrate, audio_bitrate) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id";
 
     let output_id = sqlx::query(QUERY)
         .bind(channel_id)
@@ -28,6 +28,7 @@ pub async fn insert_output(
         .bind(&output.hls_playlist_name)
         .bind(output.hls_segment_duration)
         .bind(output.hls_list_size)
+        .bind(output.desktop_fullscreen)
         .bind(output.width)
         .bind(output.height)
         .bind(output.fps)
@@ -53,6 +54,7 @@ pub async fn update_output(
     hls_playlist_name: Option<&str>,
     hls_segment_duration: Option<i64>,
     hls_list_size: Option<i64>,
+    desktop_fullscreen: bool,
     width: i64,
     height: i64,
     fps: f64,
@@ -62,7 +64,7 @@ pub async fn update_output(
     video_maxrate: Option<i64>,
     audio_bitrate: Option<i64>,
 ) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "UPDATE outputs SET hls_variants = $3, stream_url = $4, hls_playlist_name = $5, hls_segment_duration = $6, hls_list_size = $7, width = $8, height = $9, fps = $10, video_preset = $11, rate_control = $12, video_quality = $13, video_maxrate = $14, audio_bitrate = $15 WHERE id = $1 AND channel_id = $2";
+    const QUERY: &str = "UPDATE outputs SET hls_variants = $3, stream_url = $4, hls_playlist_name = $5, hls_segment_duration = $6, hls_list_size = $7, desktop_fullscreen = $8, width = $9, height = $10, fps = $11, video_preset = $12, rate_control = $13, video_quality = $14, video_maxrate = $15, audio_bitrate = $16 WHERE id = $1 AND channel_id = $2";
 
     let result = sqlx::query(QUERY)
         .bind(id)
@@ -72,6 +74,7 @@ pub async fn update_output(
         .bind(hls_playlist_name)
         .bind(hls_segment_duration)
         .bind(hls_list_size)
+        .bind(desktop_fullscreen)
         .bind(width)
         .bind(height)
         .bind(fps)

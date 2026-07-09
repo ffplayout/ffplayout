@@ -5,7 +5,9 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
+use cosmic_text::{
+    Align, Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight, Wrap,
+};
 use ffmpeg_next::{frame, util::format::pixel::Pixel};
 use regex::Regex;
 
@@ -51,6 +53,119 @@ pub(crate) fn available_font_families() -> Vec<String> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+pub(crate) struct TextBitmap {
+    pub pixels: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
+pub(crate) fn render_plain_text_bitmap(
+    text: &str,
+    font_size: f32,
+    font_weight: Weight,
+    color: RgbaColor,
+) -> Result<TextBitmap> {
+    render_text_bitmap(text, font_size, font_weight, color, None, None, None)
+}
+
+pub(crate) fn render_wrapped_text_bitmap(
+    text: &str,
+    font_size: f32,
+    font_weight: Weight,
+    color: RgbaColor,
+    max_width: u32,
+) -> Result<TextBitmap> {
+    render_text_bitmap(
+        text,
+        font_size,
+        font_weight,
+        color,
+        Some(max_width.max(2)),
+        Some(Wrap::WordOrGlyph),
+        Some(Align::Center),
+    )
+}
+
+fn render_text_bitmap(
+    text: &str,
+    font_size: f32,
+    font_weight: Weight,
+    color: RgbaColor,
+    max_width: Option<u32>,
+    wrap: Option<Wrap>,
+    align: Option<Align>,
+) -> Result<TextBitmap> {
+    if text.trim().is_empty() {
+        return Err(anyhow!("text bitmap input is empty"));
+    }
+
+    let estimated_width = (text.chars().count() as f32 * font_size * 0.75).ceil() as u32 + 8;
+    let width = max_width
+        .unwrap_or(estimated_width)
+        .min(estimated_width.max(2))
+        .max(2);
+    let line_height = font_size * 1.25;
+    let estimated_lines =
+        ((estimated_width as f32 / width as f32).ceil() as u32).max(text.lines().count() as u32);
+    let height = ((line_height * estimated_lines as f32).ceil() as u32 + 4).max(2);
+    let mut rgba = vec![0_u8; width as usize * height as usize * 4];
+    let mut renderer = renderer().lock().unwrap_or_else(PoisonError::into_inner);
+    let TextRenderer {
+        font_system,
+        swash_cache,
+    } = &mut *renderer;
+    let mut buffer = Buffer::new(font_system, Metrics::new(font_size, line_height));
+    buffer.set_size(Some(width as f32), Some(height as f32));
+    if let Some(wrap) = wrap {
+        buffer.set_wrap(wrap);
+    }
+    buffer.set_text(
+        text,
+        &Attrs::new().weight(font_weight),
+        Shaping::Advanced,
+        align,
+    );
+    buffer.shape_until_scroll(font_system, false);
+
+    let mut bounds = Bounds::default();
+    buffer.draw(
+        font_system,
+        swash_cache,
+        Color::rgba(color.r, color.g, color.b, color.a),
+        |x, y, pixel_width, pixel_height, color| {
+            let color = rgba_color(color);
+            let Some(dest) = PixelRect::new(x, y, pixel_width, pixel_height, width, height) else {
+                return;
+            };
+
+            bounds.include(dest.x, dest.y, dest.width, dest.height);
+            for py in 0..dest.height {
+                for px in 0..dest.width {
+                    let idx = ((dest.y + py) * width as usize + dest.x + px) * 4;
+                    alpha_composite(&mut rgba[idx..idx + 4], color);
+                }
+            }
+        },
+    );
+
+    let Some(bounds) = bounds.finish() else {
+        return Err(anyhow!("text bitmap produced no visible pixels"));
+    };
+    let mut cropped = vec![0_u8; bounds.width * bounds.height * 4];
+    for y in 0..bounds.height {
+        let src_start = ((bounds.y + y) * width as usize + bounds.x) * 4;
+        let src_end = src_start + bounds.width * 4;
+        let dst_start = y * bounds.width * 4;
+        cropped[dst_start..dst_start + bounds.width * 4].copy_from_slice(&rgba[src_start..src_end]);
+    }
+
+    Ok(TextBitmap {
+        pixels: cropped,
+        width: bounds.width as u32,
+        height: bounds.height as u32,
+    })
 }
 
 pub struct TextOverlay {

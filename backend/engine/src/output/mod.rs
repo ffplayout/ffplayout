@@ -18,7 +18,10 @@ use desktop::{DesktopFrameSender, DesktopOutput, DesktopSdl};
 use encoded::{EncodedFormat, EncodedOutput};
 use ffmpeg_next::frame;
 
-use crate::utils::config::{HlsSubtitle, HlsVariant, OutputConfig};
+use crate::{
+    compositor::logo::{LogoOverlay, blend_logo},
+    utils::config::{HlsSubtitle, HlsVariant, OutputConfig},
+};
 
 #[derive(Debug)]
 pub(crate) struct PlaybackStopped;
@@ -35,6 +38,14 @@ pub(crate) trait FrameOutput {
     fn audio_frame_size(&self) -> usize;
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()>;
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()>;
+    fn apply_logo_overlay(
+        &mut self,
+        frame: &mut frame::Video,
+        logo: &LogoOverlay,
+        opacity_factor: f64,
+    ) {
+        blend_logo(frame, logo, opacity_factor);
+    }
     fn set_video_end(&mut self, _video_end_pts: Option<i64>) -> Result<()> {
         Ok(())
     }
@@ -69,15 +80,19 @@ pub(crate) struct Output {
 }
 
 enum OutputKind {
-    Encoded(EncodedOutput),
+    Encoded(Box<EncodedOutput>),
     #[cfg(feature = "desktop")]
-    Desktop(DesktopOutput),
+    Desktop(Box<DesktopOutput>),
 }
 
 impl Output {
     pub(crate) fn open(path: &str, cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
-            kind: OutputKind::Encoded(EncodedOutput::open(path, cfg, EncodedFormat::Auto)?),
+            kind: OutputKind::Encoded(Box::new(EncodedOutput::open(
+                path,
+                cfg,
+                EncodedFormat::Auto,
+            )?)),
         })
     }
 
@@ -90,7 +105,7 @@ impl Output {
         hls_list_size: u32,
     ) -> Result<Self> {
         Ok(Self {
-            kind: OutputKind::Encoded(EncodedOutput::open(
+            kind: OutputKind::Encoded(Box::new(EncodedOutput::open(
                 path,
                 cfg,
                 EncodedFormat::Hls {
@@ -99,14 +114,14 @@ impl Output {
                     segment_seconds: hls_segment_seconds,
                     list_size: hls_list_size,
                 },
-            )?),
+            )?)),
         })
     }
 
     #[cfg(feature = "desktop")]
     pub(crate) fn open_desktop(cfg: &OutputConfig, desktop_sdl: DesktopSdl) -> Result<Self> {
         Ok(Self {
-            kind: OutputKind::Desktop(DesktopOutput::open(cfg, desktop_sdl)?),
+            kind: OutputKind::Desktop(Box::new(DesktopOutput::open(cfg, desktop_sdl)?)),
         })
     }
 
@@ -171,6 +186,19 @@ impl FrameOutput for Output {
 
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
         Self::encode_audio(self, frame)
+    }
+
+    fn apply_logo_overlay(
+        &mut self,
+        frame: &mut frame::Video,
+        logo: &LogoOverlay,
+        opacity_factor: f64,
+    ) {
+        match &mut self.kind {
+            OutputKind::Encoded(_) => blend_logo(frame, logo, opacity_factor),
+            #[cfg(feature = "desktop")]
+            OutputKind::Desktop(_) => {}
+        }
     }
 
     fn write_vtt_subtitles(

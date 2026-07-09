@@ -389,6 +389,7 @@ fn engine_output_config(
         .with_logo(logo)
         .with_text(text)
         .with_text_overlay_state(text_overlay_state)
+        .with_desktop_fullscreen(config.output.desktop_fullscreen)
         .with_logging(ffmpeg_log_level, ingest_log_level)
         .with_ffmpeg_ignore_lines(config.logging.ignore_lines.clone())
         .with_channel_id(config.general.channel_id)

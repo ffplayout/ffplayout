@@ -532,7 +532,7 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
             return Err(PlaybackSkipped.into());
         }
         let mut frame = frame.clone();
-        apply_overlays(&mut frame, video, timeline, logo_fade_plan);
+        apply_overlays(&mut frame, video, timeline, logo_fade_plan, output);
         frame.set_pts(Some(timeline.video_pts));
         output.encode_video(&frame)?;
         video.last_composited_frame = Some(frame);
@@ -648,7 +648,7 @@ fn receive_video_frames<O: FrameOutput>(
             // positions) on top of each other for duplicated frames during
             // frame-rate up-conversion.
             let mut frame = pristine.clone();
-            apply_overlays(&mut frame, video, timeline, logo_fade_plan);
+            apply_overlays(&mut frame, video, timeline, logo_fade_plan, output);
             frame.set_pts(Some(timeline.video_pts));
             output.encode_video(&frame)?;
             video.last_composited_frame = Some(frame);
@@ -664,12 +664,13 @@ fn apply_overlays(
     video: &mut VideoDecoder,
     timeline: &mut Timeline,
     logo_fade_plan: LogoFadePlan,
+    output: &mut impl FrameOutput,
 ) {
     let opacity = logo_fade_plan.opacity_at(timeline.video_pts, timeline.logo_opacity);
     timeline.logo_opacity = opacity;
 
     if let Some(logo) = &video.logo {
-        blend_logo(frame, logo, opacity);
+        output.apply_logo_overlay(frame, logo, opacity);
     }
     if let Some(text) = &mut video.text {
         text.blend(frame, timeline.video_pts, timeline.text_pts);

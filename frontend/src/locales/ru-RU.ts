@@ -194,7 +194,7 @@ export default {
         logIgnore: 'Ignore strings that contain matched lines; the format is a semicolon-separated list.',
         processingHelp: 'Default processing for all clips ensures uniqueness.',
         processingLogoPath: 'The logo is used only if the path exists; the path is relative to the storage folder.',
-        processingLogoScale: `Leave logo scale blank if no scaling is needed. The format is 'width:height', for example: '100:-1' for proportional scaling.`,
+        processingLogoScale: `Leave logo scale blank if no scaling is needed. The format is 'width:height', for example: '100:-1' or '12%:-1' for proportional scaling.`,
         processingLogoPosition: `Position is specified in the format 'x:y'`,
         processingAudioTracks: 'Specify how many audio tracks should be processed.',
         processingAudioIndex: 'Which audio line to use, -1 for all.',

@@ -495,6 +495,8 @@ pub struct Output {
     pub hls_segment_duration: u32,
     #[serde(default = "default_hls_list_size")]
     pub hls_list_size: u32,
+    #[serde(default)]
+    pub desktop_fullscreen: bool,
     pub width: u32,
     pub height: u32,
     pub fps: f64,
@@ -572,6 +574,7 @@ impl Output {
                 .hls_list_size
                 .and_then(|value| u32::try_from(value).ok())
                 .unwrap_or_else(default_hls_list_size),
+            desktop_fullscreen: output.desktop_fullscreen,
             width: u32::try_from(output.width).unwrap_or(1280),
             height: u32::try_from(output.height).unwrap_or(720),
             fps: output.fps,
@@ -954,6 +957,7 @@ mod output_tests {
             hls_playlist_name: "stream".to_string(),
             hls_segment_duration: 6,
             hls_list_size: 600,
+            desktop_fullscreen: false,
             width: 1280,
             height: 720,
             fps: 25.0,

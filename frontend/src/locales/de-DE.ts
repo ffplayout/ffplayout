@@ -190,7 +190,7 @@ export default {
         logIgnore: 'Ignoriere Zeichenfolgen, die übereinstimmende Zeilen enthalten; das Format ist eine durch Semikolon getrennte Liste.',
         processingHelp: 'Die Standardverarbeitung für alle Clips stellt die Einzigartigkeit sicher.',
         processingLogoPath: 'Das Logo wird nur verwendet, wenn der Pfad existiert; der Pfad ist relativ zum Speicherordner.',
-        processingLogoScale: `Lass die Skalierung des Logos leer, wenn keine Skalierung erforderlich ist. Das Format lautet 'Breite:Höhe', zum Beispiel: '100:-1' für proportionale Skalierung.`,
+        processingLogoScale: `Lass die Skalierung des Logos leer, wenn keine Skalierung erforderlich ist. Das Format lautet 'Breite:Höhe', zum Beispiel: '100:-1' oder '12%:-1' für proportionale Skalierung.`,
         processingLogoPosition: `Die Position wird im Format 'x:y' angegeben.`,
         processingAudioTracks: 'Gib an, wie viele Audiospuren verarbeitet werden sollen.',
         processingAudioIndex: 'Welche Audiospur verwendet werden soll, -1 für alle.',

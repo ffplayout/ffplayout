@@ -112,6 +112,7 @@ pub async fn update_playout_config(
         is_hls.then_some(data.output.hls_playlist_name.as_str()),
         is_hls.then_some(i64::from(data.output.hls_segment_duration)),
         is_hls.then_some(i64::from(data.output.hls_list_size)),
+        data.output.desktop_fullscreen,
         i64::from(data.output.width),
         i64::from(data.output.height),
         data.output.fps,

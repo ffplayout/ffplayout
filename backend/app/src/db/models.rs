@@ -442,6 +442,9 @@ pub struct Output {
     pub hls_playlist_name: Option<String>,
     pub hls_segment_duration: Option<i64>,
     pub hls_list_size: Option<i64>,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub desktop_fullscreen: bool,
     pub width: i64,
     pub height: i64,
     pub fps: f64,
@@ -473,6 +476,7 @@ impl Output {
             hls_playlist_name,
             hls_segment_duration,
             hls_list_size,
+            desktop_fullscreen: false,
             width: 1280,
             height: 720,
             fps: 25.0,

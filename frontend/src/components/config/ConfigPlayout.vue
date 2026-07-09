@@ -50,6 +50,7 @@ const output = computed({
         configStore.playout.output.hls_playlist_name = output?.hls_playlist_name ?? 'stream'
         configStore.playout.output.hls_segment_duration = output?.hls_segment_duration ?? 6
         configStore.playout.output.hls_list_size = output?.hls_list_size ?? 600
+        configStore.playout.output.desktop_fullscreen = output?.desktop_fullscreen ?? false
         configStore.playout.output.width = output?.width ?? 1280
         configStore.playout.output.height = output?.height ?? 720
         configStore.playout.output.fps = output?.fps ?? 25
@@ -547,6 +548,16 @@ async function onSubmitPlayout() {
                         type="url"
                         class="input input-sm w-full max-w-lg"
                     />
+                </fieldset>
+                <fieldset v-if="output === 'desktop'" class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input
+                            v-model="configStore.playout.output.desktop_fullscreen"
+                            type="checkbox"
+                            class="checkbox"
+                        />
+                        Start Fullscreen
+                    </label>
                 </fieldset>
 
                 <fieldset class="fieldset">
