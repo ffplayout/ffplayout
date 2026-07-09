@@ -18,15 +18,27 @@ jobs:
             platform: x86_64-unknown-linux-gnu
             variant: server
             features: embed_frontend
+            deb_arch: amd64
+            rpm_arch: x86_64
           - os: ubuntu-latest
             platform: x86_64-unknown-linux-gnu
             variant: desktop
             features: embed_frontend,desktop
-          - os: macos-13
+          - os: ubuntu-24.04-arm
+            platform: aarch64-unknown-linux-gnu
+            variant: server
+            features: embed_frontend
+            deb_arch: arm64
+            rpm_arch: aarch64
+          - os: ubuntu-24.04-arm
+            platform: aarch64-unknown-linux-gnu
+            variant: desktop
+            features: embed_frontend,desktop
+          - os: macos-15-intel
             platform: x86_64-apple-darwin
             variant: server
             features: embed_frontend
-          - os: macos-13
+          - os: macos-15-intel
             platform: x86_64-apple-darwin
             variant: desktop
             features: embed_frontend,desktop
@@ -142,14 +154,17 @@ jobs:
           if [[ "${{ matrix.variant }}" == "server" ]]; then
             cargo install cargo-deb --locked
             cargo install cargo-generate-rpm --locked
-            cargo deb --no-build \
-              -p ffplayout \
-              --manifest-path backend/app/Cargo.toml \
-              -o "dist/ffplayout_${{ github.ref_name }}-1_amd64.deb"
-            (
-              cd backend/app
-              cargo generate-rpm -p ffplayout -o "../../dist/ffplayout-${{ github.ref_name }}-1.x86_64.rpm"
+            cargo_deb_args=(
+              --no-build
+              -p ffplayout
+              --manifest-path backend/app/Cargo.toml
+              -o "dist/ffplayout_${{ github.ref_name }}-1_${{ matrix.deb_arch }}.deb"
             )
+            if [[ "${{ matrix.deb_arch }}" == "arm64" ]]; then
+              cargo_deb_args+=(--variant arm64)
+            fi
+            cargo deb "${cargo_deb_args[@]}"
+            cargo generate-rpm -p backend/app -o "dist/ffplayout-${{ github.ref_name }}-1.${{ matrix.rpm_arch }}.rpm"
           fi
 
       - name: Build on macOS

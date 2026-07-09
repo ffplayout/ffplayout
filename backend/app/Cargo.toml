@@ -180,7 +180,6 @@ assets = [
 [package.metadata.generate-rpm]
 name = "ffplayout"
 license = "GPL-3.0"
-requires = ["ffmpeg"]
 assets = [
     { source = "../../target/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
     { source = "../../assets/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },
