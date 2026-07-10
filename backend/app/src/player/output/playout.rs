@@ -32,6 +32,7 @@ const HLS_RATE_CORRECTION_DEADBAND_SECONDS: f64 = 0.1;
 const HLS_RATE_CORRECTION_MAX_SECONDS: f64 = 2.0;
 const HLS_RATE_CORRECTION_MIN_RATE: f64 = 0.98;
 const HLS_RATE_CORRECTION_MAX_RATE: f64 = 1.02;
+const HLS_RATE_CORRECTION_MAX_DELTA_FACTOR: f64 = 1.0;
 
 pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
@@ -282,10 +283,14 @@ async fn hls_playout_rate(
     node: &Media,
     duration: Option<f64>,
 ) -> f64 {
+    if node.seek > 0.0 || manager.list_init.load(Ordering::SeqCst) {
+        return 1.0;
+    }
+
     let Some(begin) = node.begin else {
         return 1.0;
     };
-    let clip_duration = duration.unwrap_or_else(|| node.out - node.seek);
+    let clip_duration = duration.unwrap_or(node.out - node.seek);
     let (delta, _) = get_delta(config, &begin);
     let time_shift = manager.channel.lock().await.time_shift;
     let shifted_delta = delta - time_shift;
@@ -305,6 +310,7 @@ fn hls_rate_correction(delta: f64, clip_duration: f64) -> f64 {
         || !clip_duration.is_finite()
         || clip_duration <= 0.0
         || delta.abs() < HLS_RATE_CORRECTION_DEADBAND_SECONDS
+        || delta.abs() > clip_duration * HLS_RATE_CORRECTION_MAX_DELTA_FACTOR
     {
         return 1.0;
     }
@@ -357,7 +363,7 @@ async fn open_playout(
             .map_err(engine_error)
         }
         OutputMode::Stream => {
-            AsyncPlayout::open(output_url(config)?, output_config, fallback_duration)
+            AsyncPlayout::open_stream(output_url(config)?, output_config, fallback_duration)
                 .await
                 .map_err(engine_error)
         }
@@ -450,8 +456,11 @@ fn engine_output_config(
         .with_logging(ffmpeg_log_level, ingest_log_level)
         .with_ffmpeg_ignore_lines(config.logging.ignore_lines.clone())
         .with_channel_id(config.general.channel_id)
+        .with_stream_type(config.output.stream_type.engine_stream_type())
         .with_encoding(
             config.output.video_preset.clone(),
+            config.output.video_codec.clone(),
+            config.output.audio_codec.clone(),
             rate_control,
             config.output.video_quality,
             u64::from(config.output.video_maxrate) * 1_000,
@@ -620,7 +629,13 @@ mod tests {
 
     #[test]
     fn hls_rate_correction_is_clamped() {
-        assert_eq!(hls_rate_correction(-60.0, 50.0), 1.02);
-        assert_eq!(hls_rate_correction(60.0, 50.0), 0.98);
+        assert_eq!(hls_rate_correction(-10.0, 50.0), 1.02);
+        assert_eq!(hls_rate_correction(10.0, 50.0), 0.98);
+    }
+
+    #[test]
+    fn hls_rate_correction_ignores_delta_larger_than_clip() {
+        assert_eq!(hls_rate_correction(-645.505, 300.0), 1.0);
+        assert_eq!(hls_rate_correction(645.505, 300.0), 1.0);
     }
 }

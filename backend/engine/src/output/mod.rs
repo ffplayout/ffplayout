@@ -96,6 +96,18 @@ impl Output {
         })
     }
 
+    pub(crate) fn open_stream(path: &str, cfg: &OutputConfig) -> Result<Self> {
+        Ok(Self {
+            kind: OutputKind::Encoded(Box::new(EncodedOutput::open(
+                path,
+                cfg,
+                EncodedFormat::Stream {
+                    muxer: cfg.stream_type.muxer(),
+                },
+            )?)),
+        })
+    }
+
     pub(crate) fn open_hls(
         path: &str,
         cfg: &OutputConfig,

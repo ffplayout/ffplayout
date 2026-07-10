@@ -54,6 +54,7 @@ const DESKTOP_VOLUME_MAX: f64 = 1.5;
 const VOLUME_OVERLAY_DURATION: Duration = Duration::from_millis(900);
 const TITLEBAR_IDLE_TIMEOUT: Duration = Duration::from_secs(3);
 const TITLEBAR_HEIGHT: u32 = 28;
+const TITLEBAR_BACKGROUND_ALPHA: u8 = 180;
 const TITLEBAR_CLOSE_MARGIN: u32 = 4;
 const TITLEBAR_BUTTON_GAP: u32 = 4;
 const TITLEBAR_TITLE: &str = "ffplayout";
@@ -1016,7 +1017,8 @@ impl DesktopRenderer {
         let (width, _) = self.canvas.output_size().map_err(anyhow::Error::msg)?;
         let titlebar = Rect::new(0, 0, width, TITLEBAR_HEIGHT);
 
-        self.canvas.set_draw_color(Color::RGB(14, 16, 18));
+        self.canvas
+            .set_draw_color(Color::RGBA(14, 16, 18, TITLEBAR_BACKGROUND_ALPHA));
         self.canvas
             .fill_rect(titlebar)
             .map_err(anyhow::Error::msg)?;

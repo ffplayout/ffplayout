@@ -19,6 +19,12 @@ export const useConfig = defineStore('config', {
         playout: {} as PlayoutConfigExt,
         playoutSaved: {} as PlayoutConfigExt,
         outputs: [] as PlayoutOutput[],
+        outputCodecs: {
+            hls: { video: [], audio: [] },
+            rtmp: { video: [], audio: [] },
+            srt: { video: [], audio: [] },
+            udp: { video: [], audio: [] },
+        } as PlayoutCodecOptions,
         currentUser: 0,
         configUser: {} as User,
         timezone: 'UTC',
@@ -38,6 +44,7 @@ export const useConfig = defineStore('config', {
                 await this.getChannelConfig().then(async () => {
                     await this.getPlayoutConfig()
                     await this.getPlayoutOutputs()
+                    await this.getPlayoutCodecs()
                     await this.getUserConfig()
 
                 })
@@ -137,6 +144,24 @@ export const useConfig = defineStore('config', {
                 .then((data: PlayoutOutput[]) => {
 
                     this.outputs = data
+                })
+                .catch(() => {
+                    indexStore.msgAlert('error', i18n.t('config.noPlayoutConfig'), 3)
+                })
+        },
+
+        async getPlayoutCodecs() {
+            const authStore = useAuth()
+            const indexStore = useIndex()
+            const id = this.channels[this.i]?.id
+
+            await fetch(`/api/playout/codecs/${id}`, {
+                method: 'GET',
+                headers: authStore.authHeader,
+            })
+                .then((resp) => resp.json())
+                .then((data: PlayoutCodecOptions) => {
+                    this.outputCodecs = data
                 })
                 .catch(() => {
                     indexStore.msgAlert('error', i18n.t('config.noPlayoutConfig'), 3)

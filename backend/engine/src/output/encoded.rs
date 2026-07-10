@@ -3,7 +3,7 @@ use std::{collections::VecDeque, fs, path::Path};
 use anyhow::{Context, Result, anyhow};
 use ffmpeg::{
     Packet, codec, format, frame,
-    software::scaling,
+    software::{resampling, scaling},
     util::{
         channel_layout::ChannelLayout, format::pixel::Pixel, format::sample::Sample,
         rational::Rational,
@@ -39,6 +39,9 @@ pub(super) struct EncodedOutput {
 #[derive(Clone)]
 pub(super) enum EncodedFormat {
     Auto,
+    Stream {
+        muxer: &'static str,
+    },
     Hls {
         variants: Vec<HlsVariant>,
         subtitle: Option<HlsSubtitle>,
@@ -59,6 +62,7 @@ struct VideoOutputStream {
 struct AudioOutputStream {
     stream_index: usize,
     encoder: codec::encoder::audio::Encoder,
+    resampler: Option<resampling::Context>,
 }
 
 struct SubtitleOutputStream {
@@ -72,12 +76,12 @@ impl EncodedOutput {
         output_format: EncodedFormat,
     ) -> Result<Self> {
         let hls_variants = match &output_format {
-            EncodedFormat::Auto => &[][..],
+            EncodedFormat::Auto | EncodedFormat::Stream { .. } => &[][..],
             EncodedFormat::Hls { variants, .. } => variants.as_slice(),
         };
         let hls_subtitle = match &output_format {
             EncodedFormat::Hls { subtitle, .. } => subtitle.as_ref(),
-            EncodedFormat::Auto => None,
+            EncodedFormat::Auto | EncodedFormat::Stream { .. } => None,
         };
         let vtt_subtitles = hls_subtitle.is_some();
         hls::validate_variants(hls_variants)?;
@@ -147,6 +151,10 @@ impl EncodedOutput {
         // surfaces as an error instead of blocking the playout worker forever.
         let mut octx = match output_format {
             EncodedFormat::Hls { .. } => format::output_as(&hls_output_path, "hls")?,
+            EncodedFormat::Stream { muxer } if is_network_url(path) => {
+                format::output_as_with(path, muxer, network_io_options())?
+            }
+            EncodedFormat::Stream { muxer } => format::output_as(path, muxer)?,
             EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
                 format::output_as_with(path, "flv", network_io_options())?
             }
@@ -188,7 +196,7 @@ impl EncodedOutput {
         }
 
         match output_format {
-            EncodedFormat::Auto => octx.write_header()?,
+            EncodedFormat::Auto | EncodedFormat::Stream { .. } => octx.write_header()?,
             EncodedFormat::Hls {
                 segment_seconds,
                 list_size,
@@ -388,7 +396,17 @@ impl EncodedOutput {
 
     fn send_audio_frame(&mut self, frame: &frame::Audio) -> Result<()> {
         for index in 0..self.audio_streams.len() {
-            self.audio_streams[index].encoder.send_frame(frame)?;
+            {
+                let stream = &mut self.audio_streams[index];
+                if let Some(resampler) = &mut stream.resampler {
+                    let mut converted = frame::Audio::empty();
+                    resampler.run(frame, &mut converted)?;
+                    converted.set_pts(frame.pts());
+                    stream.encoder.send_frame(&converted)?;
+                } else {
+                    stream.encoder.send_frame(frame)?;
+                }
+            }
             self.write_audio_packets(index)?;
         }
         Ok(())
@@ -427,19 +445,49 @@ impl EncodedOutput {
     }
 
     pub(super) fn finish(mut self) -> Result<()> {
+        self.pad_audio_buffer()?;
+        for index in 0..self.audio_streams.len() {
+            self.flush_audio_resampler(index)?;
+            self.audio_streams[index].encoder.send_eof()?;
+            self.write_audio_packets(index)?;
+        }
+
         for index in 0..self.video_streams.len() {
             self.video_streams[index].encoder.send_eof()?;
             self.write_video_packets(index)?;
         }
 
-        self.pad_audio_buffer()?;
-        for index in 0..self.audio_streams.len() {
-            self.audio_streams[index].encoder.send_eof()?;
-            self.write_audio_packets(index)?;
-        }
-
         self.octx.write_trailer()?;
         Ok(())
+    }
+
+    fn flush_audio_resampler(&mut self, index: usize) -> Result<()> {
+        loop {
+            let delay = {
+                let stream = &mut self.audio_streams[index];
+                let Some(resampler) = &mut stream.resampler else {
+                    return Ok(());
+                };
+                let output = *resampler.output();
+                let mut converted = frame::Audio::new(
+                    output.format,
+                    stream.encoder.frame_size() as usize,
+                    output.channel_layout,
+                );
+                converted.set_rate(output.rate);
+                let delay = resampler.flush(&mut converted)?;
+
+                if converted.samples() > 0 {
+                    stream.encoder.send_frame(&converted)?;
+                }
+                delay
+            };
+            self.write_audio_packets(index)?;
+
+            if delay.is_none() {
+                return Ok(());
+            }
+        }
     }
 
     fn write_video_packets(&mut self, index: usize) -> Result<()> {
@@ -529,7 +577,12 @@ fn open_video_stream(
     global_header: bool,
     variant: Option<&HlsVariant>,
 ) -> Result<VideoOutputStream> {
-    let video_codec = codec::encoder::find(codec::Id::H264).context("H.264 encoder not found")?;
+    let video_codec = if cfg.video_codec.trim().is_empty() {
+        codec::encoder::find(codec::Id::H264)
+    } else {
+        codec::encoder::find_by_name(cfg.video_codec.trim())
+    }
+    .with_context(|| format!("video encoder {:?} not found", cfg.video_codec))?;
     let mut video_stream = octx.add_stream(video_codec)?;
     let mut video_ctx = codec::context::Context::new_with_codec(video_codec)
         .encoder()
@@ -559,20 +612,28 @@ fn open_video_stream(
         video_ctx.set_flags(video_flags);
     }
 
+    let video_codec_name = video_codec.name();
+    let uses_x264 = video_codec_name.contains("x264");
     let mut options = ffmpeg::Dictionary::new();
-    options.set("preset", &cfg.video_preset);
-    options.set("tune", "zerolatency");
-    options.set("maxrate", &maxrate.to_string());
-    options.set("bufsize", &maxrate.saturating_mul(2).to_string());
-    match cfg.rate_control {
-        RateControl::Crf => options.set("crf", &cfg.video_quality.to_string()),
-        RateControl::Cbr => options.set("minrate", &maxrate.to_string()),
+    if uses_x264 {
+        options.set("preset", &cfg.video_preset);
+        options.set("tune", "zerolatency");
+        options.set("maxrate", &maxrate.to_string());
+        options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+        match cfg.rate_control {
+            RateControl::Crf => options.set("crf", &cfg.video_quality.to_string()),
+            RateControl::Cbr => options.set("minrate", &maxrate.to_string()),
+        }
     }
 
     let mut video_encoder = match output_format {
-        EncodedFormat::Auto => video_ctx.open_as_with(video_codec, options)?,
+        EncodedFormat::Auto | EncodedFormat::Stream { .. } => {
+            video_ctx.open_as_with(video_codec, options)?
+        }
         EncodedFormat::Hls { .. } => {
-            options.set("x264-params", "open-gop=0:repeat-headers=1");
+            if uses_x264 {
+                options.set("x264-params", "open-gop=0:repeat-headers=1");
+            }
             video_ctx.open_as_with(video_codec, options)?
         }
     };
@@ -613,14 +674,21 @@ fn open_audio_stream(
     global_header: bool,
     variant: Option<&HlsVariant>,
 ) -> Result<AudioOutputStream> {
-    let audio_codec = codec::encoder::find(codec::Id::AAC).context("AAC encoder not found")?;
+    let audio_codec = if cfg.audio_codec.trim().is_empty() {
+        codec::encoder::find(codec::Id::AAC)
+    } else {
+        codec::encoder::find_by_name(cfg.audio_codec.trim())
+    }
+    .with_context(|| format!("audio encoder {:?} not found", cfg.audio_codec))?;
     let mut audio_stream = octx.add_stream(audio_codec)?;
     let mut audio_ctx = codec::context::Context::new_with_codec(audio_codec)
         .encoder()
         .audio()?;
+    let input_sample_format = engine_audio_sample_format();
+    let encoder_sample_format = preferred_audio_sample_format(audio_codec)?;
     audio_ctx.set_rate(cfg.sample_rate as i32);
     audio_ctx.set_channel_layout(ChannelLayout::STEREO);
-    audio_ctx.set_format(Sample::F32(ffmpeg::format::sample::Type::Planar));
+    audio_ctx.set_format(encoder_sample_format);
     audio_ctx.set_time_base(cfg.audio_time_base);
     audio_ctx.set_bit_rate(variant.map_or(cfg.audio_bitrate as usize, |variant| {
         variant.audio_bitrate as usize
@@ -631,10 +699,42 @@ fn open_audio_stream(
     let audio_encoder = audio_ctx.open_as(audio_codec)?;
     audio_stream.set_parameters(&audio_encoder);
     audio_stream.set_time_base(cfg.audio_time_base);
+    let resampler = (encoder_sample_format != input_sample_format)
+        .then(|| {
+            resampling::Context::get(
+                input_sample_format,
+                ChannelLayout::STEREO,
+                cfg.sample_rate,
+                encoder_sample_format,
+                ChannelLayout::STEREO,
+                cfg.sample_rate,
+            )
+        })
+        .transpose()?;
     Ok(AudioOutputStream {
         stream_index: audio_stream.index(),
         encoder: audio_encoder,
+        resampler,
     })
+}
+
+fn engine_audio_sample_format() -> Sample {
+    Sample::F32(ffmpeg::format::sample::Type::Planar)
+}
+
+fn preferred_audio_sample_format(codec: codec::codec::Codec) -> Result<Sample> {
+    let input_format = engine_audio_sample_format();
+    let Some(formats) = codec.audio()?.formats() else {
+        return Ok(input_format);
+    };
+    let formats: Vec<_> = formats.collect();
+
+    formats
+        .iter()
+        .copied()
+        .find(|format| *format == input_format)
+        .or_else(|| formats.first().copied())
+        .with_context(|| format!("audio encoder {:?} reports no sample formats", codec.name()))
 }
 
 fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOutputStream> {
@@ -739,6 +839,8 @@ mod open_tests {
         let path = dir.join("index.m3u8");
         let cfg = OutputConfig::new(320, 240, 25, 44100).with_encoding(
             "faster".to_string(),
+            "libx264".to_string(),
+            "aac".to_string(),
             RateControl::Cbr,
             23,
             1_300_000,
@@ -757,6 +859,81 @@ mod open_tests {
 
         assert!(output.is_ok(), "expected CBR encoder options to be valid");
         drop(output);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn stream_output_can_use_mpegts_muxer() {
+        ffmpeg::init().ok();
+        let dir = std::env::temp_dir().join(format!("stream_mpegts_test_{}", std::process::id()));
+        fs::remove_dir_all(&dir).ok();
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("stream.ts");
+        let output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &OutputConfig::new(320, 240, 25, 44100),
+            EncodedFormat::Stream { muxer: "mpegts" },
+        )
+        .unwrap();
+
+        output.finish().unwrap();
+        assert!(path.exists(), "expected stream.ts to exist");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn libfdk_aac_sample_format_is_converted_when_available() {
+        ffmpeg::init().ok();
+        if codec::encoder::find_by_name("libfdk_aac").is_none() {
+            return;
+        }
+
+        let dir = std::env::temp_dir().join(format!("hls_fdk_aac_test_{}", std::process::id()));
+        fs::remove_dir_all(&dir).ok();
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("stream.m3u8");
+        let cfg = OutputConfig::new(320, 240, 25, 44100).with_encoding(
+            "faster".to_string(),
+            "libx264".to_string(),
+            "libfdk_aac".to_string(),
+            RateControl::Crf,
+            23,
+            1_300_000,
+            128_000,
+        );
+        let mut output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Hls {
+                variants: vec![],
+                subtitle: None,
+                segment_seconds: 1,
+                list_size: 60,
+            },
+        )
+        .unwrap();
+
+        for index in 0..25 {
+            let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
+            video.set_pts(Some(index));
+            video.data_mut(0).fill(16);
+            output.encode_video(&video).unwrap();
+
+            let mut audio = frame::Audio::new(
+                Sample::F32(ffmpeg::format::sample::Type::Planar),
+                output.audio_frame_size(),
+                ChannelLayout::STEREO,
+            );
+            audio.set_rate(44100);
+            audio.set_pts(Some(index * output.audio_frame_size() as i64));
+            for channel in 0..2 {
+                audio.plane_mut::<f32>(channel).fill(0.0);
+            }
+            output.encode_audio(&audio).unwrap();
+        }
+
+        output.finish().unwrap();
+        assert!(path.exists(), "expected stream.m3u8 to exist");
         fs::remove_dir_all(&dir).ok();
     }
 

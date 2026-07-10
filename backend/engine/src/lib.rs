@@ -30,8 +30,8 @@ pub use utils::{
     clock,
     config::{
         HlsSubtitle, HlsVariant, LogLevel, LogoConfig, OutputConfig, OutputSize, RateControl,
-        RgbaColor, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition, TextScroll,
-        TextWeight,
+        RgbaColor, StreamType, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition,
+        TextScroll, TextWeight,
     },
     ffmpeg_capabilities::{
         FfmpegCapabilities, FfmpegCodec, FfmpegFeatureSet, FfmpegMediaType, FfmpegMuxer,
@@ -122,6 +122,15 @@ impl AsyncPlayout {
     ) -> Result<Self> {
         let output_url = output_url.into();
         Self::open_with(move || Playout::open(&output_url, config, fallback_duration)).await
+    }
+
+    pub async fn open_stream(
+        output_url: impl Into<String>,
+        config: OutputConfig,
+        fallback_duration: f64,
+    ) -> Result<Self> {
+        let output_url = output_url.into();
+        Self::open_with(move || Playout::open_stream(&output_url, config, fallback_duration)).await
     }
 
     pub async fn open_hls(
@@ -412,6 +421,18 @@ impl Playout {
         Ok(Self::with_output(config, output, fallback_duration))
     }
 
+    pub fn open_stream(
+        output_url: &str,
+        config: OutputConfig,
+        fallback_duration: f64,
+    ) -> Result<Self> {
+        Self::validate_fallback_duration(fallback_duration)?;
+        init_ffmpeg(&config)?;
+        let output = Output::open_stream(output_url, &config)?;
+
+        Ok(Self::with_output(config, output, fallback_duration))
+    }
+
     #[cfg(feature = "desktop")]
     pub fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
@@ -514,6 +535,7 @@ impl Playout {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn play_timed_with_live(
         &mut self,
         path: &str,

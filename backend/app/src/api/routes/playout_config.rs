@@ -5,6 +5,7 @@ use axum::{
     extract::{Path as AxumPath, State},
 };
 use protect_axum::authorities::AuthDetails;
+use serde::Serialize;
 
 use crate::{
     api::{
@@ -21,6 +22,56 @@ use crate::{
         errors::ServiceError,
     },
 };
+
+#[derive(Debug, Serialize)]
+pub struct CodecOption {
+    pub name: String,
+    pub display_name: String,
+    pub codec_id: String,
+    pub hardware: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OutputCodecOptions {
+    pub video: Vec<CodecOption>,
+    pub audio: Vec<CodecOption>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlayoutCodecOptions {
+    pub hls: OutputCodecOptions,
+    pub rtmp: OutputCodecOptions,
+    pub srt: OutputCodecOptions,
+    pub udp: OutputCodecOptions,
+}
+
+fn codec_option(codec: &ff_engine::FfmpegCodec) -> CodecOption {
+    CodecOption {
+        name: codec.name.clone(),
+        display_name: codec.display_name.clone(),
+        codec_id: codec.codec_id.clone(),
+        hardware: codec.hardware,
+    }
+}
+
+fn output_codec_options(target: ff_engine::FfmpegOutputTarget) -> OutputCodecOptions {
+    let capabilities = ff_engine::ffmpeg_capabilities();
+
+    OutputCodecOptions {
+        video: capabilities
+            .video_codecs_for(target)
+            .iter()
+            .filter(|codec| !codec.hardware)
+            .map(codec_option)
+            .collect(),
+        audio: capabilities
+            .audio_codecs_for(target)
+            .iter()
+            .filter(|codec| !codec.hardware)
+            .map(codec_option)
+            .collect(),
+    }
+}
 
 /// **Get Config**
 ///
@@ -109,6 +160,11 @@ pub async fn update_playout_config(
         id,
         &data.output.hls_variants.join(";"),
         &data.output.stream_url,
+        (data.output.mode == OutputMode::Stream).then_some(match data.output.stream_type {
+            crate::utils::config::StreamType::Rtmp => "rtmp",
+            crate::utils::config::StreamType::Srt => "srt",
+            crate::utils::config::StreamType::Udp => "udp",
+        }),
         is_hls.then_some(data.output.hls_playlist_name.as_str()),
         is_hls.then_some(i64::from(data.output.hls_segment_duration)),
         is_hls.then_some(i64::from(data.output.hls_list_size)),
@@ -117,6 +173,8 @@ pub async fn update_playout_config(
         i64::from(data.output.height),
         data.output.fps,
         is_encoded.then_some(data.output.video_preset.as_str()),
+        is_encoded.then_some(data.output.video_codec.as_str()),
+        is_encoded.then_some(data.output.audio_codec.as_str()),
         is_encoded.then_some(data.output.rate_control.as_str()),
         is_crf.then_some(i64::from(data.output.video_quality)),
         is_encoded.then_some(i64::from(data.output.video_maxrate)),
@@ -169,4 +227,23 @@ pub async fn get_playout_outputs(
     }
 
     Err(ServiceError::InternalServerError)
+}
+
+pub async fn get_playout_codecs(
+    AxumPath(id): AxumPath<i32>,
+    user: AuthUser,
+    details: AuthDetails<Role>,
+) -> Result<Json<PlayoutCodecOptions>, ServiceError> {
+    ensure_any_authority(
+        &details,
+        &[&Role::GlobalAdmin, &Role::ChannelAdmin, &Role::User],
+    )?;
+    user.ensure_channel_or_admin(id)?;
+
+    Ok(Json(PlayoutCodecOptions {
+        hls: output_codec_options(ff_engine::FfmpegOutputTarget::Hls),
+        rtmp: output_codec_options(ff_engine::FfmpegOutputTarget::Rtmp),
+        srt: output_codec_options(ff_engine::FfmpegOutputTarget::Srt),
+        udp: output_codec_options(ff_engine::FfmpegOutputTarget::Udp),
+    }))
 }

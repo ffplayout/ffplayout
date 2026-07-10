@@ -221,6 +221,7 @@ export default {
         outputHelp: `The final playout encoding, set the settings according to your needs. Use 'stream' mode and set the target URL when you want to stream to an RTMP/RTSP/SRT/... server.
         In production, don't serve HLS playlists with ffplayout; use Nginx or another web server!`,
         outputParam: 'The media playlist is created as live/<name>.m3u8.',
+        streamType: 'Stream type',
         streamUrl: 'Stream target URL',
         hlsSettings: 'HLS settings',
         hlsPlaylistName: 'Playlist name',
@@ -231,6 +232,8 @@ export default {
         hlsSubtitleLanguage: 'Subtitle language',
         hlsSubtitleDefault: 'Default subtitle',
         encodingSettings: 'Encoding settings',
+        videoCodec: 'Video codec',
+        audioCodec: 'Audio codec',
         videoPreset: 'Video preset',
         rateControl: 'Rate control',
         videoQuality: 'CRF quality',

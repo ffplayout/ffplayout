@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import GenericModal from '@/components/utils/GenericModal.vue'
@@ -47,6 +47,7 @@ const output = computed({
         const output = configStore.outputs.find((o) => o.name === value)
         configStore.playout.output.id = output?.id ?? 0
         configStore.playout.output.stream_url = output?.stream_url ?? ''
+        configStore.playout.output.stream_type = output?.stream_type ?? 'rtmp'
         configStore.playout.output.hls_playlist_name = output?.hls_playlist_name ?? 'stream'
         configStore.playout.output.hls_segment_duration = output?.hls_segment_duration ?? 6
         configStore.playout.output.hls_list_size = output?.hls_list_size ?? 600
@@ -55,6 +56,8 @@ const output = computed({
         configStore.playout.output.height = output?.height ?? 720
         configStore.playout.output.fps = output?.fps ?? 25
         configStore.playout.output.video_preset = output?.video_preset ?? 'faster'
+        configStore.playout.output.video_codec = output?.video_codec ?? 'libx264'
+        configStore.playout.output.audio_codec = output?.audio_codec ?? 'aac'
         configStore.playout.output.rate_control = output?.rate_control ?? 'crf'
         configStore.playout.output.video_quality = output?.video_quality ?? 23
         configStore.playout.output.video_maxrate = output?.video_maxrate ?? 2400
@@ -95,6 +98,36 @@ const hlsVariants = computed<HlsVariantRow[]>({
         configStore.playout.output.hls_variants = rows.map(serializeHlsVariant)
     },
 })
+
+const codecOptions = computed<OutputCodecOptions>(() => {
+    if (output.value === 'stream') {
+        return configStore.outputCodecs[configStore.playout.output.stream_type ?? 'rtmp']
+    }
+
+    return configStore.outputCodecs.hls
+})
+
+function codecLabel(codec: CodecOption): string {
+    const label = codec.display_name || codec.name
+    const details = codec.hardware ? `${codec.codec_id}, hardware` : codec.codec_id
+
+    return `${codec.name} - ${label} (${details})`
+}
+
+watch(
+    () => [output.value, configStore.playout.output.stream_type, codecOptions.value],
+    () => {
+        const video = codecOptions.value.video
+        const audio = codecOptions.value.audio
+
+        if (video.length > 0 && !video.some((codec) => codec.name === configStore.playout.output.video_codec)) {
+            configStore.playout.output.video_codec = video[0].name
+        }
+        if (audio.length > 0 && !audio.some((codec) => codec.name === configStore.playout.output.audio_codec)) {
+            configStore.playout.output.audio_codec = audio[0].name
+        }
+    },
+)
 
 function addHlsVariant() {
     hlsVariants.value = [
@@ -541,14 +574,24 @@ async function onSubmitPlayout() {
                         </option>
                     </select>
                 </fieldset>
-                <fieldset v-if="output === 'stream'" class="fieldset">
-                    <legend class="fieldset-legend">{{ t('config.streamUrl') }}</legend>
-                    <input
-                        v-model="configStore.playout.output.stream_url"
-                        type="url"
-                        class="input input-sm w-full max-w-lg"
-                    />
-                </fieldset>
+                <div v-if="output === 'stream'" class="grid gap-3 sm:grid-cols-2">
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('config.streamType') }}</legend>
+                        <select v-model="configStore.playout.output.stream_type" class="select select-sm w-full">
+                            <option value="rtmp">RTMP</option>
+                            <option value="srt">SRT</option>
+                            <option value="udp">UDP</option>
+                        </select>
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('config.streamUrl') }}</legend>
+                        <input
+                            v-model="configStore.playout.output.stream_url"
+                            type="url"
+                            class="input input-sm w-full"
+                        />
+                    </fieldset>
+                </div>
                 <fieldset v-if="output === 'desktop'" class="fieldset mt-2 rounded-box w-full">
                     <label class="fieldset-label text-base-content">
                         <input
@@ -599,6 +642,22 @@ async function onSubmitPlayout() {
                 <fieldset v-if="output === 'hls' || output === 'stream'" class="fieldset">
                     <legend class="fieldset-legend">{{ t('config.encodingSettings') }}</legend>
                     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.videoCodec') }}</span>
+                            <select v-model="configStore.playout.output.video_codec" class="select select-sm w-full">
+                                <option v-for="codec in codecOptions.video" :key="codec.name" :value="codec.name">
+                                    {{ codecLabel(codec) }}
+                                </option>
+                            </select>
+                        </label>
+                        <label class="fieldset">
+                            <span class="fieldset-legend">{{ t('config.audioCodec') }}</span>
+                            <select v-model="configStore.playout.output.audio_codec" class="select select-sm w-full">
+                                <option v-for="codec in codecOptions.audio" :key="codec.name" :value="codec.name">
+                                    {{ codecLabel(codec) }}
+                                </option>
+                            </select>
+                        </label>
                         <label class="fieldset">
                             <span class="fieldset-legend">{{ t('config.videoPreset') }}</span>
                             <select v-model="configStore.playout.output.video_preset" class="select select-sm w-full">
