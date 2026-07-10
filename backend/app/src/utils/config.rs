@@ -726,23 +726,6 @@ pub fn string_to_log_level(l: String) -> Level {
     }
 }
 
-pub fn string_to_processing_mode(l: String) -> ProcessMode {
-    match l.to_lowercase().as_str() {
-        "playlist" => ProcessMode::Playlist,
-        "folder" => ProcessMode::Folder,
-        _ => ProcessMode::Playlist,
-    }
-}
-
-pub fn string_to_output_mode(l: String) -> OutputMode {
-    match l.to_lowercase().as_str() {
-        "desktop" => OutputMode::Desktop,
-        "hls" => OutputMode::HLS,
-        "stream" => OutputMode::Stream,
-        _ => OutputMode::HLS,
-    }
-}
-
 impl PlayoutConfig {
     pub async fn new(
         pool: &Pool<Sqlite>,

@@ -7,8 +7,7 @@ use chrono::{format::ParseErrorKind, prelude::*};
 use chrono_tz::Tz;
 use log::*;
 use path_clean::PathClean;
-use rand::RngExt;
-use tokio::{fs, net::TcpListener};
+use tokio::fs;
 
 use serde::{Deserialize, Deserializer, de};
 
@@ -112,22 +111,6 @@ pub fn sizeof_fmt(mut num: f64) -> String {
     format!("{num:.1}Yi{suffix}")
 }
 
-pub fn local_utc_offset() -> i32 {
-    let mut offset = Local::now().format("%:z").to_string();
-    let operator = offset.remove(0);
-    let mut utc_offset = 0;
-
-    if let Some((r, f)) = offset.split_once(':') {
-        utc_offset = r.parse::<i32>().unwrap_or(0) * 60 + f.parse::<i32>().unwrap_or(0);
-
-        if operator == '-' && utc_offset > 0 {
-            utc_offset = -utc_offset;
-        }
-    }
-
-    utc_offset
-}
-
 pub fn naive_date_time_from_str<'de, D>(deserializer: D) -> Result<NaiveDateTime, D::Error>
 where
     D: Deserializer<'de>,
@@ -145,20 +128,6 @@ where
             }
         }
     }
-}
-
-/// get a free tcp socket
-pub async fn gen_tcp_socket(exclude_socket: &str) -> Option<String> {
-    for _ in 0..100 {
-        let port = rand::rng().random_range(45321..54268);
-        let socket = format!("127.0.0.1:{port}");
-
-        if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).await.is_ok() {
-            return Some(socket);
-        }
-    }
-
-    None
 }
 
 pub fn round_to_nearest_ten(num: i64) -> i64 {

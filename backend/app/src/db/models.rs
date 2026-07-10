@@ -168,12 +168,6 @@ pub enum Role {
     Guest,
 }
 
-impl Role {
-    pub fn set_role(role: &str) -> Self {
-        role.parse().unwrap_or(Self::Guest)
-    }
-}
-
 impl FromStr for Role {
     type Err = String;
 

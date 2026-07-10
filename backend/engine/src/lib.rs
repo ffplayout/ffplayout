@@ -241,23 +241,6 @@ impl AsyncPlayout {
         result.await.context("playout worker stopped during play")?
     }
 
-    pub async fn play_with_timing(
-        &self,
-        path: impl Into<String>,
-        seek_seconds: Option<f64>,
-        duration_seconds: Option<f64>,
-        subtitles_media_path: Option<String>,
-    ) -> Result<ClipResult> {
-        self.play_with_timing_and_logo_fade(
-            path,
-            seek_seconds,
-            duration_seconds,
-            subtitles_media_path,
-            LogoFade::default(),
-        )
-        .await
-    }
-
     pub async fn play_with_timing_and_logo_fade(
         &self,
         path: impl Into<String>,
@@ -300,18 +283,6 @@ impl AsyncPlayout {
         result
             .await
             .context("playout worker stopped while starting RTMP live")?
-    }
-
-    pub async fn stop_live(&self) -> Result<()> {
-        self.playback_control.skip_current();
-        let (response, result) = oneshot::channel();
-        self.commands
-            .send(AsyncCommand::StopLive { response })
-            .map_err(|_| anyhow!("playout worker stopped"))?;
-
-        result
-            .await
-            .context("playout worker stopped while stopping live input")?
     }
 
     pub async fn finish(self) -> Result<()> {
@@ -358,9 +329,6 @@ enum AsyncCommand {
         config: Box<OutputConfig>,
         response: oneshot::Sender<Result<()>>,
     },
-    StopLive {
-        response: oneshot::Sender<Result<()>>,
-    },
     Finish {
         response: oneshot::Sender<Result<()>>,
     },
@@ -400,10 +368,6 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 response,
             } => {
                 live = Some(spawn_rtmp_listener(url, *config));
-                let _ = response.send(Ok(()));
-            }
-            AsyncCommand::StopLive { response } => {
-                live = None;
                 let _ = response.send(Ok(()));
             }
             AsyncCommand::Finish { response } => {
@@ -502,22 +466,6 @@ impl Playout {
             Some(path),
             LogoFade::default(),
             live,
-        )
-    }
-
-    pub fn play_with_timing(
-        &mut self,
-        path: &str,
-        seek_seconds: Option<f64>,
-        duration_seconds: Option<f64>,
-    ) -> Result<ClipResult> {
-        self.play_timed_with_live(
-            path,
-            seek_seconds,
-            duration_seconds,
-            Some(path),
-            LogoFade::default(),
-            &mut None,
         )
     }
 

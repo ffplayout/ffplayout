@@ -162,12 +162,6 @@ pub async fn file_ranges(
     Ok(result)
 }
 
-/// Remove all uploads of a batch
-pub async fn cleanup_uploads(batch_id: &str) {
-    let mut uploads = UPLOADS.lock().await;
-    uploads.retain(|_, upload| upload.batch_id != batch_id);
-}
-
 /// Check if upload is complete
 pub fn is_upload_complete(ranges: &[Range<u64>], total_size: u64) -> bool {
     if ranges.is_empty() {
@@ -183,13 +177,4 @@ pub fn is_upload_complete(ranges: &[Range<u64>], total_size: u64) -> bool {
     }
 
     pos == total_size
-}
-
-/// Check if a batch of uploads is complete
-pub fn is_batch_complete(upload_map: &UploadMap, batch_id: &str, batch_count: usize) -> bool {
-    upload_map
-        .values()
-        .filter(|upload| upload.batch_id == batch_id)
-        .count()
-        == batch_count
 }

@@ -483,13 +483,6 @@ impl ChannelController {
             self.managers.remove(i);
         }
     }
-
-    pub fn run_count(&self) -> usize {
-        self.managers
-            .iter()
-            .filter(|manager| manager.is_alive.load(Ordering::SeqCst))
-            .count()
-    }
 }
 
 async fn supervisor_loop(

@@ -2,7 +2,6 @@ use std::{
     ffi::OsStr,
     fmt,
     io::Error,
-    net::TcpListener,
     path::{Path, PathBuf},
     process::exit,
     str::FromStr,
@@ -12,7 +11,6 @@ use std::{
 use chrono::{TimeDelta, prelude::*};
 use chrono_tz::Tz;
 use log::*;
-use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
 use serde::{Deserialize, Serialize, de::Deserializer};
@@ -75,22 +73,6 @@ pub async fn detect_audio_silence(
     })
     .await
     .map_err(|error| ProcessError::Custom(error.to_string()))?
-}
-
-/// Compare incoming stream name with expecting name, but ignore question mark.
-pub fn valid_stream(msg: &str) -> bool {
-    if let Some((unexpected, expected)) = msg.split_once(',') {
-        let re = Regex::new(r".*Unexpected stream|App field don't match up|expecting|[\s]+|\?$")
-            .unwrap();
-        let unexpected = re.replace_all(unexpected, "");
-        let expected = re.replace_all(expected, "");
-
-        if unexpected == expected {
-            return true;
-        }
-    }
-
-    false
 }
 
 /// map media struct to json object
@@ -349,17 +331,6 @@ fn is_empty_string(st: &String) -> bool {
     *st == String::new()
 }
 
-/// Calculate fps from rate/factor string
-pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
-    if let Some((r, f)) = r_frame_rate.split_once('/')
-        && let (Ok(r_value), Ok(f_value)) = (r.parse::<f64>(), f.parse::<f64>())
-    {
-        return r_value / f_value;
-    }
-
-    default
-}
-
 pub async fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
     let mut f = File::options().read(true).write(false).open(path).await?;
     let mut contents = String::new();
@@ -563,42 +534,6 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
     include
 }
 
-/// get a free tcp socket
-pub fn gen_tcp_socket(exclude_socket: String) -> Option<String> {
-    for _ in 0..100 {
-        let port = rand::rng().random_range(45321..54268);
-        let socket = format!("127.0.0.1:{port}");
-
-        if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).is_ok() {
-            return Some(socket);
-        }
-    }
-
-    None
-}
-
-/// check if tcp port is free
-pub fn is_free_tcp_port(url: &str) -> bool {
-    let re = Regex::new(r"^[\w]+://([^/]+)").unwrap();
-    let mut addr = url.to_string();
-
-    if let Some(base_url) = re.captures(url).and_then(|u| u.get(1)) {
-        addr = base_url.as_str().to_string();
-    }
-
-    if let Some(socket) = addr.split_once(':')
-        && TcpListener::bind((
-            socket.0,
-            socket.1.to_string().parse::<u16>().unwrap_or_default(),
-        ))
-        .is_ok()
-    {
-        return true;
-    };
-
-    false
-}
-
 /// Generate a vector with dates, from given range.
 pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
     let mut range = vec![];
@@ -631,18 +566,6 @@ pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
     }
 
     range
-}
-
-pub fn parse_log_level_filter(s: &str) -> Result<LevelFilter, &'static str> {
-    match s.to_lowercase().as_str() {
-        "debug" => Ok(LevelFilter::Debug),
-        "error" => Ok(LevelFilter::Error),
-        "info" => Ok(LevelFilter::Info),
-        "trace" => Ok(LevelFilter::Trace),
-        "warning" => Ok(LevelFilter::Warn),
-        "off" => Ok(LevelFilter::Off),
-        _ => Err("Error level not exists!"),
-    }
 }
 
 pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
@@ -715,30 +638,6 @@ pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
     }
 
     filled_template
-}
-
-fn gcd(a: u32, b: u32) -> u32 {
-    if b == 0 { a } else { gcd(b, a % b) }
-}
-
-pub fn fraction(d: f64, max_denominator: u32) -> (u32, u32) {
-    let mut best_numerator = 1;
-    let mut best_denominator = 1;
-    let mut min_error = f64::MAX;
-
-    for denominator in 1..=max_denominator {
-        let numerator = (d * denominator as f64).round() as u32;
-        let error = (d - (numerator as f64 / denominator as f64)).abs();
-
-        if error < min_error {
-            best_numerator = numerator;
-            best_denominator = denominator;
-            min_error = error;
-        }
-    }
-
-    let divisor = gcd(best_numerator, best_denominator);
-    (best_numerator / divisor, best_denominator / divisor)
 }
 
 #[cfg(test)]
