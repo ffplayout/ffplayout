@@ -27,6 +27,13 @@ const videoPresets = [
     'veryslow',
     'placebo',
 ]
+function outputMode(value: string | undefined): 'desktop' | 'hls' | 'stream' {
+    if (value === 'desktop' || value === 'hls' || value === 'stream') {
+        return value
+    }
+
+    return 'stream'
+}
 
 const extensions = computed({
     get() {
@@ -46,6 +53,7 @@ const output = computed({
     set(value: string) {
         const output = configStore.outputs.find((o) => o.name === value)
         configStore.playout.output.id = output?.id ?? 0
+        configStore.playout.output.mode = outputMode(output?.name)
         configStore.playout.output.stream_url = output?.stream_url ?? ''
         configStore.playout.output.stream_type = output?.stream_type ?? 'rtmp'
         configStore.playout.output.hls_playlist_name = output?.hls_playlist_name ?? 'stream'
