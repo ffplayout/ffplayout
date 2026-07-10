@@ -65,6 +65,47 @@ impl fmt::Display for OutputMode {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum StreamType {
+    #[default]
+    Rtmp,
+    Srt,
+    Udp,
+}
+
+impl StreamType {
+    fn ffmpeg_target(self) -> ff_engine::FfmpegOutputTarget {
+        match self {
+            Self::Rtmp => ff_engine::FfmpegOutputTarget::Rtmp,
+            Self::Srt => ff_engine::FfmpegOutputTarget::Srt,
+            Self::Udp => ff_engine::FfmpegOutputTarget::Udp,
+        }
+    }
+
+    pub fn engine_stream_type(self) -> ff_engine::StreamType {
+        match self {
+            Self::Rtmp => ff_engine::StreamType::Rtmp,
+            Self::Srt => ff_engine::StreamType::Srt,
+            Self::Udp => ff_engine::StreamType::Udp,
+        }
+    }
+}
+
+impl FromStr for StreamType {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "rtmp" => Ok(Self::Rtmp),
+            "srt" => Ok(Self::Srt),
+            "udp" => Ok(Self::Udp),
+            _ => Err("Use 'rtmp', 'srt' or 'udp'".to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, PartialEq, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 #[serde(rename_all = "lowercase")]
@@ -489,6 +530,8 @@ pub struct Output {
     pub mode: OutputMode,
     #[serde(default)]
     pub stream_url: String,
+    #[serde(default)]
+    pub stream_type: StreamType,
     #[serde(default = "default_hls_playlist_name")]
     pub hls_playlist_name: String,
     #[serde(default = "default_hls_segment_duration")]
@@ -502,6 +545,10 @@ pub struct Output {
     pub fps: f64,
     #[serde(default = "default_video_preset")]
     pub video_preset: String,
+    #[serde(default = "default_video_codec")]
+    pub video_codec: String,
+    #[serde(default = "default_audio_codec")]
+    pub audio_codec: String,
     #[serde(default = "default_rate_control")]
     pub rate_control: String,
     #[serde(default = "default_video_quality")]
@@ -535,6 +582,14 @@ fn default_video_preset() -> String {
     "faster".to_string()
 }
 
+fn default_video_codec() -> String {
+    "libx264".to_string()
+}
+
+fn default_audio_codec() -> String {
+    "aac".to_string()
+}
+
 fn default_rate_control() -> String {
     "crf".to_string()
 }
@@ -563,6 +618,12 @@ impl Output {
             id: output.id,
             mode: OutputMode::new(&output.name),
             stream_url: output.stream_url,
+            stream_type: output
+                .stream_type
+                .as_deref()
+                .unwrap_or("rtmp")
+                .parse()
+                .unwrap_or_default(),
             hls_playlist_name: output
                 .hls_playlist_name
                 .unwrap_or_else(default_hls_playlist_name),
@@ -579,6 +640,8 @@ impl Output {
             height: u32::try_from(output.height).unwrap_or(720),
             fps: output.fps,
             video_preset: output.video_preset.unwrap_or_else(default_video_preset),
+            video_codec: output.video_codec.unwrap_or_else(default_video_codec),
+            audio_codec: output.audio_codec.unwrap_or_else(default_audio_codec),
             rate_control: output.rate_control.unwrap_or_else(default_rate_control),
             video_quality: output
                 .video_quality
@@ -667,6 +730,34 @@ impl Output {
             if !PRESETS.contains(&self.video_preset.as_str()) {
                 return Err(format!("unsupported video preset {:?}", self.video_preset));
             }
+            let target = match self.mode {
+                OutputMode::HLS => ff_engine::FfmpegOutputTarget::Hls,
+                OutputMode::Stream => self.stream_type.ffmpeg_target(),
+                OutputMode::Desktop => unreachable!("desktop output is not encoded"),
+            };
+            let capabilities = ff_engine::ffmpeg_capabilities();
+            if !capabilities
+                .video_codecs_for(target)
+                .iter()
+                .filter(|codec| !codec.hardware)
+                .any(|codec| codec.name == self.video_codec)
+            {
+                return Err(format!(
+                    "unsupported video codec {:?} for {} output",
+                    self.video_codec, self.mode
+                ));
+            }
+            if !capabilities
+                .audio_codecs_for(target)
+                .iter()
+                .filter(|codec| !codec.hardware)
+                .any(|codec| codec.name == self.audio_codec)
+            {
+                return Err(format!(
+                    "unsupported audio codec {:?} for {} output",
+                    self.audio_codec, self.mode
+                ));
+            }
             if !matches!(self.rate_control.as_str(), "crf" | "cbr") {
                 return Err("rate control must be \"crf\" or \"cbr\"".to_string());
             }
@@ -723,23 +814,6 @@ pub fn string_to_log_level(l: String) -> Level {
         "trace" => Level::Trace,
         "warning" => Level::Warn,
         _ => Level::Debug,
-    }
-}
-
-pub fn string_to_processing_mode(l: String) -> ProcessMode {
-    match l.to_lowercase().as_str() {
-        "playlist" => ProcessMode::Playlist,
-        "folder" => ProcessMode::Folder,
-        _ => ProcessMode::Playlist,
-    }
-}
-
-pub fn string_to_output_mode(l: String) -> OutputMode {
-    match l.to_lowercase().as_str() {
-        "desktop" => OutputMode::Desktop,
-        "hls" => OutputMode::HLS,
-        "stream" => OutputMode::Stream,
-        _ => OutputMode::HLS,
     }
 }
 
@@ -947,13 +1021,14 @@ pub async fn get_config(
 
 #[cfg(test)]
 mod output_tests {
-    use super::{Output, OutputMode};
+    use super::{Output, OutputMode, StreamType};
 
     fn output(mode: OutputMode) -> Output {
         Output {
             id: 1,
             mode,
             stream_url: "rtmp://localhost/live/test".to_string(),
+            stream_type: StreamType::Rtmp,
             hls_playlist_name: "stream".to_string(),
             hls_segment_duration: 6,
             hls_list_size: 600,
@@ -962,6 +1037,8 @@ mod output_tests {
             height: 720,
             fps: 25.0,
             video_preset: "faster".to_string(),
+            video_codec: "libx264".to_string(),
+            audio_codec: "aac".to_string(),
             rate_control: "crf".to_string(),
             video_quality: 23,
             video_maxrate: 2400,

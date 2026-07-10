@@ -30,8 +30,8 @@ pub use utils::{
     clock,
     config::{
         HlsSubtitle, HlsVariant, LogLevel, LogoConfig, OutputConfig, OutputSize, RateControl,
-        RgbaColor, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition, TextScroll,
-        TextWeight,
+        RgbaColor, StreamType, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition,
+        TextScroll, TextWeight,
     },
     ffmpeg_capabilities::{
         FfmpegCapabilities, FfmpegCodec, FfmpegFeatureSet, FfmpegMediaType, FfmpegMuxer,
@@ -122,6 +122,15 @@ impl AsyncPlayout {
     ) -> Result<Self> {
         let output_url = output_url.into();
         Self::open_with(move || Playout::open(&output_url, config, fallback_duration)).await
+    }
+
+    pub async fn open_stream(
+        output_url: impl Into<String>,
+        config: OutputConfig,
+        fallback_duration: f64,
+    ) -> Result<Self> {
+        let output_url = output_url.into();
+        Self::open_with(move || Playout::open_stream(&output_url, config, fallback_duration)).await
     }
 
     pub async fn open_hls(
@@ -234,28 +243,12 @@ impl AsyncPlayout {
                 duration_seconds: None,
                 subtitles_media_path: None,
                 logo_fade: LogoFade::default(),
+                playout_rate: 1.0,
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
 
         result.await.context("playout worker stopped during play")?
-    }
-
-    pub async fn play_with_timing(
-        &self,
-        path: impl Into<String>,
-        seek_seconds: Option<f64>,
-        duration_seconds: Option<f64>,
-        subtitles_media_path: Option<String>,
-    ) -> Result<ClipResult> {
-        self.play_with_timing_and_logo_fade(
-            path,
-            seek_seconds,
-            duration_seconds,
-            subtitles_media_path,
-            LogoFade::default(),
-        )
-        .await
     }
 
     pub async fn play_with_timing_and_logo_fade(
@@ -266,6 +259,26 @@ impl AsyncPlayout {
         subtitles_media_path: Option<String>,
         logo_fade: LogoFade,
     ) -> Result<ClipResult> {
+        self.play_with_timing_logo_fade_and_rate(
+            path,
+            seek_seconds,
+            duration_seconds,
+            subtitles_media_path,
+            logo_fade,
+            1.0,
+        )
+        .await
+    }
+
+    pub async fn play_with_timing_logo_fade_and_rate(
+        &self,
+        path: impl Into<String>,
+        seek_seconds: Option<f64>,
+        duration_seconds: Option<f64>,
+        subtitles_media_path: Option<String>,
+        logo_fade: LogoFade,
+        playout_rate: f64,
+    ) -> Result<ClipResult> {
         let path = path.into();
         let (response, result) = oneshot::channel();
         self.commands
@@ -275,6 +288,7 @@ impl AsyncPlayout {
                 duration_seconds,
                 subtitles_media_path,
                 logo_fade,
+                playout_rate,
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
@@ -300,18 +314,6 @@ impl AsyncPlayout {
         result
             .await
             .context("playout worker stopped while starting RTMP live")?
-    }
-
-    pub async fn stop_live(&self) -> Result<()> {
-        self.playback_control.skip_current();
-        let (response, result) = oneshot::channel();
-        self.commands
-            .send(AsyncCommand::StopLive { response })
-            .map_err(|_| anyhow!("playout worker stopped"))?;
-
-        result
-            .await
-            .context("playout worker stopped while stopping live input")?
     }
 
     pub async fn finish(self) -> Result<()> {
@@ -351,14 +353,12 @@ enum AsyncCommand {
         duration_seconds: Option<f64>,
         subtitles_media_path: Option<String>,
         logo_fade: LogoFade,
+        playout_rate: f64,
         response: oneshot::Sender<Result<ClipResult>>,
     },
     StartRtmpLive {
         url: String,
         config: Box<OutputConfig>,
-        response: oneshot::Sender<Result<()>>,
-    },
-    StopLive {
         response: oneshot::Sender<Result<()>>,
     },
     Finish {
@@ -378,6 +378,7 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 duration_seconds,
                 subtitles_media_path,
                 logo_fade,
+                playout_rate,
                 response,
             } => {
                 let result = playout.play_timed_with_live(
@@ -386,6 +387,7 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                     duration_seconds,
                     subtitles_media_path.as_deref(),
                     logo_fade,
+                    playout_rate,
                     &mut live,
                 );
                 let stopped = matches!(result, Ok(ClipResult::Stopped));
@@ -402,10 +404,6 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 live = Some(spawn_rtmp_listener(url, *config));
                 let _ = response.send(Ok(()));
             }
-            AsyncCommand::StopLive { response } => {
-                live = None;
-                let _ = response.send(Ok(()));
-            }
             AsyncCommand::Finish { response } => {
                 let _ = response.send(playout.finish());
                 break;
@@ -419,6 +417,18 @@ impl Playout {
         Self::validate_fallback_duration(fallback_duration)?;
         init_ffmpeg(&config)?;
         let output = Output::open(output_url, &config)?;
+
+        Ok(Self::with_output(config, output, fallback_duration))
+    }
+
+    pub fn open_stream(
+        output_url: &str,
+        config: OutputConfig,
+        fallback_duration: f64,
+    ) -> Result<Self> {
+        Self::validate_fallback_duration(fallback_duration)?;
+        init_ffmpeg(&config)?;
+        let output = Output::open_stream(output_url, &config)?;
 
         Ok(Self::with_output(config, output, fallback_duration))
     }
@@ -485,6 +495,7 @@ impl Playout {
             None,
             Some(path),
             LogoFade::default(),
+            1.0,
             &mut None,
         )
     }
@@ -501,23 +512,8 @@ impl Playout {
             None,
             Some(path),
             LogoFade::default(),
+            1.0,
             live,
-        )
-    }
-
-    pub fn play_with_timing(
-        &mut self,
-        path: &str,
-        seek_seconds: Option<f64>,
-        duration_seconds: Option<f64>,
-    ) -> Result<ClipResult> {
-        self.play_timed_with_live(
-            path,
-            seek_seconds,
-            duration_seconds,
-            Some(path),
-            LogoFade::default(),
-            &mut None,
         )
     }
 
@@ -534,10 +530,12 @@ impl Playout {
             duration_seconds,
             Some(path),
             logo_fade,
+            1.0,
             &mut None,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn play_timed_with_live(
         &mut self,
         path: &str,
@@ -545,9 +543,11 @@ impl Playout {
         duration_seconds: Option<f64>,
         subtitles_media_path: Option<&str>,
         logo_fade: LogoFade,
+        playout_rate: f64,
         live: &mut Option<LiveReceiver>,
     ) -> Result<ClipResult> {
         let subtitles_media_path = subtitles_media_path.map(str::to_string);
+        self.output.set_playout_rate(playout_rate);
 
         #[cfg(feature = "desktop")]
         if self.output.is_desktop() {

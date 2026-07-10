@@ -36,24 +36,12 @@ jobs:
             features: embed_frontend,desktop
           - os: macos-15-intel
             platform: x86_64-apple-darwin
-            variant: server
-            features: embed_frontend
-          - os: macos-15-intel
-            platform: x86_64-apple-darwin
             variant: desktop
             features: embed_frontend,desktop
           - os: macos-14
             platform: aarch64-apple-darwin
-            variant: server
-            features: embed_frontend
-          - os: macos-14
-            platform: aarch64-apple-darwin
             variant: desktop
             features: embed_frontend,desktop
-          - os: windows-latest
-            platform: x86_64-pc-windows-msvc
-            variant: server
-            features: embed_frontend
           - os: windows-latest
             platform: x86_64-pc-windows-msvc
             variant: desktop

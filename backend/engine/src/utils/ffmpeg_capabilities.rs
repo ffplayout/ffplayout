@@ -4,7 +4,7 @@ use std::{
     sync::OnceLock,
 };
 
-use ffmpeg_next::ffi;
+use ffmpeg_next::{ffi, format::Pixel};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FfmpegCapabilities {
@@ -49,7 +49,11 @@ impl FfmpegCapabilities {
         self.encoders
             .iter()
             .filter(|encoder| encoder.media_type == media_type)
-            .filter(|encoder| muxer_supports_codec(muxer, encoder.codec_id_raw))
+            .filter(|encoder| output_muxer_supports_codec(target, muxer, encoder))
+            .filter(|encoder| {
+                encoder.media_type != FfmpegMediaType::Video || encoder.engine_video_format
+            })
+            .filter(|encoder| output_supports_codec(target, encoder))
             .cloned()
             .collect()
     }
@@ -73,6 +77,7 @@ pub struct FfmpegCodec {
     pub media_type: FfmpegMediaType,
     pub hardware: bool,
     pub wrapper: Option<String>,
+    engine_video_format: bool,
     codec_id_raw: ffi::AVCodecID,
 }
 
@@ -86,6 +91,8 @@ pub struct FfmpegMuxer {
 pub enum FfmpegOutputTarget {
     Hls,
     Rtmp,
+    Srt,
+    Udp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +170,8 @@ fn detect_encoders() -> Vec<FfmpegCodec> {
             media_type,
             hardware: is_hardware_encoder(codec),
             wrapper: non_empty_c_string(unsafe { (*codec).wrapper_name }),
+            engine_video_format: media_type != FfmpegMediaType::Video
+                || video_encoder_supports_engine_format(codec),
             codec_id_raw,
         });
     }
@@ -172,7 +181,7 @@ fn detect_encoders() -> Vec<FfmpegCodec> {
 }
 
 fn detect_muxers() -> Vec<FfmpegMuxer> {
-    ["hls", "flv"]
+    ["hls", "flv", "mpegts"]
         .into_iter()
         .filter_map(|name| {
             let muxer = muxer_for_name(name)?;
@@ -192,10 +201,54 @@ fn muxer_supports_codec(muxer_name: &str, codec_id: ffi::AVCodecID) -> bool {
     unsafe { ffi::avformat_query_codec(muxer, codec_id, ffi::FF_COMPLIANCE_NORMAL) > 0 }
 }
 
+fn output_muxer_supports_codec(
+    target: FfmpegOutputTarget,
+    muxer_name: &str,
+    codec: &FfmpegCodec,
+) -> bool {
+    if matches!(target, FfmpegOutputTarget::Srt | FfmpegOutputTarget::Udp) {
+        return mpegts_output_supports_codec(codec);
+    }
+
+    muxer_supports_codec(muxer_name, codec.codec_id_raw)
+}
+
 fn muxer_for_target(target: FfmpegOutputTarget) -> Option<&'static str> {
     match target {
         FfmpegOutputTarget::Hls => Some("hls"),
         FfmpegOutputTarget::Rtmp => Some("flv"),
+        FfmpegOutputTarget::Srt | FfmpegOutputTarget::Udp => Some("mpegts"),
+    }
+}
+
+fn output_supports_codec(target: FfmpegOutputTarget, codec: &FfmpegCodec) -> bool {
+    if target != FfmpegOutputTarget::Rtmp {
+        return true;
+    }
+
+    match codec.media_type {
+        FfmpegMediaType::Audio => matches!(codec.codec_id.as_str(), "aac" | "mp3"),
+        FfmpegMediaType::Video => {
+            !matches!(
+                codec.name.as_str(),
+                "flv" | "h263" | "h263p" | "libxvid" | "mpeg4"
+            ) && !matches!(codec.codec_id.as_str(), "h263" | "mpeg4")
+        }
+        FfmpegMediaType::Subtitle => true,
+    }
+}
+
+fn mpegts_output_supports_codec(codec: &FfmpegCodec) -> bool {
+    match codec.media_type {
+        FfmpegMediaType::Audio => matches!(
+            codec.codec_id.as_str(),
+            "aac" | "mp2" | "mp3" | "ac3" | "eac3" | "opus"
+        ),
+        FfmpegMediaType::Video => matches!(
+            codec.codec_id.as_str(),
+            "h264" | "hevc" | "mpeg2video" | "mpeg4"
+        ),
+        FfmpegMediaType::Subtitle => false,
     }
 }
 
@@ -222,6 +275,24 @@ fn is_hardware_encoder(codec: *const ffi::AVCodec) -> bool {
             "amf" | "cuda" | "mediacodec" | "nvenc" | "qsv" | "vaapi" | "v4l2m2m" | "videotoolbox"
         )
     )
+}
+
+fn video_encoder_supports_engine_format(codec: *const ffi::AVCodec) -> bool {
+    let mut formats = unsafe { (*codec).pix_fmts };
+    if formats.is_null() {
+        return true;
+    }
+
+    loop {
+        let format = unsafe { *formats };
+        if format == ffi::AVPixelFormat::AV_PIX_FMT_NONE {
+            return false;
+        }
+        if Pixel::from(format) == Pixel::YUV420P {
+            return true;
+        }
+        formats = unsafe { formats.add(1) };
+    }
 }
 
 fn c_string(value: *const std::ffi::c_char) -> String {
@@ -269,6 +340,87 @@ mod tests {
                 .iter()
                 .any(|codec| codec.codec_id == "h264" && codec.media_type == FfmpegMediaType::Video),
             "expected at least one RTMP-compatible H.264 encoder, got {rtmp_video:#?}"
+        );
+    }
+
+    #[test]
+    fn excludes_rgb_only_video_encoders() {
+        let capabilities = FfmpegCapabilities::detect();
+        if !capabilities
+            .encoders
+            .iter()
+            .any(|codec| codec.name == "libx264rgb")
+        {
+            return;
+        }
+
+        assert!(
+            !capabilities
+                .video_codecs_for(FfmpegOutputTarget::Hls)
+                .iter()
+                .any(|codec| codec.name == "libx264rgb")
+        );
+        assert!(
+            !capabilities
+                .video_codecs_for(FfmpegOutputTarget::Rtmp)
+                .iter()
+                .any(|codec| codec.name == "libx264rgb")
+        );
+    }
+
+    #[test]
+    fn excludes_legacy_mpeg4_family_from_rtmp_video_codecs() {
+        let capabilities = FfmpegCapabilities::detect();
+        let rtmp_video = capabilities.video_codecs_for(FfmpegOutputTarget::Rtmp);
+
+        for codec in ["h263", "h263p", "libxvid", "mpeg4"] {
+            assert!(
+                !rtmp_video.iter().any(|item| item.name == codec),
+                "RTMP video codecs should not include {codec}: {rtmp_video:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn limits_rtmp_audio_codecs_to_aac_and_mp3() {
+        let capabilities = FfmpegCapabilities::detect();
+        let rtmp_audio = capabilities.audio_codecs_for(FfmpegOutputTarget::Rtmp);
+
+        assert!(
+            rtmp_audio
+                .iter()
+                .all(|codec| matches!(codec.codec_id.as_str(), "aac" | "mp3")),
+            "RTMP audio codecs should only include AAC/MP3 encoders: {rtmp_audio:#?}"
+        );
+        assert!(
+            !rtmp_audio.iter().any(|codec| codec.name == "pcm_s16le"),
+            "RTMP audio codecs should not include pcm_s16le: {rtmp_audio:#?}"
+        );
+    }
+
+    #[test]
+    fn mpegts_stream_targets_include_common_codecs() {
+        let capabilities = FfmpegCapabilities::detect();
+        let srt_video = capabilities.video_codecs_for(FfmpegOutputTarget::Srt);
+        let srt_audio = capabilities.audio_codecs_for(FfmpegOutputTarget::Srt);
+        let udp_video = capabilities.video_codecs_for(FfmpegOutputTarget::Udp);
+        let udp_audio = capabilities.audio_codecs_for(FfmpegOutputTarget::Udp);
+
+        assert!(
+            srt_video.iter().any(|codec| codec.codec_id == "h264"),
+            "SRT/MPEG-TS video codecs should include H.264 encoders: {srt_video:#?}"
+        );
+        assert!(
+            srt_audio.iter().any(|codec| codec.codec_id == "aac"),
+            "SRT/MPEG-TS audio codecs should include AAC encoders: {srt_audio:#?}"
+        );
+        assert!(
+            udp_video.iter().any(|codec| codec.codec_id == "h264"),
+            "UDP/MPEG-TS video codecs should include H.264 encoders: {udp_video:#?}"
+        );
+        assert!(
+            udp_audio.iter().any(|codec| codec.codec_id == "aac"),
+            "UDP/MPEG-TS audio codecs should include AAC encoders: {udp_audio:#?}"
         );
     }
 

@@ -178,6 +178,9 @@ pub struct OutputConfig {
     pub text: Option<TextConfig>,
     pub text_overlay_state: TextOverlayState,
     pub video_preset: String,
+    pub stream_type: StreamType,
+    pub video_codec: String,
+    pub audio_codec: String,
     pub rate_control: RateControl,
     pub video_quality: u8,
     pub video_maxrate: u64,
@@ -186,6 +189,23 @@ pub struct OutputConfig {
     pub ingest_log_level: LogLevel,
     pub ffmpeg_ignore_lines: Vec<String>,
     pub channel_id: Option<i32>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum StreamType {
+    #[default]
+    Rtmp,
+    Srt,
+    Udp,
+}
+
+impl StreamType {
+    pub const fn muxer(self) -> &'static str {
+        match self {
+            Self::Rtmp => "flv",
+            Self::Srt | Self::Udp => "mpegts",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -410,6 +430,9 @@ impl OutputConfig {
             text: None,
             text_overlay_state: TextOverlayState::default(),
             video_preset: "faster".to_string(),
+            stream_type: StreamType::Rtmp,
+            video_codec: "libx264".to_string(),
+            audio_codec: "aac".to_string(),
             rate_control: RateControl::Crf,
             video_quality: 23,
             video_maxrate: 2_400_000,
@@ -436,12 +459,6 @@ impl OutputConfig {
         self
     }
 
-    #[cfg(feature = "desktop")]
-    pub(crate) fn with_desktop_window_size(mut self, width: u32, height: u32) -> Self {
-        self.desktop_window_size = Some((width, height));
-        self
-    }
-
     pub fn with_desktop_fullscreen(mut self, fullscreen: bool) -> Self {
         self.desktop_fullscreen = fullscreen;
         self
@@ -462,15 +479,25 @@ impl OutputConfig {
         self
     }
 
+    pub fn with_stream_type(mut self, stream_type: StreamType) -> Self {
+        self.stream_type = stream_type;
+        self
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn with_encoding(
         mut self,
         preset: String,
+        video_codec: String,
+        audio_codec: String,
         rate_control: RateControl,
         quality: u8,
         maxrate: u64,
         audio_bitrate: u64,
     ) -> Self {
         self.video_preset = preset;
+        self.video_codec = video_codec;
+        self.audio_codec = audio_codec;
         self.rate_control = rate_control;
         self.video_quality = quality;
         self.video_maxrate = maxrate;

@@ -168,12 +168,6 @@ pub enum Role {
     Guest,
 }
 
-impl Role {
-    pub fn set_role(role: &str) -> Self {
-        role.parse().unwrap_or(Self::Guest)
-    }
-}
-
 impl FromStr for Role {
     type Err = String;
 
@@ -439,6 +433,7 @@ pub struct Output {
     pub name: String,
     pub hls_variants: String,
     pub stream_url: String,
+    pub stream_type: Option<String>,
     pub hls_playlist_name: Option<String>,
     pub hls_segment_duration: Option<i64>,
     pub hls_list_size: Option<i64>,
@@ -449,6 +444,8 @@ pub struct Output {
     pub height: i64,
     pub fps: f64,
     pub video_preset: Option<String>,
+    pub video_codec: Option<String>,
+    pub audio_codec: Option<String>,
     pub rate_control: Option<String>,
     pub video_quality: Option<i64>,
     pub video_maxrate: Option<i64>,
@@ -473,6 +470,7 @@ impl Output {
             name: mode.to_string(),
             hls_variants: String::new(),
             stream_url,
+            stream_type: (mode == OutputMode::Stream).then(|| "rtmp".to_string()),
             hls_playlist_name,
             hls_segment_duration,
             hls_list_size,
@@ -481,6 +479,8 @@ impl Output {
             height: 720,
             fps: 25.0,
             video_preset: encoded.then(|| "faster".to_string()),
+            video_codec: encoded.then(|| "libx264".to_string()),
+            audio_codec: encoded.then(|| "aac".to_string()),
             rate_control: encoded.then(|| "crf".to_string()),
             video_quality: encoded.then_some(23),
             video_maxrate: encoded.then_some(2400),

@@ -104,14 +104,6 @@ pub async fn delete_channel(
     Ok(result)
 }
 
-pub async fn select_last_channel(pool: &SqlitePool) -> Result<i32, ProcessError> {
-    const QUERY: &str = "select seq from sqlite_sequence WHERE name = 'channel';";
-
-    let result = sqlx::query_scalar(QUERY).fetch_one(pool).await?;
-
-    Ok(result)
-}
-
 pub async fn update_stat(
     pool: &SqlitePool,
     id: i32,

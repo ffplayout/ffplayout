@@ -1388,10 +1388,47 @@ fn write_silence<O: FrameOutput>(
 
 #[cfg(test)]
 mod tests {
+    use anyhow::Result;
+    use ffmpeg_next::frame;
+
     use super::{
-        FrameRateConverter, Rational, fit_dimensions, padding_to_sync, parse_duration_us,
-        should_play_loop_iteration, single_frame_repeat_frames,
+        FrameRateConverter, LogoFade, PlaybackControl, Rational, Timeline, fit_dimensions,
+        padding_to_sync, parse_duration_us, play_clip, should_play_loop_iteration,
+        single_frame_repeat_frames,
     };
+    use crate::{output::FrameOutput, utils::config::OutputConfig};
+
+    #[derive(Default)]
+    struct RecordingOutput {
+        video_frames: Vec<(u32, u32, i64)>,
+    }
+
+    impl FrameOutput for RecordingOutput {
+        fn audio_frame_size(&self) -> usize {
+            1024
+        }
+
+        fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+            self.video_frames.push((
+                frame.width(),
+                frame.height(),
+                frame.pts().unwrap_or_default(),
+            ));
+            Ok(())
+        }
+
+        fn encode_audio(&mut self, _frame: &frame::Audio) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn media_mix_asset(name: &str) -> String {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/assets/storage/media_mix")
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
 
     #[test]
     fn pads_short_audio_to_video_duration() {
@@ -1430,6 +1467,60 @@ mod tests {
     #[test]
     fn fits_vertical_video_into_sixteen_by_nine() {
         assert_eq!(fit_dimensions(1024, 576, 1080, 1920), (324, 576));
+    }
+
+    #[test]
+    fn plays_two_different_video_sizes_with_stable_desktop_output_size() {
+        let cfg = OutputConfig::new(1280, 720, 25, 48_000);
+        let mut timeline = Timeline::new();
+        let mut output = RecordingOutput::default();
+        let playback_control = PlaybackControl::default();
+        let first = media_mix_asset("aspect_4-3_30FPS.mp4");
+        let second = media_mix_asset("aspect_9-16_50FPS.mp4");
+
+        play_clip(
+            &first,
+            &cfg,
+            &mut timeline,
+            &mut output,
+            None,
+            Some(0.2),
+            None,
+            LogoFade::default(),
+            &playback_control,
+        )
+        .unwrap();
+        let first_frame_count = output.video_frames.len();
+        assert!(first_frame_count > 0);
+
+        play_clip(
+            &second,
+            &cfg,
+            &mut timeline,
+            &mut output,
+            None,
+            Some(0.2),
+            None,
+            LogoFade::default(),
+            &playback_control,
+        )
+        .unwrap();
+        assert!(output.video_frames.len() > first_frame_count);
+
+        assert!(
+            output
+                .video_frames
+                .iter()
+                .all(|(width, height, _)| (*width, *height) == (1280, 720))
+        );
+        assert!(
+            output
+                .video_frames
+                .windows(2)
+                .all(|frames| frames[1].2 == frames[0].2 + 1)
+        );
+        assert_eq!(fit_dimensions(1280, 720, 768, 576), (960, 720));
+        assert_eq!(fit_dimensions(1280, 720, 720, 1280), (404, 720));
     }
 
     #[test]

@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS outputs (
     name TEXT NOT NULL,
     hls_variants TEXT NOT NULL DEFAULT '',
     stream_url TEXT NOT NULL DEFAULT '',
+    stream_type TEXT,
     hls_playlist_name TEXT,
     hls_segment_duration INTEGER,
     hls_list_size INTEGER,
@@ -93,6 +94,8 @@ CREATE TABLE IF NOT EXISTS outputs (
     height INTEGER NOT NULL DEFAULT 720,
     fps REAL NOT NULL DEFAULT 25.0,
     video_preset TEXT,
+    video_codec TEXT,
+    audio_codec TEXT,
     rate_control TEXT,
     video_quality INTEGER,
     video_maxrate INTEGER,
@@ -300,6 +303,7 @@ INSERT OR IGNORE INTO
         name,
         hls_variants,
         stream_url,
+        stream_type,
         hls_playlist_name,
         hls_segment_duration,
         hls_list_size,
@@ -307,19 +311,22 @@ INSERT OR IGNORE INTO
         height,
         fps,
         video_preset,
+        video_codec,
+        audio_codec,
         rate_control,
         video_quality,
         video_maxrate,
         audio_bitrate
     )
 VALUES
-    (1, 1, 'hls', '', '', 'stream', 6, 600, 1280, 720, 25.0, 'faster', 'crf', 23, 2400, 128),
+    (1, 1, 'hls', '', '', NULL, 'stream', 6, 600, 1280, 720, 25.0, 'faster', 'libx264', 'aac', 'crf', 23, 2400, 128),
     (
         2,
         1,
         'stream',
         '',
         'rtmp://127.0.0.1/live/stream',
+        'rtmp',
         NULL,
         NULL,
         NULL,
@@ -327,12 +334,14 @@ VALUES
         720,
         25.0,
         'faster',
+        'libx264',
+        'aac',
         'crf',
         23,
         2400,
         128
     ),
-    (3, 1, 'desktop', '', '', NULL, NULL, NULL, 1280, 720, 25.0, NULL, NULL, NULL, NULL, NULL);
+    (3, 1, 'desktop', '', '', NULL, NULL, NULL, NULL, 1280, 720, 25.0, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
 INSERT OR IGNORE INTO
     configurations (id, channel_id, output_id)

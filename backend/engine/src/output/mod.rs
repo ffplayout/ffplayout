@@ -96,6 +96,18 @@ impl Output {
         })
     }
 
+    pub(crate) fn open_stream(path: &str, cfg: &OutputConfig) -> Result<Self> {
+        Ok(Self {
+            kind: OutputKind::Encoded(Box::new(EncodedOutput::open(
+                path,
+                cfg,
+                EncodedFormat::Stream {
+                    muxer: cfg.stream_type.muxer(),
+                },
+            )?)),
+        })
+    }
+
     pub(crate) fn open_hls(
         path: &str,
         cfg: &OutputConfig,
@@ -146,6 +158,14 @@ impl Output {
             OutputKind::Encoded(output) => output.encode_audio(frame),
             #[cfg(feature = "desktop")]
             OutputKind::Desktop(output) => output.encode_audio(frame),
+        }
+    }
+
+    pub(crate) fn set_playout_rate(&mut self, rate: f64) {
+        match &mut self.kind {
+            OutputKind::Encoded(output) => output.set_playout_rate(rate),
+            #[cfg(feature = "desktop")]
+            OutputKind::Desktop(_) => {}
         }
     }
 
