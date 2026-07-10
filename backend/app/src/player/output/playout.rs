@@ -18,7 +18,7 @@ use crate::{
     player::{
         controller::ChannelManager,
         input::source_generator,
-        utils::{Media, sec_to_time},
+        utils::{Media, get_delta, sec_to_time},
     },
     utils::{
         config::{OutputMode, PlayoutConfig},
@@ -27,6 +27,11 @@ use crate::{
         text::text_config,
     },
 };
+
+const HLS_RATE_CORRECTION_DEADBAND_SECONDS: f64 = 0.1;
+const HLS_RATE_CORRECTION_MAX_SECONDS: f64 = 2.0;
+const HLS_RATE_CORRECTION_MIN_RATE: f64 = 0.98;
+const HLS_RATE_CORRECTION_MAX_RATE: f64 = 1.02;
 
 pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
@@ -196,9 +201,14 @@ async fn play_loop(
         }
 
         let duration = playout_duration(&node);
+        let playout_rate = if config.output.mode == OutputMode::HLS {
+            hls_playout_rate(config, &manager, &node, duration).await
+        } else {
+            1.0
+        };
         let is_ad = node.category == "advertisement";
         match playout
-            .play_with_timing_and_logo_fade(
+            .play_with_timing_logo_fade_and_rate(
                 node.source.clone(),
                 (node.seek > 0.0).then_some(node.seek),
                 duration,
@@ -207,6 +217,7 @@ async fn play_loop(
                     fade_in: !is_ad && node.last_ad,
                     fade_out: !is_ad && node.next_ad,
                 },
+                playout_rate,
             )
             .await
             .map_err(engine_error)?
@@ -263,6 +274,52 @@ async fn play_loop(
     }
 
     Ok(())
+}
+
+async fn hls_playout_rate(
+    config: &PlayoutConfig,
+    manager: &ChannelManager,
+    node: &Media,
+    duration: Option<f64>,
+) -> f64 {
+    let Some(begin) = node.begin else {
+        return 1.0;
+    };
+    let clip_duration = duration.unwrap_or_else(|| node.out - node.seek);
+    let (delta, _) = get_delta(config, &begin);
+    let time_shift = manager.channel.lock().await.time_shift;
+    let shifted_delta = delta - time_shift;
+    let rate = hls_rate_correction(shifted_delta, clip_duration);
+
+    if rate != 1.0 {
+        debug!(channel = config.general.channel_id;
+            "Apply HLS playout rate correction: <span class=\"log-number\">{rate:.5}</span> for delta <span class=\"log-number\">{shifted_delta:.3}</span>s"
+        );
+    }
+
+    rate
+}
+
+fn hls_rate_correction(delta: f64, clip_duration: f64) -> f64 {
+    if !delta.is_finite()
+        || !clip_duration.is_finite()
+        || clip_duration <= 0.0
+        || delta.abs() < HLS_RATE_CORRECTION_DEADBAND_SECONDS
+    {
+        return 1.0;
+    }
+
+    let correction = delta.clamp(
+        -HLS_RATE_CORRECTION_MAX_SECONDS,
+        HLS_RATE_CORRECTION_MAX_SECONDS,
+    );
+    let corrected_duration = clip_duration + correction;
+    if corrected_duration <= 0.0 {
+        return 1.0;
+    }
+
+    (clip_duration / corrected_duration)
+        .clamp(HLS_RATE_CORRECTION_MIN_RATE, HLS_RATE_CORRECTION_MAX_RATE)
 }
 
 async fn open_playout(
@@ -508,7 +565,7 @@ fn engine_error(error: impl fmt::Display) -> ServiceError {
 
 #[cfg(test)]
 mod tests {
-    use super::playout_duration;
+    use super::{hls_rate_correction, playout_duration};
     use crate::player::utils::Media;
 
     #[test]
@@ -544,5 +601,26 @@ mod tests {
         };
 
         assert_eq!(playout_duration(&node), Some(20.0));
+    }
+
+    #[test]
+    fn hls_rate_correction_slows_down_when_playout_is_early() {
+        assert!(hls_rate_correction(1.0, 300.0) < 1.0);
+    }
+
+    #[test]
+    fn hls_rate_correction_speeds_up_when_playout_is_late() {
+        assert!(hls_rate_correction(-1.0, 300.0) > 1.0);
+    }
+
+    #[test]
+    fn hls_rate_correction_ignores_tiny_delta() {
+        assert_eq!(hls_rate_correction(0.05, 300.0), 1.0);
+    }
+
+    #[test]
+    fn hls_rate_correction_is_clamped() {
+        assert_eq!(hls_rate_correction(-60.0, 50.0), 1.02);
+        assert_eq!(hls_rate_correction(60.0, 50.0), 0.98);
     }
 }

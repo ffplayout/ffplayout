@@ -234,6 +234,7 @@ impl AsyncPlayout {
                 duration_seconds: None,
                 subtitles_media_path: None,
                 logo_fade: LogoFade::default(),
+                playout_rate: 1.0,
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
@@ -249,6 +250,26 @@ impl AsyncPlayout {
         subtitles_media_path: Option<String>,
         logo_fade: LogoFade,
     ) -> Result<ClipResult> {
+        self.play_with_timing_logo_fade_and_rate(
+            path,
+            seek_seconds,
+            duration_seconds,
+            subtitles_media_path,
+            logo_fade,
+            1.0,
+        )
+        .await
+    }
+
+    pub async fn play_with_timing_logo_fade_and_rate(
+        &self,
+        path: impl Into<String>,
+        seek_seconds: Option<f64>,
+        duration_seconds: Option<f64>,
+        subtitles_media_path: Option<String>,
+        logo_fade: LogoFade,
+        playout_rate: f64,
+    ) -> Result<ClipResult> {
         let path = path.into();
         let (response, result) = oneshot::channel();
         self.commands
@@ -258,6 +279,7 @@ impl AsyncPlayout {
                 duration_seconds,
                 subtitles_media_path,
                 logo_fade,
+                playout_rate,
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
@@ -322,6 +344,7 @@ enum AsyncCommand {
         duration_seconds: Option<f64>,
         subtitles_media_path: Option<String>,
         logo_fade: LogoFade,
+        playout_rate: f64,
         response: oneshot::Sender<Result<ClipResult>>,
     },
     StartRtmpLive {
@@ -346,6 +369,7 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 duration_seconds,
                 subtitles_media_path,
                 logo_fade,
+                playout_rate,
                 response,
             } => {
                 let result = playout.play_timed_with_live(
@@ -354,6 +378,7 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                     duration_seconds,
                     subtitles_media_path.as_deref(),
                     logo_fade,
+                    playout_rate,
                     &mut live,
                 );
                 let stopped = matches!(result, Ok(ClipResult::Stopped));
@@ -449,6 +474,7 @@ impl Playout {
             None,
             Some(path),
             LogoFade::default(),
+            1.0,
             &mut None,
         )
     }
@@ -465,6 +491,7 @@ impl Playout {
             None,
             Some(path),
             LogoFade::default(),
+            1.0,
             live,
         )
     }
@@ -482,6 +509,7 @@ impl Playout {
             duration_seconds,
             Some(path),
             logo_fade,
+            1.0,
             &mut None,
         )
     }
@@ -493,9 +521,11 @@ impl Playout {
         duration_seconds: Option<f64>,
         subtitles_media_path: Option<&str>,
         logo_fade: LogoFade,
+        playout_rate: f64,
         live: &mut Option<LiveReceiver>,
     ) -> Result<ClipResult> {
         let subtitles_media_path = subtitles_media_path.map(str::to_string);
+        self.output.set_playout_rate(playout_rate);
 
         #[cfg(feature = "desktop")]
         if self.output.is_desktop() {

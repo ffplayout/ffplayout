@@ -248,6 +248,10 @@ impl EncodedOutput {
             .unwrap_or(0)
     }
 
+    pub(super) fn set_playout_rate(&mut self, rate: f64) {
+        self.clock.set_rate(rate);
+    }
+
     pub(super) fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
         for index in 0..self.video_streams.len() {
             let stream = &mut self.video_streams[index];

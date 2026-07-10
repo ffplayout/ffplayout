@@ -149,6 +149,14 @@ impl Output {
         }
     }
 
+    pub(crate) fn set_playout_rate(&mut self, rate: f64) {
+        match &mut self.kind {
+            OutputKind::Encoded(output) => output.set_playout_rate(rate),
+            #[cfg(feature = "desktop")]
+            OutputKind::Desktop(_) => {}
+        }
+    }
+
     pub(crate) fn finish(self) -> Result<()> {
         match self.kind {
             OutputKind::Encoded(output) => output.finish(),
