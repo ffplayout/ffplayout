@@ -436,12 +436,6 @@ impl OutputConfig {
         self
     }
 
-    #[cfg(feature = "desktop")]
-    pub(crate) fn with_desktop_window_size(mut self, width: u32, height: u32) -> Self {
-        self.desktop_window_size = Some((width, height));
-        self
-    }
-
     pub fn with_desktop_fullscreen(mut self, fullscreen: bool) -> Self {
         self.desktop_fullscreen = fullscreen;
         self

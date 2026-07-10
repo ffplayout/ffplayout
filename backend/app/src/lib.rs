@@ -10,7 +10,6 @@ use log::{error, warn};
 pub mod api;
 pub mod db;
 pub mod file;
-pub mod macros;
 pub mod middleware;
 pub mod player;
 pub mod sse;
@@ -24,6 +23,13 @@ use db::models::{Role, UserMeta};
 use utils::{args_parse::Args, errors::ServiceError};
 
 pub static ARGS: LazyLock<Args> = LazyLock::new(Args::parse);
+
+#[macro_export]
+macro_rules! vec_strings {
+    ($($str:expr),* $(,)?) => {{
+        vec![$($str.to_string()),*]
+    }};
+}
 
 pub async fn extract(req: &mut Request) -> Result<HashSet<Role>, Response> {
     let Some(auth) = req.headers().get("authorization") else {

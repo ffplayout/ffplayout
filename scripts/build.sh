@@ -101,7 +101,7 @@ for target in "${targets[@]}"; do
             -f ./docker/ffmpeg.Dockerfile .
 
         docker build \
-            --build-arg CARGO_FEATURES="${CARGO_FEATURES:-embed_frontend}" \
+            --build-arg CARGO_FEATURES="desktop,embed_frontend" \
             -t localhost/ffplayout-static-builder:latest \
             -f ./docker/static.Dockerfile .
 

@@ -373,10 +373,8 @@ impl DesktopRenderer {
     fn open(cfg: &OutputConfig, desktop_sdl: DesktopSdl) -> Result<Self> {
         let DesktopSdl { sdl, video } = desktop_sdl;
         let audio_subsystem = sdl.audio().map_err(anyhow::Error::msg)?;
-        let (window_width, window_height) =
-            cfg.desktop_window_size.unwrap_or((cfg.width, cfg.height));
         let mut window = video
-            .window("ffplayout", window_width, window_height)
+            .window("ffplayout", cfg.width, cfg.height)
             .position_centered()
             .borderless()
             .resizable()
@@ -452,9 +450,9 @@ impl DesktopRenderer {
             logo_texture,
             current_logo_opacity: 0.0,
             fullscreen: cfg.desktop_fullscreen,
-            aspect_width: window_width.max(1),
-            aspect_height: window_height.max(1),
-            last_window_size: (window_width, window_height),
+            aspect_width: cfg.width.max(1),
+            aspect_height: cfg.height.max(1),
+            last_window_size: (cfg.width, cfg.height),
             pending_aspect_resize: None,
             window_active: true,
             mouse_over_window: false,
@@ -1530,33 +1528,10 @@ pub(crate) fn init_sdl() -> Result<DesktopSdl> {
 }
 
 pub(crate) fn config_for_primary_display(
-    mut config: OutputConfig,
-    desktop_sdl: &DesktopSdl,
+    config: OutputConfig,
+    _desktop_sdl: &DesktopSdl,
 ) -> OutputConfig {
-    let window_width = config.width;
-    let window_height = config.height;
-    if let Ok((display_width, display_height)) = primary_display_size(&desktop_sdl.video) {
-        config.width = display_width;
-        config.height = display_height;
-        config = config.with_desktop_window_size(window_width, window_height);
-    }
     config
-}
-
-fn primary_display_size(video: &VideoSubsystem) -> Result<(u32, u32)> {
-    let mode = video.current_display_mode(0).map_err(anyhow::Error::msg)?;
-    if mode.w <= 0 || mode.h <= 0 {
-        return Err(anyhow!(
-            "SDL reported an invalid primary display size: {}x{}",
-            mode.w,
-            mode.h
-        ));
-    }
-    Ok((even_dimension(mode.w as u32), even_dimension(mode.h as u32)))
-}
-
-fn even_dimension(value: u32) -> u32 {
-    (value & !1).max(2)
 }
 
 struct AudioMasterClock {

@@ -31,6 +31,22 @@ RUN apt-get update && \
         ninja-build \
         perl \
         pkg-config \
+        libpulse-dev \
+        libx11-dev \
+        libxext-dev \
+        libxrandr-dev \
+        libxcursor-dev \
+        libxfixes-dev \
+        libxi-dev \
+        libxss-dev \
+        libxkbcommon-dev \
+        libwayland-dev \
+        libgbm-dev \
+        libgl1-mesa-dev \
+        libegl1-mesa-dev \
+        libudev-dev \
+        libdbus-1-dev \
+        libpipewire-0.3-dev \
         xz-utils && \
     rm -rf /var/lib/apt/lists/*
 
@@ -191,19 +207,25 @@ RUN git clone --depth 1 --branch 10.2.0 "https://github.com/harfbuzz/harfbuzz.gi
     ninja -C build && \
     ninja -C build install
 
-RUN git clone --depth 1 --branch v4.3.5 "https://github.com/zeromq/libzmq.git" && cd libzmq && \
-    ./autogen.sh && \
-    ./configure \
-        --prefix="$LOCALDESTDIR" \
-        --enable-static \
-        --disable-shared \
-        --without-libsodium \
-        --without-pgm \
-        --without-norm \
-        --without-vmci \
-        --without-docs && \
+RUN git clone --depth 1 https://github.com/alsa-project/alsa-lib && \
+    cd alsa-lib && \
+    autoreconf -i && \
+    ./configure --enable-shared=no --enable-static=yes --without-libdl && \
     make -j "$(nproc)" && \
     make install
+
+RUN git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL2 && \
+    cmake -S SDL2 -B SDL2/build \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" \
+        -DSDL_SHARED=OFF \
+        -DSDL_STATIC=ON \
+        -DSDL_TESTS=OFF \
+        -DSDL_TEST_LIBRARY=OFF \
+        -DSDL2_DISABLE_INSTALL=OFF && \
+    cmake --build SDL2/build  && \
+    cmake --install SDL2/build
 
 ARG FFMPEG_VERSION=release/8.1
 ARG FFMPEG_DEBUG=0
@@ -212,7 +234,6 @@ RUN mkdir -p /ffmpeg-debug && \
     git clone --depth 1 --branch "$FFMPEG_VERSION" https://github.com/FFmpeg/FFmpeg.git && cd FFmpeg && \
     if ! ./configure \
         --pkg-config-flags=--static \
-        --extra-cflags="-DZMG_STATIC" \
         --extra-libs="-lm -lpthread" \
         --enable-runtime-cpudetect \
         --enable-pic \
@@ -240,7 +261,6 @@ RUN mkdir -p /ffmpeg-debug && \
         --enable-libvpx \
         --enable-libx264 \
         --enable-libx265 \
-        --enable-libzmq \
         --enable-openssl \
         --enable-libsvtav1 \
         --enable-libdav1d; then \
