@@ -32,6 +32,27 @@ impl fmt::Display for PlaybackSkipped {
 
 impl Error for PlaybackSkipped {}
 
+#[derive(Debug)]
+pub(crate) struct PlaybackRestart;
+
+impl fmt::Display for PlaybackRestart {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("playout restart requested")
+    }
+}
+
+impl Error for PlaybackRestart {}
+
+fn check_playback_control(playback_control: &PlaybackControl) -> Result<()> {
+    if playback_control.take_restart() {
+        return Err(PlaybackRestart.into());
+    }
+    if playback_control.take_skip_current() {
+        return Err(PlaybackSkipped.into());
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct Timeline {
     video_pts: i64,
@@ -141,9 +162,7 @@ fn play_looped_clip<O: FrameOutput>(
     let minimum_progress = (1.0 / f64::from(cfg.fps)).min(1.0 / f64::from(cfg.sample_rate));
 
     while should_play_loop_iteration(first_iteration, remaining, minimum_progress) {
-        if playback_control.take_skip_current() {
-            return Err(PlaybackSkipped.into());
-        }
+        check_playback_control(playback_control)?;
         let before_video_pts = timeline.video_pts;
         let before_audio_pts = timeline.audio_pts;
         let ictx = open_media_input(path)?;
@@ -363,9 +382,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     }
 
     for (stream, packet) in ictx.packets() {
-        if options.playback_control.take_skip_current() {
-            return Err(PlaybackSkipped.into());
-        }
+        check_playback_control(options.playback_control)?;
         if Some(stream.index()) == video_index {
             if !video_finished && let Some(video) = video.as_mut() {
                 video.decoder.send_packet(&packet)?;
@@ -528,9 +545,7 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
     );
 
     while timeline.video_pts < limit_pts {
-        if playback_control.take_skip_current() {
-            return Err(PlaybackSkipped.into());
-        }
+        check_playback_control(playback_control)?;
         let mut frame = frame.clone();
         apply_overlays(&mut frame, video, timeline, logo_fade_plan, output);
         frame.set_pts(Some(timeline.video_pts));
@@ -591,9 +606,7 @@ fn receive_video_frames<O: FrameOutput>(
 ) -> Result<()> {
     let mut raw = frame::Video::empty();
     while video.decoder.receive_frame(&mut raw).is_ok() {
-        if playback_control.take_skip_current() {
-            return Err(PlaybackSkipped.into());
-        }
+        check_playback_control(playback_control)?;
         if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
             return Ok(());
         }
@@ -636,9 +649,7 @@ fn receive_video_frames<O: FrameOutput>(
             video.last_output_frame = Some(pristine.clone());
         }
         for _ in 0..output_frames {
-            if playback_control.take_skip_current() {
-                return Err(PlaybackSkipped.into());
-            }
+            check_playback_control(playback_control)?;
             if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
                 return Ok(());
             }
@@ -692,9 +703,7 @@ fn receive_audio_frames<O: FrameOutput>(
 ) -> Result<()> {
     let mut raw = frame::Audio::empty();
     while audio.decoder.receive_frame(&mut raw).is_ok() {
-        if playback_control.take_skip_current() {
-            return Err(PlaybackSkipped.into());
-        }
+        check_playback_control(playback_control)?;
         if limit_pts.is_some_and(|limit| timeline.audio_pts >= limit) {
             return Ok(());
         }
@@ -1056,9 +1065,7 @@ pub(crate) fn write_fallback<O: FrameOutput>(
     )?;
 
     while timeline.video_pts < video_end || timeline.audio_pts < audio_end {
-        if playback_control.take_skip_current() {
-            return Err(PlaybackSkipped.into());
-        }
+        check_playback_control(playback_control)?;
         let video_time = timeline.video_pts as f64 / f64::from(cfg.fps);
         let audio_time = timeline.audio_pts as f64 / f64::from(cfg.sample_rate);
 

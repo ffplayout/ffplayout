@@ -45,37 +45,45 @@ const extensions = computed({
     },
 })
 
-const output = computed({
+const output = computed(() => configStore.playout.output.mode)
+
+const outputId = computed({
     get() {
-        return configStore.outputs.find((o) => o.id === configStore.playout.output.id)?.name
+        return configStore.playout.output.id
     },
 
-    set(value: string) {
-        const output = configStore.outputs.find((o) => o.name === value)
-        configStore.playout.output.id = output?.id ?? 0
-        configStore.playout.output.mode = outputMode(output?.name)
-        configStore.playout.output.stream_url = output?.stream_url ?? ''
-        configStore.playout.output.stream_type = output?.stream_type ?? 'rtmp'
-        configStore.playout.output.hls_playlist_name = output?.hls_playlist_name ?? 'stream'
-        configStore.playout.output.hls_segment_duration = output?.hls_segment_duration ?? 6
-        configStore.playout.output.hls_list_size = output?.hls_list_size ?? 600
-        configStore.playout.output.desktop_fullscreen = output?.desktop_fullscreen ?? false
-        configStore.playout.output.width = output?.width ?? 1280
-        configStore.playout.output.height = output?.height ?? 720
-        configStore.playout.output.fps = output?.fps ?? 25
-        configStore.playout.output.video_preset = output?.video_preset ?? 'faster'
-        configStore.playout.output.video_codec = output?.video_codec ?? 'libx264'
-        configStore.playout.output.audio_codec = output?.audio_codec ?? 'aac'
-        configStore.playout.output.rate_control = output?.rate_control ?? 'crf'
-        configStore.playout.output.video_quality = output?.video_quality ?? 23
-        configStore.playout.output.video_maxrate = output?.video_maxrate ?? 2400
-        configStore.playout.output.audio_bitrate = output?.audio_bitrate ?? 128
-        configStore.playout.output.hls_variants = (output?.hls_variants ?? '')
+    set(id: number) {
+        const selected = configStore.outputs.find((output) => output.id === id)
+        if (!selected) {
+            return
+        }
+
+        configStore.playout.output.id = selected.id
+        configStore.playout.output.mode = outputMode(selected.name)
+        configStore.playout.output.stream_url = selected.stream_url
+        configStore.playout.output.stream_type = selected.stream_type ?? 'rtmp'
+        configStore.playout.output.hls_playlist_name = selected.hls_playlist_name ?? 'stream'
+        configStore.playout.output.hls_segment_duration = selected.hls_segment_duration ?? 6
+        configStore.playout.output.hls_list_size = selected.hls_list_size ?? 600
+        configStore.playout.output.desktop_fullscreen = selected.desktop_fullscreen
+        configStore.playout.output.width = selected.width
+        configStore.playout.output.height = selected.height
+        configStore.playout.output.fps = selected.fps
+        configStore.playout.output.video_preset = selected.video_preset ?? 'faster'
+        configStore.playout.output.video_codec = selected.video_codec ?? 'libx264'
+        configStore.playout.output.audio_codec = selected.audio_codec ?? 'aac'
+        configStore.playout.output.rate_control = selected.rate_control ?? 'crf'
+        configStore.playout.output.video_quality = selected.video_quality ?? 23
+        configStore.playout.output.video_maxrate = selected.video_maxrate ?? 2400
+        configStore.playout.output.audio_bitrate = selected.audio_bitrate ?? 128
+        configStore.playout.output.hls_variants = (selected.hls_variants ?? '')
             .split(';')
             .map((v) => v.trim())
             .filter((v) => v.length > 0)
     },
 })
+
+const hasSelectedOutput = computed(() => configStore.outputs.some((output) => output.id === outputId.value))
 
 interface HlsVariantRow {
     name: string
@@ -576,13 +584,13 @@ async function onSubmitPlayout() {
                 </label>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Mode</legend>
-                    <select v-model="output" class="select select-sm w-full max-w-xs">
-                        <option v-for="output in configStore.outputs" :key="output.id" :value="output.name">
+                    <select v-if="hasSelectedOutput" v-model.number="outputId" class="select select-sm w-full max-w-xs">
+                        <option v-for="output in configStore.outputs" :key="output.id" :value="output.id">
                             {{ output.name }}
                         </option>
                     </select>
                 </fieldset>
-                <div v-if="output === 'stream'" class="grid gap-3 sm:grid-cols-2">
+                <div v-if="configStore.playout.output.mode === 'stream'" class="grid gap-3 sm:grid-cols-2">
                     <fieldset class="fieldset">
                         <legend class="fieldset-legend">{{ t('config.streamType') }}</legend>
                         <select v-model="configStore.playout.output.stream_type" class="select select-sm w-full">
@@ -600,7 +608,7 @@ async function onSubmitPlayout() {
                         />
                     </fieldset>
                 </div>
-                <fieldset v-if="output === 'desktop'" class="fieldset mt-2 rounded-box w-full">
+                <fieldset v-if="configStore.playout.output.mode === 'desktop'" class="fieldset mt-2 rounded-box w-full">
                     <label class="fieldset-label text-base-content">
                         <input
                             v-model="configStore.playout.output.desktop_fullscreen"

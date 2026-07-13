@@ -31,6 +31,40 @@ async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     Ok(())
 }
 
+pub async fn initialize_channels(
+    conn: &Pool<Sqlite>,
+    controllers: Arc<RwLock<ChannelController>>,
+    queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
+    system: SystemStat,
+    copy_assets: bool,
+) -> Result<(), ServiceError> {
+    let channels = handles::select_related_channels(conn, None).await?;
+
+    for (index, channel) in channels.into_iter().enumerate() {
+        let config = get_config(conn, channel.id).await?;
+        let mail_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
+        let active = channel.active;
+        let manager = ChannelManager::new(conn.clone(), channel, config, system.clone()).await;
+
+        if copy_assets
+            && index == 0
+            && let Err(error) = manager.storage.copy_assets().await
+        {
+            warn!("Could not copy initial storage assets: {error}");
+        }
+
+        queue.lock().await.push(mail_queue);
+
+        if active {
+            manager.start().await?;
+        }
+
+        controllers.write().await.add(manager);
+    }
+
+    Ok(())
+}
+
 pub async fn create_channel(
     conn: &Pool<Sqlite>,
     controllers: Arc<RwLock<ChannelController>>,

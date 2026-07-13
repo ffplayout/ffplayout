@@ -56,7 +56,8 @@ export const useConfig = defineStore('config', {
             const router = useRouter()
             localStorage.removeItem('token')
             localStorage.removeItem('refresh')
-            authStore.isLogin = false
+            authStore.removeToken()
+            authStore.cancelVerification()
 
             router.push({ name: 'login' })
         },

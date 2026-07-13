@@ -53,6 +53,7 @@ async function login() {
         }
 
         if (status === 200 && authStore.jwtToken.length < 10) {
+            authStore.beginVerification()
             indexStore.msgAlert('success', t('alert.verificationSent'))
             await router.push({ name: 'verification' })
             disabled.value = false

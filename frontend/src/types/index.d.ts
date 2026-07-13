@@ -108,6 +108,19 @@ declare global {
         timezone?: string
     }
 
+    interface GlobalSettings {
+        logs: string
+        playlists: string
+        public: string
+        storage: string
+        shared: boolean
+        smtp_server: string
+        smtp_user: string
+        smtp_password_set: boolean
+        smtp_starttls: boolean
+        smtp_port: number
+    }
+
     interface User {
         id: number
         username: string

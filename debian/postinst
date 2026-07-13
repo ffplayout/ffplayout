@@ -2,6 +2,13 @@
 #DEBHELPER#
 
 sysUser="ffpu"
+new_install=false
+
+# Debian calls postinst as "configure" and passes the previous version on
+# upgrades. RPM uses 1 for a fresh install and 2 for an upgrade.
+if { [ "$1" = "configure" ] && [ -z "$2" ]; } || [ "$1" = "1" ]; then
+    new_install=true
+fi
 
 if [ -f /run/.containerenv ] || [ -f /run/.dockerenv ] || [ -f /.dockerenv ] || [ -f /.dockerinit ]; then
     sysUser="root"
@@ -25,4 +32,12 @@ if [ ! -d "/var/log/ffplayout" ]; then
     mkdir "/var/log/ffplayout"
 
     chown ${sysUser}: "/var/log/ffplayout"
+fi
+
+if [ "$new_install" = true ]; then
+    cat <<'EOF'
+
+ffplayout was installed successfully.
+Open http://{IP/Domain}:8787/ in a browser and complete the initial setup.
+EOF
 fi

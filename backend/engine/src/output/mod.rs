@@ -19,6 +19,7 @@ use encoded::{EncodedFormat, EncodedOutput};
 use ffmpeg_next::frame;
 
 use crate::{
+    HlsHealth,
     compositor::logo::{LogoOverlay, blend_logo},
     utils::config::{HlsSubtitle, HlsVariant, OutputConfig},
 };
@@ -115,9 +116,10 @@ impl Output {
         hls_subtitle: Option<HlsSubtitle>,
         hls_segment_seconds: u32,
         hls_list_size: u32,
+        hls_health: HlsHealth,
     ) -> Result<Self> {
         Ok(Self {
-            kind: OutputKind::Encoded(Box::new(EncodedOutput::open(
+            kind: OutputKind::Encoded(Box::new(EncodedOutput::open_with_hls_health(
                 path,
                 cfg,
                 EncodedFormat::Hls {
@@ -126,6 +128,7 @@ impl Output {
                     segment_seconds: hls_segment_seconds,
                     list_size: hls_list_size,
                 },
+                Some(hls_health),
             )?)),
         })
     }

@@ -17,6 +17,7 @@ useHead({
 const isChannelRoute = computed(() => route.name === 'configure-channel')
 const isPlayoutRoute = computed(() => route.name === 'configure-playout')
 const isUserRoute = computed(() => route.name === 'configure-user')
+const isGlobalRoute = computed(() => route.name === 'configure-global')
 </script>
 <template>
     <div class="flex flex-wrap xs:flex-nowrap w-full xs:h-[calc(100vh-60px)] xs:max-h-[calc(100vh-60px)] ps-1">
@@ -42,6 +43,14 @@ const isUserRoute = computed(() => route.name === 'configure-user')
                 :class="isUserRoute && 'bg-base-100/40'"
             >
                 {{ t('config.user') }}
+            </RouterLink>
+            <RouterLink
+                v-if="authStore.role === 'global_admin'"
+                :to="{ name: 'configure-global' }"
+                class="join-item btn btn-sm btn-primary mt-1 duration-500"
+                :class="isGlobalRoute && 'bg-base-100/40'"
+            >
+                {{ t('config.global') }}
             </RouterLink>
         </div>
         <div class="grow mt-6 px-3 xs:px-6 overflow-auto">

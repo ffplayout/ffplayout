@@ -34,24 +34,28 @@ use crate::utils::{config::Template, errors::ServiceError, naive_date_time_from_
 mod channel;
 mod control;
 mod file;
+mod global;
 mod log;
 mod playlist;
 mod playout_config;
 mod presets;
 mod program;
 mod public;
+mod setup;
 mod system;
 mod user;
 
 pub use channel::*;
 pub use control::*;
 pub use file::*;
+pub use global::*;
 pub use log::*;
 pub use playlist::*;
 pub use playout_config::*;
 pub use presets::*;
 pub use program::*;
 pub use public::*;
+pub use setup::*;
 pub use system::*;
 pub use user::*;
 

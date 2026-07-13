@@ -26,6 +26,7 @@ pub fn routes() -> Router<AppState> {
                 .route("/channel", post(add_channel))
                 .route("/channel/{id}", delete(remove_channel))
                 .route("/channels", get(get_all_channels))
+                .route("/global", get(get_global).put(update_global))
                 .route("/control/{id}/text", post(send_text_message))
                 .route("/control/{id}/playout", post(control_playout))
                 .route("/control/{id}/audio", put(update_audio_effects))
@@ -57,6 +58,7 @@ pub fn routes() -> Router<AppState> {
                 )
                 .route("/presets/{id}", post(add_preset))
                 .route("/program/{id}", get(get_program))
+                .route("/setup", get(get_setup_status).post(complete_setup))
                 .route("/system/{id}", get(get_system_stat))
                 .route("/user", get(get_user))
                 .route(

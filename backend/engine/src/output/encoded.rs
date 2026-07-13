@@ -13,6 +13,7 @@ use ffmpeg_next as ffmpeg;
 
 use super::{hls, vtt};
 use crate::{
+    HlsHealth,
     analysis::audio_level::AudioLevelMeter,
     audio_mixer::AudioEffectChain,
     clock::PlayoutClock,
@@ -34,6 +35,7 @@ pub(super) struct EncodedOutput {
     audio_buffer_pts: Option<i64>,
     audio_sample_rate: u32,
     clock: PlayoutClock,
+    hls_health: Option<HlsHealth>,
 }
 
 #[derive(Clone)]
@@ -74,6 +76,15 @@ impl EncodedOutput {
         path: &str,
         cfg: &OutputConfig,
         output_format: EncodedFormat,
+    ) -> Result<Self> {
+        Self::open_with_hls_health(path, cfg, output_format, None)
+    }
+
+    pub(super) fn open_with_hls_health(
+        path: &str,
+        cfg: &OutputConfig,
+        output_format: EncodedFormat,
+        hls_health: Option<HlsHealth>,
     ) -> Result<Self> {
         let hls_variants = match &output_format {
             EncodedFormat::Auto | EncodedFormat::Stream { .. } => &[][..],
@@ -246,6 +257,7 @@ impl EncodedOutput {
             audio_buffer_pts: None,
             audio_sample_rate: cfg.sample_rate,
             clock: PlayoutClock::new(),
+            hls_health,
         })
     }
 
@@ -441,6 +453,9 @@ impl EncodedOutput {
         self.clock
             .wait_until(packet.dts().or_else(|| packet.pts()), stream_time_base);
         packet.write_interleaved(&mut self.octx)?;
+        if let Some(health) = &self.hls_health {
+            health.mark_muxed();
+        }
         Ok(())
     }
 

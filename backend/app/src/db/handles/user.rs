@@ -134,21 +134,26 @@ pub async fn update_user(
     }
 
     let mut query = QueryBuilder::<Sqlite>::new("UPDATE user SET ");
-    let mut separated = query.separated(", ");
+    let mut has_assignment = false;
 
     if let Some(two_factor) = two_factor {
-        separated.push("two_factor = ");
-        separated.push_bind(i32::from(two_factor));
+        query.push("two_factor = ").push_bind(i32::from(two_factor));
+        has_assignment = true;
     }
 
     if let Some(mail) = mail {
-        separated.push("mail = ");
-        separated.push_bind(mail);
+        if has_assignment {
+            query.push(", ");
+        }
+        query.push("mail = ").push_bind(mail);
+        has_assignment = true;
     }
 
     if let Some(password_hash) = password_hash {
-        separated.push("password = ");
-        separated.push_bind(password_hash);
+        if has_assignment {
+            query.push(", ");
+        }
+        query.push("password = ").push_bind(password_hash);
     }
 
     query.push(" WHERE id = ");
@@ -183,4 +188,32 @@ pub async fn insert_user_channel(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn updates_only_two_factor() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+        sqlx::query("CREATE TABLE user (id INTEGER PRIMARY KEY, two_factor INTEGER, mail TEXT, password TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO user (id, two_factor) VALUES (1, 1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        update_user(&pool, 1, Some(false), None, None)
+            .await
+            .unwrap();
+
+        let two_factor: i32 = sqlx::query_scalar("SELECT two_factor FROM user WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(two_factor, 0);
+    }
 }

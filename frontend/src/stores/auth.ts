@@ -5,6 +5,7 @@ import { useIndex } from '@/stores/index'
 export const useAuth = defineStore('auth', {
     state: () => ({
         isLogin: false,
+        verificationPending: false,
         jwtToken: '',
         jwtRefresh: '',
         authHeader: {},
@@ -23,6 +24,7 @@ export const useAuth = defineStore('auth', {
             localStorage.setItem('refresh', refresh)
 
             this.isLogin = true
+            this.verificationPending = false
             this.jwtToken = token
             this.jwtRefresh = refresh
             this.authHeader = { Authorization: `Bearer ${token}` }
@@ -39,6 +41,17 @@ export const useAuth = defineStore('auth', {
             this.jwtRefresh = ''
             this.authHeader = {}
             this.id = 0
+        },
+
+        beginVerification() {
+            // A previous session must not redirect the pending two-factor
+            // login to the authenticated part of the application.
+            this.removeToken()
+            this.verificationPending = true
+        },
+
+        cancelVerification() {
+            this.verificationPending = false
         },
 
         async obtainVerificationCode(password: string) {

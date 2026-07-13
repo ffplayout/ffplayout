@@ -2,12 +2,12 @@ use std::{
     fmt,
     path::{Path, PathBuf},
     sync::atomic::Ordering,
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 use ff_engine::{
-    AsyncPlayout, AudioLevelCallback, ClipResult, LogLevel, LogoConfig, LogoFade, OutputConfig,
-    RateControl, TextOverlayState, resolved_variant_playlist_path,
+    AsyncPlayout, AudioLevelCallback, ClipResult, HlsHealth, LogLevel, LogoConfig, LogoFade,
+    OutputConfig, RateControl, TextOverlayState,
 };
 use log::*;
 use tokio::time::sleep;
@@ -86,13 +86,15 @@ async fn play_hls(
     playout: &AsyncPlayout,
 ) -> Result<(), ServiceError> {
     let hls_duration = u64::from(config.output.hls_segment_duration);
-    let m3u8_path = watchdog_playlist_path(config)?;
+    let hls_health = playout
+        .hls_health()
+        .ok_or_else(|| ServiceError::Conflict("HLS output has no health monitor".to_string()))?;
     let watchdog_token = CancellationToken::new();
     let mut watchdog = tokio::spawn(hls_watchdog(
         config.general.channel_id,
-        m3u8_path,
+        hls_health,
         Duration::from_secs(hls_duration),
-        manager.is_alive.clone(),
+        playout.playback_control(),
         watchdog_token.clone(),
     ));
 
@@ -110,9 +112,9 @@ async fn play_hls(
 
 async fn hls_watchdog(
     channel_id: i32,
-    m3u8_path: PathBuf,
+    hls_health: HlsHealth,
     hls_time: Duration,
-    is_alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    playback_control: ff_engine::PlaybackControl,
     cancel_token: CancellationToken,
 ) -> Result<(), ServiceError> {
     let mut init = true;
@@ -134,24 +136,18 @@ async fn hls_watchdog(
             _ = sleep(sleep_time) => {}
         }
 
-        if cancel_token.is_cancelled() || !is_alive.load(Ordering::SeqCst) {
+        if cancel_token.is_cancelled() {
             break;
         }
 
-        if let Ok(last_mod) = m3u8_path
-            .metadata()
-            .and_then(|metadata| metadata.modified())
-        {
-            let age = SystemTime::now()
-                .duration_since(last_mod)
-                .unwrap_or_default();
-
-            if age > timeout {
-                error!(channel = channel_id;
-                    "HLS segment write timeout! Last update: <span class=\"log-number\">{:.3}s</span>", age.as_secs_f32()
-                );
-                return Err(ServiceError::Conflict("Timeout".to_string()));
-            }
+        let age = hls_health.last_muxed_age();
+        if age > timeout {
+            error!(channel = channel_id;
+                "HLS muxer made no progress for <span class=\"log-number\">{:.3}s</span>; restarting playout",
+                age.as_secs_f32()
+            );
+            playback_control.restart_playout();
+            return Err(ServiceError::Conflict("HLS muxer stalled".to_string()));
         }
     }
 
@@ -543,25 +539,6 @@ fn hls_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
     }
 
     Ok(path)
-}
-
-/// Resolves the actual playlist file the watchdog should observe. For a
-/// standalone HLS output this is the configured playlist path. With a master
-/// playlist, the base output is the first rendition and the muxer substitutes
-/// its name into the `%v` playlist pattern.
-fn watchdog_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
-    let base_path = hls_playlist_path(config)?;
-    let streams = config
-        .output
-        .hls_streams()
-        .map_err(ServiceError::Conflict)?;
-    let first_stream = streams
-        .first()
-        .ok_or_else(|| ServiceError::Conflict("HLS output has no streams".to_string()))?;
-
-    resolved_variant_playlist_path(&base_path.to_string_lossy(), &first_stream.name)
-        .map(PathBuf::from)
-        .map_err(|e| ServiceError::Conflict(e.to_string()))
 }
 
 fn playout_duration(node: &Media) -> Option<f64> {

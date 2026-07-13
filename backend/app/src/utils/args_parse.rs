@@ -338,6 +338,7 @@ pub async fn init_args(pool: &Pool<Sqlite>) -> Result<bool, ProcessError> {
         }
 
         handles::update_global(pool, global.clone()).await?;
+        handles::mark_setup_completed(pool).await?;
 
         let mut channel = handles::select_channel(pool, &1).await?;
         channel.public = global.public;

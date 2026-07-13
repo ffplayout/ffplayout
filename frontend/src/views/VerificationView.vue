@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onBeforeMount } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/stores/auth'
@@ -11,12 +11,6 @@ const auth = useAuth()
 const verificationCode = ref('')
 const formError = ref('')
 const showLoginError = ref(false)
-
-onBeforeMount(async () => {
-    if (auth.isLogin) {
-        await router.push({ name: 'home' })
-    }
-})
 
 async function verify() {
     try {
@@ -51,7 +45,7 @@ async function verify() {
 </script>
 <template>
     <div v-if="!auth.isLogin" class="relative w-full min-h-screen xs:h-full flex justify-center items-center">
-        <RouterLink :to="{ name: 'login' }" class="btn btn-ghost absolute top-5 left-5"> Login </RouterLink>
+        <RouterLink :to="{ name: 'login' }" class="btn btn-ghost absolute top-5 left-5" @click="auth.cancelVerification()"> Login </RouterLink>
         <div class="w-full h-full flex justify-center items-center">
             <div class="w-96 min-w-full flex flex-col justify-center items-center px-4">
                 <h1 class="text-6xl xs:text-8xl">ffplayout</h1>

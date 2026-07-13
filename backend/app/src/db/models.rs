@@ -24,6 +24,7 @@ pub struct GlobalSettings {
     pub smtp_password: String,
     pub smtp_starttls: bool,
     pub smtp_port: u16,
+    pub setup_completed: bool,
 }
 
 impl GlobalSettings {
@@ -45,6 +46,7 @@ impl GlobalSettings {
                 smtp_password: String::new(),
                 smtp_starttls: false,
                 smtp_port: 465,
+                setup_completed: true,
             },
         }
     }

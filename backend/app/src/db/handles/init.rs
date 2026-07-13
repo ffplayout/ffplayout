@@ -24,7 +24,7 @@ pub async fn db_migrate(pool: &SqlitePool) -> Result<bool, ProcessError> {
         BEGIN
             SELECT RAISE(FAIL, 'Database is already initialized!');
         END;
-        INSERT INTO global(secret, shared) VALUES($1, $2);";
+        INSERT INTO global(secret, shared, setup_completed) VALUES($1, $2, 0);";
 
         sqlx::query(QUERY)
             .bind(secret)

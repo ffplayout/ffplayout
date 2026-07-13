@@ -156,6 +156,17 @@ export default {
     config: {
         channel: 'Канал',
         user: 'Юзер',
+        global: 'Глобальные',
+        logsPath: 'Путь к логам',
+        smtp: 'SMTP',
+        smtpServer: 'SMTP сервер',
+        smtpUser: 'SMTP пользователь',
+        smtpPassword: 'SMTP пароль',
+        smtpPort: 'SMTP порт',
+        smtpStarttls: 'Использовать STARTTLS',
+        passwordConfigured: 'Пароль настроен',
+        updateGlobalSuccess: 'Глобальные настройки обновлены!',
+        updateGlobalFailed: 'Не удалось обновить глобальные настройки!',
         channelConf: 'Конфигурация канала',
         addChannel: 'Сделать новый канал',
         name: 'Название канала',
@@ -229,8 +240,8 @@ export default {
         taskHelp:
             'Run an external program with a given media object. The media object is in JSON format and contains all the information about the current clip. The external program can be a script or a binary, but it should only run for a short time.',
         taskPath: 'Path to executable.',
-        outputHelp: `The final playout encoding, set the settings according to your needs. Use 'stream' mode and adjust the 'Output Parameter' when you want to stream to an RTMP/RTSP/SRT/... server.
-        In production, don't serve HLS playlists with ffplayout; use Nginx or another web server!`,
+        outputHelp: `Выберите итоговый выход Playout. HLS используется по умолчанию и создаёт указанный ниже медиаплейлист. Используйте 'stream' с URL назначения для RTMP/SRT/UDP или 'desktop' для локального воспроизведения.
+        В production-развёртываниях отдавайте HLS-плейлисты через Nginx или другой веб-сервер.`,
         outputParam: 'Медиаплейлист создаётся как live/<имя>.m3u8.',
         streamUrl: 'URL назначения потока',
         hlsSettings: 'Настройки HLS',
@@ -264,6 +275,15 @@ export default {
         sharedStorage:
             'ffplayout работает внутри контейнера, используйте один и тот же корень хранилища для всех каналов!',
         timezone: 'Timezone',
+    },
+    setup: {
+        title: 'Первоначальная настройка',
+        admin: 'Глобальный администратор',
+        confirmPassword: 'Подтвердите пароль',
+        complete: 'Завершить настройку',
+        loadFailed: 'Не удалось загрузить начальные настройки.',
+        passwordMismatch: 'Пароли не совпадают.',
+        saveFailed: 'Не удалось завершить настройку.',
     },
     user: {
         title: 'Конфигурация пользователя',
