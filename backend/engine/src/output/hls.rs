@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    ffi::CString,
     fs,
     io::ErrorKind,
     path::Path,
@@ -61,27 +62,29 @@ pub(super) fn validate_variants(variants: &[HlsVariant]) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn close_preopened_output(
-    octx: &mut ffmpeg::format::context::Output,
-    path: &str,
-) -> Result<()> {
-    unsafe {
-        let context = octx.as_mut_ptr();
-        if !(*context).pb.is_null() {
-            let result = ffmpeg::ffi::avio_close((*context).pb);
-            (*context).pb = ptr::null_mut();
-            if result < 0 {
-                return Err(ffmpeg::Error::from(result).into());
-            }
-        }
-    }
+pub(super) fn output_context(path: &str) -> Result<ffmpeg::format::context::Output> {
+    let path = CString::new(path).context("HLS output path contains a null byte")?;
+    let format = CString::new("hls").expect("static HLS format name is valid");
 
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
-        Err(error) => {
-            Err(error).with_context(|| format!("failed to remove HLS placeholder {path}"))
+    unsafe {
+        let mut context = ptr::null_mut();
+        let result = ffmpeg::ffi::avformat_alloc_output_context2(
+            &mut context,
+            ptr::null_mut(),
+            format.as_ptr(),
+            path.as_ptr(),
+        );
+        if result < 0 {
+            if !context.is_null() {
+                ffmpeg::ffi::avformat_free_context(context);
+            }
+            return Err(ffmpeg::Error::from(result).into());
         }
+        if context.is_null() {
+            return Err(ffmpeg::Error::Unknown.into());
+        }
+
+        Ok(ffmpeg::format::context::Output::wrap(context))
     }
 }
 
@@ -93,6 +96,14 @@ pub(super) fn remove_master_playlist(path: &str) -> Result<()> {
 pub(super) fn prepare_resume_start_number(
     media_playlists: &[String],
     master_playlist: Option<&str>,
+) -> Result<Option<u64>> {
+    prepare_resume_start_number_at(media_playlists, master_playlist, SystemTime::now())
+}
+
+fn prepare_resume_start_number_at(
+    media_playlists: &[String],
+    master_playlist: Option<&str>,
+    now: SystemTime,
 ) -> Result<Option<u64>> {
     let cleanup_playlists = cleanup_playlist_paths(media_playlists, master_playlist)?;
     prune_unreferenced_segments(&cleanup_playlists)?;
@@ -108,8 +119,8 @@ pub(super) fn prepare_resume_start_number(
         return Ok(None);
     };
 
-    if latest
-        .elapsed()
+    if now
+        .duration_since(latest)
         .unwrap_or(Duration::ZERO)
         .gt(&HLS_RESUME_MAX_AGE)
     {
@@ -117,7 +128,7 @@ pub(super) fn prepare_resume_start_number(
         return Ok(None);
     }
 
-    next_segment_start_number(media_playlists)
+    media_sequence_start_number(media_playlists)
 }
 
 fn cleanup_playlist_paths(
@@ -127,22 +138,8 @@ fn cleanup_playlist_paths(
     let mut paths = media_playlists.iter().cloned().collect::<HashSet<_>>();
     if let Some(master_playlist) = master_playlist {
         paths.insert(master_playlist.to_string());
-    }
-    if let Some(parent) = common_playlist_parent(media_playlists) {
-        for entry in fs::read_dir(&parent)
-            .with_context(|| format!("failed to read HLS directory {}", parent.display()))?
-        {
-            let entry =
-                entry.with_context(|| format!("failed to read entry in {}", parent.display()))?;
-            let path = entry.path();
-            if path.is_file()
-                && path
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| extension == "m3u8")
-            {
-                paths.insert(path.to_string_lossy().into_owned());
-            }
+        for playlist in child_playlist_paths(master_playlist)? {
+            paths.insert(playlist);
         }
     }
 
@@ -151,6 +148,7 @@ fn cleanup_playlist_paths(
 
 fn prune_unreferenced_segments(media_playlists: &[String]) -> Result<()> {
     let referenced_segments = referenced_segments(media_playlists)?;
+    let segment_families = segment_families(media_playlists, &referenced_segments)?;
     let Some(parent) = common_playlist_parent(media_playlists) else {
         return Ok(());
     };
@@ -167,7 +165,9 @@ fn prune_unreferenced_segments(media_playlists: &[String]) -> Result<()> {
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if !referenced_segments.contains(file_name) {
+        if segment_family(file_name).is_some_and(|family| segment_families.contains(family))
+            && !referenced_segments.contains(file_name)
+        {
             remove_playlist(&path)?;
         }
     }
@@ -249,6 +249,80 @@ fn playlist_segment_entries(path: &str) -> Result<Vec<String>> {
         .collect())
 }
 
+fn child_playlist_paths(master_playlist: &str) -> Result<Vec<String>> {
+    let playlist = match fs::read_to_string(master_playlist) {
+        Ok(playlist) => playlist,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to read HLS master {master_playlist}"));
+        }
+    };
+    let parent = Path::new(master_playlist).parent().unwrap_or(Path::new(""));
+
+    Ok(playlist
+        .lines()
+        .filter_map(|line| playlist_uri(line).or_else(|| playlist_attribute_uri(line, "URI")))
+        .filter(|entry| {
+            Path::new(entry)
+                .extension()
+                .is_some_and(|ext| ext == "m3u8")
+        })
+        .map(|entry| parent.join(entry).to_string_lossy().into_owned())
+        .collect())
+}
+
+fn playlist_attribute_uri<'a>(line: &'a str, attribute: &str) -> Option<&'a str> {
+    let value = line
+        .strip_prefix('#')?
+        .split_once(':')?
+        .1
+        .split(',')
+        .find_map(|entry| entry.trim().strip_prefix(&format!("{attribute}=\"")))?;
+    value.strip_suffix('"')
+}
+
+fn segment_families(
+    media_playlists: &[String],
+    referenced_segments: &HashSet<String>,
+) -> Result<HashSet<String>> {
+    let mut families = referenced_segments
+        .iter()
+        .filter_map(|segment| segment_family(segment).map(ToOwned::to_owned))
+        .collect::<HashSet<_>>();
+
+    for playlist in media_playlists {
+        let stem = Path::new(playlist)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .with_context(|| format!("HLS playlist path has no valid stem: {playlist}"))?;
+        if let Some(vtt_stem) = stem.strip_suffix("_vtt") {
+            // FFmpeg writes `stream_vtt.m3u8` but names its WebVTT segments
+            // `stream0.vtt`, without the separator used for MPEG-TS segments.
+            families.insert(vtt_stem.to_string());
+        } else {
+            families.insert(format!("{stem}_"));
+        }
+    }
+
+    Ok(families)
+}
+
+fn segment_family(file_name: &str) -> Option<&str> {
+    let path = Path::new(file_name);
+    let extension = path.extension()?.to_str()?;
+    if extension != "ts" && extension != "vtt" {
+        return None;
+    }
+    let stem = path.file_stem()?.to_str()?;
+    let number_start = stem
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| !ch.is_ascii_digit())
+        .map_or(0, |(index, ch)| index + ch.len_utf8());
+    (number_start < stem.len()).then_some(&stem[..number_start])
+}
+
 fn common_playlist_parent(media_playlists: &[String]) -> Option<std::path::PathBuf> {
     let first = media_playlists.first()?;
     Path::new(first).parent().map(Path::to_path_buf)
@@ -274,8 +348,7 @@ pub(super) fn master_playlist_path(path: &str) -> std::path::PathBuf {
     Path::new(path).with_file_name("master.m3u8")
 }
 
-pub(super) fn next_segment_start_number(paths: &[String]) -> Result<Option<u64>> {
-    let mut last_segment = None;
+fn media_sequence_start_number(paths: &[String]) -> Result<Option<u64>> {
     for path in paths {
         let playlist = match fs::read_to_string(path) {
             Ok(playlist) => playlist,
@@ -284,36 +357,16 @@ pub(super) fn next_segment_start_number(paths: &[String]) -> Result<Option<u64>>
                 return Err(error).with_context(|| format!("failed to read HLS playlist {path}"));
             }
         };
-        last_segment = playlist
-            .lines()
-            .filter_map(segment_number_from_playlist_entry)
-            .max()
-            .or(last_segment);
+        if let Some(sequence) = playlist.lines().find_map(|line| {
+            line.trim()
+                .strip_prefix("#EXT-X-MEDIA-SEQUENCE:")
+                .and_then(|value| value.trim().parse().ok())
+        }) {
+            return Ok(Some(sequence));
+        }
     }
 
-    Ok(last_segment.map(|number| number + 1))
-}
-
-fn segment_number_from_playlist_entry(line: &str) -> Option<u64> {
-    let entry = playlist_uri(line)?;
-    let file_name = entry.rsplit('/').next()?;
-    let stem = Path::new(file_name).file_stem()?.to_str()?;
-    let end = stem
-        .char_indices()
-        .rev()
-        .find(|(_, ch)| ch.is_ascii_digit())?
-        .0
-        + 1;
-    if end != stem.len() {
-        return None;
-    }
-    let start = stem[..end]
-        .char_indices()
-        .rev()
-        .find(|(_, ch)| !ch.is_ascii_digit())
-        .map_or(0, |(index, ch)| index + ch.len_utf8());
-
-    stem[start..end].parse().ok()
+    Ok(None)
 }
 
 fn playlist_uri(line: &str) -> Option<&str> {
@@ -448,26 +501,20 @@ mod tests {
     }
 
     #[test]
-    fn next_segment_start_number_uses_highest_playlist_segment() {
-        let dir = std::env::temp_dir().join(format!("hls_number_test_{}", std::process::id()));
+    fn resume_uses_playlist_media_sequence_as_start_number() {
+        let dir = std::env::temp_dir().join(format!("hls_sequence_test_{}", std::process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
-        let first = dir.join("stream.m3u8");
-        let second = dir.join("low.m3u8");
+        let playlist = dir.join("stream.m3u8");
         fs::write(
-            &first,
-            "#EXTM3U\n#EXTINF:1.0,\nstream_7.ts\n#EXTINF:1.0,\nstream_8.ts?token=1\n",
+            &playlist,
+            "#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:42\n#EXTINF:1.0,\nstream_42.ts\n",
         )
         .unwrap();
-        fs::write(&second, "#EXTM3U\n#EXTINF:1.0,\nlow_12.ts\n").unwrap();
 
         assert_eq!(
-            next_segment_start_number(&[
-                first.to_string_lossy().into_owned(),
-                second.to_string_lossy().into_owned(),
-            ])
-            .unwrap(),
-            Some(13)
+            media_sequence_start_number(&[playlist.to_string_lossy().into_owned()]).unwrap(),
+            Some(42)
         );
         fs::remove_dir_all(&dir).ok();
     }
@@ -478,22 +525,98 @@ mod tests {
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let playlist = dir.join("stream.m3u8");
-        fs::write(
-            &playlist,
-            "#EXTM3U\n#EXTINF:1.0,\nstream_1.ts\n#EXTINF:1.0,\nsubs_1.vtt\n",
-        )
-        .unwrap();
+        let subtitle_playlist = dir.join("stream_vtt.m3u8");
+        fs::write(&playlist, "#EXTM3U\n#EXTINF:1.0,\nstream_1.ts\n").unwrap();
+        fs::write(&subtitle_playlist, "#EXTM3U\n#EXTINF:1.0,\nstream1.vtt\n").unwrap();
         fs::write(dir.join("stream_1.ts"), b"ts").unwrap();
-        fs::write(dir.join("subs_1.vtt"), b"vtt").unwrap();
+        fs::write(dir.join("stream1.vtt"), b"vtt").unwrap();
         fs::write(dir.join("stream_0.ts"), b"old").unwrap();
-        fs::write(dir.join("subs_0.vtt"), b"old").unwrap();
+        fs::write(dir.join("stream0.vtt"), b"old").unwrap();
+        fs::write(dir.join("other_0.ts"), b"other output").unwrap();
+
+        prune_unreferenced_segments(&[
+            playlist.to_string_lossy().into_owned(),
+            subtitle_playlist.to_string_lossy().into_owned(),
+        ])
+        .unwrap();
+
+        assert!(dir.join("stream_1.ts").exists());
+        assert!(dir.join("stream1.vtt").exists());
+        assert!(!dir.join("stream_0.ts").exists());
+        assert!(!dir.join("stream0.vtt").exists());
+        assert!(dir.join("other_0.ts").exists());
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn empty_subtitle_playlist_still_prunes_its_vtt_segments() {
+        let dir = std::env::temp_dir().join(format!("hls_vtt_prune_test_{}", std::process::id()));
+        fs::remove_dir_all(&dir).ok();
+        fs::create_dir_all(&dir).unwrap();
+        let playlist = dir.join("stream_vtt.m3u8");
+        fs::write(&playlist, "#EXTM3U\n").unwrap();
+        fs::write(dir.join("stream0.vtt"), b"orphaned").unwrap();
+        fs::write(dir.join("other0.vtt"), b"other output").unwrap();
 
         prune_unreferenced_segments(&[playlist.to_string_lossy().into_owned()]).unwrap();
 
-        assert!(dir.join("stream_1.ts").exists());
-        assert!(dir.join("subs_1.vtt").exists());
+        assert!(!dir.join("stream0.vtt").exists());
+        assert!(dir.join("other0.vtt").exists());
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn cleanup_playlist_paths_include_master_children_only() {
+        let dir = std::env::temp_dir().join(format!("hls_master_test_{}", std::process::id()));
+        fs::remove_dir_all(&dir).ok();
+        fs::create_dir_all(&dir).unwrap();
+        let master = dir.join("master.m3u8");
+        let stream = dir.join("stream.m3u8");
+        let subtitles = dir.join("stream_vtt.m3u8");
+        let unrelated = dir.join("other.m3u8");
+        fs::write(
+            &master,
+            "#EXTM3U\n#EXT-X-MEDIA:TYPE=SUBTITLES,URI=\"stream_vtt.m3u8\"\nstream.m3u8\n",
+        )
+        .unwrap();
+        fs::write(&unrelated, "#EXTM3U\n").unwrap();
+
+        let paths = cleanup_playlist_paths(
+            &[stream.to_string_lossy().into_owned()],
+            Some(&master.to_string_lossy()),
+        )
+        .unwrap()
+        .into_iter()
+        .collect::<HashSet<_>>();
+
+        assert!(paths.contains(&master.to_string_lossy().into_owned()));
+        assert!(paths.contains(&stream.to_string_lossy().into_owned()));
+        assert!(paths.contains(&subtitles.to_string_lossy().into_owned()));
+        assert!(!paths.contains(&unrelated.to_string_lossy().into_owned()));
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn stale_playlist_starts_clean_without_touching_other_output() {
+        let dir = std::env::temp_dir().join(format!("hls_stale_test_{}", std::process::id()));
+        fs::remove_dir_all(&dir).ok();
+        fs::create_dir_all(&dir).unwrap();
+        let playlist = dir.join("stream.m3u8");
+        fs::write(&playlist, "#EXTM3U\n#EXTINF:1.0,\nstream_1.ts\n").unwrap();
+        fs::write(dir.join("stream_0.ts"), b"unreferenced").unwrap();
+        fs::write(dir.join("stream_1.ts"), b"referenced").unwrap();
+        fs::write(dir.join("other_0.ts"), b"other output").unwrap();
+        let now = SystemTime::now() + HLS_RESUME_MAX_AGE + Duration::from_secs(1);
+
+        let start_number =
+            prepare_resume_start_number_at(&[playlist.to_string_lossy().into_owned()], None, now)
+                .unwrap();
+
+        assert_eq!(start_number, None);
+        assert!(!playlist.exists());
         assert!(!dir.join("stream_0.ts").exists());
-        assert!(!dir.join("subs_0.vtt").exists());
+        assert!(!dir.join("stream_1.ts").exists());
+        assert!(dir.join("other_0.ts").exists());
         fs::remove_dir_all(&dir).ok();
     }
 

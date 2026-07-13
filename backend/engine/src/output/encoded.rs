@@ -161,7 +161,10 @@ impl EncodedOutput {
         // Network outputs get a write timeout so a stalled TCP connection
         // surfaces as an error instead of blocking the playout worker forever.
         let mut octx = match output_format {
-            EncodedFormat::Hls { .. } => format::output_as(&hls_output_path, "hls")?,
+            // The HLS muxer opens its playlists and segments itself. Avoid
+            // preopening the output path because that truncates a standalone
+            // playlist before `append_list` can resume it.
+            EncodedFormat::Hls { .. } => hls::output_context(&hls_output_path)?,
             EncodedFormat::Stream { muxer } if is_network_url(path) => {
                 format::output_as_with(path, muxer, network_io_options())?
             }
@@ -174,13 +177,6 @@ impl EncodedOutput {
             }
             EncodedFormat::Auto => format::output(path)?,
         };
-        // `format::output_as` preopens the `%v.m3u8` template path before the
-        // HLS muxer substitutes the concrete variant name. Close and remove
-        // that placeholder so only the real media playlists remain.
-        if uses_var_stream_map {
-            hls::close_preopened_output(&mut octx, &hls_output_path)?;
-        }
-
         let global_header = octx
             .format()
             .flags()
@@ -214,7 +210,7 @@ impl EncodedOutput {
                 ..
             } => {
                 let hls_flags = if hls_start_number.is_some() {
-                    "delete_segments+omit_endlist+temp_file+discont_start"
+                    "append_list+delete_segments+omit_endlist+temp_file+discont_start"
                 } else {
                     "delete_segments+omit_endlist+temp_file"
                 };
@@ -953,7 +949,7 @@ mod open_tests {
     }
 
     #[test]
-    fn standalone_hls_appends_after_existing_playlist_sequence() {
+    fn standalone_hls_resumes_existing_playlist() {
         ffmpeg::init().ok();
         let dir = std::env::temp_dir().join(format!("hls_append_test_{}", std::process::id()));
         fs::remove_dir_all(&dir).ok();
@@ -1002,12 +998,62 @@ mod open_tests {
         }
 
         let playlist = fs::read_to_string(&path).unwrap();
+        assert!(playlist.contains("stream_0.ts"), "{playlist}");
         assert!(playlist.contains("stream_2.ts"), "{playlist}");
         assert_eq!(
             fs::read(dir.join("stream_0.ts")).unwrap(),
             fs::read(dir.join("stream_0.snapshot")).unwrap()
         );
         assert!(dir.join("stream_2.ts").exists());
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn resumed_hls_deletes_segments_that_leave_playlist() {
+        ffmpeg::init().ok();
+        let dir = std::env::temp_dir().join(format!("hls_delete_test_{}", std::process::id()));
+        fs::remove_dir_all(&dir).ok();
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("stream.m3u8");
+        let cfg = OutputConfig::new(320, 240, 25, 44100);
+
+        for brightness in [16, 160] {
+            let mut output = EncodedOutput::open(
+                path.to_str().unwrap(),
+                &cfg,
+                EncodedFormat::Hls {
+                    variants: vec![],
+                    subtitle: None,
+                    segment_seconds: 1,
+                    list_size: 2,
+                },
+            )
+            .unwrap();
+
+            for index in 0..60 {
+                let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
+                video.set_pts(Some(index));
+                video.data_mut(0).fill(brightness);
+                output.encode_video(&video).unwrap();
+                let mut audio = frame::Audio::new(
+                    Sample::F32(ffmpeg::format::sample::Type::Planar),
+                    output.audio_frame_size(),
+                    ChannelLayout::STEREO,
+                );
+                audio.set_rate(44100);
+                audio.set_pts(Some(index * output.audio_frame_size() as i64));
+                for channel in 0..2 {
+                    audio.plane_mut::<f32>(channel).fill(0.0);
+                }
+                output.encode_audio(&audio).unwrap();
+            }
+            output.finish().unwrap();
+        }
+
+        let playlist = fs::read_to_string(&path).unwrap();
+        assert!(!playlist.contains("stream_0.ts"), "{playlist}");
+        assert!(playlist.contains("stream_2.ts"), "{playlist}");
+        assert!(!dir.join("stream_0.ts").exists());
         fs::remove_dir_all(&dir).ok();
     }
 
