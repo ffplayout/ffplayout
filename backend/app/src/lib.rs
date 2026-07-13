@@ -31,6 +31,7 @@ macro_rules! vec_strings {
     }};
 }
 
+#[allow(clippy::result_large_err)]
 pub async fn extract(req: &mut Request) -> Result<HashSet<Role>, Response> {
     let Some(auth) = req.headers().get("authorization") else {
         req.extensions_mut().insert(UserMeta::new(-1, vec![]));

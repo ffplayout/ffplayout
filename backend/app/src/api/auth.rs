@@ -186,7 +186,9 @@ pub async fn login(
             .await?;
 
             if verified_password.is_ok() {
-                let config = GLOBAL_SETTINGS.get().unwrap();
+                // SMTP settings can be created or changed while the server is
+                // running, so do not use the startup-only global settings here.
+                let config = handles::select_global(&state.pool).await?;
 
                 if let Some(email) = user.mail.clone()
                     && !config.smtp_server.is_empty()

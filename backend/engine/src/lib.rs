@@ -3,6 +3,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::{Duration, Instant};
 #[cfg(feature = "tokio")]
 use std::{
     sync::mpsc,
@@ -25,7 +26,7 @@ use input::live::{LiveEnded, LiveOverrideOutput};
 pub use input::live::{LiveReceiver, spawn_rtmp_listener};
 pub use output::resolved_variant_playlist_path;
 use output::{FrameOutput, Output, PlaybackStopped};
-use playout::{PlaybackSkipped, Timeline, play_clip, write_fallback};
+use playout::{PlaybackRestart, PlaybackSkipped, Timeline, play_clip, write_fallback};
 pub use utils::{
     clock,
     config::{
@@ -75,6 +76,7 @@ pub struct Playout {
 #[derive(Debug, Clone, Default)]
 pub struct PlaybackControl {
     skip_current: Arc<AtomicBool>,
+    restart: Arc<AtomicBool>,
 }
 
 impl PlaybackControl {
@@ -82,8 +84,44 @@ impl PlaybackControl {
         self.skip_current.store(true, Ordering::SeqCst);
     }
 
+    /// Stops the current playout run so its owner can create a fresh output.
+    pub fn restart_playout(&self) {
+        self.restart.store(true, Ordering::SeqCst);
+    }
+
     pub(crate) fn take_skip_current(&self) -> bool {
         self.skip_current.swap(false, Ordering::SeqCst)
+    }
+
+    pub(crate) fn take_restart(&self) -> bool {
+        self.restart.swap(false, Ordering::SeqCst)
+    }
+}
+
+#[derive(Clone)]
+pub struct HlsHealth {
+    last_muxed_at: Arc<std::sync::Mutex<Instant>>,
+}
+
+impl HlsHealth {
+    pub(crate) fn new() -> Self {
+        Self {
+            last_muxed_at: Arc::new(std::sync::Mutex::new(Instant::now())),
+        }
+    }
+
+    pub fn last_muxed_age(&self) -> Duration {
+        self.last_muxed_at
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .elapsed()
+    }
+
+    pub(crate) fn mark_muxed(&self) {
+        *self
+            .last_muxed_at
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
     }
 }
 
@@ -100,6 +138,7 @@ pub struct AsyncPlayout {
     commands: mpsc::Sender<AsyncCommand>,
     completion: WorkerCompletion,
     playback_control: PlaybackControl,
+    hls_health: Option<HlsHealth>,
 }
 
 /// How to wait for the playout worker to finish. Desktop-output sessions run
@@ -143,8 +182,10 @@ impl AsyncPlayout {
         hls_list_size: u32,
     ) -> Result<Self> {
         let playlist = playlist.into();
-        Self::open_with(move || {
-            Playout::open_hls(
+        let hls_health = HlsHealth::new();
+        let worker_health = hls_health.clone();
+        let mut playout = Self::open_with(move || {
+            Playout::open_hls_with_health(
                 &playlist,
                 config,
                 fallback_duration,
@@ -152,9 +193,12 @@ impl AsyncPlayout {
                 hls_subtitle,
                 hls_segment_seconds,
                 hls_list_size,
+                worker_health,
             )
         })
-        .await
+        .await?;
+        playout.hls_health = Some(hls_health);
+        Ok(playout)
     }
 
     #[cfg(feature = "desktop")]
@@ -187,6 +231,7 @@ impl AsyncPlayout {
             commands,
             completion: WorkerCompletion::SdlThread(done_rx),
             playback_control,
+            hls_health: None,
         })
     }
 
@@ -218,11 +263,16 @@ impl AsyncPlayout {
             commands,
             completion: WorkerCompletion::Thread(worker),
             playback_control,
+            hls_health: None,
         })
     }
 
     pub fn playback_control(&self) -> PlaybackControl {
         self.playback_control.clone()
+    }
+
+    pub fn hls_health(&self) -> Option<HlsHealth> {
+        self.hls_health.clone()
     }
 
     pub async fn play(&self, path: impl Into<String>) -> Result<ClipResult> {
@@ -453,6 +503,29 @@ impl Playout {
         hls_segment_seconds: u32,
         hls_list_size: u32,
     ) -> Result<Self> {
+        Self::open_hls_with_health(
+            playlist,
+            config,
+            fallback_duration,
+            hls_variants,
+            hls_subtitle,
+            hls_segment_seconds,
+            hls_list_size,
+            HlsHealth::new(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn open_hls_with_health(
+        playlist: &str,
+        config: OutputConfig,
+        fallback_duration: f64,
+        hls_variants: &[HlsVariant],
+        hls_subtitle: Option<HlsSubtitle>,
+        hls_segment_seconds: u32,
+        hls_list_size: u32,
+        hls_health: HlsHealth,
+    ) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
         init_ffmpeg(&config)?;
         let output = Output::open_hls(
@@ -462,6 +535,7 @@ impl Playout {
             hls_subtitle,
             hls_segment_seconds,
             hls_list_size,
+            hls_health,
         )?;
 
         Ok(Self::with_output(config, output, fallback_duration))
@@ -678,6 +752,7 @@ fn play_to_output<O: FrameOutput>(
         playback_control,
     ) {
         Ok(()) => Ok(ClipResult::Played),
+        Err(error) if error.downcast_ref::<PlaybackRestart>().is_some() => Err(error),
         Err(error) if error.downcast_ref::<PlaybackSkipped>().is_some() => Ok(ClipResult::Skipped),
         Err(error) if error.downcast_ref::<LiveEnded>().is_some() => Ok(ClipResult::LiveEnded),
         Err(error) if error.downcast_ref::<PlaybackStopped>().is_some() => Ok(ClipResult::Stopped),
@@ -692,5 +767,20 @@ fn play_to_output<O: FrameOutput>(
             timeline.finish_logo_fade(options.logo_fade);
             Ok(ClipResult::Fallback { reason })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PlaybackControl;
+
+    #[test]
+    fn restart_request_is_independent_from_skip_request() {
+        let control = PlaybackControl::default();
+        control.restart_playout();
+
+        assert!(control.take_restart());
+        assert!(!control.take_skip_current());
+        assert!(!control.take_restart());
     }
 }

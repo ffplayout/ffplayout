@@ -28,6 +28,12 @@ const router = createRouter({
             meta: { public: true, showHeader: false },
         },
         {
+            path: '/init',
+            name: 'init',
+            component: () => import('@/views/InitView.vue'),
+            meta: { public: true, showHeader: false },
+        },
+        {
             path: '/player',
             name: 'player',
             component: () => import('@/views/PlayerView.vue'),
@@ -76,6 +82,12 @@ const router = createRouter({
                     component: () => import('@/components/config/ConfigUser.vue'),
                     meta: { showHeader: true, roles: ['global_admin', 'channel_admin', 'user'] },
                 },
+                {
+                    path: 'global',
+                    name: 'configure-global',
+                    component: () => import('@/components/config/ConfigGlobal.vue'),
+                    meta: { showHeader: true, roles: ['global_admin'] },
+                },
             ],
         },
     ],
@@ -85,16 +97,39 @@ router.beforeEach(async (to) => {
     const auth = useAuth()
     const configStore = useConfig()
 
+    const isInitRoute = to.name === 'init'
+    const setupResponse = await fetch('/api/setup').catch(() => undefined)
+    if (setupResponse?.ok) {
+        const setup = await setupResponse.json()
+        if (setup.required && !isInitRoute) {
+            return { name: 'init' }
+        }
+        if (!setup.required && isInitRoute) {
+            return { name: 'login' }
+        }
+    }
+
     await configStore.configInit()
 
+    const isVerificationRoute = to.name === 'verification'
     const isPublicRoute = to.meta.public === true
+
+    if (isVerificationRoute) {
+        if (auth.isLogin) {
+            return { name: 'home' }
+        }
+        if (!auth.verificationPending) {
+            return { name: 'login' }
+        }
+        return
+    }
 
     if (!auth.isLogin && !isPublicRoute) {
         // const loc = i18n.locale.value === 'en-US' ? '' : `${i18n.locale.value}/`
         return { name: 'login' }
     }
 
-    if (auth.isLogin && isPublicRoute) {
+    if (auth.isLogin && to.name === 'login') {
         return { name: 'home' }
     }
 

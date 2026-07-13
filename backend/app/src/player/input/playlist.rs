@@ -588,7 +588,7 @@ impl CurrentProgram {
                     let index = self
                         .manager
                         .filler_index
-                        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |i| {
+                        .try_update(Ordering::SeqCst, Ordering::SeqCst, |i| {
                             Some(if i + 1 >= fillers.len() { 0 } else { i + 1 })
                         })
                         .unwrap_or(0);

@@ -30,6 +30,7 @@ use ffplayout::{
     sse::{SseAuthState, broadcast::Broadcaster},
     utils::{
         args_parse::init_args,
+        channels::initialize_channels,
         config::get_config,
         errors::ProcessError,
         logging::{Target, init_logging, log_middleware},
@@ -72,7 +73,7 @@ fn main() -> Result<(), ProcessError> {
 async fn async_main() -> Result<(), ProcessError> {
     let pool = db_pool().await?;
 
-    let mut init = init_args(&pool).await?;
+    let init = init_args(&pool).await?;
 
     if ARGS.init {
         return Ok(());
@@ -96,29 +97,17 @@ async fn async_main() -> Result<(), ProcessError> {
     let _logger = init_logging(app_state.mail_queues.clone())?;
 
     if let Some(conn) = &ARGS.listen {
-        let channels = handles::select_related_channels(&pool, None).await?;
+        let setup_required = !handles::select_global(&pool).await?.setup_completed;
 
-        for channel in channels {
-            let config = get_config(&pool, channel.id).await?;
-            let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
-            let channel_active = channel.active;
-            let manager = ChannelManager::new(pool.clone(), channel, config, system.clone()).await;
-
-            if init {
-                if let Err(e) = manager.storage.copy_assets().await {
-                    error!("{e}");
-                }
-
-                init = false;
-            }
-
-            app_state.mail_queues.lock().await.push(m_queue);
-
-            if channel_active {
-                manager.start().await?;
-            }
-
-            app_state.controller.write().await.add(manager);
+        if !setup_required {
+            initialize_channels(
+                &pool,
+                app_state.controller.clone(),
+                app_state.mail_queues.clone(),
+                system.clone(),
+                init,
+            )
+            .await?;
         }
 
         init_rate_limiter!(

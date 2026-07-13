@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS global (
     smtp_user TEXT NOT NULL DEFAULT 'ffplayout@example.org',
     smtp_password TEXT NOT NULL DEFAULT '',
     smtp_starttls INTEGER NOT NULL DEFAULT 0,
-    smtp_port INTEGER NOT NULL DEFAULT 465
+    smtp_port INTEGER NOT NULL DEFAULT 465,
+    setup_completed INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS roles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
