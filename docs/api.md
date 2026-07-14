@@ -69,7 +69,7 @@ listed authenticated endpoints also enforce the channel assignment where an
 ## Channel and global settings
 
 | Method | Endpoint | Access | Description |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 | `GET` | `/api/channel/{id}` | `GA, CA, U` | Read one channel. |
 | `PATCH` | `/api/channel/{id}` | `GA, CA` | Update a channel. Only a global admin may change its `public`, `playlists`, or `storage` paths. |
 | `POST` | `/api/channel` | `GA` | Create a channel. |
@@ -81,7 +81,7 @@ listed authenticated endpoints also enforce the channel assignment where an
 ## Playout configuration and capabilities
 
 | Method | Endpoint | Access | Description |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 | `GET` | `/api/playout/config/{id}` | `GA, CA, U` | Read the complete `PlayoutConfig`. |
 | `PUT` | `/api/playout/config/{id}` | `GA, CA` | Replace the complete `PlayoutConfig`. Use the response from `GET` as the request shape. |
 | `GET` | `/api/playout/outputs/{id}` | `GA, CA, U` | List configured outputs for the channel. |
@@ -94,7 +94,7 @@ settings, text preset references, and volume before persisting the change.
 ## Playout control
 
 | Method | Endpoint | Access | Request body |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 | `POST` | `/api/control/{id}/text` | `GA, CA, U` | A `TextPreset` object. Send an empty `text` with `use_filename: false` to clear the overlay. |
 | `POST` | `/api/control/{id}/playout` | `GA, CA, U` | `{ "control": "back" \| "next" \| "reset" }` |
 | `PUT` | `/api/control/{id}/audio` | `GA, CA` | `{ "volume": 0.0 }`, from `0.0` through `1.5`. |
@@ -111,7 +111,7 @@ curl -X POST http://127.0.0.1:8787/api/control/1/process \
 ## Playlists and programme data
 
 | Method | Endpoint | Access | Description |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 | `GET` | `/api/playlist/{id}?date=YYYY-MM-DD` | `GA, CA, U` | Read a playlist. |
 | `POST` | `/api/playlist/{id}` | `GA, CA, U` | Save a complete playlist JSON document. |
 | `POST` | `/api/playlist/{id}/generate/{date}` | `GA, CA, U` | Generate and save a playlist. Body is optional: `{ "paths": ["..."], "template": { ... } }`. |
