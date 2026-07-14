@@ -27,6 +27,8 @@ tmp/
 assets/playlist_template.json
 ffplayout*.toml
 template.json
+*.out.*
+*.zst
 
 # frontend stuff
 node_modules

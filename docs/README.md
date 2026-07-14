@@ -21,6 +21,10 @@ Using live ingest to inject a live stream.
 
 The different output modes.
 
+### **[Closed Captions](/docs/closed_captions.md)**
+
+Use WebVTT sidecar files as HLS subtitles.
+
 ### **[Playlist Generation](/docs/playlist_gen.md)**
 
 Generate playlists based on template.

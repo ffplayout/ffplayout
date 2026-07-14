@@ -95,9 +95,11 @@ Check out the [deployment documentation](https://vuejs.org/guide/quick-start.htm
 
 ## Run ffplayout in development mode
 
-1. initialize database: `cargo run -- -i`
-2. run backend: `cargo run -- -l 127.0.0.1:8787`
-3. in second terminal:
+1. run backend: `cargo run -- -l 127.0.0.1:8787`
+2. in a second terminal:
     1. install packages: `npm ci`
     2. run frontend: `npm run dev`
-4. in browser navigate to: `127.0.0.1:5757`
+3. in the browser navigate to: `http://127.0.0.1:5757`
+4. Complete first-time setup in the frontend.
+
+For an initial setup without the frontend, use `cargo run -- -i` instead.

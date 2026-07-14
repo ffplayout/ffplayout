@@ -17,14 +17,29 @@ Of course, you can also use media platforms that support streaming input.
 
 ## Desktop
 
-In desktop mode, ffplayout renders directly through the engine's SDL2 desktop output. You need a desktop session and a build with the `desktop` feature enabled; no external **ffplay** process is used.
+In desktop mode, ffplayout renders directly through the engine's SDL2 desktop
+output. You need a desktop session and a build with the `desktop` feature
+enabled; no external **ffplay** process is used.
+
+The desktop window has these controls:
+
+- `F`: toggle fullscreen.
+- `Esc`: stop desktop playout.
+- Left and right arrow keys: decrease or increase volume. Holding a key repeats the adjustment and shows the volume slider.
+- `S`: toggle WebVTT subtitle rendering.
+- Double-click the window or use the titlebar fullscreen button: toggle fullscreen.
 
 ## HLS
 
-In this mode, you can output directly to an HLS playlist. The nice thing here is that ffplayout requires fewer resources than in streaming mode.
+In this mode, ffplayout writes an HLS playlist and media segments into the configured public directory. HLS is commonly used for browser playback and works well with web servers or CDNs.
 
-HLS output is currently the default, mostly because it works out of the box and doesn't need a streaming target. By default, it writes playlists and segments below the configured public directory.
+HLS output is currently the default, mostly because it works out of the box and
+doesn't need a streaming target. By default, it writes playlists and segments
+to `live/` below the configured channel public directory. The built-in preview
+URL is `/public/{channel-id}/live/{playlist}`; for example,
+`/public/1/live/master.m3u8`.
 
 The base stream is configured directly in the output settings. Additional HLS variants can be configured as adaptive renditions; they extend the base stream instead of replacing it. A master playlist is generated only when WebVTT subtitles are enabled or when additional variants are configured.
 
-**It is recommended to serve the HLS stream with nginx or another web server, and not with ffplayout (which is more meant for previewing).**
+**It is recommended to serve the HLS stream with nginx or another web server,
+and not with ffplayout (which is more meant for previewing).**

@@ -182,10 +182,10 @@ impl EncodedOutput {
             .flags()
             .contains(format::flag::Flags::GLOBAL_HEADER);
 
-        let mut video_streams = Vec::new();
-        let mut audio_streams = Vec::new();
-        let mut subtitle_streams = Vec::new();
         let stream_count = hls_variants.len().max(1);
+        let mut video_streams = Vec::with_capacity(stream_count);
+        let mut audio_streams = Vec::with_capacity(stream_count);
+        let mut subtitle_streams = Vec::with_capacity(usize::from(vtt_subtitles));
 
         for index in 0..stream_count {
             let variant = hls_variants.get(index);
