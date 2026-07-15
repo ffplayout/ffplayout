@@ -614,8 +614,12 @@ fn open_video_stream(
     if cfg.rate_control == RateControl::Cbr {
         video_ctx.set_bit_rate(maxrate as usize);
     }
-    if matches!(output_format, EncodedFormat::Hls { .. }) {
-        video_ctx.set_gop(cfg.fps.saturating_mul(2));
+    match &output_format {
+        EncodedFormat::Hls {
+            segment_seconds, ..
+        } => video_ctx.set_gop(hls_gop_size(cfg.fps, *segment_seconds)),
+        EncodedFormat::Stream { .. } => video_ctx.set_gop(stream_gop_size(cfg.fps)),
+        EncodedFormat::Auto => {}
     }
     let mut video_flags = codec::flag::Flags::empty();
     if global_header {
@@ -682,6 +686,22 @@ fn open_video_stream(
         width,
         height,
     })
+}
+
+/// Use a keyframe interval that fits exactly into the requested HLS segment.
+/// Keeping it at two seconds or less balances segment precision and bitrate.
+fn hls_gop_size(fps: u32, segment_seconds: u32) -> u32 {
+    let segment_seconds = segment_seconds.max(1);
+    let gop_seconds = (1..=segment_seconds.min(2))
+        .rev()
+        .find(|seconds| segment_seconds.is_multiple_of(*seconds))
+        .unwrap_or(1);
+
+    fps.saturating_mul(gop_seconds)
+}
+
+fn stream_gop_size(fps: u32) -> u32 {
+    fps.saturating_mul(2)
 }
 
 fn open_audio_stream(
@@ -779,6 +799,20 @@ mod open_tests {
         ffmpeg_capabilities::ffmpeg_capabilities,
     };
     use std::fs;
+
+    #[test]
+    fn hls_gop_is_a_short_divisor_of_the_segment_duration() {
+        assert_eq!(hls_gop_size(25, 6), 50);
+        assert_eq!(hls_gop_size(25, 5), 25);
+        assert_eq!(hls_gop_size(30, 4), 60);
+        assert_eq!(hls_gop_size(50, 1), 50);
+    }
+
+    #[test]
+    fn stream_gop_is_two_seconds() {
+        assert_eq!(stream_gop_size(25), 50);
+        assert_eq!(stream_gop_size(30), 60);
+    }
 
     #[test]
     fn vtt_only_master_playlist_uses_literal_playlist_name() {
@@ -1057,8 +1091,13 @@ mod open_tests {
 
         let playlist = fs::read_to_string(&path).unwrap();
         assert!(!playlist.contains("stream_0.ts"), "{playlist}");
-        assert!(playlist.contains("stream_2.ts"), "{playlist}");
         assert!(!dir.join("stream_0.ts").exists());
+        for segment in playlist.lines().filter(|line| line.ends_with(".ts")) {
+            assert!(
+                dir.join(segment).exists(),
+                "missing playlist segment {segment}"
+            );
+        }
         fs::remove_dir_all(&dir).ok();
     }
 
