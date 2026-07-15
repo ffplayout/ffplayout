@@ -7,11 +7,12 @@ pub(crate) enum Stage {
     TextRuntime,
     Vtt,
     EncodeMux,
+    DesktopOutput,
 }
 
 #[cfg(feature = "processing-bench")]
 impl Stage {
-    const COUNT: usize = 7;
+    const COUNT: usize = 8;
 
     const fn index(self) -> usize {
         match self {
@@ -22,6 +23,7 @@ impl Stage {
             Self::TextRuntime => 4,
             Self::Vtt => 5,
             Self::EncodeMux => 6,
+            Self::DesktopOutput => 7,
         }
     }
 
@@ -34,6 +36,7 @@ impl Stage {
             Self::TextRuntime => "text_runtime",
             Self::Vtt => "vtt",
             Self::EncodeMux => "encode_mux",
+            Self::DesktopOutput => "desktop_out",
         }
     }
 
@@ -45,6 +48,7 @@ impl Stage {
         Self::TextRuntime,
         Self::Vtt,
         Self::EncodeMux,
+        Self::DesktopOutput,
     ];
 }
 
@@ -53,7 +57,10 @@ mod enabled {
     use std::{
         cell::RefCell,
         fmt::Write,
-        sync::atomic::{AtomicU64, Ordering},
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicU64, Ordering},
+        },
         time::{Duration, Instant},
     };
 
@@ -104,7 +111,7 @@ mod enabled {
         }
     }
 
-    struct ProcessingBench {
+    pub(crate) struct ProcessingBench {
         channel_id: i32,
         started_at: Instant,
         last_report_at: Instant,
@@ -183,12 +190,21 @@ mod enabled {
         }
     }
 
+    pub(crate) type BenchHandle = Arc<Mutex<ProcessingBench>>;
+
     thread_local! {
-        static BENCH: RefCell<Option<ProcessingBench>> = const { RefCell::new(None) };
+        static BENCH: RefCell<Option<BenchHandle>> = const { RefCell::new(None) };
     }
 
-    pub(crate) fn start(channel_id: Option<i32>) {
-        BENCH.with(|bench| *bench.borrow_mut() = Some(ProcessingBench::new(channel_id)));
+    pub(crate) fn start(channel_id: Option<i32>) -> BenchHandle {
+        let handle = Arc::new(Mutex::new(ProcessingBench::new(channel_id)));
+        BENCH.with(|bench| *bench.borrow_mut() = Some(handle.clone()));
+        handle
+    }
+
+    #[cfg(feature = "desktop")]
+    pub(crate) fn activate(handle: BenchHandle) {
+        BENCH.with(|bench| *bench.borrow_mut() = Some(handle));
     }
 
     pub(crate) fn set_report_interval(interval: Duration) {
@@ -200,8 +216,31 @@ mod enabled {
 
     pub(crate) fn finish() {
         BENCH.with(|bench| {
-            if let Some(bench) = bench.borrow_mut().as_mut() {
+            if let Some(handle) = bench.borrow_mut().take()
+                && let Ok(mut bench) = handle.lock()
+            {
                 bench.report(true);
+            }
+        });
+    }
+
+    #[cfg(feature = "desktop")]
+    pub(crate) fn detach() {
+        BENCH.with(|bench| {
+            bench.borrow_mut().take();
+        });
+    }
+
+    fn record(stage: Stage, elapsed: Duration, overlay_size: Option<(u32, u32)>) {
+        BENCH.with(|bench| {
+            let handle = bench.borrow().as_ref().cloned();
+            if let Some(handle) = handle
+                && let Ok(mut bench) = handle.lock()
+            {
+                bench.record(stage, elapsed, overlay_size);
+                if bench.due() {
+                    bench.report(false);
+                }
             }
         });
     }
@@ -211,14 +250,7 @@ mod enabled {
         let result = operation();
         let elapsed = started_at.elapsed();
 
-        BENCH.with(|bench| {
-            if let Some(bench) = bench.borrow_mut().as_mut() {
-                bench.record(stage, elapsed, None);
-                if bench.due() {
-                    bench.report(false);
-                }
-            }
-        });
+        record(stage, elapsed, None);
 
         result
     }
@@ -232,14 +264,7 @@ mod enabled {
 
         if result.is_ok() {
             let elapsed = started_at.elapsed();
-            BENCH.with(|bench| {
-                if let Some(bench) = bench.borrow_mut().as_mut() {
-                    bench.record(stage, elapsed, None);
-                    if bench.due() {
-                        bench.report(false);
-                    }
-                }
-            });
+            record(stage, elapsed, None);
         }
 
         result
@@ -255,14 +280,7 @@ mod enabled {
         let result = operation();
         let elapsed = started_at.elapsed();
 
-        BENCH.with(|bench| {
-            if let Some(bench) = bench.borrow_mut().as_mut() {
-                bench.record(stage, elapsed, Some((width, height)));
-                if bench.due() {
-                    bench.report(false);
-                }
-            }
-        });
+        record(stage, elapsed, Some((width, height)));
 
         result
     }
@@ -273,9 +291,26 @@ pub(crate) use enabled::{
     finish, measure, measure_overlay, measure_success, set_report_interval, start,
 };
 
+#[cfg(all(feature = "processing-bench", feature = "desktop"))]
+pub(crate) use enabled::{BenchHandle, activate, detach};
+
+#[cfg(not(feature = "processing-bench"))]
+#[derive(Clone)]
+pub(crate) struct BenchHandle;
+
 #[cfg(not(feature = "processing-bench"))]
 #[inline]
-pub(crate) fn start(_channel_id: Option<i32>) {}
+pub(crate) fn start(_channel_id: Option<i32>) -> BenchHandle {
+    BenchHandle
+}
+
+#[cfg(all(not(feature = "processing-bench"), feature = "desktop"))]
+#[inline]
+pub(crate) fn activate(_handle: BenchHandle) {}
+
+#[cfg(all(not(feature = "processing-bench"), feature = "desktop"))]
+#[inline]
+pub(crate) fn detach() {}
 
 #[cfg(not(feature = "processing-bench"))]
 #[inline]

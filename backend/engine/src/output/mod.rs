@@ -18,6 +18,8 @@ use desktop::{DesktopFrameSender, DesktopOutput, DesktopSdl};
 use encoded::{EncodedFormat, EncodedOutput};
 use ffmpeg_next::frame;
 
+#[cfg(feature = "desktop")]
+use crate::benchmark::BenchHandle;
 use crate::{
     HlsHealth,
     compositor::logo::{LogoOverlay, blend_logo},
@@ -186,13 +188,13 @@ impl Output {
     }
 
     #[cfg(feature = "desktop")]
-    pub(crate) fn run_desktop<T, F>(&mut self, operation: F) -> Result<T>
+    pub(crate) fn run_desktop<T, F>(&mut self, benchmark: BenchHandle, operation: F) -> Result<T>
     where
         T: Send + 'static,
         F: FnOnce(&mut DesktopFrameSender) -> T + Send + 'static,
     {
         match &mut self.kind {
-            OutputKind::Desktop(output) => output.run_operation(operation),
+            OutputKind::Desktop(output) => output.run_operation(benchmark, operation),
             OutputKind::Encoded(_) => Err(anyhow!("output is not in desktop mode")),
         }
     }

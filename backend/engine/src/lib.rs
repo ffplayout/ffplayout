@@ -645,8 +645,8 @@ impl Playout {
             let mut timeline = self.timeline;
             let path = path.to_string();
             let mut live_for_worker = live.take();
-            let operation = self.output.run_desktop(move |output| {
-                benchmark::start(config.channel_id);
+            let benchmark = benchmark::start(config.channel_id);
+            let operation = self.output.run_desktop(benchmark, move |output| {
                 let result = if let Some(live) = live_for_worker.as_mut() {
                     let mut output = LiveOverrideOutput::new(output, live);
                     play_to_output(
@@ -679,7 +679,6 @@ impl Playout {
                         },
                     )
                 };
-                benchmark::finish();
                 (result, timeline, live_for_worker)
             });
 

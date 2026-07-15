@@ -32,6 +32,7 @@ use super::{FrameOutput, PlaybackStopped};
 use crate::{
     analysis::audio_level::{AudioLevelCallback, AudioLevelMeter},
     audio_mixer::{AudioEffectChain, AudioEffectsControl},
+    benchmark::{self, BenchHandle, Stage},
     compositor::{
         logo::{LogoOverlay, logo_position},
         text::{render_plain_text_bitmap, render_wrapped_text_bitmap},
@@ -224,7 +225,7 @@ impl DesktopOutput {
         ))
     }
 
-    pub(super) fn run_operation<T, F>(&mut self, operation: F) -> Result<T>
+    pub(super) fn run_operation<T, F>(&mut self, benchmark: BenchHandle, operation: F) -> Result<T>
     where
         T: Send + 'static,
         F: FnOnce(&mut DesktopFrameSender) -> T + Send + 'static,
@@ -233,9 +234,11 @@ impl DesktopOutput {
         let audio_effects = Arc::clone(&self.audio_effects);
         let audio_level_callback = self.audio_level_callback.clone();
         let audio_sample_rate = self.audio_sample_rate;
+        let worker_benchmark = benchmark.clone();
         let worker = thread::Builder::new()
             .name("ffplayout-decode".to_string())
             .spawn(move || {
+                benchmark::activate(worker_benchmark);
                 let mut output = DesktopFrameSender {
                     sender,
                     audio_effects,
@@ -252,24 +255,30 @@ impl DesktopOutput {
             })
             .map_err(|error| anyhow!("failed to start decode worker: {error}"))?;
 
+        benchmark::activate(benchmark.clone());
         let render_result = self.renderer.run_clip(receiver);
         if let Err(error) = render_result {
             if error.downcast_ref::<PlaybackStopped>().is_some() {
+                benchmark::detach();
                 thread::spawn(move || {
                     if worker.join().is_err() {
                         log::warn!("decode worker panicked after desktop playback stopped");
                     }
+                    benchmark::activate(benchmark);
+                    benchmark::finish();
                 });
                 return Err(error);
             }
 
             let _ = worker.join();
+            benchmark::finish();
             return Err(error);
         }
 
         let worker_result = worker
             .join()
             .map_err(|_| anyhow!("decode worker panicked"))?;
+        benchmark::finish();
         Ok(worker_result)
     }
 
@@ -284,12 +293,13 @@ impl FrameOutput for DesktopFrameSender {
     }
 
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
-        self.sender
-            .send(DesktopMessage::VideoWithLogo {
+        benchmark::measure(Stage::DesktopOutput, || {
+            self.sender.send(DesktopMessage::VideoWithLogo {
                 frame: frame.clone(),
                 logo_opacity: self.current_logo_opacity,
             })
-            .map_err(|_| PlaybackStopped.into())
+        })
+        .map_err(|_| PlaybackStopped.into())
     }
 
     fn apply_logo_overlay(
@@ -302,29 +312,31 @@ impl FrameOutput for DesktopFrameSender {
     }
 
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
-        if frame.samples() == 0 {
-            return Ok(());
-        }
+        benchmark::measure(Stage::DesktopOutput, || {
+            if frame.samples() == 0 {
+                return Ok(());
+            }
 
-        let mut frame = frame.clone();
-        self.audio_effects
-            .lock()
-            .map_err(|_| anyhow!("audio effect chain lock poisoned"))?
-            .process(&mut frame);
-        self.audio_level_meter.process_frame(&frame);
-        let left = frame.plane::<f32>(0);
-        let right = frame.plane::<f32>(1);
-        let mut interleaved = Vec::with_capacity(frame.samples() * AUDIO_CHANNELS);
-        for (left, right) in left.iter().zip(right) {
-            interleaved.push(if left.is_finite() { *left } else { 0.0 });
-            interleaved.push(if right.is_finite() { *right } else { 0.0 });
-        }
-        self.sender
-            .send(DesktopMessage::Audio {
-                samples: interleaved,
-                samples_per_channel: frame.samples(),
-            })
-            .map_err(|_| PlaybackStopped.into())
+            let mut frame = frame.clone();
+            self.audio_effects
+                .lock()
+                .map_err(|_| anyhow!("audio effect chain lock poisoned"))?
+                .process(&mut frame);
+            self.audio_level_meter.process_frame(&frame);
+            let left = frame.plane::<f32>(0);
+            let right = frame.plane::<f32>(1);
+            let mut interleaved = Vec::with_capacity(frame.samples() * AUDIO_CHANNELS);
+            for (left, right) in left.iter().zip(right) {
+                interleaved.push(if left.is_finite() { *left } else { 0.0 });
+                interleaved.push(if right.is_finite() { *right } else { 0.0 });
+            }
+            self.sender
+                .send(DesktopMessage::Audio {
+                    samples: interleaved,
+                    samples_per_channel: frame.samples(),
+                })
+                .map_err(|_| PlaybackStopped.into())
+        })
     }
 
     fn set_video_end(&mut self, video_end_pts: Option<i64>) -> Result<()> {
@@ -686,28 +698,30 @@ impl DesktopRenderer {
         }
         self.last_video_present = Some(now);
 
-        self.texture
-            .update_yuv(
-                None,
-                frame.data(0),
-                frame.stride(0),
-                frame.data(1),
-                frame.stride(1),
-                frame.data(2),
-                frame.stride(2),
-            )
-            .map_err(|error| anyhow!("{error}"))?;
+        benchmark::measure(Stage::DesktopOutput, || {
+            self.texture
+                .update_yuv(
+                    None,
+                    frame.data(0),
+                    frame.stride(0),
+                    frame.data(1),
+                    frame.stride(1),
+                    frame.data(2),
+                    frame.stride(2),
+                )
+                .map_err(|error| anyhow!("{error}"))?;
 
-        self.canvas.clear();
-        self.canvas
-            .copy(&self.texture, None, None)
-            .map_err(anyhow::Error::msg)?;
-        self.draw_logo_overlay()?;
-        self.draw_subtitle_overlay(frame.pts().unwrap_or_default())?;
-        self.draw_titlebar()?;
-        self.draw_volume_overlay()?;
-        self.canvas.present();
-        Ok(())
+            self.canvas.clear();
+            self.canvas
+                .copy(&self.texture, None, None)
+                .map_err(anyhow::Error::msg)?;
+            self.draw_logo_overlay()?;
+            self.draw_subtitle_overlay(frame.pts().unwrap_or_default())?;
+            self.draw_titlebar()?;
+            self.draw_volume_overlay()?;
+            self.canvas.present();
+            Ok(())
+        })
     }
 
     fn render_black_frame(&mut self) {
