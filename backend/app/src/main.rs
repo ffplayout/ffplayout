@@ -3,6 +3,9 @@ use std::{
     sync::{Arc, LazyLock, atomic::AtomicBool},
 };
 
+#[cfg(feature = "processing-bench")]
+use std::time::Duration;
+
 use axum::{Router, middleware};
 use lazy_limit::{Duration as LDuration, RuleConfig, init_rate_limiter};
 use log::*;
@@ -71,6 +74,9 @@ fn main() -> Result<(), ProcessError> {
 }
 
 async fn async_main() -> Result<(), ProcessError> {
+    #[cfg(feature = "processing-bench")]
+    ff_engine::set_processing_bench_interval(Duration::from_secs(ARGS.processing_bench_interval));
+
     let pool = db_pool().await?;
 
     let init = init_args(&pool).await?;

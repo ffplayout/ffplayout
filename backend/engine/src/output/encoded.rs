@@ -13,6 +13,7 @@ use ffmpeg_next as ffmpeg;
 
 use super::{hls, vtt};
 use crate::{
+    benchmark::{self, Stage},
     HlsHealth,
     analysis::audio_level::AudioLevelMeter,
     audio_mixer::AudioEffectChain,
@@ -269,21 +270,23 @@ impl EncodedOutput {
     }
 
     pub(super) fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
-        for index in 0..self.video_streams.len() {
-            let stream = &mut self.video_streams[index];
-            if let Some(scaler) = &mut stream.scaler {
-                let scaled_frame = stream.scaled_frame.get_or_insert_with(|| {
-                    frame::Video::new(Pixel::YUV420P, stream.width, stream.height)
-                });
-                scaled_frame.set_pts(frame.pts());
-                scaler.run(frame, scaled_frame)?;
-                stream.encoder.send_frame(scaled_frame)?;
-            } else {
-                stream.encoder.send_frame(frame)?;
+        benchmark::measure(Stage::EncodeMux, || {
+            for index in 0..self.video_streams.len() {
+                let stream = &mut self.video_streams[index];
+                if let Some(scaler) = &mut stream.scaler {
+                    let scaled_frame = stream.scaled_frame.get_or_insert_with(|| {
+                        frame::Video::new(Pixel::YUV420P, stream.width, stream.height)
+                    });
+                    scaled_frame.set_pts(frame.pts());
+                    scaler.run(frame, scaled_frame)?;
+                    stream.encoder.send_frame(scaled_frame)?;
+                } else {
+                    stream.encoder.send_frame(frame)?;
+                }
+                self.write_video_packets(index)?;
             }
-            self.write_video_packets(index)?;
-        }
-        Ok(())
+            Ok(())
+        })
     }
 
     pub(super) fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
@@ -456,20 +459,22 @@ impl EncodedOutput {
     }
 
     pub(super) fn finish(mut self) -> Result<()> {
-        self.pad_audio_buffer()?;
-        for index in 0..self.audio_streams.len() {
-            self.flush_audio_resampler(index)?;
-            self.audio_streams[index].encoder.send_eof()?;
-            self.write_audio_packets(index)?;
-        }
+        benchmark::measure(Stage::EncodeMux, || {
+            self.pad_audio_buffer()?;
+            for index in 0..self.audio_streams.len() {
+                self.flush_audio_resampler(index)?;
+                self.audio_streams[index].encoder.send_eof()?;
+                self.write_audio_packets(index)?;
+            }
 
-        for index in 0..self.video_streams.len() {
-            self.video_streams[index].encoder.send_eof()?;
-            self.write_video_packets(index)?;
-        }
+            for index in 0..self.video_streams.len() {
+                self.video_streams[index].encoder.send_eof()?;
+                self.write_video_packets(index)?;
+            }
 
-        self.octx.write_trailer()?;
-        Ok(())
+            self.octx.write_trailer()?;
+            Ok(())
+        })
     }
 
     fn flush_audio_resampler(&mut self, index: usize) -> Result<()> {

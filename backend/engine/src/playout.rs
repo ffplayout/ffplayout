@@ -10,6 +10,7 @@ use log::{debug, trace};
 
 use crate::{
     LogoFade, PlaybackControl,
+    benchmark::{self, Stage},
     compositor::{logo::*, text::TextOverlay},
     output::FrameOutput,
     utils::{
@@ -370,11 +371,13 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     let mut decoded_audio_samples = 0_i64;
     output.set_video_end(video_end_pts)?;
     if let Some(media_path) = options.subtitles_media_path {
-        output.write_vtt_subtitles(
-            media_path,
-            timeline.video_pts * 1_000 / i64::from(cfg.fps),
-            seek_us / 1_000,
-        )?;
+        benchmark::measure(Stage::Vtt, || {
+            output.write_vtt_subtitles(
+                media_path,
+                timeline.video_pts * 1_000 / i64::from(cfg.fps),
+                seek_us / 1_000,
+            )
+        })?;
     }
 
     if video_finished {
@@ -605,7 +608,9 @@ fn receive_video_frames<O: FrameOutput>(
     playback_control: &PlaybackControl,
 ) -> Result<()> {
     let mut raw = frame::Video::empty();
-    while video.decoder.receive_frame(&mut raw).is_ok() {
+    while benchmark::measure_success(Stage::Decode, || video.decoder.receive_frame(&mut raw))
+        .is_ok()
+    {
         check_playback_control(playback_control)?;
         if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
             return Ok(());
@@ -627,17 +632,19 @@ fn receive_video_frames<O: FrameOutput>(
         }
 
         let mut scaled = frame::Video::empty();
-        video.scaler.run(&raw, &mut scaled)?;
+        benchmark::measure(Stage::Scale, || video.scaler.run(&raw, &mut scaled))?;
         let pristine = if video.needs_padding() {
             let mut padded = black_video_frame(video.output_width, video.output_height);
-            copy_video_frame(
-                &scaled,
-                &mut padded,
-                video.x_offset,
-                video.y_offset,
-                video.scaled_width,
-                video.scaled_height,
-            );
+            benchmark::measure(Stage::Scale, || {
+                copy_video_frame(
+                    &scaled,
+                    &mut padded,
+                    video.x_offset,
+                    video.y_offset,
+                    video.scaled_width,
+                    video.scaled_height,
+                );
+            });
             padded
         } else {
             scaled
@@ -681,14 +688,22 @@ fn apply_overlays(
     timeline.logo_opacity = opacity;
 
     if let Some(logo) = &video.logo {
-        output.apply_logo_overlay(frame, logo, opacity);
+        benchmark::measure(Stage::LogoOverlay, || {
+            output.apply_logo_overlay(frame, logo, opacity);
+        });
     }
-    if let Some(text) = &mut video.text {
-        text.blend(frame, timeline.video_pts, timeline.text_pts);
-    }
-    video.update_runtime_text(timeline.video_pts, timeline.text_pts);
-    if let Some(text) = &mut video.runtime_text {
-        text.blend(frame, timeline.video_pts, timeline.text_pts);
+    if video.text.is_some() || video.runtime_text.is_some() {
+        benchmark::measure(Stage::TextOverlay, || {
+            if let Some(text) = &mut video.text {
+                text.blend(frame, timeline.video_pts, timeline.text_pts);
+            }
+            video.update_runtime_text(timeline.video_pts, timeline.text_pts);
+            if let Some(text) = &mut video.runtime_text {
+                text.blend(frame, timeline.video_pts, timeline.text_pts);
+            }
+        });
+    } else {
+        video.update_runtime_text(timeline.video_pts, timeline.text_pts);
     }
     timeline.text_pts += 1;
 }

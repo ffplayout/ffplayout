@@ -13,6 +13,7 @@ workspace = true
 [features]
 default = ["desktop"]
 desktop = ["dep:sdl2"]
+processing-bench = []
 tokio = ["dep:tokio"]
 
 [dependencies]

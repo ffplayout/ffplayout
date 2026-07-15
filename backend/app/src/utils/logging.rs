@@ -1,9 +1,9 @@
 use std::{
     collections::{HashMap, hash_map},
     env, fmt,
-    io::{self, Write},
+    io::{self, IsTerminal, Write},
     path::PathBuf,
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex as StdMutex, RwLock},
     time::Instant,
 };
 
@@ -61,18 +61,54 @@ impl fmt::Display for Target {
     }
 }
 
-pub struct LogConsole;
+#[derive(Default)]
+pub struct LogConsole {
+    state: StdMutex<ConsoleState>,
+}
+
+#[derive(Default)]
+struct ConsoleState {
+    previous_bench_lines: usize,
+}
 
 impl LogWriter for LogConsole {
     fn write(&self, now: &mut DeferredNow, record: &Record<'_>) -> std::io::Result<()> {
-        console_formatter(&mut std::io::stderr(), now, record)?;
+        let message = record.args().to_string();
+        let bench_lines = cpu_bench_line_count(&message);
+        let mut stderr = io::stderr();
+        let is_terminal = stderr.is_terminal();
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        println!();
+        if is_terminal && bench_lines.is_some() && state.previous_bench_lines > 0 {
+            // The previous table is still the last terminal output, so it is
+            // safe to move back to its first line and redraw it in place.
+            write!(stderr, "\x1b[{}A\r\x1b[J", state.previous_bench_lines)?;
+        }
+
+        console_formatter(&mut stderr, now, record)?;
+        if !message.ends_with('\n') {
+            writeln!(stderr)?;
+        }
+
+        state.previous_bench_lines = if is_terminal {
+            bench_lines.unwrap_or_default()
+        } else {
+            0
+        };
         Ok(())
     }
     fn flush(&self) -> std::io::Result<()> {
         Ok(())
     }
+}
+
+fn cpu_bench_line_count(message: &str) -> Option<usize> {
+    message
+        .starts_with("[CPU Bench]")
+        .then(|| message.lines().count().max(1))
 }
 
 pub struct MultiFileLogger {
@@ -464,11 +500,11 @@ pub fn init_logging(
     let mut logger = Logger::with(builder.build()).write_mode(WriteMode::Async);
 
     if ARGS.log_to_console {
-        logger = logger.log_to_writer(Box::new(LogConsole));
+        logger = logger.log_to_writer(Box::new(LogConsole::default()));
     } else {
         logger = logger
             .log_to_writer(Box::new(LogDefault::new(mail_queues)))
-            .add_writer("console", Box::new(LogConsole));
+            .add_writer("console", Box::new(LogConsole::default()));
     }
 
     let logger = logger
@@ -553,4 +589,15 @@ pub async fn log_middleware(real_ip: RealIp, req: Request<Body>, next: Next) -> 
     }
 
     res
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cpu_bench_line_count;
+
+    #[test]
+    fn counts_cpu_bench_lines_only() {
+        assert_eq!(cpu_bench_line_count("[CPU Bench]\n    decode"), Some(2));
+        assert_eq!(cpu_bench_line_count("regular log line"), None);
+    }
 }

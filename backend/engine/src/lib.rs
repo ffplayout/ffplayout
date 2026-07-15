@@ -14,6 +14,7 @@ use tokio::sync::oneshot;
 
 mod analysis;
 mod audio_mixer;
+mod benchmark;
 mod compositor;
 mod input;
 mod output;
@@ -48,6 +49,12 @@ pub use utils::{
 
 pub fn available_font_families() -> Vec<String> {
     compositor::text::available_font_families()
+}
+
+/// Sets the report interval for the optional `processing-bench` feature.
+/// Has no effect when that feature is disabled.
+pub fn set_processing_bench_interval(interval: Duration) {
+    benchmark::set_report_interval(interval);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -549,6 +556,7 @@ impl Playout {
     }
 
     fn with_output(config: OutputConfig, output: Output, fallback_duration: f64) -> Self {
+        benchmark::start(config.channel_id);
         Self {
             config,
             output,
@@ -715,7 +723,9 @@ impl Playout {
     }
 
     pub fn finish(self) -> Result<()> {
-        self.output.finish()
+        let result = self.output.finish();
+        benchmark::finish();
+        result
     }
 }
 

@@ -16,6 +16,7 @@ default = ["desktop", "embed_frontend"]
 desktop = ["ff-engine/desktop"]
 embed_frontend = []
 dev-metrics = ["dep:console-subscriber", "tokio/tracing"]
+processing-bench = ["ff-engine/processing-bench"]
 
 [dependencies]
 ff-engine = { path = "../engine", default-features = false, features = [
