@@ -131,6 +131,18 @@ pub struct Args {
     #[clap(long, env, help_heading = Some("General"), help = "Add timestamp to log line")]
     pub log_timestamp: bool,
 
+    #[cfg(feature = "processing-bench")]
+    #[clap(
+        long,
+        env = "FFPLAYOUT_PROCESSING_BENCH_INTERVAL",
+        help_heading = Some("Diagnostics"),
+        help = "CPU pipeline benchmark report interval in seconds",
+        value_name = "SECONDS",
+        default_value_t = 1,
+        value_parser = positive_seconds
+    )]
+    pub processing_bench_interval: u64,
+
     #[clap(
         short,
         long,
@@ -188,6 +200,19 @@ pub struct Args {
 
     #[clap(long, hide = true, help = "Send a test email (for debugging)")]
     pub test_mail: bool,
+}
+
+#[cfg(feature = "processing-bench")]
+fn positive_seconds(value: &str) -> Result<u64, String> {
+    let seconds = value
+        .parse::<u64>()
+        .map_err(|_| "must be a positive whole number of seconds".to_string())?;
+
+    if seconds == 0 {
+        Err("must be at least one second".to_string())
+    } else {
+        Ok(seconds)
+    }
 }
 
 fn global_user(args: &mut Args) {

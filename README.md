@@ -5,7 +5,7 @@
 
 ![player](/docs/images/player.png)
 
-ffplayout is a 24/7 broadcasting solution. It can playout a folder containing audio or video clips, or play a *JSON* playlist for each day, keeping the current playlist editable.
+ffplayout is a 24/7 broadcasting solution. It can playout a folder containing video clips, or play a *JSON* playlist for each day, keeping the current playlist editable.
 
 The application is mostly designed to run as a system service on Linux. In general it should run on any platform supported by Rust and FFmpeg.
 
@@ -26,8 +26,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - when playlist is not 24 hours long, loop fillers until time is full
 - set a custom day start, for example from 06:00 to 06:00 instead of midnight to midnight
 - normal system requirements and no special tools beyond FFmpeg libraries
-- no GPU power is needed
-- stream to server or play on desktop
+- CPU-based processing; a GPU is not required
 - log to channel log files, mail queues, or color output to console
 - conform audio and video, if is necessary to match output stream:
   - letterbox or pillarbox to fit aspect
@@ -35,10 +34,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
   - fit target resolution
   - add silence if audio duration is too short
   - hold the last frame if video duration is too short
-- [output](/docs/output.md):
-  - **stream**
-  - **desktop**
-  - **HLS**
+- [output](/docs/output.md): **stream**, **desktop**, and **HLS**
 - RTMP [live ingest](/docs/live_ingest.md)
 - image source (will loop until out duration is reached)
 - import playlist from text or m3u file, with CLI or frontend
@@ -52,20 +48,28 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 ### Requirements
 
 - RAM and CPU usage depends on video resolution; at least 4 dedicated threads and 3GB RAM for 720p are recommended
-- **FFmpeg** v7.0+ development libraries are required; FFmpeg builds before 7.2 can use WebVTT subtitles, but may not support custom HLS subtitle display names
+- **FFmpeg** v7.0+ development libraries are required; builds with `libavformat` before v61.9.100 can use WebVTT subtitles, but may not support custom HLS subtitle display names
 
 ### Install
 
 Check [install](docs/install.md) for details about how to install ffplayout.
 
------
+### Quick Start
+
+1. Install a package from the [latest release](https://github.com/ffplayout/ffplayout/releases/latest).
+2. Start the ffplayout service as described in the [installation guide](docs/install.md).
+3. Open `http://<server-address>:8787` and complete the first-time setup. It creates the global settings and the first global admin.
+
+HLS is the default output mode. For production delivery, serve the generated HLS files through nginx, another web server, or a CDN; ffplayout's built-in HTTP route is intended for previewing.
+
+---
 
 ### JSON Playlist Example
 
 ```json
 {
-    "channel": "Test 1",
-    "date": "2019-03-05",
+    "channel": "My Channel",
+    "date": "2026-07-15",
     "program": [{
             "in": 0,
             "out": 647.68,
@@ -73,25 +77,15 @@ Check [install](docs/install.md) for details about how to install ffplayout.
             "source": "/Media/clip1.mp4"
         }, {
             "in": 0,
-            "out": 890.02,
-            "duration": 890.02,
-            "source": "/Media/clip2.mp4"
-        }, {
-            "in": 0,
             "out": 149,
             "duration": 149,
-            "source": "/Media/clip3.mp4",
+            "source": "/Media/clip2.mp4",
             "category": "advertisement"
         }, {
             "in": 0,
             "out": 114.72,
             "duration": 114.72,
-            "source": "/Media/image1.jpg"
-        }, {
-            "in": 0,
-            "out": 230.30,
-            "duration": 230.30,
-            "source": "/Media/image2.jpg"
+            "source": "/Media/image.jpg"
         }, {
             "in": 0,
             "out": 2531.36,
@@ -104,6 +98,6 @@ Check [install](docs/install.md) for details about how to install ffplayout.
 ```
 If you are in playlist mode and move backwards or forwards in time, the time shift is saved so the playlist is still in sync. Bear in mind, however, that this may make your playlist too short. If you do not reset it, it will automatically reset the next day.
 
-## **Warning**
+## Day-Long Playlists
 
-(Endless) streaming over multiple days will only work if config has a **day_start** value and the **length** value is **24 hours**. If you only need a few hours for each day, use a *cron* job or something similar.
+For continuous, day-based playout across multiple days, configure a **day_start** value and set **length** to **24 hours**. For shorter scheduled runs, start ffplayout with a scheduler such as `cron` or systemd timers.

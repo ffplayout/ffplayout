@@ -429,7 +429,7 @@ impl DesktopRenderer {
             audio,
             audio_effects_control: cfg.audio_effects.clone(),
             event_pump,
-            video_queue: VecDeque::new(),
+            video_queue: VecDeque::with_capacity(OUTPUT_CHANNEL_CAPACITY),
             pending_audio: VecDeque::new(),
             pending_audio_samples: 0,
             submitted_audio_samples: 0,

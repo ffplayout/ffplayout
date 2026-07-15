@@ -4,6 +4,7 @@ use crate::compositor::blend::{Plane, PlaneMut, blend_plane};
 
 pub struct OverlayFrame {
     pub frame: frame::Video, // YUVA420P
+    pub chroma_alpha: Vec<u8>,
     pub x: i32,
     pub y: i32,
     pub width: u32,
@@ -14,6 +15,8 @@ pub struct OverlayFrame {
 #[derive(Clone, Copy)]
 pub struct OverlayRef<'a> {
     pub frame: &'a frame::Video, // YUVA420P
+    pub chroma_alpha: &'a [u8],
+    pub chroma_alpha_stride: usize,
     pub x: i32,
     pub y: i32,
     pub width: u32,
@@ -25,6 +28,8 @@ impl OverlayFrame {
     pub fn as_ref(&self) -> OverlayRef<'_> {
         OverlayRef {
             frame: &self.frame,
+            chroma_alpha: &self.chroma_alpha,
+            chroma_alpha_stride: self.width as usize / 2,
             x: self.x,
             y: self.y,
             width: self.width,
@@ -32,6 +37,31 @@ impl OverlayFrame {
             opacity: self.opacity,
         }
     }
+}
+
+/// Downsample a YUVA alpha plane once for the 4:2:0 chroma planes.
+pub(crate) fn chroma_alpha(frame: &frame::Video, width: u32, height: u32) -> Vec<u8> {
+    let width = width as usize;
+    let height = height as usize;
+    let alpha = frame.data(3);
+    let alpha_stride = frame.stride(3);
+    let chroma_width = width / 2;
+    let chroma_height = height / 2;
+    let mut downsampled = vec![0; chroma_width * chroma_height];
+
+    for y in 0..chroma_height {
+        for x in 0..chroma_width {
+            let alpha_x = x * 2;
+            let alpha_y = y * 2;
+            let sum = u16::from(alpha[alpha_y * alpha_stride + alpha_x])
+                + u16::from(alpha[alpha_y * alpha_stride + alpha_x + 1])
+                + u16::from(alpha[(alpha_y + 1) * alpha_stride + alpha_x])
+                + u16::from(alpha[(alpha_y + 1) * alpha_stride + alpha_x + 1]);
+            downsampled[y * chroma_width + x] = (sum / 4) as u8;
+        }
+    }
+
+    downsampled
 }
 
 pub fn blend_overlay(target: &mut frame::Video, overlay: OverlayRef<'_>, opacity_factor: f64) {
@@ -66,9 +96,6 @@ pub fn blend_overlay(target: &mut frame::Video, overlay: OverlayRef<'_>, opacity
     let target_u_stride = target.stride(1);
     let target_v_stride = target.stride(2);
 
-    let target_u_len = target.data(1).len();
-    let target_v_len = target.data(2).len();
-
     blend_plane(
         PlaneMut {
             data: target.data_mut(0),
@@ -100,49 +127,52 @@ pub fn blend_overlay(target: &mut frame::Video, overlay: OverlayRef<'_>, opacity
     let uv_width = clip.width / 2;
     let uv_height = clip.height / 2;
 
-    for y in 0..uv_height {
-        for x in 0..uv_width {
-            let src_x = uv_src_x + x;
-            let src_y = uv_src_y + y;
-            let src_u_idx = src_y * overlay_u_stride + src_x;
-            let src_v_idx = src_y * overlay_v_stride + src_x;
-
-            if src_u_idx >= overlay_u.len() || src_v_idx >= overlay_v.len() {
-                continue;
-            }
-
-            let ax = src_x * 2;
-            let ay = src_y * 2;
-            let alpha = avg_alpha_2x2(
-                overlay_a,
-                overlay_a_stride,
-                ax,
-                ay,
-                overlay.width as usize,
-                overlay.height as usize,
-                opacity,
-            );
-
-            if alpha == 0 {
-                continue;
-            }
-
-            let dst_x = uv_dst_x + x;
-            let dst_y = uv_dst_y + y;
-            let dst_u_idx = dst_y * target_u_stride + dst_x;
-            let dst_v_idx = dst_y * target_v_stride + dst_x;
-
-            if dst_u_idx >= target_u_len || dst_v_idx >= target_v_len {
-                continue;
-            }
-
-            let dst_u = target.data(1)[dst_u_idx];
-            let dst_v = target.data(2)[dst_v_idx];
-
-            target.data_mut(1)[dst_u_idx] = blend_u8(dst_u, overlay_u[src_u_idx], alpha);
-            target.data_mut(2)[dst_v_idx] = blend_u8(dst_v, overlay_v[src_v_idx], alpha);
-        }
-    }
+    blend_plane(
+        PlaneMut {
+            data: target.data_mut(1),
+            stride: target_u_stride,
+            x: uv_dst_x,
+            y: uv_dst_y,
+        },
+        Plane {
+            data: overlay_u,
+            stride: overlay_u_stride,
+            x: uv_src_x,
+            y: uv_src_y,
+        },
+        Plane {
+            data: overlay.chroma_alpha,
+            stride: overlay.chroma_alpha_stride,
+            x: uv_src_x,
+            y: uv_src_y,
+        },
+        uv_width,
+        uv_height,
+        opacity,
+    );
+    blend_plane(
+        PlaneMut {
+            data: target.data_mut(2),
+            stride: target_v_stride,
+            x: uv_dst_x,
+            y: uv_dst_y,
+        },
+        Plane {
+            data: overlay_v,
+            stride: overlay_v_stride,
+            x: uv_src_x,
+            y: uv_src_y,
+        },
+        Plane {
+            data: overlay.chroma_alpha,
+            stride: overlay.chroma_alpha_stride,
+            x: uv_src_x,
+            y: uv_src_y,
+        },
+        uv_width,
+        uv_height,
+        opacity,
+    );
 }
 
 struct ClipRect {
@@ -188,56 +218,30 @@ impl ClipRect {
 }
 
 #[inline]
-fn blend_u8(dst: u8, src: u8, alpha: u8) -> u8 {
-    let a = alpha as u16;
-    (((dst as u16 * (255 - a)) + (src as u16 * a) + 127) / 255) as u8
-}
-
-#[inline]
-fn mul_alpha(src_alpha: u8, opacity: u8) -> u8 {
-    ((src_alpha as u16 * opacity as u16 + 127) / 255) as u8
-}
-
-fn avg_alpha_2x2(
-    alpha_plane: &[u8],
-    alpha_stride: usize,
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-    opacity: u8,
-) -> u8 {
-    let mut sum = 0_u16;
-    let mut count = 0_u16;
-
-    for dy in 0..2 {
-        for dx in 0..2 {
-            let px = x + dx;
-            let py = y + dy;
-
-            if px >= width || py >= height {
-                continue;
-            }
-
-            let idx = py * alpha_stride + px;
-            if idx >= alpha_plane.len() {
-                continue;
-            }
-
-            sum += alpha_plane[idx] as u16;
-            count += 1;
-        }
-    }
-
-    if count == 0 {
-        return 0;
-    }
-
-    let avg = (sum / count) as u8;
-    mul_alpha(avg, opacity)
-}
-
-#[inline]
 fn even_usize(value: usize) -> usize {
     value & !1
+}
+
+#[cfg(test)]
+mod tests {
+    use ffmpeg_next::{frame, util::format::pixel::Pixel};
+
+    use super::chroma_alpha;
+
+    #[test]
+    fn chroma_alpha_averages_each_luma_block() {
+        let mut frame = frame::Video::new(Pixel::YUVA420P, 4, 2);
+        let stride = frame.stride(3);
+        let alpha = frame.data_mut(3);
+        alpha[0] = 0;
+        alpha[1] = 20;
+        alpha[stride] = 40;
+        alpha[stride + 1] = 60;
+        alpha[2] = 80;
+        alpha[3] = 100;
+        alpha[stride + 2] = 120;
+        alpha[stride + 3] = 140;
+
+        assert_eq!(chroma_alpha(&frame, 4, 2), vec![30, 110]);
+    }
 }

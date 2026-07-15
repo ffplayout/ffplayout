@@ -33,27 +33,53 @@ When compiling against a manually installed FFmpeg, make sure `pkg-config` can f
 export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 ```
 
-### Create debian DEB and RHEL RPM packages
+## Processing Benchmark
 
-install:
+The optional `processing-bench` feature prints periodic wall-clock timings for
+the engine's decode, scale, overlay, subtitle, and encoded-output stages. It
+is intended for local CPU profiling and is disabled in normal builds.
+
+```bash
+cargo run -p ffplayout --features processing-bench -- \
+    --processing-bench-interval 5 \
+    -l 127.0.0.1:8787 --log-to-console -o hls
+```
+
+`--processing-bench-interval` is measured in seconds and defaults to `1`.
+The `FFPLAYOUT_PROCESSING_BENCH_INTERVAL` environment variable provides the
+same setting. The reported times measure the instrumented caller thread; use
+`perf` for CPU time inside FFmpeg worker threads.
+
+### Create Debian DEB and RHEL RPM Packages
+
+Install the packaging tools:
+
 - `cargo install cargo-deb`
 - `cargo install cargo-generate-rpm`
 
-Compile to your target system with cargo, and run:
+Build packages on the target distribution and architecture. `ffmpeg-next` links
+against the system FFmpeg libraries, so cross-compilation also requires a target
+sysroot containing matching FFmpeg development libraries and `pkg-config`
+metadata. Rust's `--target` option alone is not sufficient.
 
-```Bash
-# for debian based systems:
+For Debian-based systems:
+
+```bash
+cargo build --release -p ffplayout
 cargo deb --no-build -p ffplayout
-
-# for armhf
-cargo deb --no-build --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout
-
-# for arm64
-cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout
-
-# for rhel based systems:
-cargo generate-rpm --target=x86_64-unknown-linux-musl
 ```
+
+For RHEL-based systems, build the release binary first, then generate the RPM
+from `backend/app`:
+
+```bash
+cargo build --release -p ffplayout
+cd backend/app
+cargo generate-rpm
+```
+
+For cross-compiled packages, provide a complete, compatible target FFmpeg
+environment and verify the resulting binary on the target system.
 
 ## Generate types for Frontend
 The frontend uses TypeScript, to generate types for the rust structs run: `cargo test`.
@@ -95,9 +121,11 @@ Check out the [deployment documentation](https://vuejs.org/guide/quick-start.htm
 
 ## Run ffplayout in development mode
 
-1. initialize database: `cargo run -- -i`
-2. run backend: `cargo run -- -l 127.0.0.1:8787`
-3. in second terminal:
+1. run backend: `cargo run -- -l 127.0.0.1:8787`
+2. in a second terminal:
     1. install packages: `npm ci`
     2. run frontend: `npm run dev`
-4. in browser navigate to: `127.0.0.1:5757`
+3. in the browser navigate to: `http://127.0.0.1:5757`
+4. Complete first-time setup in the frontend.
+
+For an initial setup without the frontend, use `cargo run -- -i` instead.

@@ -13,7 +13,7 @@ use regex::Regex;
 use cosmic_text::{Align, Wrap};
 
 use crate::{
-    compositor::overlay::{OverlayFrame, blend_overlay},
+    compositor::overlay::{OverlayFrame, blend_overlay, chroma_alpha},
     utils::{
         config::{RgbaColor, TextConfig, TextPosition, TextScroll, TextWeight},
         helper::even,
@@ -211,9 +211,12 @@ impl TextOverlay {
         let base_x = text_position(config.position_x, output_width, overlay.width);
         let base_y = text_position(config.position_y, output_height, overlay.height);
 
+        let chroma_alpha = chroma_alpha(&overlay.frame, overlay.width, overlay.height);
+
         Ok(Some(Self {
             overlay: OverlayFrame {
                 frame: overlay.frame,
+                chroma_alpha,
                 x: base_x,
                 y: base_y,
                 width: overlay.width,
@@ -244,6 +247,10 @@ impl TextOverlay {
         self.overlay.x = even_signed(x);
         self.overlay.y = even_signed(self.base_y);
         blend_overlay(target, self.overlay.as_ref(), opacity);
+    }
+
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.overlay.width, self.overlay.height)
     }
 
     fn opacity_at(&self, pts: i64) -> f64 {

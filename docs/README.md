@@ -3,7 +3,7 @@
 
 ### **[For Developer](/docs/developer.md)**
 
-Learn how to setup a developer environment and to cross compile for different platforms.
+Learn how to set up a developer environment and build native packages.
 
 ### **[Install](/docs/install.md)**
 
@@ -20,6 +20,10 @@ Using live ingest to inject a live stream.
 ### **[Output Modes](/docs/output.md)**
 
 The different output modes.
+
+### **[Closed Captions](/docs/closed_captions.md)**
+
+Use WebVTT sidecar files as HLS subtitles.
 
 ### **[Playlist Generation](/docs/playlist_gen.md)**
 

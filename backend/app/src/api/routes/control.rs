@@ -269,13 +269,13 @@ async fn run_process_command(
         ProcessCtl::Stop => {
             manager.channel.lock().await.active = false;
             manager.stop_all(true).await;
-            manager.abort_supervisor().await;
+            manager.stop_supervisor().await;
             Ok(Json("Success"))
         }
         ProcessCtl::Restart => {
             manager.channel.lock().await.active = false;
             manager.stop_all(false).await;
-            manager.abort_supervisor().await;
+            manager.stop_supervisor().await;
 
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 

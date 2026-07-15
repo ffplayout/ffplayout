@@ -14,6 +14,7 @@ use tokio::sync::oneshot;
 
 mod analysis;
 mod audio_mixer;
+mod benchmark;
 mod compositor;
 mod input;
 mod output;
@@ -48,6 +49,12 @@ pub use utils::{
 
 pub fn available_font_families() -> Vec<String> {
     compositor::text::available_font_families()
+}
+
+/// Sets the report interval for the optional `processing-bench` feature.
+/// Has no effect when that feature is disabled.
+pub fn set_processing_bench_interval(interval: Duration) {
+    benchmark::set_report_interval(interval);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -549,6 +556,13 @@ impl Playout {
     }
 
     fn with_output(config: OutputConfig, output: Output, fallback_duration: f64) -> Self {
+        #[cfg(feature = "desktop")]
+        if !output.is_desktop() {
+            benchmark::start(config.channel_id);
+        }
+        #[cfg(not(feature = "desktop"))]
+        benchmark::start(config.channel_id);
+
         Self {
             config,
             output,
@@ -632,6 +646,7 @@ impl Playout {
             let path = path.to_string();
             let mut live_for_worker = live.take();
             let operation = self.output.run_desktop(move |output| {
+                benchmark::start(config.channel_id);
                 let result = if let Some(live) = live_for_worker.as_mut() {
                     let mut output = LiveOverrideOutput::new(output, live);
                     play_to_output(
@@ -664,6 +679,7 @@ impl Playout {
                         },
                     )
                 };
+                benchmark::finish();
                 (result, timeline, live_for_worker)
             });
 
@@ -715,7 +731,9 @@ impl Playout {
     }
 
     pub fn finish(self) -> Result<()> {
-        self.output.finish()
+        let result = self.output.finish();
+        benchmark::finish();
+        result
     }
 }
 

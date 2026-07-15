@@ -1,396 +1,193 @@
-### Possible endpoints
+# API
 
-Run the API thru the systemd service, or like:
+The API is served by the main ffplayout process. By default it listens on
+`http://127.0.0.1:8787`. Set a different address with `--listen` / `-l`:
 
-```BASH
-ffplayout -l 127.0.0.1:8787
+```bash
+ffplayout --listen 127.0.0.1:8787
 ```
 
-For all endpoints an (Bearer) authentication is required.\
-`{id}` represent the channel id, and at default is 1.
+All JSON endpoints return an error object with a `detail` field on failure.
+Unless noted otherwise, `/api` endpoints require:
 
-#### User Handling
-
-**Login**
-
-```BASH
-curl -X POST http://127.0.0.1:8787/auth/login/ -H "Content-Type: application/json" \
--d '{ "username": "<USER>", "password": "<PASS>" }'
-```
-**Response:**
-
-```JSON
-{
-    "id": 1,
-    "mail": "user@example.org",
-    "username": "<USER>",
-    "token": "<TOKEN>"
-}
+```http
+Authorization: Bearer <ACCESS_TOKEN>
 ```
 
-From here on all request **must** contain the authorization header:\
-`"Authorization: Bearer <TOKEN>"`
+`{id}` always means a channel ID. Channel-scoped requests are available only
+to users assigned to that channel, unless they are a global admin.
 
-**Get current User**
+## Authentication and setup
 
-```BASH
-curl -X GET 'http://127.0.0.1:8787/api/user' -H 'Content-Type: application/json' \
--H 'Authorization: Bearer <TOKEN>'
+These endpoints do not use a bearer token.
+
+| Method | Endpoint | Request / response |
+| --- | --- | --- |
+| `POST` | `/auth/login` | `{ "username": "...", "password": "..." }`. Returns `{ "access": "...", "refresh": "..." }`, or a verification message when two-factor authentication is required. |
+| `POST` | `/auth/verify` | `{ "username": "...", "code": "123456" }`. Returns access and refresh tokens. Verification codes expire after five minutes. |
+| `POST` | `/auth/refresh` | `{ "refresh": "..." }`. Returns `{ "access": "..." }`. |
+| `GET` | `/api/setup` | Reports whether first-time setup is required. |
+| `POST` | `/api/setup` | Completes first-time setup. It works only while no user exists. |
+
+Access tokens are valid for three days and refresh tokens for 30 days.
+
+```bash
+curl -X POST http://127.0.0.1:8787/auth/login \
+  -H 'Content-Type: application/json' \
+  --data '{"username":"admin","password":"<PASSWORD>"}'
 ```
 
-**Get User by ID**
+Example first-time setup:
 
-```BASH
-curl -X GET 'http://127.0.0.1:8787/api/user/2' -H 'Content-Type: application/json' \
--H 'Authorization: Bearer <TOKEN>'
+```bash
+curl -X POST http://127.0.0.1:8787/api/setup \
+  -H 'Content-Type: application/json' \
+  --data '{
+    "username":"admin", "mail":"admin@example.invalid", "password":"<PASSWORD>",
+    "two_factor":false, "logs":"/var/log/ffplayout",
+    "playlists":"/var/lib/ffplayout/playlists",
+    "public":"/var/lib/ffplayout/public", "storage":"/var/lib/ffplayout/media",
+    "shared":false, "smtp_server":"", "smtp_user":"", "smtp_password":"",
+    "smtp_starttls":false, "smtp_port":465
+  }'
 ```
 
+The JWT `secret` is neither exposed nor accepted by the API.
 
-```BASH
-curl -X GET 'http://127.0.0.1:8787/api/users' -H 'Content-Type: application/json' \
--H 'Authorization: Bearer <TOKEN>'
+## Roles
+
+`GA` means global admin, `CA` means channel admin, and `U` means user. All
+listed authenticated endpoints also enforce the channel assignment where an
+`{id}` is present.
+
+| Access | Meaning |
+| --- | --- |
+| `GA` | Global admin only |
+| `GA, CA` | Global or channel admin |
+| `GA, CA, U` | Any authenticated role with access to the target channel |
+
+## Channel and global settings
+
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/channel/{id}` | `GA, CA, U` | Read one channel. |
+| `PATCH` | `/api/channel/{id}` | `GA, CA` | Update a channel. Only a global admin may change its `public`, `playlists`, or `storage` paths. |
+| `POST` | `/api/channel` | `GA` | Create a channel. |
+| `DELETE` | `/api/channel/{id}` | `GA` | Delete a channel. |
+| `GET` | `/api/channels` | `GA, CA, U` | List channels available to the current user. |
+| `GET` | `/api/global` | `GA` | Read global settings. The SMTP password is represented only by `smtp_password_set`. |
+| `PUT` | `/api/global` | `GA` | Update global settings. Omit `smtp_password` or send an empty value to retain the current password. |
+
+## Playout configuration and capabilities
+
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/playout/config/{id}` | `GA, CA, U` | Read the complete `PlayoutConfig`. |
+| `PUT` | `/api/playout/config/{id}` | `GA, CA` | Replace the complete `PlayoutConfig`. Use the response from `GET` as the request shape. |
+| `GET` | `/api/playout/outputs/{id}` | `GA, CA, U` | List configured outputs for the channel. |
+| `GET` | `/api/playout/codecs/{id}` | `GA, CA, U` | List supported software codecs for HLS, RTMP, SRT, and UDP. |
+| `GET` | `/api/text/fonts` | `GA, CA, U` | List available font families. |
+
+`PUT /api/playout/config/{id}` validates output mode, codecs, HLS subtitle
+settings, text preset references, and volume before persisting the change.
+
+## Playout control
+
+| Method | Endpoint | Access | Request body |
+| --- | --- | --- | --- |
+| `POST` | `/api/control/{id}/text` | `GA, CA, U` | A `TextPreset` object. Send an empty `text` with `use_filename: false` to clear the overlay. |
+| `POST` | `/api/control/{id}/playout` | `GA, CA, U` | `{ "control": "back" \| "next" \| "reset" }` |
+| `PUT` | `/api/control/{id}/audio` | `GA, CA` | `{ "volume": 0.0 }`, from `0.0` through `1.5`. |
+| `GET` | `/api/control/{id}/media/current` | `GA, CA, U` | Read the current media and playout state. |
+| `POST` | `/api/control/{id}/process` | `GA, CA, U` | `{ "command": "status" \| "start" \| "stop" \| "restart" }` |
+
+```bash
+curl -X POST http://127.0.0.1:8787/api/control/1/process \
+  -H 'Authorization: Bearer <ACCESS_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  --data '{"command":"restart"}'
 ```
 
-**Update current User**
+## Playlists and programme data
 
-```BASH
-curl -X PUT http://127.0.0.1:8787/api/user/1 -H 'Content-Type: application/json' \
--d '{"mail": "<MAIL>", "password": "<PASS>"}' -H 'Authorization: Bearer <TOKEN>'
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/playlist/{id}?date=YYYY-MM-DD` | `GA, CA, U` | Read a playlist. |
+| `POST` | `/api/playlist/{id}` | `GA, CA, U` | Save a complete playlist JSON document. |
+| `POST` | `/api/playlist/{id}/generate/{date}` | `GA, CA, U` | Generate and save a playlist. Body is optional: `{ "paths": ["..."], "template": { ... } }`. |
+| `DELETE` | `/api/playlist/{id}/{date}` | `GA, CA, U` | Delete a playlist. |
+| `GET` | `/api/program/{id}` | `GA, CA, U` | Read programme items. Optional `start_after` and `start_before` query parameters accept local ISO date-times. |
+| `GET` | `/api/log/{id}` | `GA, CA, U` | Read a log. Optional query parameters: `date`, `timezone`, `download`. |
+| `GET` | `/api/system/{id}` | `GA, CA, U` | Read system statistics for the channel. |
+
+## Files
+
+All file-management endpoints require `GA, CA, U` access to the channel.
+Paths are resolved below the channel storage root; parent-directory traversal is
+rejected.
+
+| Method | Endpoint | Request body or query |
+| --- | --- | --- |
+| `POST` | `/api/file/{id}/browse` | `{ "source": "", "folders_only": false }` |
+| `POST` | `/api/file/{id}/create-folder` | `{ "source": "folder" }` |
+| `POST` | `/api/file/{id}/rename` | `{ "source": "old.mp4", "target": "new.mp4" }` |
+| `POST` | `/api/file/{id}/remove` | `{ "source": "file.mp4", "recursive": false }` |
+| `PUT` | `/api/file/{id}/upload?path=folder` | `multipart/form-data` with a file field |
+| `PUT` | `/api/file/{id}/import?file=list.m3u&date=YYYY-MM-DD` | `multipart/form-data` with a file field |
+| `POST` | `/api/file/{id}/access-token` | `{ "filename": "folder/file.mp4" }` |
+
+`POST /api/file/{id}/access-token` returns `{ "access": "...",
+"expires_in_seconds": 900 }`. It creates a single-file token bound to the
+request IP address and channel. It can be used for browser media previews:
+
+```bash
+curl 'http://127.0.0.1:8787/file/1/folder/file.mp4?access=<ACCESS_TOKEN>'
 ```
 
-**Add User**
+`GET /file/{id}/{filename}` also accepts a normal bearer token and supports a
+single HTTP `Range` request for seeking.
 
-```BASH
-curl -X POST 'http://127.0.0.1:8787/api/user/' -H 'Content-Type: application/json' \
--d '{"mail": "<MAIL>", "username": "<USER>", "password": "<PASS>", "role_id": 1, "channel_id": 1}' \
--H 'Authorization: Bearer <TOKEN>'
+## Text presets and users
+
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/presets/{id}` | `GA, CA, U` | List presets for a channel. |
+| `POST` | `/api/presets/{id}` | `GA, CA, U` | Create a `TextPreset`. The channel is taken from the path. |
+| `PUT` | `/api/presets/{channel}/{preset}` | `GA, CA, U` | Update a `TextPreset`. |
+| `DELETE` | `/api/presets/{channel}/{preset}` | `GA, CA, U` | Delete a preset. |
+| `GET` | `/api/user` | `GA, CA, U` | Read the current user. |
+| `PUT` | `/api/user/{id}` | Self or `GA` | Update a user. Only a global admin can change channel assignments or two-factor settings. |
+| `GET` | `/api/user/{id}` | `GA` | Read a user by ID. |
+| `DELETE` | `/api/user/{id}` | `GA` | Delete a user. |
+| `POST` | `/api/user` | `GA` | Create a user. |
+| `GET` | `/api/users` | `GA` | List users. |
+
+## Server-sent events
+
+SSE connections use a short-lived UUID instead of sending a bearer token in a
+browser `EventSource` URL.
+
+1. `POST /api/generate-uuid` with a bearer token. It returns `{ "uuid": "..." }`.
+2. Optionally validate it with `GET /data/validate?uuid=<UUID>`.
+3. Connect to `GET /data/event/{id}?endpoint=playout&uuid=<UUID>` or
+   `GET /data/event/{id}?endpoint=system&uuid=<UUID>`.
+
+The UUID expires after 30 minutes and is bound to the request IP address.
+
+## Public HLS files
+
+HLS playlists, segments, and WebVTT files are public and do not use bearer
+authentication:
+
+```text
+/public/{channel-id}/live/{playlist-or-segment}
 ```
 
+For example, the default HLS master playlist of channel 1 is normally:
 
-```BASH
-curl -X GET 'http://127.0.0.1:8787/api/user/2' -H 'Content-Type: application/json' \
--H 'Authorization: Bearer <TOKEN>'
+```text
+http://127.0.0.1:8787/public/1/live/master.m3u8
 ```
 
-#### Settings
-
-**Get Settings from Channel**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/channel/1 -H "Authorization: Bearer <TOKEN>"
-```
-
-**Response:**
-
-```JSON
-{
-    "id": 1,
-    "name": "Channel 1",
-    "preview_url": "http://localhost/live/preview.m3u8",
-    "extra_extensions": "jpg,jpeg,png",
-    "utc_offset": "+120"
-}
-```
-
-**Get settings from all Channels**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/channels -H "Authorization: Bearer <TOKEN>"
-```
-
-**Update Channel**
-
-```BASH
-curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/json" \
--d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", "extra_extensions": "jpg,jpeg,png"}' \
--H "Authorization: Bearer <TOKEN>"
-```
-
-**Create new Channel**
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/channel/ -H "Content-Type: application/json" \
--d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", "extra_extensions": "jpg,jpeg,png" }' \
--H "Authorization: Bearer <TOKEN>"
-```
-
-**Delete Channel**
-
-```BASH
-curl -X DELETE http://127.0.0.1:8787/api/channel/2 -H "Authorization: Bearer <TOKEN>"
-```
-
-#### ffplayout Config
-
-**Get Config**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/playout/config/1 -H 'Authorization: Bearer <TOKEN>'
-```
-
-Response is a JSON object
-
-**Update Config**
-
-```BASH
-curl -X PUT http://127.0.0.1:8787/api/playout/config/1 -H "Content-Type: application/json" \
--d { <CONFIG DATA> } -H 'Authorization: Bearer <TOKEN>'
-```
-
-#### Text Presets
-
-Text presets are made for sending text messages to the ffplayout engine, to overlay them as a lower third.
-
-**Get all Presets**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
--H 'Authorization: Bearer <TOKEN>'
-```
-
-**Get Font Families**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/text/fonts -H 'Content-Type: application/json' \
--H 'Authorization: Bearer <TOKEN>'
-```
-
-**Update Preset**
-
-```BASH
-curl -X PUT http://127.0.0.1:8787/api/presets/1/1 -H 'Content-Type: application/json' \
--d '{ "name": "Lower third", "text": "Message", "position_x": "center", "position_y": "end:72", "font_family": "DejaVu Sans", "font_weight": "normal", "font_size": 24, "line_spacing": 4, "text_color": "#ffffff", "text_opacity": 1.0, "background_enabled": true, "background_color": "#000000", "background_opacity": 0.8, "background_padding": 4, "opacity": 1.0, "scroll_direction": "none", "scroll_speed": 100, "scroll_repeat": -1, "fade_in_seconds": 0.0, "fade_out_seconds": 0.0 }' \
--H 'Authorization: Bearer <TOKEN>'
-```
-
-**Add new Preset**
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
--d '{ "name": "Lower third", "text": "Message", "position_x": "center", "position_y": "end:72", "font_family": "DejaVu Sans", "font_weight": "normal", "font_size": 24, "line_spacing": 4, "text_color": "#ffffff", "background_enabled": true }' \
--H 'Authorization: Bearer <TOKEN>'
-```
-
-**Delete Preset**
-
-```BASH
-curl -X DELETE http://127.0.0.1:8787/api/presets/1/1 -H 'Content-Type: application/json' \
--H 'Authorization: Bearer <TOKEN>'
-```
-
-### ffplayout controlling
-
-here we communicate with the engine for:
-- jump to last or next clip
-- reset playlist state
-- get infos about current, next, last clip
-- send text to the engine, for overlaying it (as lower third etc.)
-
-**Send Text to ffplayout**
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/control/1/text \
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>' \
--d '{"name": "Message", "text": "Hello from ffplayout", "position_x": "center", "position_y": "end:72", "font_size": 24, "text_color": "#ffffff", "background_enabled": true}'
-```
-
-**Control Playout**
-
-- next
-- back
-- reset
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/control/1/playout/ -H 'Content-Type: application/json'
--d '{ "command": "reset" }' -H 'Authorization: Bearer <TOKEN>'
-```
-
-**Get current Clip**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/control/1/media/current
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
-```
-
-**Response:**
-
-```JSON
-    {
-      "media": {
-        "category": "",
-        "duration": 154.2,
-        "out": 154.2,
-        "in": 0.0,
-        "source": "/opt/tv-media/clip.mp4"
-      },
-      "index": 39,
-      "ingest": false,
-      "mode": "playlist",
-      "played": 67.808
-    }
-```
-
-#### ffplayout Process Control
-
-Control ffplayout process, like:
-- start
-- stop
-- restart
-- status
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/control/1/process/
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
--d '{"command": "start"}'
-```
-
-#### ffplayout Playlist Operations
-
-**Get playlist**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/playlist/1?date=2022-06-20
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
-```
-
-**Save playlist**
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/playlist/1/
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
---data "{<JSON playlist data>}"
-```
-
-**Generate Playlist**
-
-A new playlist will be generated and response.
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
-/// --data '{ "paths": [<list of paths>] }' # <- data is optional
-```
-
-Or with template:
-```BASH
-curl -X POST http://127.0.0.1:8787/api/playlist/1/generate/2023-00-05
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
---data '{"template": {"sources": [\
-           {"start": "00:00:00", "duration": "10:00:00", "shuffle": true, "paths": ["path/1", "path/2"]}, \
-           {"start": "10:00:00", "duration": "14:00:00", "shuffle": false, "paths": ["path/3", "path/4"]}]}}'
-```
-
-**Delete Playlist**
-
-```BASH
-curl -X DELETE http://127.0.0.1:8787/api/playlist/1/2022-06-20
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
-```
-
-### Log file
-
-**Read Log File**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/log/1?date=2022-06-20
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
-```
-
-### File Operations
-
-**Get File/Folder List**
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/browse -H 'Content-Type: application/json'
--d '{ "source": "/" }' -H 'Authorization: Bearer <TOKEN>'
-```
-
-**Create Folder**
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/create-folder -H 'Content-Type: application/json'
--d '{"source": "<FOLDER PATH>"}' -H 'Authorization: Bearer <TOKEN>'
-```
-
-**Rename File**
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/rename -H 'Content-Type: application/json'
--d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: Bearer <TOKEN>'
-```
-
-**Remove File/Folder**
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/remove -H 'Content-Type: application/json'
--d '{"source": "<SOURCE>"}' -H 'Authorization: Bearer <TOKEN>'
-```
-
-**Upload File**
-
-```BASH
-curl -X PUT http://127.0.0.1:8787/api/file/1/upload -H 'Authorization: Bearer <TOKEN>'
--F "file=@file.mp4"
-```
-
-**Get File**
-
-Can be used for preview video files. Browser media elements should use a short-lived file access token instead of the normal JWT.
-
-```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/access-token \
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>' \
--d '{"filename": "path/to/file.mp4"}'
-
-curl -X GET 'http://127.0.0.1:8787/file/1/path/to/file.mp4?access=<ACCESS_TOKEN>'
-```
-
-**Get Public**
-
-Can be used for HLS playlists and other static files from the public directory.
-
-```BASH
-curl -X GET http://127.0.0.1:8787/live/stream.m3u8
-```
-
-**Import playlist**
-
-Import text/m3u file and convert it to a playlist
-lines with leading "#" will be ignore
-
-```BASH
-curl -X PUT http://127.0.0.1:8787/api/file/1/import -H 'Authorization: Bearer <TOKEN>'
--F "file=@list.m3u"
-```
-
-**Program info**
-
-Get program infos about given date, or current day
-
-Examples:
-
-* get program from current day
-```BASH
-curl -X GET http://127.0.0.1:8787/api/program/1/ -H 'Authorization: Bearer <TOKEN>'
-```
-
-* get a program range between two dates
-```BASH
-curl -X GET http://127.0.0.1:8787/api/program/1/?start_after=2022-11-13T12:00:00&start_before=2022-11-20T11:59:59 \
--H 'Authorization: Bearer <TOKEN>'
-```
-
-* get program from give day
-```BASH
-curl -X GET http://127.0.0.1:8787/api/program/1/?start_after=2022-11-13T10:00:00 \
--H 'Authorization: Bearer <TOKEN>'
-```
-
-### System Statistics
-
-Get statistics about CPU, Ram, Disk, etc. usage.
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/system/1
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
-```
+Use nginx or another web server for production HLS delivery. The built-in route
+is appropriate for previewing and simple deployments.

@@ -51,7 +51,7 @@ pub async fn detect_audio_silence(
     duration_seconds: f64,
 ) -> Result<SilenceDetection, ProcessError> {
     let path = input.as_ref().to_string_lossy().to_string();
-    let window_seconds = 20.0_f64;
+    let window_seconds = 30.0_f64;
     let duration_seconds = duration_seconds.max(0.0);
     if duration_seconds < window_seconds {
         return Ok(SilenceDetection {
