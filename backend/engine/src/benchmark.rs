@@ -1,55 +1,75 @@
 #[derive(Clone, Copy)]
 pub(crate) enum Stage {
-    Decode,
+    VideoDecode,
+    AudioDecode,
+    AudioProcess,
+    AudioEncode,
     Scale,
     LogoOverlay,
     TextStatic,
     TextRuntime,
     Vtt,
     EncodeMux,
+    #[cfg(feature = "desktop")]
     DesktopOutput,
+    LiveQueue,
 }
 
 #[cfg(feature = "processing-bench")]
 impl Stage {
-    const COUNT: usize = 8;
-
-    const fn index(self) -> usize {
-        match self {
-            Self::Decode => 0,
-            Self::Scale => 1,
-            Self::LogoOverlay => 2,
-            Self::TextStatic => 3,
-            Self::TextRuntime => 4,
-            Self::Vtt => 5,
-            Self::EncodeMux => 6,
-            Self::DesktopOutput => 7,
-        }
-    }
-
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Decode => "decode",
-            Self::Scale => "scale",
-            Self::LogoOverlay => "logo",
-            Self::TextStatic => "text_static",
-            Self::TextRuntime => "text_runtime",
-            Self::Vtt => "vtt",
-            Self::EncodeMux => "encode_mux",
-            Self::DesktopOutput => "desktop_out",
-        }
-    }
-
-    const ALL: [Self; Self::COUNT] = [
-        Self::Decode,
+    const ALL: &[Self] = &[
+        Self::VideoDecode,
+        Self::AudioDecode,
+        Self::AudioProcess,
+        Self::AudioEncode,
         Self::Scale,
         Self::LogoOverlay,
         Self::TextStatic,
         Self::TextRuntime,
         Self::Vtt,
         Self::EncodeMux,
+        #[cfg(feature = "desktop")]
         Self::DesktopOutput,
+        Self::LiveQueue,
     ];
+
+    const COUNT: usize = Self::ALL.len();
+
+    const fn index(self) -> usize {
+        match self {
+            Self::VideoDecode => 0,
+            Self::AudioDecode => 1,
+            Self::AudioProcess => 2,
+            Self::AudioEncode => 3,
+            Self::Scale => 4,
+            Self::LogoOverlay => 5,
+            Self::TextStatic => 6,
+            Self::TextRuntime => 7,
+            Self::Vtt => 8,
+            Self::EncodeMux => 9,
+            #[cfg(feature = "desktop")]
+            Self::DesktopOutput => 10,
+            Self::LiveQueue => Self::COUNT - 1,
+        }
+    }
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::VideoDecode => "video_decode",
+            Self::AudioDecode => "audio_decode",
+            Self::AudioProcess => "audio_process",
+            Self::AudioEncode => "audio_encode",
+            Self::Scale => "scale",
+            Self::LogoOverlay => "logo",
+            Self::TextStatic => "text_static",
+            Self::TextRuntime => "text_runtime",
+            Self::Vtt => "vtt",
+            Self::EncodeMux => "encode_mux",
+            #[cfg(feature = "desktop")]
+            Self::DesktopOutput => "desktop_out",
+            Self::LiveQueue => "live_queue",
+        }
+    }
 }
 
 #[cfg(feature = "processing-bench")]
@@ -148,10 +168,10 @@ mod enabled {
                 .iter()
                 .fold(Duration::ZERO, |total, stats| total + stats.total);
             let mut stages = String::from(
-                "\n    stage           total  share      avg      max  calls       size\n",
+                "\n    <span class=\"log-bold\">stage               total  share      avg      max  calls       size</span>\n",
             );
             let mut has_stages = false;
-            for stage in Stage::ALL {
+            for &stage in Stage::ALL {
                 let stats = self.stats[stage.index()];
                 if stats.calls == 0 {
                     continue;
@@ -163,7 +183,7 @@ mod enabled {
                 let overlay_size = stats.overlay_size();
                 let _ = write!(
                     stages,
-                    "    {:<12} {:>7.3}s {:>5.1}% {:>6.2}ms {:>6.2}ms {:>6} {:>10}\n",
+                    "    {:<16} <span class=\"log-number\">{:>7.3}s</span> <span class=\"log-number\">{:>5.1}%</span> <span class=\"log-number\">{:>6.2}ms</span> <span class=\"log-number\">{:>6.2}ms</span> <span class=\"log-number\">{:>6}</span> <span class=\"log-number\">{:>10}</span>\n",
                     stage.name(),
                     stats.total.as_secs_f64(),
                     share,
@@ -177,7 +197,7 @@ mod enabled {
 
             if has_stages {
                 info!(channel = self.channel_id;
-                    "[CPU Bench]\n    interval={:.1}s\n    runtime={:.1}s\n    measured={:.3}s{}",
+                    "<span class=\"log-gray\">[CPU Bench]</span>\n    interval=<span class=\"log-number\">{:.1}s</span>\n    runtime=<span class=\"log-number\">{:.1}s</span>\n    measured=<span class=\"log-number\">{:.3}s</span>{}",
                     elapsed.as_secs_f64(),
                     self.started_at.elapsed().as_secs_f64(),
                     measured.as_secs_f64(),
@@ -202,9 +222,13 @@ mod enabled {
         handle
     }
 
-    #[cfg(feature = "desktop")]
     pub(crate) fn activate(handle: BenchHandle) {
         BENCH.with(|bench| *bench.borrow_mut() = Some(handle));
+    }
+
+    #[cfg(feature = "tokio")]
+    pub(crate) fn current() -> Option<BenchHandle> {
+        BENCH.with(|bench| bench.borrow().as_ref().cloned())
     }
 
     pub(crate) fn set_report_interval(interval: Duration) {
@@ -291,8 +315,14 @@ pub(crate) use enabled::{
     finish, measure, measure_overlay, measure_success, set_report_interval, start,
 };
 
+#[cfg(feature = "tokio")]
+pub(crate) use enabled::current;
+
+#[cfg(feature = "processing-bench")]
+pub(crate) use enabled::{BenchHandle, activate};
+
 #[cfg(all(feature = "processing-bench", feature = "desktop"))]
-pub(crate) use enabled::{BenchHandle, activate, detach};
+pub(crate) use enabled::detach;
 
 #[cfg(not(feature = "processing-bench"))]
 #[derive(Clone)]
@@ -304,9 +334,15 @@ pub(crate) fn start(_channel_id: Option<i32>) -> BenchHandle {
     BenchHandle
 }
 
-#[cfg(all(not(feature = "processing-bench"), feature = "desktop"))]
+#[cfg(not(feature = "processing-bench"))]
 #[inline]
 pub(crate) fn activate(_handle: BenchHandle) {}
+
+#[cfg(all(not(feature = "processing-bench"), feature = "tokio"))]
+#[inline]
+pub(crate) fn current() -> Option<BenchHandle> {
+    None
+}
 
 #[cfg(all(not(feature = "processing-bench"), feature = "desktop"))]
 #[inline]

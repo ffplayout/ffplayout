@@ -222,15 +222,15 @@ fn log_line(level: c_int, message: &str) {
 
 fn write_log_line(level: c_int, channel_id: i32, message: &str) {
     if level <= ffi::AV_LOG_ERROR {
-        error!(target: FFMPEG_LOG_TARGET, channel = channel_id; "[ffmpeg] {message}");
+        error!(target: FFMPEG_LOG_TARGET, channel = channel_id; "<span class=\"log-gray\">[ffmpeg]</span> {message}");
     } else if level <= ffi::AV_LOG_WARNING {
-        warn!(target: FFMPEG_LOG_TARGET, channel = channel_id; "[ffmpeg] {message}");
+        warn!(target: FFMPEG_LOG_TARGET, channel = channel_id; "<span class=\"log-gray\">[ffmpeg]</span> {message}");
     } else if level <= ffi::AV_LOG_INFO {
-        info!(target: FFMPEG_LOG_TARGET, channel = channel_id; "[ffmpeg] {message}");
+        info!(target: FFMPEG_LOG_TARGET, channel = channel_id; "<span class=\"log-gray\">[ffmpeg]</span> {message}");
     } else if level <= ffi::AV_LOG_DEBUG {
-        debug!(target: FFMPEG_LOG_TARGET, channel = channel_id; "[ffmpeg] {message}");
+        debug!(target: FFMPEG_LOG_TARGET, channel = channel_id; "<span class=\"log-gray\">[ffmpeg]</span> {message}");
     } else {
-        trace!(target: FFMPEG_LOG_TARGET, channel = channel_id; "[ffmpeg] {message}");
+        trace!(target: FFMPEG_LOG_TARGET, channel = channel_id; "<span class=\"log-gray\">[ffmpeg]</span> {message}");
     }
 }
 

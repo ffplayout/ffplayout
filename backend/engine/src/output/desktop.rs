@@ -311,12 +311,16 @@ impl FrameOutput for DesktopFrameSender {
         self.current_logo_opacity = opacity_factor;
     }
 
-    fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
-        benchmark::measure(Stage::DesktopOutput, || {
-            if frame.samples() == 0 {
-                return Ok(());
-            }
+    fn benchmarks_logo_overlay(&self) -> bool {
+        false
+    }
 
+    fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        if frame.samples() == 0 {
+            return Ok(());
+        }
+
+        let (samples, samples_per_channel) = benchmark::measure(Stage::AudioProcess, || {
             let mut frame = frame.clone();
             self.audio_effects
                 .lock()
@@ -330,10 +334,14 @@ impl FrameOutput for DesktopFrameSender {
                 interleaved.push(if left.is_finite() { *left } else { 0.0 });
                 interleaved.push(if right.is_finite() { *right } else { 0.0 });
             }
+            Ok::<_, anyhow::Error>((interleaved, frame.samples()))
+        })?;
+
+        benchmark::measure(Stage::DesktopOutput, || {
             self.sender
                 .send(DesktopMessage::Audio {
-                    samples: interleaved,
-                    samples_per_channel: frame.samples(),
+                    samples,
+                    samples_per_channel,
                 })
                 .map_err(|_| PlaybackStopped.into())
         })

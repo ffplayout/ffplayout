@@ -285,7 +285,7 @@ impl EncodedOutput {
                 }
                 self.write_video_packets(index)?;
             }
-            Ok(())
+            Ok::<_, anyhow::Error>(())
         })
     }
 
@@ -295,20 +295,23 @@ impl EncodedOutput {
         }
 
         let mut frame = frame.clone();
-        self.audio_effects.process(&mut frame);
-        self.audio_level_meter.process_frame(&frame);
-        self.align_audio_buffer_to_frame_pts(frame.pts())?;
-        if self.audio_buffer[0].is_empty() {
-            self.audio_buffer_pts = frame.pts();
-        }
-        for channel in 0..self.audio_buffer.len() {
-            self.audio_buffer[channel].extend(
-                frame
-                    .plane::<f32>(channel)
-                    .iter()
-                    .map(|sample| if sample.is_finite() { *sample } else { 0.0 }),
-            );
-        }
+        benchmark::measure(Stage::AudioProcess, || {
+            self.audio_effects.process(&mut frame);
+            self.audio_level_meter.process_frame(&frame);
+            self.align_audio_buffer_to_frame_pts(frame.pts())?;
+            if self.audio_buffer[0].is_empty() {
+                self.audio_buffer_pts = frame.pts();
+            }
+            for channel in 0..self.audio_buffer.len() {
+                self.audio_buffer[channel].extend(
+                    frame
+                        .plane::<f32>(channel)
+                        .iter()
+                        .map(|sample| if sample.is_finite() { *sample } else { 0.0 }),
+                );
+            }
+            Ok::<_, anyhow::Error>(())
+        })?;
 
         self.write_complete_audio_frames()
     }
@@ -406,21 +409,23 @@ impl EncodedOutput {
     }
 
     fn send_audio_frame(&mut self, frame: &frame::Audio) -> Result<()> {
-        for index in 0..self.audio_streams.len() {
-            {
-                let stream = &mut self.audio_streams[index];
-                if let Some(resampler) = &mut stream.resampler {
-                    let mut converted = frame::Audio::empty();
-                    resampler.run(frame, &mut converted)?;
-                    converted.set_pts(frame.pts());
-                    stream.encoder.send_frame(&converted)?;
-                } else {
-                    stream.encoder.send_frame(frame)?;
+        benchmark::measure(Stage::AudioEncode, || {
+            for index in 0..self.audio_streams.len() {
+                {
+                    let stream = &mut self.audio_streams[index];
+                    if let Some(resampler) = &mut stream.resampler {
+                        let mut converted = frame::Audio::empty();
+                        resampler.run(frame, &mut converted)?;
+                        converted.set_pts(frame.pts());
+                        stream.encoder.send_frame(&converted)?;
+                    } else {
+                        stream.encoder.send_frame(frame)?;
+                    }
                 }
+                self.write_audio_packets(index)?;
             }
-            self.write_audio_packets(index)?;
-        }
-        Ok(())
+            Ok(())
+        })
     }
 
     fn pad_audio_buffer(&mut self) -> Result<()> {
@@ -459,14 +464,17 @@ impl EncodedOutput {
     }
 
     pub(super) fn finish(mut self) -> Result<()> {
-        benchmark::measure(Stage::EncodeMux, || {
+        benchmark::measure(Stage::AudioEncode, || {
             self.pad_audio_buffer()?;
             for index in 0..self.audio_streams.len() {
                 self.flush_audio_resampler(index)?;
                 self.audio_streams[index].encoder.send_eof()?;
                 self.write_audio_packets(index)?;
             }
+            Ok::<_, anyhow::Error>(())
+        })?;
 
+        benchmark::measure(Stage::EncodeMux, || {
             for index in 0..self.video_streams.len() {
                 self.video_streams[index].encoder.send_eof()?;
                 self.write_video_packets(index)?;

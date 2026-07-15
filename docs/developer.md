@@ -36,9 +36,9 @@ export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 ## Processing Benchmark
 
 The optional `processing-bench` feature prints periodic wall-clock timings for
-the engine's decode, scale, overlay, subtitle, encoded-output, and desktop SDL
-stages. It is intended for local CPU profiling and is disabled in normal
-builds.
+video and audio decode, audio processing and encoding, scale, overlay,
+subtitle, encoded-output, and desktop SDL stages. It is intended for local CPU
+profiling and is disabled in normal builds.
 
 ```bash
 cargo run -p ffplayout --features processing-bench -- \

@@ -49,6 +49,9 @@ pub(crate) trait FrameOutput {
     ) {
         blend_logo(frame, logo, opacity_factor);
     }
+    fn benchmarks_logo_overlay(&self) -> bool {
+        true
+    }
     fn set_video_end(&mut self, _video_end_pts: Option<i64>) -> Result<()> {
         Ok(())
     }
@@ -223,6 +226,14 @@ impl FrameOutput for Output {
             OutputKind::Encoded(_) => blend_logo(frame, logo, opacity_factor),
             #[cfg(feature = "desktop")]
             OutputKind::Desktop(_) => {}
+        }
+    }
+
+    fn benchmarks_logo_overlay(&self) -> bool {
+        match self.kind {
+            OutputKind::Encoded(_) => true,
+            #[cfg(feature = "desktop")]
+            OutputKind::Desktop(_) => false,
         }
     }
 
