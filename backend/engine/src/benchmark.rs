@@ -315,7 +315,7 @@ pub(crate) use enabled::{
     finish, measure, measure_overlay, measure_success, set_report_interval, start,
 };
 
-#[cfg(feature = "tokio")]
+#[cfg(all(feature = "processing-bench", feature = "tokio"))]
 pub(crate) use enabled::current;
 
 #[cfg(feature = "processing-bench")]
