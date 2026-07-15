@@ -20,8 +20,6 @@ hls_variants: Array<string>, };
 
 export type OutputMode = "desktop" | "hls" | "stream";
 
-export type StreamType = "rtmp" | "srt" | "udp";
-
 export type Playlist = { day_start: string, length: string, infinit: boolean, };
 
 /**
@@ -36,6 +34,8 @@ export type ProcessMode = "folder" | "playlist";
 export type Processing = { mode: ProcessMode, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, volume: number, vtt_enable: boolean, vtt_dummy: string | null, vtt_name: string, vtt_language: string, vtt_default: boolean, };
 
 export type Storage = { filler: string, extensions: Array<string>, shuffle: boolean, shared_storage: boolean, };
+
+export type StreamType = "rtmp" | "srt" | "udp";
 
 export type Task = { enable: boolean, path: string, };
 

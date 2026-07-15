@@ -28,6 +28,7 @@ use crate::{
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const SUPERVISOR_STOP_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Defined process units.
 #[derive(Clone, Debug, Default, Copy, Eq, Serialize, Deserialize, PartialEq)]
@@ -317,6 +318,35 @@ impl ChannelManager {
             &self.supervisor_token,
         )
         .await;
+    }
+
+    /// Wait for the active playout run to return and release its engine resources.
+    ///
+    /// `stop_all` requests that the current clip is skipped before this method
+    /// is called. Avoid cancelling the supervisor up front: doing so can abort
+    /// `player` before it reaches `AsyncPlayout::finish`.
+    pub async fn stop_supervisor(&self) {
+        let task = self.supervisor_handle.lock().await.take();
+
+        if let Some(mut task) = task {
+            match tokio::time::timeout(SUPERVISOR_STOP_TIMEOUT, &mut task).await {
+                Ok(_) => {
+                    self.log_dev_task("supervisor", "joined", 0).await;
+                }
+                Err(_) => {
+                    warn!(channel = self.id;
+                        "Playout did not stop within {} seconds; aborting supervisor task",
+                        SUPERVISOR_STOP_TIMEOUT.as_secs()
+                    );
+                    task.abort();
+                    let _ = task.await;
+                }
+            }
+        }
+
+        if let Some(token) = self.supervisor_token.lock().await.take() {
+            token.cancel();
+        }
     }
 
     pub async fn stop_validation(&self) {

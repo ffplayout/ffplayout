@@ -70,6 +70,67 @@ const { width } = useElementSize(timeDiv)
 
 const streamUrl = ref(`/data/event/${configStore.channels[configStore.i]?.id}?endpoint=playout&uuid=${authStore.uuid}`)
 
+type PlayerControlButton = {
+    label: string
+    icon: string
+    class: string
+    command: string
+    target: 'process' | 'playout'
+    showRunning?: boolean
+}
+
+const playerControlColumns: PlayerControlButton[][] = [
+    [
+        {
+            label: 'control.start',
+            icon: 'bi-play',
+            class: 'text-7xl text-lime-600',
+            command: 'start',
+            target: 'process',
+            showRunning: true,
+        },
+        {
+            label: 'control.last',
+            icon: 'bi-skip-start',
+            class: 'text-7xl text-cyan-600',
+            command: 'back',
+            target: 'playout',
+        },
+    ],
+    [
+        {
+            label: 'control.stop',
+            icon: 'bi-stop',
+            class: 'text-7xl text-red-600',
+            command: 'stop',
+            target: 'process',
+        },
+        {
+            label: 'control.reset',
+            icon: 'bi-arrow-repeat',
+            class: 'text-6xl text-cyan-600',
+            command: 'reset',
+            target: 'playout',
+        },
+    ],
+    [
+        {
+            label: 'control.restart',
+            icon: 'bi-arrow-clockwise',
+            class: 'text-6xl text-yellow-500',
+            command: 'restart',
+            target: 'process',
+        },
+        {
+            label: 'control.next',
+            icon: 'bi-skip-end',
+            class: 'text-7xl text-cyan-600',
+            command: 'next',
+            target: 'playout',
+        },
+    ],
+]
+
 // 'http://127.0.0.1:8787/data/event/1?endpoint=playout&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
 const { status, data, error, close } = useEventSource(streamUrl, [], {
     autoReconnect: {
@@ -262,10 +323,18 @@ const controlPlayout = throttle(async (state: string) => {
         indexStore.msgAlert('error', e.data, 3)
     })
 }, 1000)
+
+function runControl(button: PlayerControlButton) {
+    if (button.target === 'process') {
+        controlProcess(button.command)
+    } else {
+        controlPlayout(button.command)
+    }
+}
 </script>
 <template>
     <div class="w-full">
-        <div class="grid grid-cols-[48px_auto] md:grid-cols-[auto_50px_512px] xl:grid-cols-[512px_auto_48px_450px]">
+        <div class="grid grid-cols-[48px_auto] md:grid-cols-[auto_50px_360px] lg:grid-cols-[auto_50px_510px] xl:grid-cols-[512px_auto_48px_450px]">
             <div class="order-1 col-span-2 md:col-span-1 p-1">
                 <div class="bg-base-100 w-full h-full rounded-sm shadow-sm flex items-center p-2">
                     <div class="w-full aspect-video">
@@ -390,69 +459,23 @@ const controlPlayout = throttle(async (state: string) => {
 
             <div class="order-3 xl:order-4 p-1">
                 <div class="bg-base-100 h-full flex flex-col justify-center rounded-sm shadow">
-                    <div class="w-full flex-1 grid grid-cols-3">
-                        <div class="text-center">
-                            <div class="w-full h-1/2 aspect-square p-2">
+                    <div class="w-full h-[calc(100%-44px)] grid grid-cols-3">
+                        <div v-for="(column, columnIndex) in playerControlColumns" :key="columnIndex" class="text-center h-full">
+                            <div
+                                v-for="button in column"
+                                :key="button.command"
+                                class="w-full h-1/2 p-2"
+                            >
                                 <button
-                                    :title="t('control.start')"
-                                    class="btn btn-primary h-full w-full text-7xl text-lime-600"
-                                    :class="playlistStore.playoutIsRunning && 'shadow-glow shadow-lime-600'"
-                                    @click="controlProcess('start')"
+                                    :title="t(button.label)"
+                                    class="btn btn-primary h-full w-full"
+                                    :class="[
+                                        button.class,
+                                        button.showRunning && playlistStore.playoutIsRunning && 'shadow-glow shadow-lime-600',
+                                    ]"
+                                    @click="runControl(button)"
                                 >
-                                    <i class="bi-play" />
-                                </button>
-                            </div>
-                            <div class="w-full h-1/2 aspect-square p-2">
-                                <button
-                                    :title="t('control.last')"
-                                    class="btn btn-primary h-full w-full text-7xl text-cyan-600"
-                                    @click="controlPlayout('back')"
-                                >
-                                    <i class="bi-skip-start" />
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="text-center">
-                            <div class="w-full h-1/2 aspect-square p-2">
-                                <button
-                                    :title="t('control.stop')"
-                                    class="btn btn-primary h-full w-full text-7xl text-red-600"
-                                    @click="controlProcess('stop')"
-                                >
-                                    <i class="bi-stop" />
-                                </button>
-                            </div>
-
-                            <div class="w-full h-1/2 aspect-square p-2">
-                                <button
-                                    :title="t('control.reset')"
-                                    class="btn btn-primary h-full w-full text-6xl text-cyan-600"
-                                    @click="controlPlayout('reset')"
-                                >
-                                    <i class="bi-arrow-repeat" />
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="text-center">
-                            <div class="w-full h-1/2 aspect-square p-2">
-                                <button
-                                    :title="t('control.restart')"
-                                    class="btn btn-primary h-full w-full text-6xl text-yellow-500"
-                                    @click="controlProcess('restart')"
-                                >
-                                    <i class="bi-arrow-clockwise" />
-                                </button>
-                            </div>
-
-                            <div class="w-full h-1/2 aspect-square p-2">
-                                <button
-                                    :title="t('control.next')"
-                                    class="btn btn-primary h-full w-full text-7xl text-cyan-600"
-                                    @click="controlPlayout('next')"
-                                >
-                                    <i class="bi-skip-end" />
+                                    <i :class="button.icon" />
                                 </button>
                             </div>
                         </div>

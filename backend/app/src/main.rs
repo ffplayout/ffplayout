@@ -136,9 +136,12 @@ async fn async_main() -> Result<(), ProcessError> {
 
         info!(target: Target::Console.as_str(), "Running ffplayout, listen on http://{conn}");
 
-        axum::serve(listener, app)
-            .await
-            .map_err(|e| ProcessError::Custom(e.to_string()))?;
+        tokio::select! {
+            result = axum::serve(listener, app) => {
+                result.map_err(|e| ProcessError::Custom(e.to_string()))?;
+            }
+            _ = shutdown_signal() => {}
+        }
     } else if ARGS.drop_db {
         db_drop().await;
     } else if let Some(channel_ids) = &ARGS.channel {
@@ -214,10 +217,36 @@ async fn async_main() -> Result<(), ProcessError> {
     for manager in &managers {
         manager.channel.lock().await.active = false;
         manager.stop_all(false).await;
-        manager.abort_supervisor().await;
+        manager.stop_supervisor().await;
     }
 
     pool.close().await;
 
     Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            error!(target: Target::Console.as_str(), "Failed to listen for Ctrl-C: {error}");
+        }
+    };
+
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("Failed to listen for SIGTERM");
+
+        tokio::select! {
+            _ = ctrl_c => info!(target: Target::Console.as_str(), "Shutdown signal received"),
+            _ = terminate.recv() => info!(target: Target::Console.as_str(), "Shutdown signal received"),
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        ctrl_c.await;
+        info!(target: Target::Console.as_str(), "Shutdown signal received");
+    }
 }
