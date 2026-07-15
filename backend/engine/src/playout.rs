@@ -388,7 +388,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         check_playback_control(options.playback_control)?;
         if Some(stream.index()) == video_index {
             if !video_finished && let Some(video) = video.as_mut() {
-                video.decoder.send_packet(&packet)?;
+                benchmark::measure(Stage::Decode, || video.decoder.send_packet(&packet))?;
                 receive_video_frames(
                     video,
                     timeline,
@@ -494,7 +494,7 @@ fn finish_video<O: FrameOutput>(
     }
 
     if let Some(video) = video.as_mut() {
-        video.decoder.send_eof()?;
+        benchmark::measure(Stage::Decode, || video.decoder.send_eof())?;
         receive_video_frames(
             video,
             timeline,
@@ -688,22 +688,22 @@ fn apply_overlays(
     timeline.logo_opacity = opacity;
 
     if let Some(logo) = &video.logo {
-        benchmark::measure(Stage::LogoOverlay, || {
+        benchmark::measure_overlay(Stage::LogoOverlay, logo.width, logo.height, || {
             output.apply_logo_overlay(frame, logo, opacity);
         });
     }
-    if video.text.is_some() || video.runtime_text.is_some() {
-        benchmark::measure(Stage::TextOverlay, || {
-            if let Some(text) = &mut video.text {
-                text.blend(frame, timeline.video_pts, timeline.text_pts);
-            }
-            video.update_runtime_text(timeline.video_pts, timeline.text_pts);
-            if let Some(text) = &mut video.runtime_text {
-                text.blend(frame, timeline.video_pts, timeline.text_pts);
-            }
+    if let Some(text) = &mut video.text {
+        let (width, height) = text.dimensions();
+        benchmark::measure_overlay(Stage::TextStatic, width, height, || {
+            text.blend(frame, timeline.video_pts, timeline.text_pts);
         });
-    } else {
-        video.update_runtime_text(timeline.video_pts, timeline.text_pts);
+    }
+    video.update_runtime_text(timeline.video_pts, timeline.text_pts);
+    if let Some(text) = &mut video.runtime_text {
+        let (width, height) = text.dimensions();
+        benchmark::measure_overlay(Stage::TextRuntime, width, height, || {
+            text.blend(frame, timeline.video_pts, timeline.text_pts);
+        });
     }
     timeline.text_pts += 1;
 }

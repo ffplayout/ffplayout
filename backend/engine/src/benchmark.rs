@@ -3,23 +3,25 @@ pub(crate) enum Stage {
     Decode,
     Scale,
     LogoOverlay,
-    TextOverlay,
+    TextStatic,
+    TextRuntime,
     Vtt,
     EncodeMux,
 }
 
 #[cfg(feature = "processing-bench")]
 impl Stage {
-    const COUNT: usize = 6;
+    const COUNT: usize = 7;
 
     const fn index(self) -> usize {
         match self {
             Self::Decode => 0,
             Self::Scale => 1,
             Self::LogoOverlay => 2,
-            Self::TextOverlay => 3,
-            Self::Vtt => 4,
-            Self::EncodeMux => 5,
+            Self::TextStatic => 3,
+            Self::TextRuntime => 4,
+            Self::Vtt => 5,
+            Self::EncodeMux => 6,
         }
     }
 
@@ -28,7 +30,8 @@ impl Stage {
             Self::Decode => "decode",
             Self::Scale => "scale",
             Self::LogoOverlay => "logo",
-            Self::TextOverlay => "text",
+            Self::TextStatic => "text_static",
+            Self::TextRuntime => "text_runtime",
             Self::Vtt => "vtt",
             Self::EncodeMux => "encode_mux",
         }
@@ -38,7 +41,8 @@ impl Stage {
         Self::Decode,
         Self::Scale,
         Self::LogoOverlay,
-        Self::TextOverlay,
+        Self::TextStatic,
+        Self::TextRuntime,
         Self::Vtt,
         Self::EncodeMux,
     ];
@@ -70,13 +74,33 @@ mod enabled {
         calls: u64,
         total: Duration,
         max: Duration,
+        overlay_size: Option<(u32, u32)>,
+        overlay_size_varies: bool,
     }
 
     impl StageStats {
-        fn record(&mut self, elapsed: Duration) {
+        fn record(&mut self, elapsed: Duration, overlay_size: Option<(u32, u32)>) {
             self.calls += 1;
             self.total += elapsed;
             self.max = self.max.max(elapsed);
+
+            if let Some(overlay_size) = overlay_size {
+                if let Some(previous_size) = self.overlay_size
+                    && previous_size != overlay_size
+                {
+                    self.overlay_size_varies = true;
+                } else {
+                    self.overlay_size = Some(overlay_size);
+                }
+            }
+        }
+
+        fn overlay_size(&self) -> String {
+            match (self.overlay_size, self.overlay_size_varies) {
+                (Some((width, height)), false) => format!("{width}x{height}"),
+                (Some(_), true) => "varied".to_string(),
+                (None, _) => "-".to_string(),
+            }
         }
     }
 
@@ -98,8 +122,8 @@ mod enabled {
             }
         }
 
-        fn record(&mut self, stage: Stage, elapsed: Duration) {
-            self.stats[stage.index()].record(elapsed);
+        fn record(&mut self, stage: Stage, elapsed: Duration, overlay_size: Option<(u32, u32)>) {
+            self.stats[stage.index()].record(elapsed, overlay_size);
         }
 
         fn due(&self) -> bool {
@@ -117,7 +141,7 @@ mod enabled {
                 .iter()
                 .fold(Duration::ZERO, |total, stats| total + stats.total);
             let mut stages = String::from(
-                "\n    stage              total   share      average      maximum    calls\n",
+                "\n    stage           total  share      avg      max  calls       size\n",
             );
             let mut has_stages = false;
             for stage in Stage::ALL {
@@ -129,15 +153,17 @@ mod enabled {
                 let average_ms = stats.total.as_secs_f64() * 1_000.0 / stats.calls as f64;
                 let max_ms = stats.max.as_secs_f64() * 1_000.0;
                 let share = stats.total.as_secs_f64() / measured.as_secs_f64() * 100.0;
+                let overlay_size = stats.overlay_size();
                 let _ = write!(
                     stages,
-                    "    {:<12} {:>10.3}s {:>6.1}% {:>10.2}ms {:>10.2}ms {:>8}\n",
+                    "    {:<12} {:>7.3}s {:>5.1}% {:>6.2}ms {:>6.2}ms {:>6} {:>10}\n",
                     stage.name(),
                     stats.total.as_secs_f64(),
                     share,
                     average_ms,
                     max_ms,
-                    stats.calls
+                    stats.calls,
+                    overlay_size
                 );
                 has_stages = true;
             }
@@ -187,7 +213,7 @@ mod enabled {
 
         BENCH.with(|bench| {
             if let Some(bench) = bench.borrow_mut().as_mut() {
-                bench.record(stage, elapsed);
+                bench.record(stage, elapsed, None);
                 if bench.due() {
                     bench.report(false);
                 }
@@ -208,7 +234,7 @@ mod enabled {
             let elapsed = started_at.elapsed();
             BENCH.with(|bench| {
                 if let Some(bench) = bench.borrow_mut().as_mut() {
-                    bench.record(stage, elapsed);
+                    bench.record(stage, elapsed, None);
                     if bench.due() {
                         bench.report(false);
                     }
@@ -218,10 +244,34 @@ mod enabled {
 
         result
     }
+
+    pub(crate) fn measure_overlay<T>(
+        stage: Stage,
+        width: u32,
+        height: u32,
+        operation: impl FnOnce() -> T,
+    ) -> T {
+        let started_at = Instant::now();
+        let result = operation();
+        let elapsed = started_at.elapsed();
+
+        BENCH.with(|bench| {
+            if let Some(bench) = bench.borrow_mut().as_mut() {
+                bench.record(stage, elapsed, Some((width, height)));
+                if bench.due() {
+                    bench.report(false);
+                }
+            }
+        });
+
+        result
+    }
 }
 
 #[cfg(feature = "processing-bench")]
-pub(crate) use enabled::{finish, measure, measure_success, set_report_interval, start};
+pub(crate) use enabled::{
+    finish, measure, measure_overlay, measure_success, set_report_interval, start,
+};
 
 #[cfg(not(feature = "processing-bench"))]
 #[inline]
@@ -238,6 +288,17 @@ pub(crate) fn finish() {}
 #[cfg(not(feature = "processing-bench"))]
 #[inline]
 pub(crate) fn measure<T>(_stage: Stage, operation: impl FnOnce() -> T) -> T {
+    operation()
+}
+
+#[cfg(not(feature = "processing-bench"))]
+#[inline]
+pub(crate) fn measure_overlay<T>(
+    _stage: Stage,
+    _width: u32,
+    _height: u32,
+    operation: impl FnOnce() -> T,
+) -> T {
     operation()
 }
 

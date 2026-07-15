@@ -13,10 +13,10 @@ use ffmpeg_next as ffmpeg;
 
 use super::{hls, vtt};
 use crate::{
-    benchmark::{self, Stage},
     HlsHealth,
     analysis::audio_level::AudioLevelMeter,
     audio_mixer::AudioEffectChain,
+    benchmark::{self, Stage},
     clock::PlayoutClock,
     utils::{
         config::{HlsSubtitle, HlsVariant, OutputConfig, RateControl},

@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{codec, frame, media, software::scaling, util::format::pixel::Pixel};
 
 use crate::{
-    compositor::overlay::{OverlayRef, blend_overlay},
+    compositor::overlay::{OverlayRef, blend_overlay, chroma_alpha},
     utils::{
         config::LogoConfig,
         helper::{even, open_media_input},
@@ -11,6 +11,7 @@ use crate::{
 
 pub struct LogoOverlay {
     pub frame: frame::Video, // YUVA420P
+    chroma_alpha: Vec<u8>,
     pub x: u32,
     pub y: u32,
     pub width: u32,
@@ -93,6 +94,7 @@ impl LogoOverlay {
         let (x, y) = logo_position(&config.position, output_width, output_height, width, height)?;
 
         Ok(Self {
+            chroma_alpha: chroma_alpha(&frame, width, height),
             frame,
             x: even(x),
             y: even(y),
@@ -105,6 +107,8 @@ impl LogoOverlay {
     fn as_overlay(&self) -> OverlayRef<'_> {
         OverlayRef {
             frame: &self.frame,
+            chroma_alpha: &self.chroma_alpha,
+            chroma_alpha_stride: self.width as usize / 2,
             x: self.x as i32,
             y: self.y as i32,
             width: self.width,

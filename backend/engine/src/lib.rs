@@ -556,7 +556,13 @@ impl Playout {
     }
 
     fn with_output(config: OutputConfig, output: Output, fallback_duration: f64) -> Self {
+        #[cfg(feature = "desktop")]
+        if !output.is_desktop() {
+            benchmark::start(config.channel_id);
+        }
+        #[cfg(not(feature = "desktop"))]
         benchmark::start(config.channel_id);
+
         Self {
             config,
             output,
@@ -640,6 +646,7 @@ impl Playout {
             let path = path.to_string();
             let mut live_for_worker = live.take();
             let operation = self.output.run_desktop(move |output| {
+                benchmark::start(config.channel_id);
                 let result = if let Some(live) = live_for_worker.as_mut() {
                     let mut output = LiveOverrideOutput::new(output, live);
                     play_to_output(
@@ -672,6 +679,7 @@ impl Playout {
                         },
                     )
                 };
+                benchmark::finish();
                 (result, timeline, live_for_worker)
             });
 
