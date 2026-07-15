@@ -3,7 +3,7 @@
 
 ### **[For Developer](/docs/developer.md)**
 
-Learn how to setup a developer environment and to cross compile for different platforms.
+Learn how to set up a developer environment and build native packages.
 
 ### **[Install](/docs/install.md)**
 

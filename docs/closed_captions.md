@@ -1,7 +1,7 @@
 ## Closed Captions
 
 #### Note:
-**FFmpeg 7.0+ development libraries are required. FFmpeg builds before 7.2 can write WebVTT HLS subtitles, but may not support custom subtitle display names in the generated master playlist. ffplayout detects this capability and omits unsupported HLS options when needed.**
+**FFmpeg 7.0+ development libraries are required. Builds with `libavformat` before v61.9.100 can write WebVTT HLS subtitles, but may not support custom subtitle display names in the generated master playlist. ffplayout detects this capability and omits unsupported HLS options when needed.**
 
 ### Usage
 **ffplayout** can handle closed captions in WebVTT format for HLS streaming.
