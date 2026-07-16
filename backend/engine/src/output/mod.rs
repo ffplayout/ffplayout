@@ -18,6 +18,8 @@ use desktop::{DesktopFrameSender, DesktopOutput, DesktopSdl};
 use encoded::{EncodedFormat, EncodedOutput};
 use ffmpeg_next::frame;
 
+#[cfg(feature = "desktop")]
+use crate::benchmark::BenchHandle;
 use crate::{
     HlsHealth,
     compositor::logo::{LogoOverlay, blend_logo},
@@ -46,6 +48,9 @@ pub(crate) trait FrameOutput {
         opacity_factor: f64,
     ) {
         blend_logo(frame, logo, opacity_factor);
+    }
+    fn benchmarks_logo_overlay(&self) -> bool {
+        true
     }
     fn set_video_end(&mut self, _video_end_pts: Option<i64>) -> Result<()> {
         Ok(())
@@ -186,13 +191,13 @@ impl Output {
     }
 
     #[cfg(feature = "desktop")]
-    pub(crate) fn run_desktop<T, F>(&mut self, operation: F) -> Result<T>
+    pub(crate) fn run_desktop<T, F>(&mut self, benchmark: BenchHandle, operation: F) -> Result<T>
     where
         T: Send + 'static,
         F: FnOnce(&mut DesktopFrameSender) -> T + Send + 'static,
     {
         match &mut self.kind {
-            OutputKind::Desktop(output) => output.run_operation(operation),
+            OutputKind::Desktop(output) => output.run_operation(benchmark, operation),
             OutputKind::Encoded(_) => Err(anyhow!("output is not in desktop mode")),
         }
     }
@@ -221,6 +226,14 @@ impl FrameOutput for Output {
             OutputKind::Encoded(_) => blend_logo(frame, logo, opacity_factor),
             #[cfg(feature = "desktop")]
             OutputKind::Desktop(_) => {}
+        }
+    }
+
+    fn benchmarks_logo_overlay(&self) -> bool {
+        match self.kind {
+            OutputKind::Encoded(_) => true,
+            #[cfg(feature = "desktop")]
+            OutputKind::Desktop(_) => false,
         }
     }
 

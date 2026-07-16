@@ -136,12 +136,11 @@ pub struct Args {
         long,
         env = "FFPLAYOUT_PROCESSING_BENCH_INTERVAL",
         help_heading = Some("Diagnostics"),
-        help = "CPU pipeline benchmark report interval in seconds",
+        help = "CPU pipeline benchmark report interval in seconds (default: 1 with --log-to-console, otherwise 10)",
         value_name = "SECONDS",
-        default_value_t = 1,
         value_parser = positive_seconds
     )]
-    pub processing_bench_interval: u64,
+    pub processing_bench_interval: Option<u64>,
 
     #[clap(
         short,
@@ -203,6 +202,14 @@ pub struct Args {
 }
 
 #[cfg(feature = "processing-bench")]
+impl Args {
+    pub fn processing_bench_report_interval(&self) -> u64 {
+        self.processing_bench_interval
+            .unwrap_or(if self.log_to_console { 1 } else { 10 })
+    }
+}
+
+#[cfg(feature = "processing-bench")]
 fn positive_seconds(value: &str) -> Result<u64, String> {
     let seconds = value
         .parse::<u64>()
@@ -212,6 +219,36 @@ fn positive_seconds(value: &str) -> Result<u64, String> {
         Err("must be at least one second".to_string())
     } else {
         Ok(seconds)
+    }
+}
+
+#[cfg(all(test, feature = "processing-bench"))]
+mod tests {
+    use super::Args;
+
+    #[test]
+    fn processing_bench_interval_defaults_to_one_second_with_console_logging() {
+        let args = Args {
+            log_to_console: true,
+            ..Default::default()
+        };
+
+        assert_eq!(args.processing_bench_report_interval(), 1);
+    }
+
+    #[test]
+    fn processing_bench_interval_defaults_to_ten_seconds_without_console_logging() {
+        assert_eq!(Args::default().processing_bench_report_interval(), 10);
+    }
+
+    #[test]
+    fn explicit_processing_bench_interval_overrides_the_default() {
+        let args = Args {
+            processing_bench_interval: Some(5),
+            ..Default::default()
+        };
+
+        assert_eq!(args.processing_bench_report_interval(), 5);
     }
 }
 

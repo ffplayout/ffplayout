@@ -458,7 +458,9 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 config,
                 response,
             } => {
-                live = Some(spawn_rtmp_listener(url, *config));
+                let receiver = spawn_rtmp_listener(url, *config);
+                receiver.set_benchmark(benchmark::current());
+                live = Some(receiver);
                 let _ = response.send(Ok(()));
             }
             AsyncCommand::Finish { response } => {
@@ -645,8 +647,11 @@ impl Playout {
             let mut timeline = self.timeline;
             let path = path.to_string();
             let mut live_for_worker = live.take();
-            let operation = self.output.run_desktop(move |output| {
-                benchmark::start(config.channel_id);
+            let benchmark = benchmark::start(config.channel_id);
+            if let Some(live) = live_for_worker.as_ref() {
+                live.set_benchmark(Some(benchmark.clone()));
+            }
+            let operation = self.output.run_desktop(benchmark, move |output| {
                 let result = if let Some(live) = live_for_worker.as_mut() {
                     let mut output = LiveOverrideOutput::new(output, live);
                     play_to_output(
@@ -679,7 +684,6 @@ impl Playout {
                         },
                     )
                 };
-                benchmark::finish();
                 (result, timeline, live_for_worker)
             });
 

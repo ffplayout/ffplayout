@@ -388,7 +388,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         check_playback_control(options.playback_control)?;
         if Some(stream.index()) == video_index {
             if !video_finished && let Some(video) = video.as_mut() {
-                benchmark::measure(Stage::Decode, || video.decoder.send_packet(&packet))?;
+                benchmark::measure(Stage::VideoDecode, || video.decoder.send_packet(&packet))?;
                 receive_video_frames(
                     video,
                     timeline,
@@ -402,7 +402,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         } else if Some(stream.index()) == audio_index
             && let Some(audio) = audio.as_mut()
         {
-            audio.decoder.send_packet(&packet)?;
+            benchmark::measure(Stage::AudioDecode, || audio.decoder.send_packet(&packet))?;
             receive_audio_frames(
                 audio,
                 timeline,
@@ -432,7 +432,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         options.playback_control,
     )?;
     if let Some(audio) = audio.as_mut() {
-        audio.decoder.send_eof()?;
+        benchmark::measure(Stage::AudioDecode, || audio.decoder.send_eof())?;
         receive_audio_frames(
             audio,
             timeline,
@@ -494,7 +494,7 @@ fn finish_video<O: FrameOutput>(
     }
 
     if let Some(video) = video.as_mut() {
-        benchmark::measure(Stage::Decode, || video.decoder.send_eof())?;
+        benchmark::measure(Stage::VideoDecode, || video.decoder.send_eof())?;
         receive_video_frames(
             video,
             timeline,
@@ -608,7 +608,7 @@ fn receive_video_frames<O: FrameOutput>(
     playback_control: &PlaybackControl,
 ) -> Result<()> {
     let mut raw = frame::Video::empty();
-    while benchmark::measure_success(Stage::Decode, || video.decoder.receive_frame(&mut raw))
+    while benchmark::measure_success(Stage::VideoDecode, || video.decoder.receive_frame(&mut raw))
         .is_ok()
     {
         check_playback_control(playback_control)?;
@@ -688,9 +688,13 @@ fn apply_overlays(
     timeline.logo_opacity = opacity;
 
     if let Some(logo) = &video.logo {
-        benchmark::measure_overlay(Stage::LogoOverlay, logo.width, logo.height, || {
+        if output.benchmarks_logo_overlay() {
+            benchmark::measure_overlay(Stage::LogoOverlay, logo.width, logo.height, || {
+                output.apply_logo_overlay(frame, logo, opacity);
+            });
+        } else {
             output.apply_logo_overlay(frame, logo, opacity);
-        });
+        }
     }
     if let Some(text) = &mut video.text {
         let (width, height) = text.dimensions();
@@ -717,7 +721,9 @@ fn receive_audio_frames<O: FrameOutput>(
     playback_control: &PlaybackControl,
 ) -> Result<()> {
     let mut raw = frame::Audio::empty();
-    while audio.decoder.receive_frame(&mut raw).is_ok() {
+    while benchmark::measure_success(Stage::AudioDecode, || audio.decoder.receive_frame(&mut raw))
+        .is_ok()
+    {
         check_playback_control(playback_control)?;
         if limit_pts.is_some_and(|limit| timeline.audio_pts >= limit) {
             return Ok(());
@@ -736,7 +742,9 @@ fn receive_audio_frames<O: FrameOutput>(
         }
 
         let mut converted = frame::Audio::empty();
-        audio.resampler.run(&raw, &mut converted)?;
+        benchmark::measure(Stage::AudioProcess, || {
+            audio.resampler.run(&raw, &mut converted)
+        })?;
         let samples = converted.samples() as i64;
         converted.set_pts(Some(timeline.audio_pts));
         output.encode_audio(&converted)?;
@@ -766,7 +774,9 @@ fn flush_audio_resampler<O: FrameOutput>(
             output.audio_frame_size().max(1),
             ChannelLayout::STEREO,
         );
-        let delay = audio.resampler.flush(&mut converted)?;
+        let delay = benchmark::measure(Stage::AudioProcess, || {
+            audio.resampler.flush(&mut converted)
+        })?;
         let samples = converted.samples() as i64;
         if samples == 0 {
             return Ok(());

@@ -3,7 +3,7 @@ use std::{
     ffi::{CStr, CString},
     fmt, ptr,
     sync::{
-        Arc, OnceLock,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError},
     },
@@ -13,7 +13,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use ffmpeg_next::{
-    Dictionary, Error as FfmpegError, ffi, format, frame,
+    Dictionary, Error as FfmpegError, ffi, format, frame, media,
     util::{
         channel_layout::ChannelLayout,
         format::sample::{Sample, Type as SampleType},
@@ -24,6 +24,7 @@ use log::{error, info, warn};
 
 use crate::{
     PlaybackControl,
+    benchmark::{self, BenchHandle, Stage},
     compositor::logo::LogoOverlay,
     output::FrameOutput,
     playout::{InputPlaybackOptions, LogoFadePlan, Timeline, play_opened_input},
@@ -31,7 +32,7 @@ use crate::{
 };
 
 const LIVE_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
-const LIVE_IDLE_TIMEOUT: Duration = Duration::from_secs(3);
+const LIVE_IDLE_TIMEOUT: Duration = Duration::from_millis(1500);
 const LIVE_WATCHDOG_INTERVAL: Duration = Duration::from_millis(100);
 /// Maximum PTS discontinuity in the live source that is bridged with filler
 /// frames. Larger jumps (buggy publisher encoders can leap by hours) re-anchor
@@ -69,6 +70,8 @@ pub struct LiveReceiver {
     returned_to_file: bool,
     video_pts: i64,
     audio_pts: i64,
+    source_has_audio: bool,
+    benchmark: Arc<Mutex<Option<BenchHandle>>>,
 }
 
 #[derive(Debug)]
@@ -83,7 +86,7 @@ impl fmt::Display for LiveEnded {
 impl Error for LiveEnded {}
 
 enum LiveEvent {
-    Started(u64),
+    Started { session_id: u64, has_audio: bool },
     Video(u64, frame::Video),
     Audio(u64, frame::Audio),
     Ended(u64),
@@ -95,9 +98,11 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
     let capacity = live_channel_capacity(cfg.fps);
     let (tx, rx) = mpsc::sync_channel(capacity);
     let abort = Arc::new(AtomicBool::new(false));
+    let benchmark = Arc::new(Mutex::new(None));
     thread::spawn({
         let abort = Arc::clone(&abort);
-        move || run_rtmp_listener(url, cfg, tx, abort)
+        let benchmark = Arc::clone(&benchmark);
+        move || run_rtmp_listener(url, cfg, tx, abort, benchmark)
     });
 
     LiveReceiver {
@@ -121,12 +126,23 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
         returned_to_file: false,
         video_pts: 0,
         audio_pts: 0,
+        source_has_audio: false,
+        benchmark,
     }
 }
 
 impl Drop for LiveReceiver {
     fn drop(&mut self) {
         self.abort.store(true, Ordering::Relaxed);
+    }
+}
+
+impl LiveReceiver {
+    pub(crate) fn set_benchmark(&self, benchmark: Option<BenchHandle>) {
+        *self
+            .benchmark
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = benchmark;
     }
 }
 
@@ -144,7 +160,10 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         let mut received_event = false;
         loop {
             match self.live.rx.try_recv() {
-                Ok(LiveEvent::Started(session_id)) => {
+                Ok(LiveEvent::Started {
+                    session_id,
+                    has_audio,
+                }) => {
                     self.live.session_id = session_id;
                     self.live.session_output_start_seconds = None;
                     self.live.session_source_start_seconds = None;
@@ -153,6 +172,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     self.live.active = false;
                     self.live.connecting = true;
                     self.live.connecting_since = Some(Instant::now());
+                    self.live.source_has_audio = has_audio;
                     info!("live input connected; waiting for first video frame");
                 }
                 Ok(LiveEvent::Video(session_id, frame)) => {
@@ -339,9 +359,10 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
     }
 
     fn fill_audio_until(&mut self, next_pts: i64) -> Result<()> {
-        let Some(mut fill_pts) = self.live.last_audio_output_end_pts else {
-            return Ok(());
-        };
+        let mut fill_pts = self
+            .live
+            .last_audio_output_end_pts
+            .unwrap_or(self.live.audio_pts);
         if fill_pts >= next_pts {
             return Ok(());
         }
@@ -435,6 +456,13 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         self.output.encode_video(&frame)?;
         self.remember_video_frame(frame, pts);
         self.live.video_pts = pts + 1;
+        if !self.live.source_has_audio {
+            let video_end_seconds = video_seconds(self.live.fps, self.live.video_pts);
+            self.fill_audio_until(seconds_to_audio_pts(
+                self.live.sample_rate,
+                video_end_seconds,
+            ))?;
+        }
         Ok(())
     }
 
@@ -603,6 +631,10 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
         self.output.apply_logo_overlay(frame, logo, opacity_factor);
     }
 
+    fn benchmarks_logo_overlay(&self) -> bool {
+        self.output.benchmarks_logo_overlay()
+    }
+
     fn set_video_end(&mut self, video_end_pts: Option<i64>) -> Result<()> {
         self.output.set_video_end(video_end_pts)
     }
@@ -639,13 +671,15 @@ impl LiveFrameSender {
         self.frame_seen.store(true, Ordering::Relaxed);
         self.last_frame_ms
             .store(monotonic_millis(), Ordering::Relaxed);
-        send_live_event(
-            &self.tx,
-            event,
-            Some(&self.abort),
-            &self.listener_abort,
-            "live frame",
-        )
+        benchmark::measure(Stage::LiveQueue, || {
+            send_live_event(
+                &self.tx,
+                event,
+                Some(&self.abort),
+                &self.listener_abort,
+                "live frame",
+            )
+        })
     }
 }
 
@@ -670,6 +704,7 @@ fn run_rtmp_listener(
     cfg: OutputConfig,
     tx: SyncSender<LiveEvent>,
     listener_abort: Arc<AtomicBool>,
+    benchmark: Arc<Mutex<Option<BenchHandle>>>,
 ) {
     let mut session_id = 0;
 
@@ -694,7 +729,10 @@ fn run_rtmp_listener(
 
                 if send_live_event(
                     &tx,
-                    LiveEvent::Started(session_id),
+                    LiveEvent::Started {
+                        session_id,
+                        has_audio: ictx.streams().best(media::Type::Audio).is_some(),
+                    },
                     Some(&abort),
                     &listener_abort,
                     "live start",
@@ -718,7 +756,14 @@ fn run_rtmp_listener(
 
                 let worker_url = url.clone();
                 let worker_cfg = cfg.clone();
+                let worker_benchmark = benchmark
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone();
                 let worker = thread::spawn(move || {
+                    if let Some(benchmark) = worker_benchmark {
+                        benchmark::activate(benchmark);
+                    }
                     let mut timeline = Timeline::new();
                     let playback_control = PlaybackControl::default();
                     let logo_fade_plan = LogoFadePlan::none(timeline.video_pts(), &worker_cfg);
@@ -1013,7 +1058,7 @@ fn monotonic_millis() -> u64 {
 mod tests {
     use std::{
         sync::{
-            Arc,
+            Arc, Mutex,
             atomic::{AtomicBool, AtomicU64, Ordering},
             mpsc::{self, TryRecvError},
         },
@@ -1024,7 +1069,10 @@ mod tests {
     use anyhow::Result;
     use ffmpeg_next::frame;
 
-    use super::{LiveEvent, LiveFrameSender, LiveReceiver, live_channel_capacity, resume_pts};
+    use super::{
+        LiveEvent, LiveFrameSender, LiveOverrideOutput, LiveReceiver, live_channel_capacity,
+        resume_pts,
+    };
     use crate::output::FrameOutput;
 
     struct CountingOutput {
@@ -1070,6 +1118,8 @@ mod tests {
             returned_to_file: false,
             video_pts: 0,
             audio_pts: 0,
+            source_has_audio: false,
+            benchmark: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -1109,9 +1159,33 @@ mod tests {
     }
 
     #[test]
+    fn video_only_live_input_generates_silence() {
+        let (_tx, rx) = mpsc::sync_channel(1);
+        let mut live = test_live_receiver(rx);
+        live.source_has_audio = false;
+        let mut output = CountingOutput {
+            video_frames: 0,
+            audio_frames: 0,
+        };
+        let mut frame = frame::Video::empty();
+        frame.set_pts(Some(0));
+
+        LiveOverrideOutput::new(&mut output, &mut live)
+            .encode_live_video_frame(frame)
+            .unwrap();
+
+        assert_eq!(output.video_frames, 1);
+        assert!(output.audio_frames > 0);
+    }
+
+    #[test]
     fn live_frame_sender_waits_until_full_channel_has_capacity() {
         let (tx, rx) = mpsc::sync_channel(1);
-        tx.try_send(LiveEvent::Started(1)).unwrap();
+        tx.try_send(LiveEvent::Started {
+            session_id: 1,
+            has_audio: true,
+        })
+        .unwrap();
         let frame_seen = Arc::new(AtomicBool::new(false));
         let last_frame_ms = Arc::new(AtomicU64::new(u64::MAX));
         let abort = Arc::new(AtomicBool::new(false));
@@ -1144,7 +1218,10 @@ mod tests {
 
         assert!(frame_seen.load(Ordering::Relaxed));
         assert_ne!(last_frame_ms.load(Ordering::Relaxed), u64::MAX);
-        assert!(matches!(rx.try_recv(), Ok(LiveEvent::Started(1))));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(LiveEvent::Started { session_id: 1, .. })
+        ));
         worker.join().unwrap();
         assert!(send_finished.load(Ordering::Relaxed));
         assert!(matches!(rx.try_recv(), Ok(LiveEvent::Video(1, _))));
@@ -1157,7 +1234,11 @@ mod tests {
     #[test]
     fn live_frame_sender_stops_waiting_when_aborted() {
         let (tx, _rx) = mpsc::sync_channel(1);
-        tx.try_send(LiveEvent::Started(1)).unwrap();
+        tx.try_send(LiveEvent::Started {
+            session_id: 1,
+            has_audio: true,
+        })
+        .unwrap();
         let abort = Arc::new(AtomicBool::new(true));
         let mut sender = LiveFrameSender {
             tx,

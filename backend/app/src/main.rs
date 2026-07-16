@@ -75,7 +75,9 @@ fn main() -> Result<(), ProcessError> {
 
 async fn async_main() -> Result<(), ProcessError> {
     #[cfg(feature = "processing-bench")]
-    ff_engine::set_processing_bench_interval(Duration::from_secs(ARGS.processing_bench_interval));
+    ff_engine::set_processing_bench_interval(Duration::from_secs(
+        ARGS.processing_bench_report_interval(),
+    ));
 
     let pool = db_pool().await?;
 

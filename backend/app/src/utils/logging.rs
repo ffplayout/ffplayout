@@ -106,9 +106,9 @@ impl LogWriter for LogConsole {
 }
 
 fn cpu_bench_line_count(message: &str) -> Option<usize> {
-    message
-        .starts_with("[CPU Bench]")
-        .then(|| message.lines().count().max(1))
+    (message.starts_with("[CPU Bench]")
+        || message.starts_with("<span class=\"log-gray\">[CPU Bench]</span>"))
+    .then(|| message.lines().count().max(1))
 }
 
 pub struct MultiFileLogger {
@@ -362,6 +362,10 @@ fn html_to_ansi(input: &str) -> String {
             "\x1b[90m$1\x1b[0m",
         ), // bright black
         (
+            r#"<span class="log-bold">([^<]+)</span>"#,
+            "\x1b[1m$1\x1b[0m",
+        ), // bold
+        (
             r#"<span class="log-addr">([^<]+)</span>"#,
             "\x1b[1;35m$1\x1b[0m",
         ), // bold magenta
@@ -598,6 +602,10 @@ mod tests {
     #[test]
     fn counts_cpu_bench_lines_only() {
         assert_eq!(cpu_bench_line_count("[CPU Bench]\n    decode"), Some(2));
+        assert_eq!(
+            cpu_bench_line_count("<span class=\"log-gray\">[CPU Bench]</span>\n    decode"),
+            Some(2)
+        );
         assert_eq!(cpu_bench_line_count("regular log line"), None);
     }
 }
