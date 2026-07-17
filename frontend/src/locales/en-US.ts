@@ -234,6 +234,8 @@ export default {
         outputParam: 'The media playlist is created as live/<name>.m3u8.',
         streamType: 'Stream type',
         streamUrl: 'Stream target URL',
+        streamFormat: 'FFmpeg output format',
+        streamTarget: 'Output target',
         hlsSettings: 'HLS settings',
         hlsPlaylistName: 'Playlist name',
         outputFormat: 'Output format',

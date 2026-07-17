@@ -62,6 +62,21 @@ impl FfmpegCapabilities {
         muxer_for_target(target)
             .is_some_and(|muxer_name| self.muxers.iter().any(|muxer| muxer.name == muxer_name))
     }
+
+    pub fn usable_codecs(&self, media_type: FfmpegMediaType) -> Vec<FfmpegCodec> {
+        self.encoders
+            .iter()
+            .filter(|encoder| encoder.media_type == media_type)
+            .filter(|encoder| {
+                encoder.media_type != FfmpegMediaType::Video || encoder.engine_video_format
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub fn has_muxer_named(&self, muxer_name: &str) -> bool {
+        muxer_for_name(muxer_name).is_some()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,11 +303,23 @@ fn video_encoder_supports_engine_format(codec: *const ffi::AVCodec) -> bool {
         if format == ffi::AVPixelFormat::AV_PIX_FMT_NONE {
             return false;
         }
-        if Pixel::from(format) == Pixel::YUV420P {
+        let pixel = Pixel::from(format);
+        if pixel == Pixel::YUV420P
+            || (is_qsv_encoder(codec) && pixel == Pixel::NV12)
+            || (is_vaapi_encoder(codec) && pixel == Pixel::VAAPI)
+        {
             return true;
         }
         formats = unsafe { formats.add(1) };
     }
+}
+
+fn is_qsv_encoder(codec: *const ffi::AVCodec) -> bool {
+    c_string(unsafe { (*codec).name }).ends_with("_qsv")
+}
+
+fn is_vaapi_encoder(codec: *const ffi::AVCodec) -> bool {
+    c_string(unsafe { (*codec).name }).ends_with("_vaapi")
 }
 
 fn c_string(value: *const std::ffi::c_char) -> String {

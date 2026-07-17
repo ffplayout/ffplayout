@@ -85,11 +85,22 @@ listed authenticated endpoints also enforce the channel assignment where an
 | `GET` | `/api/playout/config/{id}` | `GA, CA, U` | Read the complete `PlayoutConfig`. |
 | `PUT` | `/api/playout/config/{id}` | `GA, CA` | Replace the complete `PlayoutConfig`. Use the response from `GET` as the request shape. |
 | `GET` | `/api/playout/outputs/{id}` | `GA, CA, U` | List configured outputs for the channel. |
-| `GET` | `/api/playout/codecs/{id}` | `GA, CA, U` | List supported software codecs for HLS, RTMP, SRT, and UDP. |
+| `GET` | `/api/playout/codecs/{id}` | `GA, CA, U` | List supported codecs for HLS, RTMP, SRT, UDP, and custom outputs, including compatible hardware encoders and their curated encoder-setting schema. |
 | `GET` | `/api/text/fonts` | `GA, CA, U` | List available font families. |
 
 `PUT /api/playout/config/{id}` validates output mode, codecs, HLS subtitle
 settings, text preset references, and volume before persisting the change.
+Video settings are submitted as `output.video_options`: a string map whose
+allowed keys, values, numeric bounds, defaults, and visibility conditions are
+provided with the selected video codec by `GET /api/playout/codecs/{id}`.
+
+For `output.mode: "stream"`, `output.stream_type` also accepts `"custom"`.
+Set `output.stream_format` to an FFmpeg output format such as `"decklink"` and
+`output.stream_url` to its target, for example a DeckLink device name. The
+format must be available in the FFmpeg libraries linked by ffplayout; FFmpeg
+performs the final device and codec compatibility check when the playout opens.
+Uncompressed video codecs such as `rawvideo` and lossless audio codecs such as
+`pcm_s16le` do not use bitrate settings.
 
 ## Playout control
 

@@ -29,6 +29,32 @@ pub struct CodecOption {
     pub display_name: String,
     pub codec_id: String,
     pub hardware: bool,
+    pub uses_bitrate: bool,
+    pub settings: Vec<EncoderSetting>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EncoderSetting {
+    pub key: String,
+    pub label: String,
+    pub kind: &'static str,
+    pub default: String,
+    pub choices: Vec<EncoderSettingChoice>,
+    pub minimum: Option<f64>,
+    pub maximum: Option<f64>,
+    pub visible_when: Option<EncoderSettingVisibility>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EncoderSettingChoice {
+    pub value: String,
+    pub label: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EncoderSettingVisibility {
+    pub key: String,
+    pub value: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -43,6 +69,7 @@ pub struct PlayoutCodecOptions {
     pub rtmp: OutputCodecOptions,
     pub srt: OutputCodecOptions,
     pub udp: OutputCodecOptions,
+    pub custom: OutputCodecOptions,
 }
 
 fn codec_option(codec: &ff_engine::FfmpegCodec) -> CodecOption {
@@ -51,6 +78,39 @@ fn codec_option(codec: &ff_engine::FfmpegCodec) -> CodecOption {
         display_name: codec.display_name.clone(),
         codec_id: codec.codec_id.clone(),
         hardware: codec.hardware,
+        uses_bitrate: match codec.media_type {
+            ff_engine::FfmpegMediaType::Video => ff_engine::video_codec_uses_bitrate(&codec.name),
+            ff_engine::FfmpegMediaType::Audio => ff_engine::audio_codec_uses_bitrate(&codec.name),
+            ff_engine::FfmpegMediaType::Subtitle => false,
+        },
+        settings: ff_engine::video_option_specs(&codec.name)
+            .iter()
+            .map(|setting| EncoderSetting {
+                key: setting.key.to_string(),
+                label: setting.label.to_string(),
+                kind: match setting.kind {
+                    ff_engine::VideoOptionKind::Select => "select",
+                    ff_engine::VideoOptionKind::Number => "number",
+                },
+                default: setting.default.to_string(),
+                choices: setting
+                    .choices
+                    .iter()
+                    .map(|choice| EncoderSettingChoice {
+                        value: choice.value.to_string(),
+                        label: choice.label.to_string(),
+                    })
+                    .collect(),
+                minimum: setting.minimum,
+                maximum: setting.maximum,
+                visible_when: setting
+                    .visible_when
+                    .map(|condition| EncoderSettingVisibility {
+                        key: condition.key.to_string(),
+                        value: condition.value.to_string(),
+                    }),
+            })
+            .collect(),
     }
 }
 
@@ -61,11 +121,28 @@ fn output_codec_options(target: ff_engine::FfmpegOutputTarget) -> OutputCodecOpt
         video: capabilities
             .video_codecs_for(target)
             .iter()
-            .filter(|codec| !codec.hardware)
             .map(codec_option)
             .collect(),
         audio: capabilities
             .audio_codecs_for(target)
+            .iter()
+            .filter(|codec| !codec.hardware)
+            .map(codec_option)
+            .collect(),
+    }
+}
+
+fn custom_output_codec_options() -> OutputCodecOptions {
+    let capabilities = ff_engine::ffmpeg_capabilities();
+
+    OutputCodecOptions {
+        video: capabilities
+            .usable_codecs(ff_engine::FfmpegMediaType::Video)
+            .iter()
+            .map(codec_option)
+            .collect(),
+        audio: capabilities
+            .usable_codecs(ff_engine::FfmpegMediaType::Audio)
             .iter()
             .filter(|codec| !codec.hardware)
             .map(codec_option)
@@ -153,7 +230,8 @@ pub async fn update_playout_config(
 
     let is_hls = data.output.mode == OutputMode::HLS;
     let is_encoded = matches!(data.output.mode, OutputMode::HLS | OutputMode::Stream);
-    let is_crf = is_encoded && data.output.rate_control == "crf";
+    let video_options = serde_json::to_string(&data.output.video_options)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     handles::update_output(
         &state.pool,
         data.output.id,
@@ -164,7 +242,11 @@ pub async fn update_playout_config(
             crate::utils::config::StreamType::Rtmp => "rtmp",
             crate::utils::config::StreamType::Srt => "srt",
             crate::utils::config::StreamType::Udp => "udp",
+            crate::utils::config::StreamType::Custom => "custom",
         }),
+        (data.output.mode == OutputMode::Stream
+            && data.output.stream_type == crate::utils::config::StreamType::Custom)
+            .then_some(data.output.stream_format.as_str()),
         is_hls.then_some(data.output.hls_playlist_name.as_str()),
         is_hls.then_some(i64::from(data.output.hls_segment_duration)),
         is_hls.then_some(i64::from(data.output.hls_list_size)),
@@ -172,13 +254,15 @@ pub async fn update_playout_config(
         i64::from(data.output.width),
         i64::from(data.output.height),
         data.output.fps,
-        is_encoded.then_some(data.output.video_preset.as_str()),
         is_encoded.then_some(data.output.video_codec.as_str()),
+        if is_encoded {
+            video_options.as_str()
+        } else {
+            "{}"
+        },
         is_encoded.then_some(data.output.audio_codec.as_str()),
-        is_encoded.then_some(data.output.rate_control.as_str()),
-        is_crf.then_some(i64::from(data.output.video_quality)),
-        is_encoded.then_some(i64::from(data.output.video_maxrate)),
-        is_encoded.then_some(i64::from(data.output.audio_bitrate)),
+        (is_encoded && ff_engine::audio_codec_uses_bitrate(&data.output.audio_codec))
+            .then_some(i64::from(data.output.audio_bitrate)),
     )
     .await?;
     handles::update_configuration(&state.pool, config_id, data).await?;
@@ -245,5 +329,6 @@ pub async fn get_playout_codecs(
         rtmp: output_codec_options(ff_engine::FfmpegOutputTarget::Rtmp),
         srt: output_codec_options(ff_engine::FfmpegOutputTarget::Srt),
         udp: output_codec_options(ff_engine::FfmpegOutputTarget::Udp),
+        custom: custom_output_codec_options(),
     }))
 }

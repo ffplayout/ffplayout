@@ -41,6 +41,8 @@ RUN apt-get update && \
         libxss-dev \
         libxkbcommon-dev \
         libwayland-dev \
+        # VAAPI dependencies
+        libva-dev libdrm-dev \
         libgbm-dev \
         libgl1-mesa-dev \
         libegl1-mesa-dev \
@@ -227,6 +229,20 @@ RUN git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL2
     cmake --build SDL2/build  && \
     cmake --install SDL2/build
 
+RUN git clone https://github.com/intel/libvpl.git && \
+    cd libvpl && \
+    cmake -S . -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" \
+        -DCMAKE_INSTALL_LIBDIR=lib \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DBUILD_EXAMPLES=OFF \
+        -DBUILD_TESTS=OFF && \
+    cmake --build build -j"$(nproc)" && \
+    cmake --install build && \
+    sed -i '/^Libs.private:/ s/$/ -lstdc++/' "$LOCALDESTDIR/lib/pkgconfig/vpl.pc" && \
+    pkg-config --modversion vpl
+
 ARG FFMPEG_VERSION=release/8.1
 ARG FFMPEG_DEBUG=0
 
@@ -258,10 +274,13 @@ RUN mkdir -p /ffmpeg-debug && \
         --enable-libmp3lame \
         --enable-libopus \
         --enable-libsrt \
+        --enable-libvpl \
         --enable-libvpx \
         --enable-libx264 \
         --enable-libx265 \
         --enable-openssl \
+        # VAAPI dependencies
+        --enable-vaapi --enable-libdrm \
         --enable-libsvtav1 \
         --enable-libdav1d; then \
         status=1; \
@@ -269,6 +288,7 @@ RUN mkdir -p /ffmpeg-debug && \
         { \
             echo "PKG_CONFIG=$PKG_CONFIG"; \
             echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"; \
+            echo "PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR"; \
             echo "CFLAGS=$CFLAGS"; \
             echo "LDFLAGS=$LDFLAGS"; \
             find /tmp/local /usr/lib /usr/share -name '*harfbuzz*.pc' -print; \

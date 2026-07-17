@@ -8,7 +8,7 @@ export type Logging = { ffmpeg_level: string, ingest_level: string, detect_silen
 
 export type Mail = { show: boolean, subject: string, recipient: string, mail_level: string, interval: bigint, };
 
-export type Output = { id: number, mode: OutputMode, stream_url: string, stream_type: StreamType, hls_playlist_name: string, hls_segment_duration: number, hls_list_size: number, desktop_fullscreen: boolean, width: number, height: number, fps: number, video_preset: string, video_codec: string, audio_codec: string, rate_control: string, video_quality: number, video_maxrate: number, audio_bitrate: number, 
+export type Output = { id: number, mode: OutputMode, stream_url: string, stream_type: StreamType, stream_format: string, hls_playlist_name: string, hls_segment_duration: number, hls_list_size: number, desktop_fullscreen: boolean, width: number, height: number, fps: number, video_codec: string, video_options: { [key in string]: string }, audio_codec: string, audio_bitrate: number,
 /**
  * Adaptive HLS renditions, one per entry, each formatted as
  * `NAME:WIDTHxHEIGHT:VIDEO_BITRATE[:AUDIO_BITRATE]` (e.g.
@@ -35,7 +35,7 @@ export type Processing = { mode: ProcessMode, add_logo: boolean, logo: string, l
 
 export type Storage = { filler: string, extensions: Array<string>, shuffle: boolean, shared_storage: boolean, };
 
-export type StreamType = "rtmp" | "srt" | "udp";
+export type StreamType = "rtmp" | "srt" | "udp" | "custom";
 
 export type Task = { enable: boolean, path: string, };
 

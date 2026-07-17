@@ -51,6 +51,17 @@ The `FFPLAYOUT_PROCESSING_BENCH_INTERVAL` environment variable provides the
 same setting. The reported times measure the instrumented caller thread; use
 `perf` for CPU time inside FFmpeg worker threads.
 
+## Hardware Encoding
+
+The output codec list includes hardware encoders only when they accept the
+engine's CPU-backed frames. NVENC accepts `yuv420p` directly. QSV receives a
+CPU-side `nv12` frame produced immediately before the encoder and performs the
+surface upload internally. VAAPI keeps decoding, scaling and overlays on the
+CPU, then uploads the completed `nv12` frame to `/dev/dri/renderD128`
+immediately before encoding. The process therefore needs access to the render
+device, normally through the `render` group, in addition to a matching GPU
+driver.
+
 ### Create Debian DEB and RHEL RPM Packages
 
 Install the packaging tools:
