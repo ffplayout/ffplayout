@@ -959,9 +959,8 @@ fn qsv_global_quality(cfg: &OutputConfig) -> i32 {
 }
 
 fn restore_video_bitrate_metadata(backend: VideoEncoderBackend, cfg: &OutputConfig) -> bool {
-    !(backend == VideoEncoderBackend::Qsv && qsv_uses_icq(cfg))
-        && !(backend == VideoEncoderBackend::Vaapi
-            && cfg.video_option("rate_control") == Some("cqp"))
+    !(backend == VideoEncoderBackend::Qsv && qsv_uses_icq(cfg)
+        || backend == VideoEncoderBackend::Vaapi && cfg.video_option("rate_control") == Some("cqp"))
 }
 
 /// Use a keyframe interval that fits exactly into the requested HLS segment.
