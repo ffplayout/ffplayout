@@ -41,7 +41,6 @@ RUN apt-get update && \
         libxss-dev \
         libxkbcommon-dev \
         libwayland-dev \
-        # VAAPI dependencies
         libva-dev libdrm-dev \
         libgbm-dev \
         libgl1-mesa-dev \
@@ -279,7 +278,6 @@ RUN mkdir -p /ffmpeg-debug && \
         --enable-libx264 \
         --enable-libx265 \
         --enable-openssl \
-        # VAAPI dependencies
         --enable-vaapi --enable-libdrm \
         --enable-libsvtav1 \
         --enable-libdav1d; then \
