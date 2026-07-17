@@ -54,4 +54,10 @@ fn main() {
 
         run_npm(&["run", "build"]);
     }
+
+    if std::env::var_os("FFPLAYOUT_VAAPI_SHARED").is_some() {
+        println!("cargo:rustc-link-lib=dylib=va-drm");
+        println!("cargo:rustc-link-lib=dylib=va");
+        println!("cargo:rustc-link-lib=dylib=drm");
+    }
 }
