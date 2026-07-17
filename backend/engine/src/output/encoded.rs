@@ -19,7 +19,10 @@ use crate::{
     benchmark::{self, Stage},
     clock::PlayoutClock,
     utils::{
-        config::{HlsSubtitle, HlsVariant, OutputConfig, RateControl},
+        config::{
+            HlsSubtitle, HlsVariant, OutputConfig, audio_codec_uses_bitrate,
+            video_codec_uses_bitrate,
+        },
         helper::{is_network_url, network_io_options},
     },
 };
@@ -43,7 +46,7 @@ pub(super) struct EncodedOutput {
 pub(super) enum EncodedFormat {
     Auto,
     Stream {
-        muxer: &'static str,
+        muxer: String,
     },
     Hls {
         variants: Vec<HlsVariant>,
@@ -58,8 +61,6 @@ struct VideoOutputStream {
     encoder: codec::encoder::video::Encoder,
     scaler: Option<scaling::Context>,
     scaled_frame: Option<frame::Video>,
-    width: u32,
-    height: u32,
 }
 
 struct AudioOutputStream {
@@ -166,10 +167,10 @@ impl EncodedOutput {
             // preopening the output path because that truncates a standalone
             // playlist before `append_list` can resume it.
             EncodedFormat::Hls { .. } => hls::output_context(&hls_output_path)?,
-            EncodedFormat::Stream { muxer } if is_network_url(path) => {
+            EncodedFormat::Stream { ref muxer } if is_network_url(path) => {
                 format::output_as_with(path, muxer, network_io_options())?
             }
-            EncodedFormat::Stream { muxer } => format::output_as(path, muxer)?,
+            EncodedFormat::Stream { ref muxer } => format::output_as(path, muxer)?,
             EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
                 format::output_as_with(path, "flv", network_io_options())?
             }
@@ -274,9 +275,9 @@ impl EncodedOutput {
             for index in 0..self.video_streams.len() {
                 let stream = &mut self.video_streams[index];
                 if let Some(scaler) = &mut stream.scaler {
-                    let scaled_frame = stream.scaled_frame.get_or_insert_with(|| {
-                        frame::Video::new(Pixel::YUV420P, stream.width, stream.height)
-                    });
+                    // The scaler allocates the destination using its output format.
+                    // QSV needs NV12 here, while software encoders use YUV420P.
+                    let scaled_frame = stream.scaled_frame.get_or_insert_with(frame::Video::empty);
                     scaled_frame.set_pts(frame.pts());
                     scaler.run(frame, scaled_frame)?;
                     stream.encoder.send_frame(scaled_frame)?;
@@ -611,15 +612,19 @@ fn open_video_stream(
     let mut video_ctx = codec::context::Context::new_with_codec(video_codec)
         .encoder()
         .video()?;
+    let encoder_backend = VideoEncoderBackend::from_name(video_codec.name());
+    let encoder_format = encoder_backend.input_format();
     let width = variant.map_or(cfg.width, |variant| variant.width);
     let height = variant.map_or(cfg.height, |variant| variant.height);
     video_ctx.set_width(width);
     video_ctx.set_height(height);
-    video_ctx.set_format(Pixel::YUV420P);
+    video_ctx.set_format(encoder_format);
     video_ctx.set_time_base(cfg.video_time_base);
     video_ctx.set_frame_rate(Some(Rational(cfg.fps as i32, 1)));
-    let maxrate = variant.map_or(cfg.video_maxrate, |variant| variant.video_bitrate);
-    if cfg.rate_control == RateControl::Cbr {
+    let maxrate = variant.map_or(cfg.video_maxrate(), |variant| variant.video_bitrate);
+    if cfg.video_option("rate_control") == Some("cbr")
+        || encoder_backend == VideoEncoderBackend::VpxVp9
+    {
         video_ctx.set_bit_rate(maxrate as usize);
     }
     match &output_format {
@@ -636,30 +641,27 @@ fn open_video_stream(
     if matches!(output_format, EncodedFormat::Hls { .. }) {
         video_flags |= codec::flag::Flags::CLOSED_GOP;
     }
+    if encoder_backend == VideoEncoderBackend::Qsv && qsv_uses_icq(cfg) {
+        // QSV selects ICQ from AVCodecContext::global_quality. Passing this
+        // through the encoder option dictionary does not reliably update the
+        // context before rate control is selected.
+        let global_quality = qsv_global_quality(cfg);
+        log::debug!("QSV encoder rate control: ICQ, global quality: {global_quality}");
+        video_ctx.set_global_quality(global_quality);
+    }
     if !video_flags.is_empty() {
         video_ctx.set_flags(video_flags);
     }
 
-    let video_codec_name = video_codec.name();
-    let uses_x264 = video_codec_name.contains("x264");
     let mut options = ffmpeg::Dictionary::new();
-    if uses_x264 {
-        options.set("preset", &cfg.video_preset);
-        options.set("tune", "zerolatency");
-        options.set("maxrate", &maxrate.to_string());
-        options.set("bufsize", &maxrate.saturating_mul(2).to_string());
-        match cfg.rate_control {
-            RateControl::Crf => options.set("crf", &cfg.video_quality.to_string()),
-            RateControl::Cbr => options.set("minrate", &maxrate.to_string()),
-        }
-    }
+    encoder_backend.configure_options(&mut options, cfg, maxrate);
 
     let mut video_encoder = match output_format {
         EncodedFormat::Auto | EncodedFormat::Stream { .. } => {
             video_ctx.open_as_with(video_codec, options)?
         }
         EncodedFormat::Hls { .. } => {
-            if uses_x264 {
+            if encoder_backend == VideoEncoderBackend::X264 {
                 options.set("x264-params", "open-gop=0:repeat-headers=1");
             }
             video_ctx.open_as_with(video_codec, options)?
@@ -667,19 +669,22 @@ fn open_video_stream(
     };
     // CRF encoders clear AVCodecContext::bit_rate while opening. Restore the
     // configured maximum as metadata so the HLS muxer can calculate BANDWIDTH
-    // for master.m3u8; this does not change the already-open encoder mode.
-    video_encoder.set_bit_rate(maxrate as usize);
+    // for master.m3u8. QSV observes changes to bit_rate at the first frame and
+    // resets itself, which invalidates an ICQ-only setup.
+    if video_codec_uses_bitrate(video_codec.name()) && restore_video_bitrate_metadata(cfg) {
+        video_encoder.set_bit_rate(maxrate as usize);
+    }
     video_stream.set_parameters(&video_encoder);
     video_stream.set_time_base(cfg.video_time_base);
     let stream_index = video_stream.index();
-    let scaler = if width == cfg.width && height == cfg.height {
+    let scaler = if width == cfg.width && height == cfg.height && encoder_format == Pixel::YUV420P {
         None
     } else {
         Some(scaling::Context::get(
             Pixel::YUV420P,
             cfg.width,
             cfg.height,
-            Pixel::YUV420P,
+            encoder_format,
             width,
             height,
             scaling::flag::Flags::BILINEAR,
@@ -691,9 +696,131 @@ fn open_video_stream(
         encoder: video_encoder,
         scaler,
         scaled_frame: None,
-        width,
-        height,
     })
+}
+
+/// Encoders in this pipeline receive CPU-backed YUV420P frames. NVENC accepts
+/// those frames and uploads them internally. Codecs requiring hardware-frame
+/// filter graphs, such as VAAPI and QSV, are filtered by capability detection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VideoEncoderBackend {
+    Software,
+    X264,
+    X265,
+    Nvenc,
+    Qsv,
+    VpxVp9,
+    SvtAv1,
+}
+
+impl VideoEncoderBackend {
+    fn from_name(name: &str) -> Self {
+        if name.contains("x264") {
+            Self::X264
+        } else if name.contains("x265") {
+            Self::X265
+        } else if matches!(name, "h264_nvenc" | "hevc_nvenc" | "av1_nvenc") {
+            Self::Nvenc
+        } else if matches!(name, "h264_qsv" | "hevc_qsv" | "av1_qsv") {
+            Self::Qsv
+        } else if name == "libvpx-vp9" {
+            Self::VpxVp9
+        } else if name == "libsvtav1" {
+            Self::SvtAv1
+        } else {
+            Self::Software
+        }
+    }
+
+    const fn input_format(self) -> Pixel {
+        match self {
+            Self::Qsv => Pixel::NV12,
+            Self::Software
+            | Self::X264
+            | Self::X265
+            | Self::Nvenc
+            | Self::VpxVp9
+            | Self::SvtAv1 => Pixel::YUV420P,
+        }
+    }
+
+    fn configure_options(
+        self,
+        options: &mut ffmpeg::Dictionary<'_>,
+        cfg: &OutputConfig,
+        maxrate: u64,
+    ) {
+        match self {
+            Self::X264 | Self::X265 => {
+                options.set("preset", cfg.video_option("preset").unwrap_or("faster"));
+                options.set("tune", "zerolatency");
+                options.set("maxrate", &maxrate.to_string());
+                options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+                match cfg.video_option("rate_control") {
+                    Some("cbr") => options.set("minrate", &maxrate.to_string()),
+                    _ => options.set("crf", cfg.video_option("quality").unwrap_or("23")),
+                }
+            }
+            Self::Nvenc => {
+                options.set("preset", "p4");
+                options.set("tune", "ll");
+                options.set("maxrate", &maxrate.to_string());
+                options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+                match cfg.video_option("rate_control") {
+                    Some("cbr") => options.set("rc", "cbr"),
+                    _ => {
+                        options.set("rc", "vbr");
+                        options.set("cq", cfg.video_option("quality").unwrap_or("23"));
+                    }
+                }
+            }
+            Self::Qsv => {
+                options.set("preset", cfg.video_option("preset").unwrap_or("faster"));
+                options.set("async_depth", "4");
+                options.set("low_delay_brc", "1");
+                if !qsv_uses_icq(cfg) {
+                    options.set("maxrate", &maxrate.to_string());
+                    options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+                    if cfg.video_option("rate_control") == Some("cbr") {
+                        options.set("rdo", "0");
+                    }
+                }
+            }
+            Self::VpxVp9 => {
+                options.set("deadline", cfg.video_option("deadline").unwrap_or("good"));
+                options.set("cpu-used", cfg.video_option("cpu-used").unwrap_or("4"));
+                options.set("row-mt", cfg.video_option("row-mt").unwrap_or("auto"));
+                options.set("maxrate", &maxrate.to_string());
+                options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+                match cfg.video_option("rate_control") {
+                    Some("cbr") => options.set("minrate", &maxrate.to_string()),
+                    _ => options.set("crf", cfg.video_option("quality").unwrap_or("31")),
+                }
+            }
+            Self::SvtAv1 => {
+                options.set("preset", cfg.video_option("preset").unwrap_or("8"));
+                options.set("crf", cfg.video_option("quality").unwrap_or("30"));
+                options.set("maxrate", &maxrate.to_string());
+                options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+            }
+            Self::Software => {}
+        }
+    }
+}
+
+fn qsv_uses_icq(cfg: &OutputConfig) -> bool {
+    cfg.video_option("rate_control") == Some("icq")
+}
+
+fn qsv_global_quality(cfg: &OutputConfig) -> i32 {
+    cfg.video_option("global_quality")
+        .and_then(|value| value.parse().ok())
+        .filter(|value| (1..=51).contains(value))
+        .unwrap_or(23)
+}
+
+fn restore_video_bitrate_metadata(cfg: &OutputConfig) -> bool {
+    !qsv_uses_icq(cfg)
 }
 
 /// Use a keyframe interval that fits exactly into the requested HLS segment.
@@ -734,9 +861,11 @@ fn open_audio_stream(
     audio_ctx.set_channel_layout(ChannelLayout::STEREO);
     audio_ctx.set_format(encoder_sample_format);
     audio_ctx.set_time_base(cfg.audio_time_base);
-    audio_ctx.set_bit_rate(variant.map_or(cfg.audio_bitrate as usize, |variant| {
-        variant.audio_bitrate as usize
-    }));
+    if audio_codec_uses_bitrate(audio_codec.name()) {
+        audio_ctx.set_bit_rate(variant.map_or(cfg.audio_bitrate as usize, |variant| {
+            variant.audio_bitrate as usize
+        }));
+    }
     if global_header {
         audio_ctx.set_flags(codec::flag::Flags::GLOBAL_HEADER);
     }
@@ -807,6 +936,77 @@ mod open_tests {
         ffmpeg_capabilities::ffmpeg_capabilities,
     };
     use std::fs;
+
+    #[test]
+    fn selects_nvenc_for_cpu_backed_hardware_encoding() {
+        assert_eq!(
+            VideoEncoderBackend::from_name("h264_nvenc"),
+            VideoEncoderBackend::Nvenc
+        );
+        assert_eq!(
+            VideoEncoderBackend::from_name("hevc_nvenc"),
+            VideoEncoderBackend::Nvenc
+        );
+        assert_eq!(
+            VideoEncoderBackend::from_name("libx264"),
+            VideoEncoderBackend::X264
+        );
+        assert_eq!(
+            VideoEncoderBackend::from_name("libx265"),
+            VideoEncoderBackend::X265
+        );
+        assert_eq!(
+            VideoEncoderBackend::from_name("h264_qsv"),
+            VideoEncoderBackend::Qsv
+        );
+        assert_eq!(VideoEncoderBackend::Qsv.input_format(), Pixel::NV12);
+        assert_eq!(
+            VideoEncoderBackend::from_name("mpeg4"),
+            VideoEncoderBackend::Software
+        );
+    }
+
+    #[test]
+    fn qsv_input_scaler_allocates_nv12_output() {
+        let mut scaler = scaling::Context::get(
+            Pixel::YUV420P,
+            320,
+            240,
+            Pixel::NV12,
+            320,
+            240,
+            scaling::flag::Flags::BILINEAR,
+        )
+        .unwrap();
+        let input = frame::Video::new(Pixel::YUV420P, 320, 240);
+        let mut output = frame::Video::empty();
+
+        scaler.run(&input, &mut output).unwrap();
+
+        assert_eq!(output.format(), Pixel::NV12);
+        assert_eq!((output.width(), output.height()), (320, 240));
+    }
+
+    #[test]
+    fn qsv_icq_sets_global_quality_on_the_codec_context() {
+        let mut cfg = OutputConfig::new(320, 240, 25, 44_100);
+        cfg.video_options
+            .insert("rate_control".into(), "icq".into());
+        cfg.video_options
+            .insert("global_quality".into(), "17".into());
+
+        assert!(qsv_uses_icq(&cfg));
+        assert_eq!(qsv_global_quality(&cfg), 17);
+        assert!(!restore_video_bitrate_metadata(&cfg));
+
+        cfg.video_options
+            .insert("global_quality".into(), "invalid".into());
+        assert_eq!(qsv_global_quality(&cfg), 23);
+
+        cfg.video_options
+            .insert("rate_control".into(), "vbr".into());
+        assert!(restore_video_bitrate_metadata(&cfg));
+    }
 
     #[test]
     fn hls_gop_is_a_short_divisor_of_the_segment_duration() {
@@ -896,12 +1096,16 @@ mod open_tests {
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("index.m3u8");
         let cfg = OutputConfig::new(320, 240, 25, 44100).with_encoding(
-            "faster".to_string(),
             "libx264".to_string(),
+            [
+                ("preset".to_string(), "faster".to_string()),
+                ("rate_control".to_string(), "cbr".to_string()),
+                ("quality".to_string(), "23".to_string()),
+                ("maxrate".to_string(), "1300".to_string()),
+            ]
+            .into_iter()
+            .collect(),
             "aac".to_string(),
-            RateControl::Cbr,
-            23,
-            1_300_000,
             128_000,
         );
         let output = EncodedOutput::open(
@@ -930,7 +1134,9 @@ mod open_tests {
         let output = EncodedOutput::open(
             path.to_str().unwrap(),
             &OutputConfig::new(320, 240, 25, 44100),
-            EncodedFormat::Stream { muxer: "mpegts" },
+            EncodedFormat::Stream {
+                muxer: "mpegts".to_string(),
+            },
         )
         .unwrap();
 
@@ -951,12 +1157,16 @@ mod open_tests {
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("stream.m3u8");
         let cfg = OutputConfig::new(320, 240, 25, 44100).with_encoding(
-            "faster".to_string(),
             "libx264".to_string(),
+            [
+                ("preset".to_string(), "faster".to_string()),
+                ("rate_control".to_string(), "crf".to_string()),
+                ("quality".to_string(), "23".to_string()),
+                ("maxrate".to_string(), "1300".to_string()),
+            ]
+            .into_iter()
+            .collect(),
             "libfdk_aac".to_string(),
-            RateControl::Crf,
-            23,
-            1_300_000,
             128_000,
         );
         let mut output = EncodedOutput::open(

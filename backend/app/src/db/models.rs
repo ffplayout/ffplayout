@@ -436,6 +436,7 @@ pub struct Output {
     pub hls_variants: String,
     pub stream_url: String,
     pub stream_type: Option<String>,
+    pub stream_format: Option<String>,
     pub hls_playlist_name: Option<String>,
     pub hls_segment_duration: Option<i64>,
     pub hls_list_size: Option<i64>,
@@ -445,12 +446,9 @@ pub struct Output {
     pub width: i64,
     pub height: i64,
     pub fps: f64,
-    pub video_preset: Option<String>,
     pub video_codec: Option<String>,
+    pub video_options: String,
     pub audio_codec: Option<String>,
-    pub rate_control: Option<String>,
-    pub video_quality: Option<i64>,
-    pub video_maxrate: Option<i64>,
     pub audio_bitrate: Option<i64>,
 }
 
@@ -473,6 +471,7 @@ impl Output {
             hls_variants: String::new(),
             stream_url,
             stream_type: (mode == OutputMode::Stream).then(|| "rtmp".to_string()),
+            stream_format: None,
             hls_playlist_name,
             hls_segment_duration,
             hls_list_size,
@@ -480,12 +479,13 @@ impl Output {
             width: 1280,
             height: 720,
             fps: 25.0,
-            video_preset: encoded.then(|| "faster".to_string()),
             video_codec: encoded.then(|| "libx264".to_string()),
+            video_options: if encoded {
+                "{\"preset\":\"faster\",\"rate_control\":\"crf\",\"quality\":\"23\",\"maxrate\":\"2400\"}".to_string()
+            } else {
+                Default::default()
+            },
             audio_codec: encoded.then(|| "aac".to_string()),
-            rate_control: encoded.then(|| "crf".to_string()),
-            video_quality: encoded.then_some(23),
-            video_maxrate: encoded.then_some(2400),
             audio_bitrate: encoded.then_some(128),
         }
     }

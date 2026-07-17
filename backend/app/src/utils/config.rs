@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     fmt,
     path::{Path, PathBuf},
     str::FromStr,
@@ -73,14 +73,16 @@ pub enum StreamType {
     Rtmp,
     Srt,
     Udp,
+    Custom,
 }
 
 impl StreamType {
-    fn ffmpeg_target(self) -> ff_engine::FfmpegOutputTarget {
+    fn ffmpeg_target(self) -> Option<ff_engine::FfmpegOutputTarget> {
         match self {
-            Self::Rtmp => ff_engine::FfmpegOutputTarget::Rtmp,
-            Self::Srt => ff_engine::FfmpegOutputTarget::Srt,
-            Self::Udp => ff_engine::FfmpegOutputTarget::Udp,
+            Self::Rtmp => Some(ff_engine::FfmpegOutputTarget::Rtmp),
+            Self::Srt => Some(ff_engine::FfmpegOutputTarget::Srt),
+            Self::Udp => Some(ff_engine::FfmpegOutputTarget::Udp),
+            Self::Custom => None,
         }
     }
 
@@ -89,6 +91,7 @@ impl StreamType {
             Self::Rtmp => ff_engine::StreamType::Rtmp,
             Self::Srt => ff_engine::StreamType::Srt,
             Self::Udp => ff_engine::StreamType::Udp,
+            Self::Custom => ff_engine::StreamType::Custom,
         }
     }
 }
@@ -101,7 +104,8 @@ impl FromStr for StreamType {
             "rtmp" => Ok(Self::Rtmp),
             "srt" => Ok(Self::Srt),
             "udp" => Ok(Self::Udp),
-            _ => Err("Use 'rtmp', 'srt' or 'udp'".to_string()),
+            "custom" => Ok(Self::Custom),
+            _ => Err("Use 'rtmp', 'srt', 'udp' or 'custom'".to_string()),
         }
     }
 }
@@ -532,6 +536,8 @@ pub struct Output {
     pub stream_url: String,
     #[serde(default)]
     pub stream_type: StreamType,
+    #[serde(default)]
+    pub stream_format: String,
     #[serde(default = "default_hls_playlist_name")]
     pub hls_playlist_name: String,
     #[serde(default = "default_hls_segment_duration")]
@@ -543,18 +549,12 @@ pub struct Output {
     pub width: u32,
     pub height: u32,
     pub fps: f64,
-    #[serde(default = "default_video_preset")]
-    pub video_preset: String,
     #[serde(default = "default_video_codec")]
     pub video_codec: String,
+    #[serde(default)]
+    pub video_options: BTreeMap<String, String>,
     #[serde(default = "default_audio_codec")]
     pub audio_codec: String,
-    #[serde(default = "default_rate_control")]
-    pub rate_control: String,
-    #[serde(default = "default_video_quality")]
-    pub video_quality: u8,
-    #[serde(default = "default_video_maxrate")]
-    pub video_maxrate: u32,
     #[serde(default = "default_audio_bitrate")]
     pub audio_bitrate: u32,
     /// Adaptive HLS renditions, one per entry, each formatted as
@@ -578,28 +578,12 @@ const fn default_hls_list_size() -> u32 {
     600
 }
 
-fn default_video_preset() -> String {
-    "faster".to_string()
-}
-
 fn default_video_codec() -> String {
     "libx264".to_string()
 }
 
 fn default_audio_codec() -> String {
     "aac".to_string()
-}
-
-fn default_rate_control() -> String {
-    "crf".to_string()
-}
-
-const fn default_video_quality() -> u8 {
-    23
-}
-
-const fn default_video_maxrate() -> u32 {
-    2400
 }
 
 const fn default_audio_bitrate() -> u32 {
@@ -613,6 +597,9 @@ impl Output {
             .find(|output| output.id == config.output_id)
             .cloned()
             .unwrap_or_default();
+        let video_codec = output.video_codec.unwrap_or_else(default_video_codec);
+        let video_options = serde_json::from_str(&output.video_options)
+            .unwrap_or_else(|_| ff_engine::video_option_defaults(&video_codec));
 
         Self {
             id: output.id,
@@ -624,6 +611,7 @@ impl Output {
                 .unwrap_or("rtmp")
                 .parse()
                 .unwrap_or_default(),
+            stream_format: output.stream_format.unwrap_or_default(),
             hls_playlist_name: output
                 .hls_playlist_name
                 .unwrap_or_else(default_hls_playlist_name),
@@ -639,18 +627,9 @@ impl Output {
             width: u32::try_from(output.width).unwrap_or(1280),
             height: u32::try_from(output.height).unwrap_or(720),
             fps: output.fps,
-            video_preset: output.video_preset.unwrap_or_else(default_video_preset),
-            video_codec: output.video_codec.unwrap_or_else(default_video_codec),
+            video_codec,
+            video_options,
             audio_codec: output.audio_codec.unwrap_or_else(default_audio_codec),
-            rate_control: output.rate_control.unwrap_or_else(default_rate_control),
-            video_quality: output
-                .video_quality
-                .and_then(|value| u8::try_from(value).ok())
-                .unwrap_or_else(default_video_quality),
-            video_maxrate: output
-                .video_maxrate
-                .and_then(|value| u32::try_from(value).ok())
-                .unwrap_or_else(default_video_maxrate),
             audio_bitrate: output
                 .audio_bitrate
                 .and_then(|value| u32::try_from(value).ok())
@@ -684,7 +663,7 @@ impl Output {
             name: self.hls_playlist_name.trim().to_string(),
             width: self.width,
             height: self.height,
-            video_bitrate: u64::from(self.video_maxrate) * 1_000,
+            video_bitrate: self.video_maxrate(),
             audio_bitrate: u64::from(self.audio_bitrate) * 1_000,
         };
         validate_hls_name(&base.name)?;
@@ -715,31 +694,34 @@ impl Output {
         }
 
         if matches!(self.mode, OutputMode::HLS | OutputMode::Stream) {
-            const PRESETS: &[&str] = &[
-                "ultrafast",
-                "superfast",
-                "veryfast",
-                "faster",
-                "fast",
-                "medium",
-                "slow",
-                "slower",
-                "veryslow",
-                "placebo",
-            ];
-            if !PRESETS.contains(&self.video_preset.as_str()) {
-                return Err(format!("unsupported video preset {:?}", self.video_preset));
-            }
             let target = match self.mode {
                 OutputMode::HLS => ff_engine::FfmpegOutputTarget::Hls,
-                OutputMode::Stream => self.stream_type.ffmpeg_target(),
+                OutputMode::Stream => self
+                    .stream_type
+                    .ffmpeg_target()
+                    .unwrap_or(ff_engine::FfmpegOutputTarget::Rtmp),
                 OutputMode::Desktop => unreachable!("desktop output is not encoded"),
             };
             let capabilities = ff_engine::ffmpeg_capabilities();
-            if !capabilities
-                .video_codecs_for(target)
+            let custom_format = self.stream_format.trim();
+            if self.mode == OutputMode::Stream && self.stream_type == StreamType::Custom {
+                if custom_format.is_empty() {
+                    return Err("custom stream format must not be empty".to_string());
+                }
+                if !capabilities.has_muxer_named(custom_format) {
+                    return Err(format!(
+                        "FFmpeg output format {custom_format:?} is not available"
+                    ));
+                }
+            }
+            let video_codecs =
+                if self.mode == OutputMode::Stream && self.stream_type == StreamType::Custom {
+                    capabilities.usable_codecs(ff_engine::FfmpegMediaType::Video)
+                } else {
+                    capabilities.video_codecs_for(target)
+                };
+            if !video_codecs
                 .iter()
-                .filter(|codec| !codec.hardware)
                 .any(|codec| codec.name == self.video_codec)
             {
                 return Err(format!(
@@ -747,8 +729,13 @@ impl Output {
                     self.video_codec, self.mode
                 ));
             }
-            if !capabilities
-                .audio_codecs_for(target)
+            let audio_codecs =
+                if self.mode == OutputMode::Stream && self.stream_type == StreamType::Custom {
+                    capabilities.usable_codecs(ff_engine::FfmpegMediaType::Audio)
+                } else {
+                    capabilities.audio_codecs_for(target)
+                };
+            if !audio_codecs
                 .iter()
                 .filter(|codec| !codec.hardware)
                 .any(|codec| codec.name == self.audio_codec)
@@ -758,16 +745,8 @@ impl Output {
                     self.audio_codec, self.mode
                 ));
             }
-            if !matches!(self.rate_control.as_str(), "crf" | "cbr") {
-                return Err("rate control must be \"crf\" or \"cbr\"".to_string());
-            }
-            if self.rate_control == "crf" && self.video_quality > 51 {
-                return Err("CRF quality must be between 0 and 51".to_string());
-            }
-            if self.video_maxrate == 0 {
-                return Err("video maxrate must be greater than zero".to_string());
-            }
-            if self.audio_bitrate == 0 {
+            ff_engine::validate_video_options(&self.video_codec, &self.video_options)?;
+            if ff_engine::audio_codec_uses_bitrate(&self.audio_codec) && self.audio_bitrate == 0 {
                 return Err("audio bitrate must be greater than zero".to_string());
             }
         }
@@ -786,6 +765,14 @@ impl Output {
         }
 
         Ok(())
+    }
+
+    fn video_maxrate(&self) -> u64 {
+        self.video_options
+            .get("maxrate")
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(2_400)
+            .saturating_mul(1_000)
     }
 }
 
@@ -1029,6 +1016,7 @@ mod output_tests {
             mode,
             stream_url: "rtmp://localhost/live/test".to_string(),
             stream_type: StreamType::Rtmp,
+            stream_format: String::new(),
             hls_playlist_name: "stream".to_string(),
             hls_segment_duration: 6,
             hls_list_size: 600,
@@ -1036,12 +1024,9 @@ mod output_tests {
             width: 1280,
             height: 720,
             fps: 25.0,
-            video_preset: "faster".to_string(),
             video_codec: "libx264".to_string(),
+            video_options: ff_engine::video_option_defaults("libx264"),
             audio_codec: "aac".to_string(),
-            rate_control: "crf".to_string(),
-            video_quality: 23,
-            video_maxrate: 2400,
             audio_bitrate: 128,
             hls_variants: Vec::new(),
         }
@@ -1051,6 +1036,37 @@ mod output_tests {
     fn validates_structured_output_settings() {
         assert!(output(OutputMode::HLS).validate().is_ok());
         assert!(output(OutputMode::Stream).validate().is_ok());
+    }
+
+    #[test]
+    fn custom_stream_requires_an_output_format() {
+        let mut output = output(OutputMode::Stream);
+        output.stream_type = StreamType::Custom;
+
+        assert_eq!(
+            output.validate(),
+            Err("custom stream format must not be empty".to_string())
+        );
+    }
+
+    #[test]
+    fn custom_stream_accepts_an_available_muxer() {
+        let mut output = output(OutputMode::Stream);
+        output.stream_type = StreamType::Custom;
+        output.stream_format = "matroska".to_string();
+
+        assert!(output.validate().is_ok());
+    }
+
+    #[test]
+    fn custom_pcm_output_does_not_require_an_audio_bitrate() {
+        let mut output = output(OutputMode::Stream);
+        output.stream_type = StreamType::Custom;
+        output.stream_format = "matroska".to_string();
+        output.audio_codec = "pcm_s16le".to_string();
+        output.audio_bitrate = 0;
+
+        assert!(output.validate().is_ok());
     }
 
     #[test]
@@ -1110,20 +1126,23 @@ mod output_tests {
     }
 
     #[test]
-    fn rejects_invalid_crf_quality() {
+    fn rejects_invalid_quality_for_visible_setting() {
         let mut output = output(OutputMode::Stream);
-        output.video_quality = 52;
-        assert_eq!(
-            output.validate().unwrap_err(),
-            "CRF quality must be between 0 and 51"
-        );
+        output
+            .video_options
+            .insert("quality".to_string(), "52".to_string());
+        assert!(output.validate().unwrap_err().contains("quality"));
     }
 
     #[test]
     fn cbr_does_not_validate_unused_quality() {
         let mut output = output(OutputMode::Stream);
-        output.rate_control = "cbr".to_string();
-        output.video_quality = 52;
+        output
+            .video_options
+            .insert("rate_control".to_string(), "cbr".to_string());
+        output
+            .video_options
+            .insert("quality".to_string(), "52".to_string());
         assert!(output.validate().is_ok());
     }
 }

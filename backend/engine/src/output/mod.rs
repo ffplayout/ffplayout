@@ -108,7 +108,7 @@ impl Output {
                 path,
                 cfg,
                 EncodedFormat::Stream {
-                    muxer: cfg.stream_type.muxer(),
+                    muxer: cfg.stream_type.muxer(&cfg.stream_format).to_string(),
                 },
             )?)),
         })

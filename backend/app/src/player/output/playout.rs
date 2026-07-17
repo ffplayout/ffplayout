@@ -7,7 +7,7 @@ use std::{
 
 use ff_engine::{
     AsyncPlayout, AudioLevelCallback, ClipResult, HlsHealth, LogLevel, LogoConfig, LogoFade,
-    OutputConfig, RateControl, TextOverlayState,
+    OutputConfig, TextOverlayState,
 };
 use log::*;
 use tokio::time::sleep;
@@ -422,11 +422,6 @@ fn engine_output_config(
         .filter(|preset| preset.use_filename)
         .map(|preset| text_config(preset, None, true));
 
-    let rate_control = if config.output.rate_control == "crf" {
-        RateControl::Crf
-    } else {
-        RateControl::Cbr
-    };
     let ffmpeg_log_level = config
         .logging
         .ffmpeg_level
@@ -453,13 +448,11 @@ fn engine_output_config(
         .with_ffmpeg_ignore_lines(config.logging.ignore_lines.clone())
         .with_channel_id(config.general.channel_id)
         .with_stream_type(config.output.stream_type.engine_stream_type())
+        .with_stream_format(config.output.stream_format.clone())
         .with_encoding(
-            config.output.video_preset.clone(),
             config.output.video_codec.clone(),
+            config.output.video_options.clone(),
             config.output.audio_codec.clone(),
-            rate_control,
-            config.output.video_quality,
-            u64::from(config.output.video_maxrate) * 1_000,
             u64::from(config.output.audio_bitrate) * 1_000,
         ))
 }

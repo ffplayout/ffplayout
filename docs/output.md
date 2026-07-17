@@ -6,6 +6,12 @@ The streaming output can be used for classic FFmpeg output URLs such as **RTMP**
 
 **Remember that you need a streaming server as a destination if you want to use this mode.**
 
+Custom FFmpeg output formats and codec combinations, including hardware devices
+such as DeckLink, are not all tested by ffplayout. An unsupported format, codec,
+pixel format, or device combination can fail when the playout starts. Verify the
+combination with the FFmpeg libraries linked by your ffplayout build before
+using it in production.
+
 For example, you can use:
 
 - [SRS](https://github.com/ossrs/srs)

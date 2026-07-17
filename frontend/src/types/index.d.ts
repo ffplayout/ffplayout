@@ -24,7 +24,8 @@ declare global {
         name: string
         hls_variants: string
         stream_url: string
-        stream_type: 'rtmp' | 'srt' | 'udp' | null
+        stream_type: 'rtmp' | 'srt' | 'udp' | 'custom' | null
+        stream_format: string | null
         hls_playlist_name: string | null
         hls_segment_duration: number | null
         hls_list_size: number | null
@@ -32,12 +33,9 @@ declare global {
         width: number
         height: number
         fps: number
-        video_preset: string | null
         video_codec: string | null
+        video_options: string
         audio_codec: string | null
-        rate_control: string | null
-        video_quality: number | null
-        video_maxrate: number | null
         audio_bitrate: number | null
         channel_id: number
     }
@@ -47,6 +45,29 @@ declare global {
         display_name: string
         codec_id: string
         hardware: boolean
+        uses_bitrate: boolean
+        settings: EncoderSetting[]
+    }
+
+    interface EncoderSetting {
+        key: string
+        label: string
+        kind: 'select' | 'number'
+        default: string
+        choices: EncoderSettingChoice[]
+        minimum: number | null
+        maximum: number | null
+        visible_when: EncoderSettingVisibility | null
+    }
+
+    interface EncoderSettingChoice {
+        value: string
+        label: string
+    }
+
+    interface EncoderSettingVisibility {
+        key: string
+        value: string
     }
 
     interface OutputCodecOptions {
@@ -59,6 +80,7 @@ declare global {
         rtmp: OutputCodecOptions
         srt: OutputCodecOptions
         udp: OutputCodecOptions
+        custom: OutputCodecOptions
     }
 
     interface TextPreset {

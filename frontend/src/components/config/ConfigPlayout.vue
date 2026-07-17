@@ -15,18 +15,6 @@ const indexStore = useIndex()
 
 const logLevels = ['INFO', 'WARNING', 'ERROR']
 const processingMode = ['folder', 'playlist']
-const videoPresets = [
-    'ultrafast',
-    'superfast',
-    'veryfast',
-    'faster',
-    'fast',
-    'medium',
-    'slow',
-    'slower',
-    'veryslow',
-    'placebo',
-]
 function outputMode(value: string | undefined): 'desktop' | 'hls' | 'stream' {
     if (value === 'desktop' || value === 'hls' || value === 'stream') {
         return value
@@ -62,6 +50,7 @@ const outputId = computed({
         configStore.playout.output.mode = outputMode(selected.name)
         configStore.playout.output.stream_url = selected.stream_url
         configStore.playout.output.stream_type = selected.stream_type ?? 'rtmp'
+        configStore.playout.output.stream_format = selected.stream_format ?? ''
         configStore.playout.output.hls_playlist_name = selected.hls_playlist_name ?? 'stream'
         configStore.playout.output.hls_segment_duration = selected.hls_segment_duration ?? 6
         configStore.playout.output.hls_list_size = selected.hls_list_size ?? 600
@@ -69,12 +58,13 @@ const outputId = computed({
         configStore.playout.output.width = selected.width
         configStore.playout.output.height = selected.height
         configStore.playout.output.fps = selected.fps
-        configStore.playout.output.video_preset = selected.video_preset ?? 'faster'
         configStore.playout.output.video_codec = selected.video_codec ?? 'libx264'
+        try {
+            configStore.playout.output.video_options = JSON.parse(selected.video_options || '{}')
+        } catch {
+            configStore.playout.output.video_options = {}
+        }
         configStore.playout.output.audio_codec = selected.audio_codec ?? 'aac'
-        configStore.playout.output.rate_control = selected.rate_control ?? 'crf'
-        configStore.playout.output.video_quality = selected.video_quality ?? 23
-        configStore.playout.output.video_maxrate = selected.video_maxrate ?? 2400
         configStore.playout.output.audio_bitrate = selected.audio_bitrate ?? 128
         configStore.playout.output.hls_variants = (selected.hls_variants ?? '')
             .split(';')
@@ -130,8 +120,40 @@ function codecLabel(codec: CodecOption): string {
     return `${codec.name} - ${label} (${details})`
 }
 
+const videoSettings = computed(() =>
+    codecOptions.value.video.find((codec) => codec.name === configStore.playout.output.video_codec)?.settings ?? [],
+)
+
+const audioUsesBitrate = computed(
+    () => codecOptions.value.audio.find((codec) => codec.name === configStore.playout.output.audio_codec)?.uses_bitrate ?? true,
+)
+
+function settingIsVisible(setting: EncoderSetting): boolean {
+    const condition = setting.visible_when
+    return !condition || configStore.playout.output.video_options[condition.key] === condition.value
+}
+
+function normalizeVideoOptions() {
+    const options: Record<string, string> = {}
+    for (const setting of videoSettings.value) {
+        options[setting.key] = configStore.playout.output.video_options?.[setting.key] ?? setting.default
+    }
+    configStore.playout.output.video_options = options
+}
+
+function setVideoOption(key: string, value: string | number) {
+    configStore.playout.output.video_options = {
+        ...configStore.playout.output.video_options,
+        [key]: String(value),
+    }
+}
+
+function eventValue(event: Event): string {
+    return (event.target as HTMLInputElement).value
+}
+
 watch(
-    () => [output.value, configStore.playout.output.stream_type, codecOptions.value],
+    () => [output.value, configStore.playout.output.stream_type, configStore.playout.output.video_codec, codecOptions.value],
     () => {
         const video = codecOptions.value.video
         const audio = codecOptions.value.audio
@@ -142,7 +164,9 @@ watch(
         if (audio.length > 0 && !audio.some((codec) => codec.name === configStore.playout.output.audio_codec)) {
             configStore.playout.output.audio_codec = audio[0].name
         }
+        normalizeVideoOptions()
     },
+    { immediate: true },
 )
 
 function addHlsVariant() {
@@ -597,13 +621,25 @@ async function onSubmitPlayout() {
                             <option value="rtmp">RTMP</option>
                             <option value="srt">SRT</option>
                             <option value="udp">UDP</option>
+                            <option value="custom">Custom</option>
                         </select>
                     </fieldset>
+                    <fieldset v-if="configStore.playout.output.stream_type === 'custom'" class="fieldset">
+                        <legend class="fieldset-legend">{{ t('config.streamFormat') }}</legend>
+                        <input
+                            v-model="configStore.playout.output.stream_format"
+                            type="text"
+                            class="input input-sm w-full"
+                            placeholder="decklink"
+                        />
+                    </fieldset>
                     <fieldset class="fieldset">
-                        <legend class="fieldset-legend">{{ t('config.streamUrl') }}</legend>
+                        <legend class="fieldset-legend">
+                            {{ configStore.playout.output.stream_type === 'custom' ? t('config.streamTarget') : t('config.streamUrl') }}
+                        </legend>
                         <input
                             v-model="configStore.playout.output.stream_url"
-                            type="url"
+                            :type="configStore.playout.output.stream_type === 'custom' ? 'text' : 'url'"
                             class="input input-sm w-full"
                         />
                     </fieldset>
@@ -674,41 +710,32 @@ async function onSubmitPlayout() {
                                 </option>
                             </select>
                         </label>
-                        <label class="fieldset">
-                            <span class="fieldset-legend">{{ t('config.videoPreset') }}</span>
-                            <select v-model="configStore.playout.output.video_preset" class="select select-sm w-full">
-                                <option v-for="preset in videoPresets" :key="preset" :value="preset">
-                                    {{ preset }}
-                                </option>
-                            </select>
-                        </label>
-                        <label class="fieldset">
-                            <span class="fieldset-legend">{{ t('config.rateControl') }}</span>
-                            <select v-model="configStore.playout.output.rate_control" class="select select-sm w-full">
-                                <option value="crf">CRF</option>
-                                <option value="cbr">CBR</option>
-                            </select>
-                        </label>
-                        <label v-if="configStore.playout.output.rate_control === 'crf'" class="fieldset">
-                            <span class="fieldset-legend">{{ t('config.videoQuality') }}</span>
-                            <input
-                                v-model.number="configStore.playout.output.video_quality"
-                                type="number"
-                                min="0"
-                                max="51"
-                                class="input input-sm w-full"
-                            />
-                        </label>
-                        <label class="fieldset">
-                            <span class="fieldset-legend">{{ t('config.videoMaxrate') }}</span>
-                            <input
-                                v-model.number="configStore.playout.output.video_maxrate"
-                                type="number"
-                                min="1"
-                                class="input input-sm w-full"
-                            />
-                        </label>
-                        <label class="fieldset">
+                        <template v-for="setting in videoSettings" :key="setting.key">
+                            <label v-if="settingIsVisible(setting)" class="fieldset">
+                                <span class="fieldset-legend">{{ setting.label }}</span>
+                                <select
+                                    v-if="setting.kind === 'select'"
+                                    :value="configStore.playout.output.video_options[setting.key]"
+                                    class="select select-sm w-full"
+                                    @change="setVideoOption(setting.key, eventValue($event))"
+                                >
+                                    <option v-for="choice in setting.choices" :key="choice.value" :value="choice.value">
+                                        {{ choice.label }}
+                                    </option>
+                                </select>
+                                <input
+                                    v-else
+                                    :value="configStore.playout.output.video_options[setting.key]"
+                                    type="number"
+                                    :min="setting.minimum ?? undefined"
+                                    :max="setting.maximum ?? undefined"
+                                    step="1"
+                                    class="input input-sm w-full"
+                                    @input="setVideoOption(setting.key, eventValue($event))"
+                                />
+                            </label>
+                        </template>
+                        <label v-if="audioUsesBitrate" class="fieldset">
                             <span class="fieldset-legend">{{ t('config.audioBitrate') }}</span>
                             <input
                                 v-model.number="configStore.playout.output.audio_bitrate"
