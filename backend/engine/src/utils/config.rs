@@ -401,6 +401,20 @@ const QSV_RATE_CONTROLS: &[VideoOptionChoice] = &[
         label: "ICQ",
     },
 ];
+const VAAPI_RATE_CONTROLS: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "vbr",
+        label: "VBR",
+    },
+    VideoOptionChoice {
+        value: "cbr",
+        label: "CBR",
+    },
+    VideoOptionChoice {
+        value: "cqp",
+        label: "CQP",
+    },
+];
 
 const MAXRATE: VideoOptionSpec = VideoOptionSpec {
     key: "maxrate",
@@ -519,6 +533,43 @@ const QSV_SETTINGS: &[VideoOptionSpec] = &[
         }),
     },
     MAXRATE,
+];
+const VAAPI_SETTINGS: &[VideoOptionSpec] = &[
+    VideoOptionSpec {
+        key: "rate_control",
+        label: "Rate control",
+        kind: VideoOptionKind::Select,
+        default: "vbr",
+        choices: VAAPI_RATE_CONTROLS,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "quality",
+        label: "Constant QP",
+        kind: VideoOptionKind::Number,
+        default: "23",
+        choices: &[],
+        minimum: Some(0.0),
+        maximum: Some(52.0),
+        visible_when: Some(VideoOptionVisibility {
+            key: "rate_control",
+            value: "cqp",
+        }),
+    },
+    VideoOptionSpec {
+        key: "maxrate",
+        label: "Maximum bitrate (kbit/s)",
+        kind: VideoOptionKind::Number,
+        default: "2400",
+        choices: &[],
+        minimum: Some(1.0),
+        maximum: None,
+        // CBR and VBR use this value. It remains visible for CQP as well so
+        // switching rate-control modes does not discard the user's value.
+        visible_when: None,
+    },
 ];
 const VP9_SETTINGS: &[VideoOptionSpec] = &[
     VideoOptionSpec {
@@ -669,6 +720,8 @@ pub fn video_option_specs(codec: &str) -> &'static [VideoOptionSpec] {
         NVENC_SETTINGS
     } else if codec.ends_with("_qsv") {
         QSV_SETTINGS
+    } else if codec.ends_with("_vaapi") {
+        VAAPI_SETTINGS
     } else if codec == "libvpx-vp9" {
         VP9_SETTINGS
     } else if codec == "libsvtav1" {
@@ -1163,5 +1216,14 @@ mod tests {
             Some("23")
         );
         assert!(validate_video_options("h264_qsv", &options).is_ok());
+    }
+
+    #[test]
+    fn vaapi_cqp_uses_constant_qp() {
+        let mut options = video_option_defaults("h264_vaapi");
+        options.insert("rate_control".to_string(), "cqp".to_string());
+
+        assert_eq!(options.get("quality").map(String::as_str), Some("23"));
+        assert!(validate_video_options("h264_vaapi", &options).is_ok());
     }
 }

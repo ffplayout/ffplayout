@@ -56,9 +56,11 @@ same setting. The reported times measure the instrumented caller thread; use
 The output codec list includes hardware encoders only when they accept the
 engine's CPU-backed frames. NVENC accepts `yuv420p` directly. QSV receives a
 CPU-side `nv12` frame produced immediately before the encoder and performs the
-surface upload internally. VAAPI needs a separate hardware-frame filter graph
-and remains unavailable until that pipeline is implemented. The runtime host
-still needs the matching GPU driver and device.
+surface upload internally. VAAPI keeps decoding, scaling and overlays on the
+CPU, then uploads the completed `nv12` frame to `/dev/dri/renderD128`
+immediately before encoding. The process therefore needs access to the render
+device, normally through the `render` group, in addition to a matching GPU
+driver.
 
 ### Create Debian DEB and RHEL RPM Packages
 

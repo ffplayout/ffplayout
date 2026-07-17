@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fs, path::Path};
+use std::{collections::VecDeque, ffi::CString, fs, path::Path, ptr};
 
 use anyhow::{Context, Result, anyhow};
 use ffmpeg::{
@@ -61,6 +61,94 @@ struct VideoOutputStream {
     encoder: codec::encoder::video::Encoder,
     scaler: Option<scaling::Context>,
     scaled_frame: Option<frame::Video>,
+    vaapi_upload: Option<VaapiUpload>,
+}
+
+/// Owns the VAAPI frame pool used to upload the CPU-composited NV12 frame
+/// immediately before passing it to a VAAPI encoder.
+struct VaapiUpload {
+    frames_ctx: *mut ffmpeg::ffi::AVBufferRef,
+    frame: frame::Video,
+}
+
+unsafe impl Send for VaapiUpload {}
+
+impl VaapiUpload {
+    fn new(width: u32, height: u32) -> Result<Self> {
+        let device = CString::new("/dev/dri/renderD128").expect("static VAAPI device path");
+        let mut device_ctx = ptr::null_mut();
+        let result = unsafe {
+            ffmpeg::ffi::av_hwdevice_ctx_create(
+                &mut device_ctx,
+                ffmpeg::ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
+                device.as_ptr(),
+                ptr::null_mut(),
+                0,
+            )
+        };
+        if result < 0 {
+            return Err(ffmpeg::Error::from(result))
+                .context("failed to create VAAPI device /dev/dri/renderD128");
+        }
+
+        let frames_ctx = unsafe { ffmpeg::ffi::av_hwframe_ctx_alloc(device_ctx) };
+        unsafe { ffmpeg::ffi::av_buffer_unref(&mut device_ctx) };
+        if frames_ctx.is_null() {
+            return Err(anyhow!("failed to allocate VAAPI frame context"));
+        }
+
+        let frames = unsafe { (*frames_ctx).data.cast::<ffmpeg::ffi::AVHWFramesContext>() };
+        unsafe {
+            (*frames).format = ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_VAAPI;
+            (*frames).sw_format = ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_NV12;
+            (*frames).width = width as i32;
+            (*frames).height = height as i32;
+        }
+        let result = unsafe { ffmpeg::ffi::av_hwframe_ctx_init(frames_ctx) };
+        if result < 0 {
+            unsafe { ffmpeg::ffi::av_buffer_unref(&mut (frames_ctx as *mut _)) };
+            return Err(ffmpeg::Error::from(result))
+                .context("failed to initialize VAAPI frame context");
+        }
+
+        Ok(Self {
+            frames_ctx,
+            frame: frame::Video::empty(),
+        })
+    }
+
+    fn attach_to_encoder(&self, video_ctx: &mut codec::encoder::video::Video) -> Result<()> {
+        let frames_ctx = unsafe { ffmpeg::ffi::av_buffer_ref(self.frames_ctx) };
+        if frames_ctx.is_null() {
+            return Err(anyhow!("failed to retain VAAPI frame context for encoder"));
+        }
+        unsafe { (*video_ctx.as_mut_ptr()).hw_frames_ctx = frames_ctx };
+        Ok(())
+    }
+
+    fn upload(&mut self, source: &frame::Video) -> Result<&frame::Video> {
+        unsafe { ffmpeg::ffi::av_frame_unref(self.frame.as_mut_ptr()) };
+        let result = unsafe {
+            ffmpeg::ffi::av_hwframe_get_buffer(self.frames_ctx, self.frame.as_mut_ptr(), 0)
+        };
+        if result < 0 {
+            return Err(ffmpeg::Error::from(result)).context("failed to allocate VAAPI frame");
+        }
+        self.frame.set_pts(source.pts());
+        let result = unsafe {
+            ffmpeg::ffi::av_hwframe_transfer_data(self.frame.as_mut_ptr(), source.as_ptr(), 0)
+        };
+        if result < 0 {
+            return Err(ffmpeg::Error::from(result)).context("failed to upload frame to VAAPI");
+        }
+        Ok(&self.frame)
+    }
+}
+
+impl Drop for VaapiUpload {
+    fn drop(&mut self) {
+        unsafe { ffmpeg::ffi::av_buffer_unref(&mut self.frames_ctx) };
+    }
 }
 
 struct AudioOutputStream {
@@ -274,15 +362,21 @@ impl EncodedOutput {
         benchmark::measure(Stage::EncodeMux, || {
             for index in 0..self.video_streams.len() {
                 let stream = &mut self.video_streams[index];
-                if let Some(scaler) = &mut stream.scaler {
+                let input_frame = if let Some(scaler) = &mut stream.scaler {
                     // The scaler allocates the destination using its output format.
-                    // QSV needs NV12 here, while software encoders use YUV420P.
+                    // QSV and VAAPI need NV12 here, while software encoders use YUV420P.
                     let scaled_frame = stream.scaled_frame.get_or_insert_with(frame::Video::empty);
                     scaled_frame.set_pts(frame.pts());
                     scaler.run(frame, scaled_frame)?;
-                    stream.encoder.send_frame(scaled_frame)?;
+                    scaled_frame
                 } else {
-                    stream.encoder.send_frame(frame)?;
+                    frame
+                };
+                if let Some(vaapi_upload) = &mut stream.vaapi_upload {
+                    let vaapi_frame = vaapi_upload.upload(input_frame)?;
+                    stream.encoder.send_frame(vaapi_frame)?;
+                } else {
+                    stream.encoder.send_frame(input_frame)?;
                 }
                 self.write_video_packets(index)?;
             }
@@ -613,7 +707,8 @@ fn open_video_stream(
         .encoder()
         .video()?;
     let encoder_backend = VideoEncoderBackend::from_name(video_codec.name());
-    let encoder_format = encoder_backend.input_format();
+    let encoder_format = encoder_backend.encoder_format();
+    let cpu_input_format = encoder_backend.cpu_input_format();
     let width = variant.map_or(cfg.width, |variant| variant.width);
     let height = variant.map_or(cfg.height, |variant| variant.height);
     video_ctx.set_width(width);
@@ -622,9 +717,7 @@ fn open_video_stream(
     video_ctx.set_time_base(cfg.video_time_base);
     video_ctx.set_frame_rate(Some(Rational(cfg.fps as i32, 1)));
     let maxrate = variant.map_or(cfg.video_maxrate(), |variant| variant.video_bitrate);
-    if cfg.video_option("rate_control") == Some("cbr")
-        || encoder_backend == VideoEncoderBackend::VpxVp9
-    {
+    if encoder_backend.uses_target_bitrate(cfg) {
         video_ctx.set_bit_rate(maxrate as usize);
     }
     match &output_format {
@@ -653,6 +746,13 @@ fn open_video_stream(
         video_ctx.set_flags(video_flags);
     }
 
+    let vaapi_upload = (encoder_backend == VideoEncoderBackend::Vaapi)
+        .then(|| VaapiUpload::new(width, height))
+        .transpose()?;
+    if let Some(vaapi_upload) = &vaapi_upload {
+        vaapi_upload.attach_to_encoder(&mut video_ctx)?;
+    }
+
     let mut options = ffmpeg::Dictionary::new();
     encoder_backend.configure_options(&mut options, cfg, maxrate);
 
@@ -667,24 +767,27 @@ fn open_video_stream(
             video_ctx.open_as_with(video_codec, options)?
         }
     };
-    // CRF encoders clear AVCodecContext::bit_rate while opening. Restore the
-    // configured maximum as metadata so the HLS muxer can calculate BANDWIDTH
-    // for master.m3u8. QSV observes changes to bit_rate at the first frame and
-    // resets itself, which invalidates an ICQ-only setup.
-    if video_codec_uses_bitrate(video_codec.name()) && restore_video_bitrate_metadata(cfg) {
+    // Quality-based encoders clear AVCodecContext::bit_rate while opening.
+    // Restore the configured maximum as metadata so the HLS muxer can
+    // calculate BANDWIDTH for master.m3u8. QSV and VAAPI observe a bitrate
+    // change when their quality-only mode begins, which would invalidate it.
+    if video_codec_uses_bitrate(video_codec.name())
+        && restore_video_bitrate_metadata(encoder_backend, cfg)
+    {
         video_encoder.set_bit_rate(maxrate as usize);
     }
     video_stream.set_parameters(&video_encoder);
     video_stream.set_time_base(cfg.video_time_base);
     let stream_index = video_stream.index();
-    let scaler = if width == cfg.width && height == cfg.height && encoder_format == Pixel::YUV420P {
+    let scaler = if width == cfg.width && height == cfg.height && cpu_input_format == Pixel::YUV420P
+    {
         None
     } else {
         Some(scaling::Context::get(
             Pixel::YUV420P,
             cfg.width,
             cfg.height,
-            encoder_format,
+            cpu_input_format,
             width,
             height,
             scaling::flag::Flags::BILINEAR,
@@ -696,12 +799,13 @@ fn open_video_stream(
         encoder: video_encoder,
         scaler,
         scaled_frame: None,
+        vaapi_upload,
     })
 }
 
-/// Encoders in this pipeline receive CPU-backed YUV420P frames. NVENC accepts
-/// those frames and uploads them internally. Codecs requiring hardware-frame
-/// filter graphs, such as VAAPI and QSV, are filtered by capability detection.
+/// Encoders in this pipeline receive CPU-backed frames. QSV accepts NV12 and
+/// uploads it internally; VAAPI receives an NV12 frame uploaded to a VAAPI
+/// frame pool immediately before encoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VideoEncoderBackend {
     Software,
@@ -709,6 +813,7 @@ enum VideoEncoderBackend {
     X265,
     Nvenc,
     Qsv,
+    Vaapi,
     VpxVp9,
     SvtAv1,
 }
@@ -723,6 +828,8 @@ impl VideoEncoderBackend {
             Self::Nvenc
         } else if matches!(name, "h264_qsv" | "hevc_qsv" | "av1_qsv") {
             Self::Qsv
+        } else if matches!(name, "h264_vaapi" | "hevc_vaapi" | "av1_vaapi") {
+            Self::Vaapi
         } else if name == "libvpx-vp9" {
             Self::VpxVp9
         } else if name == "libsvtav1" {
@@ -732,9 +839,17 @@ impl VideoEncoderBackend {
         }
     }
 
-    const fn input_format(self) -> Pixel {
+    const fn encoder_format(self) -> Pixel {
+        match self {
+            Self::Vaapi => Pixel::VAAPI,
+            _ => self.cpu_input_format(),
+        }
+    }
+
+    const fn cpu_input_format(self) -> Pixel {
         match self {
             Self::Qsv => Pixel::NV12,
+            Self::Vaapi => Pixel::NV12,
             Self::Software
             | Self::X264
             | Self::X265
@@ -742,6 +857,12 @@ impl VideoEncoderBackend {
             | Self::VpxVp9
             | Self::SvtAv1 => Pixel::YUV420P,
         }
+    }
+
+    fn uses_target_bitrate(self, cfg: &OutputConfig) -> bool {
+        cfg.video_option("rate_control") == Some("cbr")
+            || self == Self::VpxVp9
+            || (self == Self::Vaapi && cfg.video_option("rate_control") == Some("vbr"))
     }
 
     fn configure_options(
@@ -786,6 +907,24 @@ impl VideoEncoderBackend {
                     }
                 }
             }
+            Self::Vaapi => {
+                let rate_control = cfg.video_option("rate_control").unwrap_or("vbr");
+                options.set("async_depth", "4");
+                options.set(
+                    "rc_mode",
+                    match rate_control {
+                        "cqp" => "CQP",
+                        "cbr" => "CBR",
+                        _ => "VBR",
+                    },
+                );
+                if rate_control == "cqp" {
+                    options.set("qp", cfg.video_option("quality").unwrap_or("23"));
+                } else {
+                    options.set("maxrate", &maxrate.to_string());
+                    options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+                }
+            }
             Self::VpxVp9 => {
                 options.set("deadline", cfg.video_option("deadline").unwrap_or("good"));
                 options.set("cpu-used", cfg.video_option("cpu-used").unwrap_or("4"));
@@ -819,8 +958,10 @@ fn qsv_global_quality(cfg: &OutputConfig) -> i32 {
         .unwrap_or(23)
 }
 
-fn restore_video_bitrate_metadata(cfg: &OutputConfig) -> bool {
-    !qsv_uses_icq(cfg)
+fn restore_video_bitrate_metadata(backend: VideoEncoderBackend, cfg: &OutputConfig) -> bool {
+    !(backend == VideoEncoderBackend::Qsv && qsv_uses_icq(cfg))
+        && !(backend == VideoEncoderBackend::Vaapi
+            && cfg.video_option("rate_control") == Some("cqp"))
 }
 
 /// Use a keyframe interval that fits exactly into the requested HLS segment.
@@ -959,7 +1100,13 @@ mod open_tests {
             VideoEncoderBackend::from_name("h264_qsv"),
             VideoEncoderBackend::Qsv
         );
-        assert_eq!(VideoEncoderBackend::Qsv.input_format(), Pixel::NV12);
+        assert_eq!(VideoEncoderBackend::Qsv.cpu_input_format(), Pixel::NV12);
+        assert_eq!(
+            VideoEncoderBackend::from_name("h264_vaapi"),
+            VideoEncoderBackend::Vaapi
+        );
+        assert_eq!(VideoEncoderBackend::Vaapi.cpu_input_format(), Pixel::NV12);
+        assert_eq!(VideoEncoderBackend::Vaapi.encoder_format(), Pixel::VAAPI);
         assert_eq!(
             VideoEncoderBackend::from_name("mpeg4"),
             VideoEncoderBackend::Software
@@ -988,6 +1135,26 @@ mod open_tests {
     }
 
     #[test]
+    fn vaapi_uses_nv12_before_hardware_upload() {
+        let mut scaler = scaling::Context::get(
+            Pixel::YUV420P,
+            320,
+            240,
+            VideoEncoderBackend::Vaapi.cpu_input_format(),
+            320,
+            240,
+            scaling::flag::Flags::BILINEAR,
+        )
+        .unwrap();
+        let input = frame::Video::new(Pixel::YUV420P, 320, 240);
+        let mut output = frame::Video::empty();
+
+        scaler.run(&input, &mut output).unwrap();
+
+        assert_eq!(output.format(), Pixel::NV12);
+    }
+
+    #[test]
     fn qsv_icq_sets_global_quality_on_the_codec_context() {
         let mut cfg = OutputConfig::new(320, 240, 25, 44_100);
         cfg.video_options
@@ -997,7 +1164,10 @@ mod open_tests {
 
         assert!(qsv_uses_icq(&cfg));
         assert_eq!(qsv_global_quality(&cfg), 17);
-        assert!(!restore_video_bitrate_metadata(&cfg));
+        assert!(!restore_video_bitrate_metadata(
+            VideoEncoderBackend::Qsv,
+            &cfg
+        ));
 
         cfg.video_options
             .insert("global_quality".into(), "invalid".into());
@@ -1005,7 +1175,22 @@ mod open_tests {
 
         cfg.video_options
             .insert("rate_control".into(), "vbr".into());
-        assert!(restore_video_bitrate_metadata(&cfg));
+        assert!(restore_video_bitrate_metadata(
+            VideoEncoderBackend::Qsv,
+            &cfg
+        ));
+    }
+
+    #[test]
+    fn vaapi_cqp_does_not_restore_bitrate_metadata() {
+        let mut cfg = OutputConfig::new(320, 240, 25, 44_100);
+        cfg.video_options
+            .insert("rate_control".into(), "cqp".into());
+
+        assert!(!restore_video_bitrate_metadata(
+            VideoEncoderBackend::Vaapi,
+            &cfg
+        ));
     }
 
     #[test]

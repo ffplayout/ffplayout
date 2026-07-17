@@ -304,7 +304,10 @@ fn video_encoder_supports_engine_format(codec: *const ffi::AVCodec) -> bool {
             return false;
         }
         let pixel = Pixel::from(format);
-        if pixel == Pixel::YUV420P || (is_qsv_encoder(codec) && pixel == Pixel::NV12) {
+        if pixel == Pixel::YUV420P
+            || (is_qsv_encoder(codec) && pixel == Pixel::NV12)
+            || (is_vaapi_encoder(codec) && pixel == Pixel::VAAPI)
+        {
             return true;
         }
         formats = unsafe { formats.add(1) };
@@ -313,6 +316,10 @@ fn video_encoder_supports_engine_format(codec: *const ffi::AVCodec) -> bool {
 
 fn is_qsv_encoder(codec: *const ffi::AVCodec) -> bool {
     c_string(unsafe { (*codec).name }).ends_with("_qsv")
+}
+
+fn is_vaapi_encoder(codec: *const ffi::AVCodec) -> bool {
+    c_string(unsafe { (*codec).name }).ends_with("_vaapi")
 }
 
 fn c_string(value: *const std::ffi::c_char) -> String {
