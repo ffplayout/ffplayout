@@ -242,6 +242,36 @@ RUN git clone https://github.com/intel/libvpl.git && \
     sed -i '/^Libs.private:/ s/$/ -lstdc++/' "$LOCALDESTDIR/lib/pkgconfig/vpl.pc" && \
     pkg-config --modversion vpl
 
+RUN git clone --depth 1 https://gitlab.freedesktop.org/mesa/drm.git libdrm && \
+    meson setup libdrm/build libdrm \
+        --default-library=static \
+        --prefix "$LOCALDESTDIR" \
+        --libdir="$LOCALDESTDIR/lib" \
+        -Dtests=false \
+        -Dcairo-tests=disabled \
+        -Dman-pages=disabled \
+        -Dvalgrind=disabled && \
+    ninja -C libdrm/build && \
+    ninja -C libdrm/build install
+
+RUN git clone --depth 1 --branch 2.22.0 https://github.com/intel/libva.git && cd libva && \
+    sed -i \
+        -e 's/shared_library(/static_library(/g' \
+        -e '/^[[:space:]]*vs_module_defs[[:space:]]*:/d' \
+        -e '/^[[:space:]]*soversion[[:space:]]*:/d' \
+        -e '/^[[:space:]]*version[[:space:]]*:/d' \
+        va/meson.build && \
+    meson setup build \
+        --default-library=static \
+        --prefix "$LOCALDESTDIR" \
+        --libdir="$LOCALDESTDIR/lib" \
+        -Dwith_x11=no \
+        -Dwith_glx=no \
+        -Dwith_wayland=no \
+        -Dwith_win32=no && \
+    ninja -C build && \
+    ninja -C build install
+
 ARG FFMPEG_VERSION=release/8.1
 ARG FFMPEG_DEBUG=0
 
@@ -278,7 +308,8 @@ RUN mkdir -p /ffmpeg-debug && \
         --enable-libx264 \
         --enable-libx265 \
         --enable-openssl \
-        --enable-vaapi --enable-libdrm \
+        --enable-vaapi \
+        --enable-libdrm \
         --enable-libsvtav1 \
         --enable-libdav1d; then \
         status=1; \
@@ -304,4 +335,6 @@ COPY --from=builder /ffmpeg-debug/ /
 
 FROM builder AS ffmpeg-static
 
-RUN strip /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+RUN test -x /usr/local/bin/ffmpeg && \
+    test -x /usr/local/bin/ffprobe && \
+    strip /usr/local/bin/ffmpeg /usr/local/bin/ffprobe

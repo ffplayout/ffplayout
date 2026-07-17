@@ -1,7 +1,9 @@
 #!/usr/bin/bash
 
-source $(dirname "$0")/man_create.sh
-target=$1
+set -eu
+
+source "$(dirname "$0")/man_create.sh"
+target=${1:-}
 env_file=".env"
 env_names=()
 
@@ -51,6 +53,7 @@ fi
 
 if [[ -z $target ]]; then
     echo "Pass a target, like: ./scrips/build.sh debian"
+    exit 1
 fi
 
 IFS="= "
@@ -89,7 +92,7 @@ elif [[ $target == "debian-static" ]]; then
     mkdir -p ./target/debian-static
 
     docker build \
-        --build-arg FFMPEG_DEBUG=1 \
+        --build-arg FFMPEG_DEBUG="${FFMPEG_DEBUG:-0}" \
         --build-arg FFMPEG_VERSION="${FFMPEG_VERSION:-release/8.1}" \
         -t localhost/ffplayout-ffmpeg-static:latest \
         -f ./docker/ffmpeg.Dockerfile .
