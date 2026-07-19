@@ -35,6 +35,7 @@ pub async fn initialize_channels(
     conn: &Pool<Sqlite>,
     controllers: Arc<RwLock<ChannelController>>,
     queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
+    shutdown: tokio_util::sync::CancellationToken,
     system: SystemStat,
     copy_assets: bool,
 ) -> Result<(), ServiceError> {
@@ -44,7 +45,14 @@ pub async fn initialize_channels(
         let config = get_config(conn, channel.id).await?;
         let mail_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
         let active = channel.active;
-        let manager = ChannelManager::new(conn.clone(), channel, config, system.clone()).await;
+        let manager = ChannelManager::new(
+            conn.clone(),
+            channel,
+            config,
+            shutdown.clone(),
+            system.clone(),
+        )
+        .await;
 
         if copy_assets
             && index == 0
@@ -69,6 +77,7 @@ pub async fn create_channel(
     conn: &Pool<Sqlite>,
     controllers: Arc<RwLock<ChannelController>>,
     queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
+    shutdown: tokio_util::sync::CancellationToken,
     system: SystemStat,
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
@@ -97,7 +106,8 @@ pub async fn create_channel(
     let config = get_config(conn, channel.id).await?;
 
     let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
-    let manager = ChannelManager::new(conn.clone(), channel.clone(), config, system).await;
+    let manager =
+        ChannelManager::new(conn.clone(), channel.clone(), config, shutdown, system).await;
 
     if let Err(e) = manager.storage.copy_assets().await {
         error!("{e}");
@@ -118,6 +128,17 @@ pub async fn delete_channel(
     queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<(), ServiceError> {
     let channel = handles::select_channel(conn, &id).await?;
+
+    let manager = {
+        let controller = controllers.read().await;
+        controller.get(id)
+    };
+    if let Some(manager) = manager {
+        manager.channel.lock().await.active = false;
+        manager.stop_all(false).await;
+        manager.stop_supervisor().await;
+    }
+
     handles::delete_channel(conn, &channel.id).await?;
     controllers.write().await.remove(id);
     let mut queue_guard = queue.lock().await;

@@ -55,7 +55,14 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     config.processing.mode = Playlist;
     config.ingest.enable = false;
 
-    let manager = ChannelManager::new(pool, channel, config.clone(), SystemStat::new()).await;
+    let manager = ChannelManager::new(
+        pool,
+        channel,
+        config.clone(),
+        tokio_util::sync::CancellationToken::new(),
+        SystemStat::new(),
+    )
+    .await;
 
     (config, manager)
 }

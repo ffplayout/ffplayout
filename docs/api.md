@@ -143,9 +143,17 @@ rejected.
 | `POST` | `/api/file/{id}/create-folder` | `{ "source": "folder" }` |
 | `POST` | `/api/file/{id}/rename` | `{ "source": "old.mp4", "target": "new.mp4" }` |
 | `POST` | `/api/file/{id}/remove` | `{ "source": "file.mp4", "recursive": false }` |
-| `PUT` | `/api/file/{id}/upload?path=folder` | `multipart/form-data` with a file field |
+| `GET` | `/api/file/{id}/upload?path=folder&file_name=clip.mp4&size=1234&batch_id=<ID>` | Returns already received byte ranges for a resumable upload |
+| `PUT` | `/api/file/{id}/upload?path=folder` | Chunked `multipart/form-data` upload |
 | `PUT` | `/api/file/{id}/import?file=list.m3u&date=YYYY-MM-DD` | `multipart/form-data` with a file field |
 | `POST` | `/api/file/{id}/access-token` | `{ "filename": "folder/file.mp4" }` |
+
+The upload status response is `{ "received_ranges": [[start, end], ...] }`.
+Each `PUT` request contains `fileName`, `start`, `end`, `size`, `batch_id`, and
+`chunk` fields. A batch ID identifies concurrent attempts in the running
+process. Incomplete data is stored as `<filename>.uploading` with resumable
+metadata next to it; the final filename only becomes visible after all byte
+ranges have been written successfully.
 
 `POST /api/file/{id}/access-token` returns `{ "access": "...",
 "expires_in_seconds": 900 }`. It creates a single-file token bound to the

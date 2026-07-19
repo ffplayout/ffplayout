@@ -4001,6 +4001,7 @@ dependencies = [
  "serial_test",
  "sqlx",
  "tokio",
+ "tokio-util",
  "tower",
 ]
 

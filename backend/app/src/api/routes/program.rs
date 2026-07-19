@@ -2,7 +2,8 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeDelta, TimeZone};
+use chrono::{DateTime, NaiveDateTime, NaiveTime, TimeDelta, TimeZone};
+use chrono_tz::Tz;
 use log::*;
 use protect_axum::authorities::AuthDetails;
 use regex::Regex;
@@ -64,14 +65,20 @@ pub async fn get_program(
     let start_sec = config.playlist.start_sec.unwrap();
     let mut days = 0;
     let mut program = vec![];
-    let after = obj.start_after;
-    let mut before = obj.start_before;
+    let now = crate::utils::time_machine::time_now(&config.channel.timezone);
+    let timezone = now.timezone();
+    let today = now.date_naive();
+    let after = obj
+        .start_after
+        .unwrap_or_else(|| today.and_time(NaiveTime::MIN));
+    let end_of_day = NaiveTime::from_hms_opt(23, 59, 59)
+        .ok_or_else(|| ServiceError::Conflict("Invalid end-of-day time".to_string()))?;
+    let mut before = obj
+        .start_before
+        .unwrap_or_else(|| today.and_time(end_of_day));
 
     if after > before {
-        before = chrono::Local
-            .with_ymd_and_hms(after.year(), after.month(), after.day(), 23, 59, 59)
-            .unwrap()
-            .naive_local();
+        before = after.date().and_time(end_of_day);
     }
 
     if start_sec
@@ -101,8 +108,7 @@ pub async fn get_program(
         let mut naive = NaiveDateTime::parse_from_str(
             &format!("{date} {}", sec_to_time(start_sec)),
             "%Y-%m-%d %H:%M:%S%.3f",
-        )
-        .unwrap();
+        )?;
 
         let playlist = match read_playlist(&config, date.clone()).await {
             Ok(p) => p,
@@ -113,7 +119,7 @@ pub async fn get_program(
         };
 
         for item in playlist.program {
-            let start: DateTime<Local> = Local.from_local_datetime(&naive).unwrap();
+            let start = channel_datetime(timezone, naive)?;
 
             let source = match filename_regex
                 .as_ref()
@@ -143,4 +149,36 @@ pub async fn get_program(
     }
 
     Ok(Json(program))
+}
+
+fn channel_datetime(timezone: Tz, naive: NaiveDateTime) -> Result<DateTime<Tz>, ServiceError> {
+    timezone
+        .from_local_datetime(&naive)
+        .earliest()
+        .ok_or_else(|| {
+            ServiceError::Conflict(format!(
+                "Local time {naive} does not exist in timezone {timezone}"
+            ))
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channel_datetime_uses_channel_timezone() {
+        let naive = NaiveDateTime::parse_from_str("2026-07-19 12:00:00", "%F %T").unwrap();
+
+        let date_time = channel_datetime(Tz::America__New_York, naive).unwrap();
+
+        assert_eq!(date_time.format("%:z").to_string(), "-04:00");
+    }
+
+    #[test]
+    fn channel_datetime_rejects_nonexistent_dst_time() {
+        let naive = NaiveDateTime::parse_from_str("2026-03-29 02:30:00", "%F %T").unwrap();
+
+        assert!(channel_datetime(Tz::Europe__Berlin, naive).is_err());
+    }
 }

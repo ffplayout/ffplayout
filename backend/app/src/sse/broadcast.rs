@@ -41,6 +41,10 @@ impl Client {
     }
 }
 
+fn try_send_event(sender: &mpsc::Sender<Result<Event, Infallible>>, event: Event) -> bool {
+    sender.try_send(Ok(event)).is_ok()
+}
+
 #[derive(Clone)]
 pub struct Broadcaster {
     inner: Arc<Mutex<BroadcasterInner>>,
@@ -65,8 +69,7 @@ impl Broadcaster {
         this
     }
 
-    /// Pings clients every 10 seconds to see if they are alive and remove them from the broadcast
-    /// list if not.
+    /// Broadcasts updates and removes clients that no longer consume them.
     fn spawn_ping(this: Arc<Self>) {
         tokio::spawn(Box::pin(async move {
             let mut interval = interval(Duration::from_millis(500));
@@ -118,12 +121,7 @@ impl Broadcaster {
                         "not running".to_string()
                     };
 
-                    if client
-                        .sender
-                        .send(Ok(Event::default().data(message)))
-                        .await
-                        .is_err()
-                    {
+                    if !try_send_event(&client.sender, Event::default().data(message)) {
                         failed_clients.push(client.sender.clone());
                     };
                 }
@@ -131,12 +129,7 @@ impl Broadcaster {
                     let config = client.manager.config.read().await.clone();
                     let stat = self.system.stat(&config).await;
 
-                    if client
-                        .sender
-                        .send(Ok(Event::default().data(stat.to_string())))
-                        .await
-                        .is_err()
-                    {
+                    if !try_send_event(&client.sender, Event::default().data(stat.to_string())) {
                         failed_clients.push(client.sender.clone());
                     };
                 }
@@ -154,5 +147,26 @@ impl Broadcaster {
                 .iter()
                 .any(|failed| failed.same_channel(&client.sender))
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn full_client_queue_is_rejected_without_waiting() {
+        let (sender, _receiver) = mpsc::channel(1);
+
+        assert!(try_send_event(&sender, Event::default().data("first")));
+        assert!(!try_send_event(&sender, Event::default().data("second")));
+    }
+
+    #[test]
+    fn closed_client_queue_is_rejected() {
+        let (sender, receiver) = mpsc::channel(1);
+        drop(receiver);
+
+        assert!(!try_send_event(&sender, Event::default().data("event")));
     }
 }

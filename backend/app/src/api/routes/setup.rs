@@ -183,6 +183,7 @@ pub async fn complete_setup(
         &state.pool,
         state.controller.clone(),
         state.mail_queues.clone(),
+        state.shutdown.clone(),
         state.system.clone(),
         true,
     )

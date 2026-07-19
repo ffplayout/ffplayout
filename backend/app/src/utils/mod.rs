@@ -117,14 +117,30 @@ where
 {
     let s: String = Deserialize::deserialize(deserializer)?;
 
-    match NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S") {
+    parse_naive_date_time(&s).map_err(de::Error::custom)
+}
+
+pub fn optional_naive_date_time_from_str<'de, D>(
+    deserializer: D,
+) -> Result<Option<NaiveDateTime>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+
+    parse_naive_date_time(&s)
+        .map(Some)
+        .map_err(de::Error::custom)
+}
+
+fn parse_naive_date_time(s: &str) -> Result<NaiveDateTime, chrono::ParseError> {
+    match NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
         Ok(date_time) => Ok(date_time),
         Err(e) => {
             if e.kind() == ParseErrorKind::TooShort {
                 NaiveDateTime::parse_from_str(&format!("{s}T00:00:00"), "%Y-%m-%dT%H:%M:%S")
-                    .map_err(de::Error::custom)
             } else {
-                NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S%#z").map_err(de::Error::custom)
+                NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%#z")
             }
         }
     }

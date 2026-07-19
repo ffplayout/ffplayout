@@ -64,18 +64,40 @@ pub struct Claims {
     pub channels: Vec<i32>,
     pub username: String,
     pub role: Role,
+    pub token_type: TokenType,
     exp: i64,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TokenType {
+    Access,
+    Refresh,
+}
+
 impl Claims {
-    pub fn new(user: User, role: Role, lifetime: i64) -> Self {
+    fn new(user: User, role: Role, token_type: TokenType) -> Self {
+        let lifetime = match token_type {
+            TokenType::Access => ACCESS_LIFETIME,
+            TokenType::Refresh => REFRESH_LIFETIME,
+        };
+
         Self {
             id: user.id,
             channels: user.channel_ids.unwrap_or_default(),
             username: user.username,
             role,
+            token_type,
             exp: (Utc::now() + TimeDelta::try_days(lifetime).unwrap()).timestamp(),
         }
+    }
+
+    fn access(user: User, role: Role) -> Self {
+        Self::new(user, role, TokenType::Access)
+    }
+
+    fn refresh(user: User, role: Role) -> Self {
+        Self::new(user, role, TokenType::Refresh)
     }
 }
 
@@ -101,13 +123,30 @@ pub async fn encode_jwt(claims: Claims) -> Result<String, ServiceError> {
     )?)
 }
 
-/// Decode a json web token (JWT)
-pub async fn decode_jwt(token: &str) -> Result<Claims, ServiceError> {
+fn decode_jwt_with_type(token: &str, expected: TokenType) -> Result<Claims, ServiceError> {
     let config = GLOBAL_SETTINGS.get().unwrap();
     let decoding_key = DecodingKey::from_secret(config.secret.clone().unwrap().as_bytes());
-    jsonwebtoken::decode::<Claims>(token, &decoding_key, &Validation::default())
+    let claims = jsonwebtoken::decode::<Claims>(token, &decoding_key, &Validation::default())
         .map(|data| data.claims)
-        .map_err(|e| ServiceError::Unauthorized(e.to_string()))
+        .map_err(|e| ServiceError::Unauthorized(e.to_string()))?;
+
+    if claims.token_type != expected {
+        return Err(ServiceError::Unauthorized(format!(
+            "Expected {expected:?} token"
+        )));
+    }
+
+    Ok(claims)
+}
+
+/// Decode an access token used to authorize API requests.
+pub async fn decode_jwt(token: &str) -> Result<Claims, ServiceError> {
+    decode_jwt_with_type(token, TokenType::Access)
+}
+
+/// Decode a refresh token used only by the refresh endpoint.
+pub async fn decode_refresh_jwt(token: &str) -> Result<Claims, ServiceError> {
+    decode_jwt_with_type(token, TokenType::Refresh)
 }
 
 fn mail_body(verification_code: &str) -> String {
@@ -252,9 +291,9 @@ pub async fn login(
 
                 warn!("No Two-factor authentication!");
 
-                let access_claims = Claims::new(user.clone(), role.clone(), ACCESS_LIFETIME);
+                let access_claims = Claims::access(user.clone(), role.clone());
                 let access_token = encode_jwt(access_claims).await?;
-                let refresh_claims = Claims::new(user, role.clone(), REFRESH_LIFETIME);
+                let refresh_claims = Claims::refresh(user, role.clone());
                 let refresh_token = encode_jwt(refresh_claims).await?;
 
                 info!("{ip} user {username} login, with role: {role}");
@@ -356,9 +395,9 @@ pub async fn verify(
             let role = verification.role;
 
             // Generate JWT tokens
-            let access_claims = Claims::new(user.clone(), role.clone(), ACCESS_LIFETIME);
+            let access_claims = Claims::access(user.clone(), role.clone());
             let access_token = encode_jwt(access_claims).await?;
-            let refresh_claims = Claims::new(user, role.clone(), REFRESH_LIFETIME);
+            let refresh_claims = Claims::refresh(user, role.clone());
             let refresh_token = encode_jwt(refresh_claims).await?;
 
             info!(
@@ -407,13 +446,28 @@ pub async fn refresh(
 ) -> Result<impl IntoResponse, ServiceError> {
     let refresh_t = &data.refresh;
 
-    match decode_jwt(refresh_t).await {
+    match decode_refresh_jwt(refresh_t).await {
         Ok(claims) => {
             let user_id = claims.id;
-            let role = claims.role;
 
             if let Ok(user) = handles::select_user(&state.pool, user_id).await {
-                let access_claims = Claims::new(user.clone(), role.clone(), ACCESS_LIFETIME);
+                let Some(role_id) = user.role_id else {
+                    return Ok((
+                        StatusCode::UNAUTHORIZED,
+                        AxumJson(serde_json::json!({
+                            "detail": "Invalid role for user in refresh token",
+                        })),
+                    ));
+                };
+                let Ok(role) = handles::select_role(&state.pool, &role_id).await else {
+                    return Ok((
+                        StatusCode::UNAUTHORIZED,
+                        AxumJson(serde_json::json!({
+                            "detail": "Invalid role for user in refresh token",
+                        })),
+                    ));
+                };
+                let access_claims = Claims::access(user.clone(), role.clone());
                 let access_token = encode_jwt(access_claims).await?;
 
                 info!("user {} refresh, with role: {role}", user.username);

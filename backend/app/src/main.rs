@@ -90,6 +90,7 @@ async fn async_main() -> Result<(), ProcessError> {
     set_mock_time(&ARGS.fake_time)?;
     init_globales(&pool).await?;
     let system = SystemStat::new();
+    let shutdown = CancellationToken::new();
 
     let app_state = AppState {
         auth_state: Arc::new(SseAuthState::default()),
@@ -98,6 +99,7 @@ async fn async_main() -> Result<(), ProcessError> {
         file_access: Arc::new(FileAccessState::default()),
         mail_queues: Arc::new(Mutex::new(vec![])),
         pool: pool.clone(),
+        shutdown: shutdown.clone(),
         system: system.clone(),
     };
 
@@ -112,6 +114,7 @@ async fn async_main() -> Result<(), ProcessError> {
                 &pool,
                 app_state.controller.clone(),
                 app_state.mail_queues.clone(),
+                shutdown.clone(),
                 system.clone(),
                 init,
             )
@@ -149,6 +152,9 @@ async fn async_main() -> Result<(), ProcessError> {
                 result.map_err(|e| ProcessError::Custom(e.to_string()))?;
             }
             _ = shutdown_signal() => {}
+            _ = shutdown.cancelled() => {
+                info!(target: Target::Console.as_str(), "Shutdown requested by desktop player");
+            }
         }
     } else if ARGS.drop_db {
         db_drop().await;
@@ -156,8 +162,14 @@ async fn async_main() -> Result<(), ProcessError> {
         for (index, channel_id) in channel_ids.iter().enumerate() {
             let config = get_config(&pool, *channel_id).await?;
             let channel = handles::select_channel(&pool, channel_id).await?;
-            let manager =
-                ChannelManager::new(pool.clone(), channel, config.clone(), system.clone()).await;
+            let manager = ChannelManager::new(
+                pool.clone(),
+                channel,
+                config.clone(),
+                shutdown.clone(),
+                system.clone(),
+            )
+            .await;
 
             if ARGS.foreground {
                 let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));

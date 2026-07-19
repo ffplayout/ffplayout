@@ -24,7 +24,8 @@ pub async fn select_login(pool: &SqlitePool, user: &str) -> Result<User, Process
     const QUERY: &str =
         "SELECT u.id, u.mail, u.username, u.password, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM user u
         left join user_channels uc on uc.user_id = u.id
-    WHERE u.username = $1";
+    WHERE u.username = $1
+    GROUP BY u.id";
 
     let result = sqlx::query_as(QUERY).bind(user).fetch_one(pool).await?;
 
@@ -34,7 +35,8 @@ pub async fn select_login(pool: &SqlitePool, user: &str) -> Result<User, Process
 pub async fn select_user(pool: &SqlitePool, id: i32) -> Result<User, ProcessError> {
     const QUERY: &str = "SELECT u.id, u.mail, u.username, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM user u
         left join user_channels uc on uc.user_id = u.id
-    WHERE u.id = $1";
+    WHERE u.id = $1
+    GROUP BY u.id";
 
     let result = sqlx::query_as(QUERY).bind(id).fetch_one(pool).await?;
 
@@ -44,7 +46,8 @@ pub async fn select_user(pool: &SqlitePool, id: i32) -> Result<User, ProcessErro
 pub async fn select_global_admins(pool: &SqlitePool) -> Result<Vec<User>, ProcessError> {
     const QUERY: &str = "SELECT u.id, u.mail, u.username, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM user u
         left join user_channels uc on uc.user_id = u.id
-    WHERE u.role_id = 1";
+    WHERE u.role_id = 1
+    GROUP BY u.id";
 
     let result = sqlx::query_as(QUERY).fetch_all(pool).await?;
 
@@ -215,5 +218,52 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(two_factor, 0);
+    }
+
+    #[tokio::test]
+    async fn selects_all_global_admins_with_their_own_channels() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE user (
+                id INTEGER PRIMARY KEY,
+                mail TEXT,
+                username TEXT,
+                password TEXT,
+                role_id INTEGER,
+                two_factor INTEGER
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("CREATE TABLE user_channels (user_id INTEGER, channel_id INTEGER)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO user (id, username, role_id, two_factor) VALUES
+                (1, 'admin-one', 1, 0),
+                (2, 'admin-two', 1, 0),
+                (3, 'regular-user', 3, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_channels (user_id, channel_id) VALUES
+                (1, 10),
+                (2, 20),
+                (3, 30)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let mut admins = select_global_admins(&pool).await.unwrap();
+        admins.sort_by_key(|user| user.id);
+
+        assert_eq!(admins.len(), 2);
+        assert_eq!(admins[0].channel_ids, Some(vec![10]));
+        assert_eq!(admins[1].channel_ids, Some(vec![20]));
     }
 }

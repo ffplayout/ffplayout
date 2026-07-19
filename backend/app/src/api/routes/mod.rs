@@ -15,7 +15,7 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
-use chrono::{Datelike, NaiveDateTime, TimeZone, Utc};
+use chrono::NaiveDateTime;
 use chrono_tz::Tz;
 use protect_axum::authorities::{AuthDetails, AuthoritiesCheck};
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,7 @@ use tokio_util::io::ReaderStream;
 use super::auth::decode_jwt;
 use crate::db::models::Role;
 use crate::utils::mail::MailQueue;
-use crate::utils::{config::Template, errors::ServiceError, naive_date_time_from_str};
+use crate::utils::{config::Template, errors::ServiceError, optional_naive_date_time_from_str};
 
 mod channel;
 mod control;
@@ -271,28 +271,10 @@ pub struct ImportObj {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ProgramObj {
-    #[serde(default = "time_after", deserialize_with = "naive_date_time_from_str")]
-    start_after: NaiveDateTime,
-    #[serde(default = "time_before", deserialize_with = "naive_date_time_from_str")]
-    start_before: NaiveDateTime,
-}
-
-fn time_after() -> NaiveDateTime {
-    let today = Utc::now();
-
-    chrono::Local
-        .with_ymd_and_hms(today.year(), today.month(), today.day(), 0, 0, 0)
-        .unwrap()
-        .naive_local()
-}
-
-fn time_before() -> NaiveDateTime {
-    let today = Utc::now();
-
-    chrono::Local
-        .with_ymd_and_hms(today.year(), today.month(), today.day(), 23, 59, 59)
-        .unwrap()
-        .naive_local()
+    #[serde(default, deserialize_with = "optional_naive_date_time_from_str")]
+    start_after: Option<NaiveDateTime>,
+    #[serde(default, deserialize_with = "optional_naive_date_time_from_str")]
+    start_before: Option<NaiveDateTime>,
 }
 
 #[derive(Debug, Serialize)]

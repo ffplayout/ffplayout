@@ -84,6 +84,7 @@ pub struct ChannelManager {
     pub audio_level: Arc<StdMutex<Option<AudioLevel>>>,
     pub text_overlay: TextOverlayState,
     pub playback_control: Arc<Mutex<PlaybackControl>>,
+    pub shutdown: CancellationToken,
     pub system: SystemStat,
 }
 
@@ -92,6 +93,7 @@ impl ChannelManager {
         db_pool: Pool<Sqlite>,
         channel: Channel,
         config: PlayoutConfig,
+        shutdown: CancellationToken,
         system: SystemStat,
     ) -> Self {
         let channel_extensions = channel.extra_extensions.clone();
@@ -139,6 +141,7 @@ impl ChannelManager {
             audio_level: Arc::new(StdMutex::new(None)),
             text_overlay,
             playback_control: Arc::new(Mutex::new(PlaybackControl::default())),
+            shutdown,
             system,
         }
     }
@@ -181,6 +184,11 @@ impl ChannelManager {
             return Ok(()); // runs already, don't start multiple instances
         }
 
+        if let Err(error) = handles::update_player(&self.db_pool, self.id, true).await {
+            self.is_alive.store(false, Ordering::SeqCst);
+            return Err(error.into());
+        }
+
         self.abort_supervisor().await;
         self.spawn_dev_metrics_snapshot().await;
 
@@ -189,8 +197,6 @@ impl ChannelManager {
         let token = Self::replace_token(&self.supervisor_token).await;
         let self_clone = self.clone();
         let channel_id = self.id;
-
-        handles::update_player(&self.db_pool, channel_id, true).await?;
 
         let handle = tokio::spawn(Box::pin(supervisor_loop(
             self_clone, token, channel_id, generation,
@@ -206,7 +212,11 @@ impl ChannelManager {
             return Ok(()); // runs already, don't start multiple instances
         }
 
-        self.is_alive.store(true, Ordering::SeqCst);
+        if let Err(error) = handles::update_player(&self.db_pool, self.id, true).await {
+            self.is_alive.store(false, Ordering::SeqCst);
+            return Err(error.into());
+        }
+
         self.list_init.store(true, Ordering::SeqCst);
 
         self.abort_supervisor().await;
@@ -218,19 +228,21 @@ impl ChannelManager {
         let self_clone = self.clone();
         let channel_id = self.id;
 
-        handles::update_player(&self.db_pool, channel_id, true).await?;
-
         if index + 1 == ARGS.channel.clone().unwrap_or_default().len() {
-            run_channel(self_clone).await?;
+            let result = run_channel(self_clone).await;
+            self.is_alive.store(false, Ordering::SeqCst);
+            result?;
         } else {
             let handle = tokio::spawn(async move {
                 if token.is_cancelled() {
+                    self_clone.is_alive.store(false, Ordering::SeqCst);
                     return;
                 }
 
-                if let Err(e) = run_channel(self_clone).await {
+                if let Err(e) = run_channel(self_clone.clone()).await {
                     error!(target: Target::All.as_str(), channel = channel_id; "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e}");
                 };
+                self_clone.is_alive.store(false, Ordering::SeqCst);
             });
 
             *self.supervisor_handle.lock().await = Some(handle);
