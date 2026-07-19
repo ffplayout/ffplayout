@@ -3,8 +3,8 @@ FROM debian:trixie AS builder
 ENV DEBIAN_FRONTEND=noninteractive \
     LOCALDESTDIR=/tmp/local \
     PKG_CONFIG="pkg-config --static" \
-    PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig \
-    PKG_CONFIG_LIBDIR=/tmp/local/lib/pkgconfig \
+    PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig \
+    PKG_CONFIG_LIBDIR=/tmp/local/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig \
     PKG_CONFIG_ALL_STATIC=1 \
     PKG_CONFIG_PREFER_STATIC=1 \
     CPPFLAGS="-I/tmp/local/include -fPIC" \
@@ -242,36 +242,6 @@ RUN git clone https://github.com/intel/libvpl.git && \
     sed -i '/^Libs.private:/ s/$/ -lstdc++/' "$LOCALDESTDIR/lib/pkgconfig/vpl.pc" && \
     pkg-config --modversion vpl
 
-RUN git clone --depth 1 https://gitlab.freedesktop.org/mesa/drm.git libdrm && \
-    meson setup libdrm/build libdrm \
-        --default-library=static \
-        --prefix "$LOCALDESTDIR" \
-        --libdir="$LOCALDESTDIR/lib" \
-        -Dtests=false \
-        -Dcairo-tests=disabled \
-        -Dman-pages=disabled \
-        -Dvalgrind=disabled && \
-    ninja -C libdrm/build && \
-    ninja -C libdrm/build install
-
-RUN git clone --depth 1 --branch 2.22.0 https://github.com/intel/libva.git && cd libva && \
-    sed -i \
-        -e 's/shared_library(/static_library(/g' \
-        -e '/^[[:space:]]*vs_module_defs[[:space:]]*:/d' \
-        -e '/^[[:space:]]*soversion[[:space:]]*:/d' \
-        -e '/^[[:space:]]*version[[:space:]]*:/d' \
-        va/meson.build && \
-    meson setup build \
-        --default-library=static \
-        --prefix "$LOCALDESTDIR" \
-        --libdir="$LOCALDESTDIR/lib" \
-        -Dwith_x11=no \
-        -Dwith_glx=no \
-        -Dwith_wayland=no \
-        -Dwith_win32=no && \
-    ninja -C build && \
-    ninja -C build install
-
 ARG FFMPEG_VERSION=release/8.1
 ARG FFMPEG_DEBUG=0
 
@@ -289,6 +259,7 @@ RUN mkdir -p /ffmpeg-debug && \
         --disable-debug \
         --disable-doc \
         --disable-ffplay \
+        --disable-autodetect \
         --disable-shared \
         --enable-avfilter \
         --enable-gpl \
