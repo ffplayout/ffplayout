@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    body::Body,
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
     routing::{get, post},
 };
@@ -12,8 +12,14 @@ use tokio::sync::{Mutex, RwLock};
 use tower::util::ServiceExt;
 
 use ffplayout::{
-    api::{auth::login, state::AppState},
-    db::{handles, init_globales, models::User},
+    api::{
+        auth::{decode_jwt, decode_refresh_jwt, login, refresh},
+        state::AppState,
+    },
+    db::{
+        handles, init_globales,
+        models::{Role, User},
+    },
     player::controller::{ChannelController, ChannelManager},
     sse::{SseAuthState, broadcast::Broadcaster},
     utils::{config::PlayoutConfig, system::SystemStat},
@@ -89,6 +95,7 @@ async fn test_login() {
 
     let app = Router::new()
         .route("/auth/login", post(login))
+        .route("/auth/refresh", post(refresh))
         .with_state(app_state);
 
     let payload = json!({"username": "admin", "password": "admin"});
@@ -107,6 +114,53 @@ async fn test_login() {
         .unwrap();
 
     assert!(res.status().is_success());
+    let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let tokens: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let access = tokens["access"].as_str().unwrap();
+    let refresh_token = tokens["refresh"].as_str().unwrap();
+
+    assert!(decode_jwt(access).await.is_ok());
+    assert!(decode_refresh_jwt(refresh_token).await.is_ok());
+    assert!(decode_jwt(refresh_token).await.is_err());
+    assert!(decode_refresh_jwt(access).await.is_err());
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": access}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    sqlx::query("UPDATE user SET role_id = 3 WHERE username = 'admin'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": refresh_token}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(res.status().is_success());
+    let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let refreshed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let claims = decode_jwt(refreshed["access"].as_str().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(claims.role, Role::User);
 
     let payload = json!({"username": "admin", "password": "1234"});
 

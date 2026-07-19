@@ -699,7 +699,7 @@ fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, output_fi
         for i in 0..config.processing.audio_tracks {
             a_filter_full = a_filter_full.replace(
                 &format!("[0:a:{i}]"),
-                &format!("{},", &audio_split[i as usize]),
+                &format!("{},", audio_split[i as usize]),
             );
         }
 
