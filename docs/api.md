@@ -28,7 +28,7 @@ These endpoints do not use a bearer token.
 | `POST` | `/auth/refresh` | `{ "refresh": "..." }`. Rotates it and returns a new `{ "access": "...", "refresh": "..." }` pair. |
 | `POST` | `/auth/logout` | `{ "refresh": "..." }`. Revokes the complete refresh-token family for the session. |
 | `GET` | `/api/setup` | Reports whether first-time setup is required. |
-| `POST` | `/api/setup` | Completes first-time setup. It works only while no user exists. |
+| `POST` | `/api/setup` | Completes first-time setup. It works only while no user exists; directory paths must be absolute and cannot be protected system paths. |
 
 Access tokens are valid for 45 minutes and refresh tokens for 14 days. Refresh
 tokens are single-use: each successful refresh replaces the submitted token.
@@ -57,6 +57,8 @@ curl -X POST http://127.0.0.1:8787/api/setup \
 ```
 
 The JWT `secret` is neither exposed nor accepted by the API.
+Directory paths are accepted only by this first-time setup endpoint. Change
+them later locally with `ffplayout -i`.
 
 ## Roles
 
@@ -79,8 +81,8 @@ listed authenticated endpoints also enforce the channel assignment where an
 | `POST` | `/api/channel` | `GA` | Create a channel. |
 | `DELETE` | `/api/channel/{id}` | `GA` | Delete a channel. |
 | `GET` | `/api/channels` | `GA, CA, U` | List channels available to the current user. |
-| `GET` | `/api/global` | `GA` | Read global settings. The SMTP password is represented only by `smtp_password_set`. |
-| `PUT` | `/api/global` | `GA` | Update global settings. Omit `smtp_password` or send an empty value to retain the current password. |
+| `GET` | `/api/global` | `GA` | Read editable global SMTP settings. The SMTP password is represented only by `smtp_password_set`. |
+| `PUT` | `/api/global` | `GA` | Update SMTP settings. Omit `smtp_password` or send an empty value to retain the current password. |
 
 ## Playout configuration and capabilities
 

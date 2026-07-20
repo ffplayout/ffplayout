@@ -16,11 +16,6 @@ use crate::{
 
 #[derive(Debug, Serialize)]
 pub struct GlobalSettingsResponse {
-    logs: String,
-    playlists: String,
-    public: String,
-    storage: String,
-    shared: bool,
     smtp_server: String,
     smtp_user: String,
     smtp_password_set: bool,
@@ -31,11 +26,6 @@ pub struct GlobalSettingsResponse {
 impl From<GlobalSettings> for GlobalSettingsResponse {
     fn from(settings: GlobalSettings) -> Self {
         Self {
-            logs: settings.logs,
-            playlists: settings.playlists,
-            public: settings.public,
-            storage: settings.storage,
-            shared: settings.shared,
             smtp_server: settings.smtp_server,
             smtp_user: settings.smtp_user,
             smtp_password_set: !settings.smtp_password.is_empty(),
@@ -46,12 +36,8 @@ impl From<GlobalSettings> for GlobalSettingsResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateGlobalSettings {
-    logs: String,
-    playlists: String,
-    public: String,
-    storage: String,
-    shared: bool,
     smtp_server: String,
     smtp_user: String,
     #[serde(default)]
@@ -79,11 +65,6 @@ pub async fn update_global(
     ensure_any_authority(&details, &[&Role::GlobalAdmin])?;
 
     let mut settings = handles::select_global(&state.pool).await?;
-    settings.logs = data.logs;
-    settings.playlists = data.playlists;
-    settings.public = data.public;
-    settings.storage = data.storage;
-    settings.shared = data.shared;
     settings.smtp_server = data.smtp_server;
     settings.smtp_user = data.smtp_user;
     settings.smtp_starttls = data.smtp_starttls;
@@ -93,7 +74,7 @@ pub async fn update_global(
         settings.smtp_password = password;
     }
 
-    handles::update_global(&state.pool, settings.clone()).await?;
+    handles::update_global_runtime_settings(&state.pool, settings.clone()).await?;
 
     Ok(Json(settings.into()))
 }
@@ -101,6 +82,7 @@ pub async fn update_global(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn global_settings_response_excludes_secrets() {
@@ -114,6 +96,24 @@ mod tests {
 
         assert!(value.get("secret").is_none());
         assert!(value.get("smtp_password").is_none());
+        assert!(value.get("logs").is_none());
+        assert!(value.get("playlists").is_none());
+        assert!(value.get("public").is_none());
+        assert!(value.get("storage").is_none());
+        assert!(value.get("shared").is_none());
         assert_eq!(value["smtp_password_set"], true);
+    }
+
+    #[test]
+    fn global_settings_update_rejects_path_fields() {
+        let request = json!({
+            "logs": "/tmp/ffplayout",
+            "smtp_server": "mail.example.org",
+            "smtp_user": "ffplayout@example.org",
+            "smtp_starttls": false,
+            "smtp_port": 465,
+        });
+
+        assert!(serde_json::from_value::<UpdateGlobalSettings>(request).is_err());
     }
 }

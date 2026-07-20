@@ -20,6 +20,10 @@ alternative to the web setup:
 sudo -u ffpu ffplayout -i
 ```
 
+The web setup accepts directory paths only during the first initialization.
+To change log, playlist, public, or storage paths later, run `ffplayout -i`
+locally as the service user.
+
 ### Manual Install
 
 **Note:** This is for advanced users only.

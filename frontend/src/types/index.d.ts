@@ -132,11 +132,6 @@ declare global {
     }
 
     interface GlobalSettings {
-        logs: string
-        playlists: string
-        public: string
-        storage: string
-        shared: boolean
         smtp_server: string
         smtp_user: string
         smtp_password_set: boolean
