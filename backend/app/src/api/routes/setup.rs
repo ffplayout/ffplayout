@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use argon2::{
     Argon2, PasswordHasher,
@@ -62,6 +62,61 @@ pub struct SetupRequest {
     two_factor: bool,
 }
 
+const PROTECTED_SYSTEM_PATHS: &[&str] = &[
+    "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/proc", "/root", "/run", "/sbin", "/sys",
+    "/tmp", "/usr", "/var",
+];
+const APPLICATION_SYSTEM_PATHS: &[&str] = &[
+    "/usr/share/ffplayout",
+    "/var/lib/ffplayout",
+    "/var/log/ffplayout",
+];
+
+fn validate_setup_paths(settings: &SetupSettings) -> Result<(), ServiceError> {
+    [
+        ("Logging", settings.logs.as_str()),
+        ("Playlist", settings.playlists.as_str()),
+        ("Public", settings.public.as_str()),
+        ("Storage", settings.storage.as_str()),
+    ]
+    .into_iter()
+    .try_for_each(|(name, path)| validate_setup_path(name, path))
+}
+
+fn validate_setup_path(name: &str, value: &str) -> Result<(), ServiceError> {
+    let path = Path::new(value.trim());
+    if value.trim().is_empty() || path == Path::new("/") || !path.is_absolute() {
+        return Err(ServiceError::BadRequest(format!(
+            "{name} path must be an absolute directory"
+        )));
+    }
+
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::CurDir | Component::ParentDir | Component::Prefix(_)
+        )
+    }) {
+        return Err(ServiceError::BadRequest(format!(
+            "{name} path must not contain relative components"
+        )));
+    }
+
+    let is_application_path = APPLICATION_SYSTEM_PATHS
+        .iter()
+        .any(|allowed| path.starts_with(allowed));
+    let is_protected_system_path = PROTECTED_SYSTEM_PATHS
+        .iter()
+        .any(|protected| path.starts_with(protected));
+    if is_protected_system_path && !is_application_path {
+        return Err(ServiceError::BadRequest(format!(
+            "{name} path must not point to a system directory"
+        )));
+    }
+
+    Ok(())
+}
+
 pub async fn get_setup_status(
     State(state): State<AppState>,
 ) -> Result<Json<SetupStatus>, ServiceError> {
@@ -87,6 +142,7 @@ pub async fn complete_setup(
             "Username, email, and password are required".to_string(),
         ));
     }
+    validate_setup_paths(&data.settings)?;
 
     let password = data.password;
     let password_hash = task::spawn_blocking(move || {
@@ -194,4 +250,42 @@ pub async fn complete_setup(
     .await?;
 
     Ok("Setup completed")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SetupSettings, validate_setup_paths};
+
+    fn settings(storage: &str) -> SetupSettings {
+        SetupSettings {
+            logs: "/var/log/ffplayout".to_string(),
+            playlists: "/var/lib/ffplayout/playlists".to_string(),
+            public: "/usr/share/ffplayout/public".to_string(),
+            storage: storage.to_string(),
+            shared: false,
+            smtp_server: String::new(),
+            smtp_user: String::new(),
+            smtp_password: String::new(),
+            smtp_starttls: false,
+            smtp_port: 465,
+        }
+    }
+
+    #[test]
+    fn setup_paths_allow_application_directories_and_custom_data_roots() {
+        assert!(validate_setup_paths(&settings("/mnt/media")).is_ok());
+    }
+
+    #[test]
+    fn setup_paths_reject_protected_system_directories() {
+        assert!(validate_setup_paths(&settings("/etc/ffplayout")).is_err());
+        assert!(validate_setup_paths(&settings("/var/lib")).is_err());
+    }
+
+    #[test]
+    fn setup_paths_reject_relative_components() {
+        assert!(validate_setup_paths(&settings("/mnt/../etc")).is_err());
+        assert!(validate_setup_paths(&settings("media")).is_err());
+        assert!(validate_setup_paths(&settings("/")).is_err());
+    }
 }

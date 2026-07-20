@@ -35,6 +35,27 @@ pub async fn update_global(
     Ok(result)
 }
 
+/// Updates settings that are safe to change from the authenticated web UI.
+/// Filesystem paths remain local, setup-time configuration managed by `-i`.
+pub async fn update_global_runtime_settings(
+    pool: &SqlitePool,
+    global: GlobalSettings,
+) -> Result<SqliteQueryResult, ProcessError> {
+    const QUERY: &str = "UPDATE global SET smtp_server = $1, smtp_user = $2, smtp_password = $3,
+            smtp_starttls = $4, smtp_port = $5 WHERE id = 1";
+
+    let result = sqlx::query(QUERY)
+        .bind(global.smtp_server)
+        .bind(global.smtp_user)
+        .bind(global.smtp_password)
+        .bind(global.smtp_starttls)
+        .bind(global.smtp_port)
+        .execute(pool)
+        .await?;
+
+    Ok(result)
+}
+
 pub async fn mark_setup_completed(pool: &SqlitePool) -> Result<SqliteQueryResult, ProcessError> {
     const QUERY: &str = "UPDATE global SET setup_completed = 1 WHERE id = 1";
 

@@ -53,7 +53,13 @@ async function save() {
         const response = await fetch('/api/global', {
             method: 'PUT',
             headers: { ...configStore.contentType, ...authStore.authHeader },
-            body: JSON.stringify({ ...settings.value, smtp_password: smtpPassword.value }),
+            body: JSON.stringify({
+                smtp_server: settings.value.smtp_server,
+                smtp_user: settings.value.smtp_user,
+                smtp_password: smtpPassword.value,
+                smtp_starttls: settings.value.smtp_starttls,
+                smtp_port: settings.value.smtp_port,
+            }),
         })
 
         if (!response.ok) {
@@ -91,30 +97,7 @@ async function restart(res: boolean) {
     <div v-if="authStore.role === 'global_admin'" class="w-full max-w-200">
         <h2 class="pt-3 text-3xl">{{ t('config.global') }}</h2>
         <form v-if="!loading" class="mt-5 flex flex-col gap-1" @submit.prevent="save">
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">{{ t('config.logsPath') }}</legend>
-                <input v-model="settings.logs" type="text" class="input w-full" />
-            </fieldset>
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">{{ t('config.playlistPath') }}</legend>
-                <input v-model="settings.playlists" type="text" class="input w-full" />
-            </fieldset>
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">{{ t('config.publicPath') }}</legend>
-                <input v-model="settings.public" type="text" class="input w-full" />
-            </fieldset>
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">{{ t('config.storagePath') }}</legend>
-                <input v-model="settings.storage" type="text" class="input w-full" />
-            </fieldset>
-            <fieldset class="fieldset mt-2">
-                <label class="fieldset-label text-base-content">
-                    <input v-model="settings.shared" type="checkbox" class="checkbox" />
-                    {{ t('config.sharedStorage') }}
-                </label>
-            </fieldset>
-
-            <h3 class="mt-6 text-xl">{{ t('config.smtp') }}</h3>
+            <h3 class="text-xl">{{ t('config.smtp') }}</h3>
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">{{ t('config.smtpServer') }}</legend>
                 <input v-model="settings.smtp_server" type="text" class="input w-full" />
