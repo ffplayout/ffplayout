@@ -13,7 +13,6 @@ use log::*;
 use rand::seq::SliceRandom;
 use tokio::{
     fs,
-    io::{AsyncSeekExt, AsyncWriteExt, SeekFrom},
     sync::{Mutex, RwLock},
     task::JoinHandle,
 };
@@ -22,8 +21,8 @@ use tokio_stream::StreamExt;
 use crate::file::{
     MoveObject, PathObject, VideoFile, norm_abs_path,
     upload::{
-        MAX_CHUNK_SIZE, MAX_UPLOAD_SIZE, Meta, UPLOADS, file_ranges, is_upload_complete,
-        merge_ranges, validate_mime_type,
+        UploadStatus, UploadStatusQuery, finalize_upload, get_or_create_upload, received_ranges,
+        sanitize_upload_filename, validate_chunk, validate_upload_metadata, write_upload_chunk,
     },
     watcher::watch,
 };
@@ -38,18 +37,21 @@ pub struct LocalStorage {
 }
 
 impl LocalStorage {
-    pub async fn new(root: PathBuf, extensions: Vec<String>) -> Self {
+    pub async fn new(root: PathBuf, extensions: Vec<String>) -> Result<Self, ServiceError> {
         if !root.is_dir() {
-            fs::create_dir_all(&root)
-                .await
-                .unwrap_or_else(|_| panic!("Can't create storage folder: {root:?}"));
+            fs::create_dir_all(&root).await.map_err(|error| {
+                ServiceError::Conflict(format!(
+                    "Cannot create storage folder {}: {error}",
+                    root.display()
+                ))
+            })?;
         }
 
-        Self {
+        Ok(Self {
             root: Arc::new(RwLock::new(root)),
             extensions: Arc::new(RwLock::new(extensions)),
             watch_handler: Arc::new(Mutex::new(None)),
-        }
+        })
     }
 }
 
@@ -234,88 +236,84 @@ impl LocalStorage {
         Err(ServiceError::InternalServerError)
     }
 
+    async fn upload_output_file(
+        &self,
+        path: &Path,
+        file_name: &str,
+    ) -> Result<PathBuf, ServiceError> {
+        let (target_path, _, _) = norm_abs_path(&self.root.read().await, &path.to_string_lossy())?;
+        let metadata = fs::metadata(&target_path).await.map_err(|error| {
+            ServiceError::BadRequest(format!("Invalid upload directory: {error}"))
+        })?;
+        if !metadata.is_dir() {
+            return Err(ServiceError::BadRequest(
+                "Upload target is not a directory".to_string(),
+            ));
+        }
+
+        Ok(target_path.join(file_name))
+    }
+
+    pub async fn upload_status(
+        &self,
+        query: &UploadStatusQuery,
+        user_id: i32,
+    ) -> Result<UploadStatus, ServiceError> {
+        let file_name = sanitize_upload_filename(&query.file_name)?;
+        validate_upload_metadata(query.size, &query.batch_id)?;
+        let output_file = self.upload_output_file(&query.path, &file_name).await?;
+        let upload =
+            get_or_create_upload(query.size, &output_file, &query.batch_id, user_id).await?;
+
+        Ok(UploadStatus {
+            received_ranges: received_ranges(&upload).await,
+        })
+    }
+
     pub async fn upload(
         &self,
         mut data: Multipart,
         path: &Path,
-        is_abs: bool,
+        user_id: i32,
     ) -> Result<(), ServiceError> {
         let mut file_name: Option<String> = None;
         let mut start: Option<u64> = None;
         let mut end: Option<u64> = None;
-        let mut size: u64 = 0;
+        let mut size: Option<u64> = None;
         let mut chunk_data: Option<Vec<u8>> = None;
-        let mut batch_id = String::new();
+        let mut batch_id: Option<String> = None;
 
         while let Some(field) = data.next_field().await? {
             match field.name().unwrap_or_default() {
-                "fileName" => file_name = Some(sanitize_filename::sanitize(&field.text().await?)),
-                "start" => start = Some(field.text().await?.parse::<u64>().unwrap_or(0)),
-                "end" => end = Some(field.text().await?.parse::<u64>().unwrap_or(0)),
-                "size" => size = field.text().await?.parse::<u64>().unwrap_or(0),
+                "fileName" => file_name = Some(field.text().await?),
+                "start" => start = Some(field.text().await?.parse::<u64>()?),
+                "end" => end = Some(field.text().await?.parse::<u64>()?),
+                "size" => size = Some(field.text().await?.parse::<u64>()?),
                 "chunk" => chunk_data = Some(field.bytes().await?.to_vec()),
-                "batch_id" => batch_id = field.text().await?,
+                "batch_id" => batch_id = Some(field.text().await?),
                 _ => {}
             }
         }
 
-        let file_name =
-            file_name.ok_or_else(|| ServiceError::BadRequest("Missing filename".into()))?;
-
-        validate_mime_type(&file_name)?;
-
+        let file_name = sanitize_upload_filename(
+            &file_name.ok_or_else(|| ServiceError::BadRequest("Missing filename".into()))?,
+        )?;
         let start = start.ok_or_else(|| ServiceError::BadRequest("Missing start offset".into()))?;
         let end = end.ok_or_else(|| ServiceError::BadRequest("Missing end offset".into()))?;
+        let size = size.ok_or_else(|| ServiceError::BadRequest("Missing file size".into()))?;
         let chunk_data =
             chunk_data.ok_or_else(|| ServiceError::BadRequest("Missing chunk".into()))?;
+        let batch_id =
+            batch_id.ok_or_else(|| ServiceError::BadRequest("Missing batch id".into()))?;
 
-        if size > MAX_UPLOAD_SIZE {
-            return Err(ServiceError::BadRequest(format!(
-                "File size exceeds maximum allowed size of {MAX_UPLOAD_SIZE} bytes"
-            )));
-        }
+        validate_upload_metadata(size, &batch_id)?;
+        validate_chunk(start, end, size, chunk_data.len())?;
 
-        if chunk_data.len() as u64 > MAX_CHUNK_SIZE {
-            return Err(ServiceError::BadRequest(format!(
-                "Chunk size exceeds maximum allowed chunk size of {MAX_CHUNK_SIZE} bytes"
-            )));
-        }
-
-        if end <= start || chunk_data.len() as u64 != end - start || end > size {
-            return Err(ServiceError::BadRequest("Invalid chunk range".into()));
-        }
-
-        let filepath = if is_abs {
-            path.join(&file_name)
-        } else {
-            let (target_path, _, _) =
-                norm_abs_path(&self.root.read().await, &path.to_string_lossy())?;
-            target_path.join(&file_name)
-        };
-
-        let meta = Arc::new(Mutex::new(Meta::default()));
-        let upload_value = file_ranges(start, size, &file_name, &filepath, &batch_id, meta).await?;
-
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&filepath)
-            .await?;
-        file.seek(SeekFrom::Start(start)).await?;
-        file.write_all(&chunk_data).await?;
-        file.flush().await?;
-
-        let mut ranges = upload_value.ranges.lock().await;
-        ranges.push(start..end);
-        merge_ranges(&mut ranges);
-
-        if is_upload_complete(&ranges, size) {
+        let output_file = self.upload_output_file(path, &file_name).await?;
+        let upload = get_or_create_upload(size, &output_file, &batch_id, user_id).await?;
+        if write_upload_chunk(&upload, start, end, &chunk_data).await? {
+            finalize_upload(&output_file, &upload).await?;
             info!("Upload complete: {file_name}");
-            UPLOADS
-                .lock()
-                .await
-                .remove(&filepath.to_string_lossy().to_string());
         }
 
         Ok(())
@@ -331,7 +329,12 @@ impl LocalStorage {
             old_handle.abort();
         }
 
-        let handle = tokio::spawn(watch(config, is_alive, sources));
+        let channel_id = config.general.channel_id;
+        let handle = tokio::spawn(async move {
+            if let Err(error) = watch(config, is_alive, sources).await {
+                error!(channel = channel_id; "File watcher stopped: {error}");
+            }
+        });
 
         *self.watch_handler.lock().await = Some(handle);
     }
@@ -523,5 +526,25 @@ async fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<MoveObjec
             error!("{e}");
             Err(ServiceError::BadRequest("Error in file copy!".into()))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn storage_creation_returns_error_instead_of_panicking() {
+        let base = std::env::temp_dir().join(format!(
+            "ffplayout-storage-error-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        fs::write(&base, b"not a directory").await.unwrap();
+
+        let result = LocalStorage::new(base.join("child"), Vec::new()).await;
+
+        assert!(matches!(result, Err(ServiceError::Conflict(_))));
+        fs::remove_file(base).await.unwrap();
     }
 }

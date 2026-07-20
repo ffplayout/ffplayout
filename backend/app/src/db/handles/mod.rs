@@ -4,6 +4,7 @@ pub mod global;
 pub mod init;
 pub mod output;
 pub mod preset;
+pub mod refresh_token;
 pub mod user;
 
 pub use channel::*;
@@ -12,4 +13,5 @@ pub use global::*;
 pub use init::*;
 pub use output::*;
 pub use preset::*;
+pub use refresh_token::*;
 pub use user::*;

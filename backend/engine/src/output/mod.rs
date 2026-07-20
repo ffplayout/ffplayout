@@ -41,6 +41,12 @@ pub(crate) trait FrameOutput {
     fn audio_frame_size(&self) -> usize;
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()>;
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()>;
+    /// Discard output buffered past a manual clip skip and re-anchor at the
+    /// supplied synchronized timeline position. Encoded outputs cannot
+    /// retract muxed packets and therefore use the default padding path.
+    fn reset_after_skip(&mut self, _video_pts: i64, _audio_pts: i64) -> Result<bool> {
+        Ok(false)
+    }
     fn apply_logo_overlay(
         &mut self,
         frame: &mut frame::Video,

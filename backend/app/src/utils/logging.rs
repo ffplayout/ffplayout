@@ -235,12 +235,6 @@ fn push_mail_line(queue: &mut MailQueue, id: i32, level: Level, now: &str, msg: 
     queue.push_raw(msg.to_string());
     queue.push(format!("[{now}] [{:>5}] {}", level, msg));
 
-    if queue.raw_lines.len() > 1000 {
-        let last = queue.raw_lines.pop().unwrap();
-        queue.clear_raw();
-        queue.push_raw(last);
-    }
-
     true
 }
 

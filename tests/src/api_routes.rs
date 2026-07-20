@@ -1,22 +1,31 @@
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use axum::{
     Router,
-    body::Body,
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
     routing::{get, post},
 };
 use serde_json::json;
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 use tokio::sync::{Mutex, RwLock};
+use tokio_util::sync::CancellationToken;
 use tower::util::ServiceExt;
 
 use ffplayout::{
-    api::{auth::login, file_access::FileAccessState, state::AppState},
-    db::{handles, init_globales, models::User},
+    api::{
+        auth::{decode_jwt, decode_refresh_jwt, login, logout, refresh},
+        file_access::FileAccessState,
+        state::AppState,
+    },
+    db::{
+        handles, init_globales,
+        models::{Role, User},
+    },
     player::controller::{ChannelController, ChannelManager},
     sse::{SseAuthState, broadcast::Broadcaster},
-    utils::{config::PlayoutConfig, system::SystemStat},
+    utils::{channels::delete_channel, config::PlayoutConfig, system::SystemStat},
 };
 
 async fn prepare_config() -> (PlayoutConfig, ChannelManager, Pool<Sqlite>) {
@@ -51,8 +60,15 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager, Pool<Sqlite>) {
 
     let config = PlayoutConfig::new(&pool, 1, None).await.unwrap();
     let channel = handles::select_channel(&pool, &1).await.unwrap();
-    let manager =
-        ChannelManager::new(pool.clone(), channel, config.clone(), SystemStat::new()).await;
+    let manager = ChannelManager::new(
+        pool.clone(),
+        channel,
+        config.clone(),
+        CancellationToken::new(),
+        SystemStat::new(),
+    )
+    .await
+    .expect("test storage should initialize");
 
     (config, manager, pool)
 }
@@ -79,6 +95,7 @@ async fn test_login() {
         file_access: Arc::new(FileAccessState::default()),
         mail_queues: Arc::new(Mutex::new(vec![])),
         pool: pool.clone(),
+        shutdown: CancellationToken::new(),
         system: manager.system.clone(),
     };
 
@@ -86,6 +103,8 @@ async fn test_login() {
 
     let app = Router::new()
         .route("/auth/login", post(login))
+        .route("/auth/logout", post(logout))
+        .route("/auth/refresh", post(refresh))
         .with_state(app_state);
 
     let payload = json!({"username": "admin", "password": "admin"});
@@ -104,6 +123,130 @@ async fn test_login() {
         .unwrap();
 
     assert!(res.status().is_success());
+    let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let tokens: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let access = tokens["access"].as_str().unwrap();
+    let refresh_token = tokens["refresh"].as_str().unwrap();
+
+    assert!(decode_jwt(access).await.is_ok());
+    assert!(decode_refresh_jwt(refresh_token).await.is_ok());
+    assert!(decode_jwt(refresh_token).await.is_err());
+    assert!(decode_refresh_jwt(access).await.is_err());
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": access}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    sqlx::query("UPDATE user SET role_id = 3 WHERE username = 'admin'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": refresh_token}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(res.status().is_success());
+    let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let refreshed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let claims = decode_jwt(refreshed["access"].as_str().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(claims.role, Role::User);
+    let rotated_refresh = refreshed["refresh"].as_str().unwrap();
+    assert!(decode_refresh_jwt(rotated_refresh).await.is_ok());
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": refresh_token}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": rotated_refresh}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"username": "admin", "password": "admin"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(res.status().is_success());
+    let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let tokens: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let logout_refresh = tokens["refresh"].as_str().unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/logout")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": logout_refresh}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": logout_refresh}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
 
     let payload = json!({"username": "admin", "password": "1234"});
 
@@ -137,4 +280,31 @@ async fn test_login() {
         .unwrap();
 
     assert_eq!(res.status().as_u16(), 403);
+}
+
+#[tokio::test]
+async fn failed_start_restores_not_running_state() {
+    let (_, manager, pool) = prepare_config().await;
+    pool.close().await;
+
+    assert!(manager.start().await.is_err());
+    assert!(!manager.is_alive.load(Ordering::SeqCst));
+    assert!(manager.supervisor_handle.lock().await.is_none());
+}
+
+#[tokio::test]
+async fn deleting_channel_stops_and_removes_manager() {
+    let (_, manager, pool) = prepare_config().await;
+    manager.is_alive.store(true, Ordering::SeqCst);
+    let controller = Arc::new(RwLock::new(ChannelController::new()));
+    controller.write().await.add(manager.clone());
+    let mail_queues = Arc::new(Mutex::new(Vec::new()));
+
+    delete_channel(&pool, manager.id, controller.clone(), mail_queues)
+        .await
+        .unwrap();
+
+    assert!(!manager.is_alive.load(Ordering::SeqCst));
+    assert!(controller.read().await.get(manager.id).is_none());
+    assert!(handles::select_channel(&pool, &manager.id).await.is_err());
 }

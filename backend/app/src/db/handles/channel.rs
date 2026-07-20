@@ -1,4 +1,7 @@
-use sqlx::sqlite::{SqlitePool, SqliteQueryResult};
+use sqlx::{
+    Executor, Sqlite,
+    sqlite::{SqlitePool, SqliteQueryResult},
+};
 
 use crate::{db::models::Channel, utils::errors::ProcessError};
 
@@ -35,22 +38,6 @@ pub async fn select_related_channels(
     Ok(result)
 }
 
-pub async fn delete_user_channel(
-    pool: &SqlitePool,
-    user_id: i32,
-    channel_id: i32,
-) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "DELETE FROM user_channels WHERE user_id = $1 AND channel_id = $2";
-
-    let result = sqlx::query(QUERY)
-        .bind(user_id)
-        .bind(channel_id)
-        .execute(pool)
-        .await?;
-
-    Ok(result)
-}
-
 pub async fn update_channel(
     pool: &SqlitePool,
     id: i32,
@@ -73,21 +60,19 @@ pub async fn update_channel(
     Ok(result)
 }
 
-pub async fn insert_channel(pool: &SqlitePool, channel: Channel) -> Result<Channel, ProcessError> {
-    const QUERY: &str = "INSERT INTO channels (name, preview_url, extra_extensions, public, playlists, storage) VALUES($1, $2, $3, $4, $5, $6)";
-    let result = sqlx::query(QUERY)
+pub async fn insert_channel<'e, E>(executor: E, channel: Channel) -> Result<Channel, ProcessError>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    const QUERY: &str = "INSERT INTO channels (name, preview_url, extra_extensions, public, playlists, storage) VALUES($1, $2, $3, $4, $5, $6) RETURNING *";
+    let result = sqlx::query_as::<_, Channel>(QUERY)
         .bind(channel.name)
         .bind(channel.preview_url)
         .bind(channel.extra_extensions)
         .bind(channel.public)
         .bind(channel.playlists)
         .bind(channel.storage)
-        .execute(pool)
-        .await?;
-
-    let result = sqlx::query_as("SELECT * FROM channels WHERE id = $1")
-        .bind(result.last_insert_rowid())
-        .fetch_one(pool)
+        .fetch_one(executor)
         .await?;
 
     Ok(result)

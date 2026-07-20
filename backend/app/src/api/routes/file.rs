@@ -19,7 +19,7 @@ use crate::{
         state::AppState,
     },
     db::models::Role,
-    file::{MoveObject, PathObject, norm_abs_path},
+    file::{MoveObject, PathObject, UploadStatus, UploadStatusQuery, norm_abs_path},
     player::utils::import::import_file,
     utils::errors::ServiceError,
 };
@@ -165,10 +165,33 @@ pub async fn remove(
 /// **Upload File**
 ///
 /// ```BASH
-/// curl -X PUT http://127.0.0.1:8787/api/file/1/upload -H 'Authorization: Bearer <TOKEN>'
-/// -F "file=@file.mp4"
+/// curl -X PUT 'http://127.0.0.1:8787/api/file/1/upload?path=folder' \
+/// -H 'Authorization: Bearer <TOKEN>' -F 'fileName=file.mp4' -F 'start=0' \
+/// -F 'end=1024' -F 'size=1024' -F 'batch_id=<ID>' \
+/// -F 'chunk=@chunk.bin;type=application/octet-stream'
 /// ```
-#[allow(clippy::too_many_arguments)]
+pub async fn upload_status(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    user: AuthUser,
+    details: AuthDetails<Role>,
+    Query(query): Query<UploadStatusQuery>,
+) -> Result<Json<UploadStatus>, ServiceError> {
+    ensure_any_authority(
+        &details,
+        &[&Role::GlobalAdmin, &Role::ChannelAdmin, &Role::User],
+    )?;
+    user.ensure_channel_or_admin(id)?;
+
+    let manager = {
+        let guard = state.controller.read().await;
+        guard.get(id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    Ok(Json(manager.storage.upload_status(&query, user.id).await?))
+}
+
 pub async fn upload_file(
     State(state): State<AppState>,
     Path(id): Path<i32>,
@@ -189,14 +212,7 @@ pub async fn upload_file(
     }
     .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
-    // let size: u64 = req
-    //     .headers()
-    //     .get("content-length")
-    //     .and_then(|cl| cl.to_str().ok())
-    //     .and_then(|cls| cls.parse().ok())
-    //     .unwrap_or(0);
-
-    manager.storage.upload(payload, &obj.path, false).await?;
+    manager.storage.upload(payload, &obj.path, user.id).await?;
 
     Ok(StatusCode::OK)
 }

@@ -1,18 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useHead } from '@unhead/vue'
 import { useRouter } from 'vue-router'
 
 import { useAuth } from '@/stores/auth'
-import { useConfig } from '@/stores/config'
 import { useIndex } from '@/stores/index'
 
 import SvgIcon from '@/components/utils/SvgIcon.vue'
 
 const { t } = useI18n()
 const authStore = useAuth()
-const configStore = useConfig()
 const indexStore = useIndex()
 const router = useRouter()
 
@@ -20,12 +18,6 @@ const formError = ref('')
 const showLoginError = ref(false)
 const formPassword = ref('')
 const disabled = ref(false)
-
-onMounted(async () => {
-    if (authStore.isLogin) {
-        await router.push({ name: 'home' })
-    }
-})
 
 useHead({
     title: 'Login',
@@ -35,12 +27,12 @@ async function login() {
     disabled.value = true
 
     try {
-        const status = await authStore.obtainVerificationCode(formPassword.value)
+        const result = await authStore.obtainVerificationCode(formPassword.value)
 
         formPassword.value = ''
         formError.value = ''
 
-        if (status === 401 || status === 400 || status === 403) {
+        if (result.status !== 200) {
             formError.value = t('alert.wrongLogin')
             showLoginError.value = true
             disabled.value = false
@@ -52,7 +44,7 @@ async function login() {
             return
         }
 
-        if (status === 200 && authStore.jwtToken.length < 10) {
+        if (result.verificationRequired) {
             authStore.beginVerification()
             indexStore.msgAlert('success', t('alert.verificationSent'))
             await router.push({ name: 'verification' })
@@ -60,8 +52,7 @@ async function login() {
             return
         }
 
-        await configStore.configInit()
-        await router.push({ name: 'home' })
+        await router.replace({ name: 'home' })
         disabled.value = false
     } catch (e) {
         disabled.value = false

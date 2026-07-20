@@ -35,6 +35,7 @@ export const useFileUpload = () => {
     const error = ref('')
 
     const speedHistory: number[] = []
+    const uploadBatches = new Map<string, string>()
 
     let lastLoaded = 0
     const lastTime = ref(Date.now())
@@ -56,15 +57,14 @@ export const useFileUpload = () => {
     }
 
     function updateProgress(
-        completedChunks: number,
+        loadedBytes: number,
         fileSize: number,
         currentIndex: number,
         batchCount: number,
-        chunkSize: number,
     ) {
         const now = Date.now()
-        const loadedBytes = Math.min(completedChunks * chunkSize, fileSize)
-        const deltaBytes = loadedBytes - lastLoaded
+        const confirmedBytes = Math.min(loadedBytes, fileSize)
+        const deltaBytes = confirmedBytes - lastLoaded
         const deltaTime = (now - lastTime.value) / 1000
         const instantSpeed = deltaTime > 0 ? deltaBytes / deltaTime : 0
 
@@ -73,12 +73,34 @@ export const useFileUpload = () => {
             speedHistory.shift()
         }
 
-        const currentFileProgress = fileSize > 0 ? loadedBytes / fileSize : 0
+        const currentFileProgress = fileSize > 0 ? confirmedBytes / fileSize : 0
         const totalProgress = batchCount > 0 ? (currentIndex + currentFileProgress) / batchCount : 0
 
         currentProgress.value = Math.round(totalProgress * 100)
-        lastLoaded = loadedBytes
+        lastLoaded = confirmedBytes
         lastTime.value = now
+    }
+
+    async function getUploadStatus(
+        file: globalThis.File,
+        request: UploadRequestOptions,
+        batchId: string,
+    ): Promise<{ received_ranges: [number, number][] }> {
+        const url = new URL(request.url, window.location.origin)
+        url.searchParams.set('file_name', file.name)
+        url.searchParams.set('size', file.size.toString())
+        url.searchParams.set('batch_id', batchId)
+
+        const response = await fetch(url, {
+            headers: request.headers,
+        })
+        if (!response.ok) {
+            throw new Error(await errMsg(response))
+        }
+
+        return (await response.json()) as {
+            received_ranges: [number, number][]
+        }
     }
 
     async function parseResponse<T>(resp: Response, responseType: 'json' | 'text' = 'text'): Promise<T> {
@@ -94,21 +116,31 @@ export const useFileUpload = () => {
         const parallelUploads = request.parallelUploads || DEFAULT_PARALLEL_UPLOADS
         const currentIndex = request.currentIndex || 0
         const batchCount = request.batchCount || 1
-        const batchId = request.batchId || crypto.randomUUID()
         const fileSize = Number(file.size)
+        const uploadKey = `${request.url}\0${file.name}\0${fileSize}\0${file.lastModified}`
+        const batchId = request.batchId || uploadBatches.get(uploadKey) || crypto.randomUUID()
+        uploadBatches.set(uploadKey, batchId)
+        const status = await getUploadStatus(file, request, batchId)
 
         let offset = 0
-        let completedChunks = 0
+        let completedBytes = 0
         let lastResponse: T | undefined
 
-        const totalChunks = Math.ceil(fileSize / chunkSize)
         const queue: { start: number; end: number; blob: Blob }[] = []
 
         while (offset < fileSize) {
             const end = Math.min(offset + chunkSize, fileSize)
-            queue.push({ start: offset, end, blob: file.slice(offset, end) as Blob })
+            const alreadyReceived = status.received_ranges.some(
+                ([rangeStart, rangeEnd]) => rangeStart <= offset && rangeEnd >= end,
+            )
+            if (alreadyReceived) {
+                completedBytes += end - offset
+            } else {
+                queue.push({ start: offset, end, blob: file.slice(offset, end) as Blob })
+            }
             offset = end
         }
+        updateProgress(completedBytes, fileSize, currentIndex, batchCount)
 
         async function worker() {
             while (queue.length) {
@@ -142,17 +174,18 @@ export const useFileUpload = () => {
                     throw new Error(await errMsg(resp))
                 }
 
-                completedChunks++
-                updateProgress(completedChunks, fileSize, currentIndex, batchCount, chunkSize)
+                completedBytes += nextChunk.end - nextChunk.start
+                updateProgress(completedBytes, fileSize, currentIndex, batchCount)
                 lastResponse = await parseResponse<T>(resp, request.responseType)
             }
         }
 
-        const workers = Array(Math.min(parallelUploads, totalChunks))
+        const workers = Array(Math.min(parallelUploads, queue.length))
             .fill(0)
             .map(() => worker())
 
         await Promise.all(workers)
+        uploadBatches.delete(uploadKey)
 
         return lastResponse
     }

@@ -1,4 +1,7 @@
-use sqlx::sqlite::{SqlitePool, SqliteQueryResult};
+use sqlx::{
+    Executor, Sqlite,
+    sqlite::{SqlitePool, SqliteQueryResult},
+};
 
 use crate::{
     db::models::Configuration,
@@ -16,17 +19,20 @@ pub async fn select_configuration(
     Ok(result)
 }
 
-pub async fn insert_configuration(
-    pool: &SqlitePool,
+pub async fn insert_configuration<'e, E>(
+    executor: E,
     channel_id: i32,
     output_id: i32,
-) -> Result<SqliteQueryResult, ProcessError> {
+) -> Result<SqliteQueryResult, ProcessError>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
     const QUERY: &str = "INSERT INTO configurations (channel_id, output_id) VALUES($1, $2)";
 
     let result = sqlx::query(QUERY)
         .bind(channel_id)
         .bind(output_id)
-        .execute(pool)
+        .execute(executor)
         .await?;
 
     Ok(result)

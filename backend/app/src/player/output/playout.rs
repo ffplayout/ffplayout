@@ -23,7 +23,6 @@ use crate::{
     utils::{
         config::{OutputMode, PlayoutConfig},
         errors::ServiceError,
-        task_runner,
         text::text_config,
     },
 };
@@ -188,7 +187,7 @@ async fn play_loop(
 
         if config.task.enable {
             if config.task.path.is_file() {
-                tokio::spawn(task_runner::run(manager.clone()));
+                manager.spawn_task_runner().await;
             } else {
                 error!(channel = id;
                     "<span class=\"log-cmd\">{:?}</span> executable not exists!",
@@ -243,22 +242,15 @@ async fn play_loop(
                 // `Ok(())` here alone would make the channel supervisor
                 // treat this as "finished without error" and immediately
                 // restart the channel/window. Explicitly deactivate the
-                // channel and stop the whole process so closing the window
-                // actually shuts ffplayout down.
-                //
-                // Note: this code runs *inside* the channel's own
-                // supervisor task, so we must not call
-                // `manager.abort_supervisor()` here - that would await the
-                // task's own `JoinHandle`, deadlock, and self-abort before
-                // `process::exit` is ever reached. `process::exit`
-                // terminates the whole process unconditionally, so there is
-                // no need to cancel the current (or any other) task first.
+                // channel and request the process-wide shutdown. Returning
+                // lets `player()` finish the engine before `main` stops all
+                // remaining channels.
                 info!(channel = id;
                     "Desktop player window closed; shutting down ffplayout"
                 );
                 manager.channel.lock().await.active = false;
-                manager.stop_all(false).await;
-                std::process::exit(0);
+                request_shutdown(&manager.shutdown);
+                return Ok(());
             }
         }
 
@@ -542,10 +534,15 @@ fn engine_error(error: impl fmt::Display) -> ServiceError {
     ServiceError::Conflict(error.to_string())
 }
 
+fn request_shutdown(shutdown: &CancellationToken) {
+    shutdown.cancel();
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{hls_rate_correction, playout_duration};
+    use super::{hls_rate_correction, playout_duration, request_shutdown};
     use crate::player::utils::Media;
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn full_placeholder_keeps_explicit_duration() {
@@ -607,5 +604,14 @@ mod tests {
     fn hls_rate_correction_ignores_delta_larger_than_clip() {
         assert_eq!(hls_rate_correction(-645.505, 300.0), 1.0);
         assert_eq!(hls_rate_correction(645.505, 300.0), 1.0);
+    }
+
+    #[test]
+    fn desktop_stop_requests_process_shutdown() {
+        let shutdown = CancellationToken::new();
+
+        request_shutdown(&shutdown);
+
+        assert!(shutdown.is_cancelled());
     }
 }

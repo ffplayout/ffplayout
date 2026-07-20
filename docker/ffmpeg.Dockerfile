@@ -3,8 +3,8 @@ FROM debian:trixie AS builder
 ENV DEBIAN_FRONTEND=noninteractive \
     LOCALDESTDIR=/tmp/local \
     PKG_CONFIG="pkg-config --static" \
-    PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig \
-    PKG_CONFIG_LIBDIR=/tmp/local/lib/pkgconfig \
+    PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig \
+    PKG_CONFIG_LIBDIR=/tmp/local/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig \
     PKG_CONFIG_ALL_STATIC=1 \
     PKG_CONFIG_PREFER_STATIC=1 \
     CPPFLAGS="-I/tmp/local/include -fPIC" \
@@ -41,7 +41,6 @@ RUN apt-get update && \
         libxss-dev \
         libxkbcommon-dev \
         libwayland-dev \
-        # VAAPI dependencies
         libva-dev libdrm-dev \
         libgbm-dev \
         libgl1-mesa-dev \
@@ -260,6 +259,7 @@ RUN mkdir -p /ffmpeg-debug && \
         --disable-debug \
         --disable-doc \
         --disable-ffplay \
+        --disable-autodetect \
         --disable-shared \
         --enable-avfilter \
         --enable-gpl \
@@ -279,8 +279,8 @@ RUN mkdir -p /ffmpeg-debug && \
         --enable-libx264 \
         --enable-libx265 \
         --enable-openssl \
-        # VAAPI dependencies
-        --enable-vaapi --enable-libdrm \
+        --enable-vaapi \
+        --enable-libdrm \
         --enable-libsvtav1 \
         --enable-libdav1d; then \
         status=1; \
@@ -306,4 +306,6 @@ COPY --from=builder /ffmpeg-debug/ /
 
 FROM builder AS ffmpeg-static
 
-RUN strip /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+RUN test -x /usr/local/bin/ffmpeg && \
+    test -x /usr/local/bin/ffprobe && \
+    strip /usr/local/bin/ffmpeg /usr/local/bin/ffprobe

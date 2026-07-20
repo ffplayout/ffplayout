@@ -384,25 +384,56 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         output.video_finished()?;
     }
 
-    for (stream, packet) in ictx.packets() {
-        check_playback_control(options.playback_control)?;
-        if Some(stream.index()) == video_index {
-            if !video_finished && let Some(video) = video.as_mut() {
-                benchmark::measure(Stage::VideoDecode, || video.decoder.send_packet(&packet))?;
-                receive_video_frames(
-                    video,
+    let result = (|| -> Result<()> {
+        for (stream, packet) in ictx.packets() {
+            check_playback_control(options.playback_control)?;
+            if Some(stream.index()) == video_index {
+                if !video_finished && let Some(video) = video.as_mut() {
+                    benchmark::measure(Stage::VideoDecode, || video.decoder.send_packet(&packet))?;
+                    receive_video_frames(
+                        video,
+                        timeline,
+                        output,
+                        &mut decoded_video_frames,
+                        video_limit_pts,
+                        logo_fade_plan,
+                        options.playback_control,
+                    )?;
+                }
+            } else if Some(stream.index()) == audio_index
+                && let Some(audio) = audio.as_mut()
+            {
+                benchmark::measure(Stage::AudioDecode, || audio.decoder.send_packet(&packet))?;
+                receive_audio_frames(
+                    audio,
                     timeline,
                     output,
-                    &mut decoded_video_frames,
-                    video_limit_pts,
-                    logo_fade_plan,
+                    &mut decoded_audio_samples,
+                    audio_limit_pts,
                     options.playback_control,
                 )?;
             }
-        } else if Some(stream.index()) == audio_index
-            && let Some(audio) = audio.as_mut()
-        {
-            benchmark::measure(Stage::AudioDecode, || audio.decoder.send_packet(&packet))?;
+
+            if duration_us.is_some()
+                && video_limit_pts.is_none_or(|limit| timeline.video_pts >= limit)
+                && audio_limit_pts.is_none_or(|limit| timeline.audio_pts >= limit)
+            {
+                break;
+            }
+        }
+
+        finish_video(
+            &mut video,
+            timeline,
+            output,
+            &mut decoded_video_frames,
+            &mut video_finished,
+            video_limit_pts,
+            logo_fade_plan,
+            options.playback_control,
+        )?;
+        if let Some(audio) = audio.as_mut() {
+            benchmark::measure(Stage::AudioDecode, || audio.decoder.send_eof())?;
             receive_audio_frames(
                 audio,
                 timeline,
@@ -411,56 +442,37 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
                 audio_limit_pts,
                 options.playback_control,
             )?;
+            flush_audio_resampler(
+                audio,
+                timeline,
+                output,
+                &mut decoded_audio_samples,
+                audio_limit_pts,
+            )?;
         }
 
-        if duration_us.is_some()
-            && video_limit_pts.is_none_or(|limit| timeline.video_pts >= limit)
-            && audio_limit_pts.is_none_or(|limit| timeline.audio_pts >= limit)
-        {
-            break;
+        if decoded_video_frames == 0 && decoded_audio_samples == 0 {
+            return Err(anyhow!(
+                "{label} produced no decodable audio or video frames"
+            ));
         }
+
+        let last_video_frame = video
+            .as_ref()
+            .and_then(|video| video.last_composited_frame.as_ref());
+        synchronize_timeline(cfg, timeline, output, last_video_frame)
+    })();
+
+    if let Err(error) = &result
+        && error.downcast_ref::<PlaybackSkipped>().is_some()
+    {
+        let last_video_frame = video
+            .as_ref()
+            .and_then(|video| video.last_composited_frame.as_ref());
+        synchronize_after_skip(cfg, timeline, output, last_video_frame)?;
     }
 
-    finish_video(
-        &mut video,
-        timeline,
-        output,
-        &mut decoded_video_frames,
-        &mut video_finished,
-        video_limit_pts,
-        logo_fade_plan,
-        options.playback_control,
-    )?;
-    if let Some(audio) = audio.as_mut() {
-        benchmark::measure(Stage::AudioDecode, || audio.decoder.send_eof())?;
-        receive_audio_frames(
-            audio,
-            timeline,
-            output,
-            &mut decoded_audio_samples,
-            audio_limit_pts,
-            options.playback_control,
-        )?;
-        flush_audio_resampler(
-            audio,
-            timeline,
-            output,
-            &mut decoded_audio_samples,
-            audio_limit_pts,
-        )?;
-    }
-
-    if decoded_video_frames == 0 && decoded_audio_samples == 0 {
-        return Err(anyhow!(
-            "{label} produced no decodable audio or video frames"
-        ));
-    }
-
-    let last_video_frame = video
-        .as_ref()
-        .and_then(|video| video.last_composited_frame.clone());
-
-    synchronize_timeline(cfg, timeline, output, last_video_frame.as_ref())
+    result
 }
 
 fn seek_input(ictx: &mut format::context::Input, seek_seconds: f64) -> Result<()> {
@@ -1138,6 +1150,30 @@ fn synchronize_timeline<O: FrameOutput>(
     write_silence(cfg, timeline, output, audio_samples)
 }
 
+fn synchronize_after_skip<O: FrameOutput>(
+    cfg: &OutputConfig,
+    timeline: &mut Timeline,
+    output: &mut O,
+    last_video_frame: Option<&frame::Video>,
+) -> Result<()> {
+    let (video_frames, audio_samples) = padding_to_sync(
+        timeline.video_pts,
+        timeline.audio_pts,
+        cfg.fps,
+        cfg.sample_rate,
+    )?;
+    let target_video_pts = timeline.video_pts + video_frames;
+    let target_audio_pts = timeline.audio_pts + audio_samples;
+
+    if output.reset_after_skip(target_video_pts, target_audio_pts)? {
+        timeline.video_pts = target_video_pts;
+        timeline.audio_pts = target_audio_pts;
+        return Ok(());
+    }
+
+    synchronize_timeline(cfg, timeline, output, last_video_frame)
+}
+
 fn padding_to_sync(
     video_pts: i64,
     audio_pts: i64,
@@ -1426,13 +1462,16 @@ mod tests {
     use super::{
         FrameRateConverter, LogoFade, PlaybackControl, Rational, Timeline, fit_dimensions,
         padding_to_sync, parse_duration_us, play_clip, should_play_loop_iteration,
-        single_frame_repeat_frames,
+        single_frame_repeat_frames, synchronize_after_skip,
     };
     use crate::{output::FrameOutput, utils::config::OutputConfig};
 
     #[derive(Default)]
     struct RecordingOutput {
         video_frames: Vec<(u32, u32, i64)>,
+        audio_samples: usize,
+        reset_on_skip: bool,
+        skip_target: Option<(i64, i64)>,
     }
 
     impl FrameOutput for RecordingOutput {
@@ -1449,8 +1488,14 @@ mod tests {
             Ok(())
         }
 
-        fn encode_audio(&mut self, _frame: &frame::Audio) -> Result<()> {
+        fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+            self.audio_samples += frame.samples();
             Ok(())
+        }
+
+        fn reset_after_skip(&mut self, video_pts: i64, audio_pts: i64) -> Result<bool> {
+            self.skip_target = Some((video_pts, audio_pts));
+            Ok(self.reset_on_skip)
         }
     }
 
@@ -1470,6 +1515,46 @@ mod tests {
     #[test]
     fn pads_short_video_to_audio_duration() {
         assert_eq!(padding_to_sync(49, 96_000, 25, 48_000).unwrap(), (1, 0));
+    }
+
+    #[test]
+    fn skipped_encoded_clip_pads_the_shorter_timeline() {
+        let cfg = OutputConfig::new(1280, 720, 25, 48_000);
+        let mut timeline = Timeline {
+            video_pts: 50,
+            audio_pts: 95_000,
+            ..Timeline::new()
+        };
+        let mut output = RecordingOutput::default();
+
+        synchronize_after_skip(&cfg, &mut timeline, &mut output, None).unwrap();
+
+        assert_eq!(timeline.video_pts, 50);
+        assert_eq!(timeline.audio_pts, 96_000);
+        assert_eq!(output.audio_samples, 1_000);
+        assert_eq!(output.skip_target, Some((50, 96_000)));
+    }
+
+    #[test]
+    fn skipped_desktop_clip_resets_queued_output_without_padding() {
+        let cfg = OutputConfig::new(1280, 720, 25, 48_000);
+        let mut timeline = Timeline {
+            video_pts: 49,
+            audio_pts: 96_000,
+            ..Timeline::new()
+        };
+        let mut output = RecordingOutput {
+            reset_on_skip: true,
+            ..RecordingOutput::default()
+        };
+
+        synchronize_after_skip(&cfg, &mut timeline, &mut output, None).unwrap();
+
+        assert_eq!(timeline.video_pts, 50);
+        assert_eq!(timeline.audio_pts, 96_000);
+        assert!(output.video_frames.is_empty());
+        assert_eq!(output.audio_samples, 0);
+        assert_eq!(output.skip_target, Some((50, 96_000)));
     }
 
     #[test]

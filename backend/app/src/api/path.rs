@@ -1,16 +1,19 @@
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     routing::{delete, get, post, put},
 };
 
 use crate::{
     api::{auth, routes::*, state::AppState},
+    file::MAX_UPLOAD_REQUEST_SIZE,
     sse,
 };
 
 fn auth_routes() -> Router<AppState> {
     Router::new()
         .route("/login", post(auth::login))
+        .route("/logout", post(auth::logout))
         .route("/refresh", post(auth::refresh))
         .route("/verify", post(auth::verify))
 }
@@ -36,7 +39,12 @@ pub fn routes() -> Router<AppState> {
                 .route("/file/{id}/create-folder", post(add_dir))
                 .route("/file/{id}/rename", post(move_rename))
                 .route("/file/{id}/remove", post(remove))
-                .route("/file/{id}/upload", put(upload_file))
+                .route(
+                    "/file/{id}/upload",
+                    get(upload_status)
+                        .put(upload_file)
+                        .layer(DefaultBodyLimit::max(MAX_UPLOAD_REQUEST_SIZE)),
+                )
                 .route("/file/{id}/import", put(import_playlist))
                 .route("/file/{id}/access-token", post(create_file_access_token))
                 .route("/log/{id}", get(get_log))

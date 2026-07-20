@@ -61,9 +61,9 @@ function closeDropdown($event: FocusEvent) {
     }, 200)
 }
 
-function logout() {
-    authStore.removeToken()
-    router.push({ name: 'login' })
+async function logout() {
+    await authStore.logout()
+    await router.push({ name: 'login' })
 }
 
 function selectChannel(index: number) {

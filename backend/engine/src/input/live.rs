@@ -622,6 +622,23 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
         Ok(())
     }
 
+    fn reset_after_skip(&mut self, _video_pts: i64, _audio_pts: i64) -> Result<bool> {
+        let common_seconds = self.common_live_seconds();
+        let video_pts = seconds_to_video_pts(self.live.fps, common_seconds);
+        let audio_pts = seconds_to_audio_pts(self.live.sample_rate, common_seconds);
+
+        if !self.output.reset_after_skip(video_pts, audio_pts)? {
+            return Ok(false);
+        }
+
+        self.live.video_pts = video_pts;
+        self.live.audio_pts = audio_pts;
+        self.live.last_video_frame = None;
+        self.live.last_video_output_pts = None;
+        self.live.last_audio_output_end_pts = Some(audio_pts);
+        Ok(true)
+    }
+
     fn apply_logo_overlay(
         &mut self,
         frame: &mut frame::Video,
@@ -1075,9 +1092,12 @@ mod tests {
     };
     use crate::output::FrameOutput;
 
+    #[derive(Default)]
     struct CountingOutput {
         video_frames: usize,
         audio_frames: usize,
+        reset_after_skip: bool,
+        skip_target: Option<(i64, i64)>,
     }
 
     impl FrameOutput for CountingOutput {
@@ -1093,6 +1113,11 @@ mod tests {
         fn encode_audio(&mut self, _frame: &frame::Audio) -> Result<()> {
             self.audio_frames += 1;
             Ok(())
+        }
+
+        fn reset_after_skip(&mut self, video_pts: i64, audio_pts: i64) -> Result<bool> {
+            self.skip_target = Some((video_pts, audio_pts));
+            Ok(self.reset_after_skip)
         }
     }
 
@@ -1163,10 +1188,7 @@ mod tests {
         let (_tx, rx) = mpsc::sync_channel(1);
         let mut live = test_live_receiver(rx);
         live.source_has_audio = false;
-        let mut output = CountingOutput {
-            video_frames: 0,
-            audio_frames: 0,
-        };
+        let mut output = CountingOutput::default();
         let mut frame = frame::Video::empty();
         frame.set_pts(Some(0));
 
@@ -1232,6 +1254,31 @@ mod tests {
     }
 
     #[test]
+    fn skip_reset_uses_the_actual_output_timeline() {
+        let (_tx, rx) = mpsc::sync_channel(1);
+        let mut live = test_live_receiver(rx);
+        live.video_pts = 50;
+        live.audio_pts = 95_000;
+        live.last_video_output_pts = Some(49);
+        live.last_audio_output_end_pts = Some(95_000);
+        let mut output = CountingOutput {
+            reset_after_skip: true,
+            ..CountingOutput::default()
+        };
+
+        let reset = LiveOverrideOutput::new(&mut output, &mut live)
+            .reset_after_skip(1_000, 2_000)
+            .unwrap();
+
+        assert!(reset);
+        assert_eq!(output.skip_target, Some((50, 96_000)));
+        assert_eq!(live.video_pts, 50);
+        assert_eq!(live.audio_pts, 96_000);
+        assert_eq!(live.last_video_output_pts, None);
+        assert_eq!(live.last_audio_output_end_pts, Some(96_000));
+    }
+
+    #[test]
     fn live_frame_sender_stops_waiting_when_aborted() {
         let (tx, _rx) = mpsc::sync_channel(1);
         tx.try_send(LiveEvent::Started {
@@ -1286,10 +1333,7 @@ mod tests {
         live.session_id = 1;
         live.active = true;
         live.last_media_at = Some(Instant::now());
-        let mut output = CountingOutput {
-            video_frames: 0,
-            audio_frames: 0,
-        };
+        let mut output = CountingOutput::default();
 
         let received_event = super::LiveOverrideOutput::new(&mut output, &mut live)
             .pump_live()

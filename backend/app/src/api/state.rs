@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use sqlx::sqlite::SqlitePool;
 use tokio::sync::{Mutex, RwLock};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     api::file_access::FileAccessState,
@@ -18,5 +19,6 @@ pub struct AppState {
     pub file_access: Arc<FileAccessState>,
     pub mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
     pub pool: SqlitePool,
+    pub shutdown: CancellationToken,
     pub system: SystemStat,
 }

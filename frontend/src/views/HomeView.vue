@@ -43,7 +43,7 @@ function toggleTheme() {
 
 async function logout() {
     try {
-        authStore.removeToken()
+        await authStore.logout()
         await router.push({ name: 'login' })
     } catch (e) {
         formError.value = e as string

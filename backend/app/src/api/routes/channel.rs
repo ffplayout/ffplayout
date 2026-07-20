@@ -139,6 +139,7 @@ pub async fn add_channel(
         &state.pool,
         state.controller,
         state.mail_queues,
+        state.shutdown,
         state.system,
         data,
     )

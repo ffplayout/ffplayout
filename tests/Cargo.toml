@@ -21,6 +21,7 @@ serde_json = "1.0"
 serial_test = "3.0"
 sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.29", features = ["full"] }
+tokio-util = "0.7"
 tower = { version = "0.5", features = ["util"] }
 
 [[test]]

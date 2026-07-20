@@ -25,11 +25,15 @@ These endpoints do not use a bearer token.
 | --- | --- | --- |
 | `POST` | `/auth/login` | `{ "username": "...", "password": "..." }`. Returns `{ "access": "...", "refresh": "..." }`, or a verification message when two-factor authentication is required. |
 | `POST` | `/auth/verify` | `{ "username": "...", "code": "123456" }`. Returns access and refresh tokens. Verification codes expire after five minutes. |
-| `POST` | `/auth/refresh` | `{ "refresh": "..." }`. Returns `{ "access": "..." }`. |
+| `POST` | `/auth/refresh` | `{ "refresh": "..." }`. Rotates it and returns a new `{ "access": "...", "refresh": "..." }` pair. |
+| `POST` | `/auth/logout` | `{ "refresh": "..." }`. Revokes the complete refresh-token family for the session. |
 | `GET` | `/api/setup` | Reports whether first-time setup is required. |
 | `POST` | `/api/setup` | Completes first-time setup. It works only while no user exists. |
 
-Access tokens are valid for three days and refresh tokens for 30 days.
+Access tokens are valid for 45 minutes and refresh tokens for 14 days. Refresh
+tokens are single-use: each successful refresh replaces the submitted token.
+Reusing an already rotated token revokes the complete token family and requires
+a new login.
 
 ```bash
 curl -X POST http://127.0.0.1:8787/auth/login \
@@ -143,9 +147,17 @@ rejected.
 | `POST` | `/api/file/{id}/create-folder` | `{ "source": "folder" }` |
 | `POST` | `/api/file/{id}/rename` | `{ "source": "old.mp4", "target": "new.mp4" }` |
 | `POST` | `/api/file/{id}/remove` | `{ "source": "file.mp4", "recursive": false }` |
-| `PUT` | `/api/file/{id}/upload?path=folder` | `multipart/form-data` with a file field |
+| `GET` | `/api/file/{id}/upload?path=folder&file_name=clip.mp4&size=1234&batch_id=<ID>` | Returns already received byte ranges for a resumable upload |
+| `PUT` | `/api/file/{id}/upload?path=folder` | Chunked `multipart/form-data` upload |
 | `PUT` | `/api/file/{id}/import?file=list.m3u&date=YYYY-MM-DD` | `multipart/form-data` with a file field |
 | `POST` | `/api/file/{id}/access-token` | `{ "filename": "folder/file.mp4" }` |
+
+The upload status response is `{ "received_ranges": [[start, end], ...] }`.
+Each `PUT` request contains `fileName`, `start`, `end`, `size`, `batch_id`, and
+`chunk` fields. A batch ID identifies concurrent attempts in the running
+process. Incomplete data is stored as `<filename>.uploading` with resumable
+metadata next to it; the final filename only becomes visible after all byte
+ranges have been written successfully.
 
 `POST /api/file/{id}/access-token` returns `{ "access": "...",
 "expires_in_seconds": 900 }`. It creates a single-file token bound to the

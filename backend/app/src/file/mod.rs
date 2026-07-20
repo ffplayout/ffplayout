@@ -5,11 +5,13 @@ use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 
 pub mod local;
-pub mod upload;
+mod upload;
 mod watcher;
 
 use crate::utils::errors::ServiceError;
 use local::LocalStorage;
+pub(crate) use upload::MAX_UPLOAD_REQUEST_SIZE;
+pub use upload::{UploadStatus, UploadStatusQuery};
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct PathObject {
@@ -50,7 +52,10 @@ pub struct VideoFile {
     duration: f64,
 }
 
-pub async fn init_storage(root: PathBuf, extensions: Vec<String>) -> LocalStorage {
+pub async fn init_storage(
+    root: PathBuf,
+    extensions: Vec<String>,
+) -> Result<LocalStorage, ServiceError> {
     LocalStorage::new(root, extensions).await
 }
 

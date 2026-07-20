@@ -1,4 +1,7 @@
-use sqlx::sqlite::{SqlitePool, SqliteQueryResult};
+use sqlx::{
+    Executor, Sqlite,
+    sqlite::{SqlitePool, SqliteQueryResult},
+};
 
 use crate::{db::models::TextPreset, utils::errors::ProcessError};
 
@@ -113,10 +116,13 @@ pub async fn insert_preset(
     Ok(result)
 }
 
-pub async fn new_channel_presets(
-    pool: &SqlitePool,
+pub async fn new_channel_presets<'e, E>(
+    executor: E,
     channel_id: i32,
-) -> Result<SqliteQueryResult, ProcessError> {
+) -> Result<SqliteQueryResult, ProcessError>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
     const QUERY: &str = "INSERT INTO text_presets (
         name, text, use_filename, position_x, position_y, background_enabled,
         scroll_direction, fade_in_seconds, fade_out_seconds, channel_id
@@ -126,7 +132,10 @@ pub async fn new_channel_presets(
         ('Scrolling Text', 'We have a very important announcement to make.', 0, 'center', 'end:72', 1, 'right_to_left', 0.0, 0.0, $1),
         ('Filename overlay', '', 1, 'center', 'end:72', 1, 'none', 0.0, 0.0, $1);";
 
-    let result = sqlx::query(QUERY).bind(channel_id).execute(pool).await?;
+    let result = sqlx::query(QUERY)
+        .bind(channel_id)
+        .execute(executor)
+        .await?;
 
     Ok(result)
 }
