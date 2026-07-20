@@ -165,16 +165,23 @@ pub async fn read_json(
     } else if playlist_path.is_file() {
         let modified = modified_time(&current_file).await;
 
-        let mut f = File::options()
+        let mut f = match File::options()
             .read(true)
             .write(false)
             .open(&current_file)
             .await
-            .expect("Open json playlist file.");
+        {
+            Ok(file) => file,
+            Err(error) => {
+                error!(channel = id; "Could not open playlist {current_file}: {error}");
+                return JsonPlaylist::new(date, start_sec);
+            }
+        };
         let mut contents = String::new();
-        f.read_to_string(&mut contents)
-            .await
-            .expect("Read playlist content.");
+        if let Err(error) = f.read_to_string(&mut contents).await {
+            error!(channel = id; "Could not read playlist {current_file}: {error}");
+            return JsonPlaylist::new(date, start_sec);
+        }
         let mut playlist: JsonPlaylist = match serde_json::from_str(&contents) {
             Ok(p) => p,
             Err(e) => {

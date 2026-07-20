@@ -76,9 +76,11 @@ pub struct ChannelManager {
     pub supervisor_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
     pub validation_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
     pub metrics_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
+    pub task_runner_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
     pub supervisor_token: Arc<Mutex<Option<CancellationToken>>>,
     pub validation_token: Arc<Mutex<Option<CancellationToken>>>,
     pub metrics_token: Arc<Mutex<Option<CancellationToken>>>,
+    pub task_runner_token: Arc<Mutex<Option<CancellationToken>>>,
     pub task_generation: Arc<AtomicUsize>,
     pub audio_effects: AudioEffectsControl,
     pub audio_level: Arc<StdMutex<Option<AudioLevel>>>,
@@ -95,7 +97,7 @@ impl ChannelManager {
         config: PlayoutConfig,
         shutdown: CancellationToken,
         system: SystemStat,
-    ) -> Self {
+    ) -> Result<Self, ServiceError> {
         let channel_extensions = channel.extra_extensions.clone();
         let mut extensions = config.storage.extensions.clone();
         let mut extra_extensions = channel_extensions
@@ -105,11 +107,11 @@ impl ChannelManager {
 
         extensions.append(&mut extra_extensions);
 
-        let storage = init_storage(config.channel.storage.clone(), extensions).await;
+        let storage = init_storage(config.channel.storage.clone(), extensions).await?;
         let audio_effects = AudioEffectsControl::new(config.processing.volume).unwrap_or_default();
         let text_overlay = TextOverlayState::default();
 
-        Self {
+        Ok(Self {
             id: channel.id,
             db_pool,
             is_alive: Arc::new(AtomicBool::new(false)),
@@ -133,9 +135,11 @@ impl ChannelManager {
             supervisor_handle: Arc::new(Mutex::new(None)),
             validation_handle: Arc::new(Mutex::new(None)),
             metrics_handle: Arc::new(Mutex::new(None)),
+            task_runner_handle: Arc::new(Mutex::new(None)),
             supervisor_token: Arc::new(Mutex::new(None)),
             validation_token: Arc::new(Mutex::new(None)),
             metrics_token: Arc::new(Mutex::new(None)),
+            task_runner_token: Arc::new(Mutex::new(None)),
             task_generation: Arc::new(AtomicUsize::new(0)),
             audio_effects,
             audio_level: Arc::new(StdMutex::new(None)),
@@ -143,7 +147,7 @@ impl ChannelManager {
             playback_control: Arc::new(Mutex::new(PlaybackControl::default())),
             shutdown,
             system,
-        }
+        })
     }
 
     pub async fn update_channel(self, other: &Channel) {
@@ -371,6 +375,22 @@ impl ChannelManager {
             .await;
     }
 
+    pub async fn spawn_task_runner(&self) {
+        self.stop_task(
+            "task_runner",
+            &self.task_runner_handle,
+            &self.task_runner_token,
+        )
+        .await;
+
+        let token = Self::replace_token(&self.task_runner_token).await;
+        let manager = self.clone();
+        let handle = tokio::spawn(async move {
+            crate::utils::task_runner::run(manager, token).await;
+        });
+        *self.task_runner_handle.lock().await = Some(handle);
+    }
+
     pub async fn spawn_validation(
         &self,
         config: PlayoutConfig,
@@ -484,6 +504,12 @@ impl ChannelManager {
         self.is_alive.store(false, Ordering::SeqCst);
         self.ingest_is_alive.store(false, Ordering::SeqCst);
         self.playback_control.lock().await.skip_current();
+        self.stop_task(
+            "task_runner",
+            &self.task_runner_handle,
+            &self.task_runner_token,
+        )
+        .await;
 
         for unit in [Decoder, Encoder, Ingest] {
             self.stop(unit).await;

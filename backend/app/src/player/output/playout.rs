@@ -23,7 +23,6 @@ use crate::{
     utils::{
         config::{OutputMode, PlayoutConfig},
         errors::ServiceError,
-        task_runner,
         text::text_config,
     },
 };
@@ -188,7 +187,7 @@ async fn play_loop(
 
         if config.task.enable {
             if config.task.path.is_file() {
-                tokio::spawn(task_runner::run(manager.clone()));
+                manager.spawn_task_runner().await;
             } else {
                 error!(channel = id;
                     "<span class=\"log-cmd\">{:?}</span> executable not exists!",

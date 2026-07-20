@@ -138,19 +138,18 @@ pub async fn update_user(
         Some(password_hash)
     };
 
-    handles::update_user(&state.pool, id, two_factor, mail, password_hash).await?;
+    let mut transaction = state.pool.begin().await?;
+    handles::update_user(&mut *transaction, id, two_factor, mail, password_hash).await?;
 
     if update_channels {
-        let related_channels = handles::select_related_channels(&state.pool, Some(id)).await?;
-
-        for channel in related_channels {
-            if !channel_ids.contains(&channel.id) {
-                handles::delete_user_channel(&state.pool, id, channel.id).await?;
-            }
-        }
-
-        handles::insert_user_channel(&state.pool, id, channel_ids).await?;
+        sqlx::query("DELETE FROM user_channels WHERE user_id = $1")
+            .bind(id)
+            .execute(&mut *transaction)
+            .await?;
+        handles::insert_user_channel(&mut transaction, id, channel_ids).await?;
     }
+
+    transaction.commit().await?;
 
     Ok("Update Success")
 }

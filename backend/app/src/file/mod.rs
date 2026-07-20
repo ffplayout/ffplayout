@@ -52,7 +52,10 @@ pub struct VideoFile {
     duration: f64,
 }
 
-pub async fn init_storage(root: PathBuf, extensions: Vec<String>) -> LocalStorage {
+pub async fn init_storage(
+    root: PathBuf,
+    extensions: Vec<String>,
+) -> Result<LocalStorage, ServiceError> {
     LocalStorage::new(root, extensions).await
 }
 

@@ -13,6 +13,7 @@ use crate::{
 fn auth_routes() -> Router<AppState> {
     Router::new()
         .route("/login", post(auth::login))
+        .route("/logout", post(auth::logout))
         .route("/refresh", post(auth::refresh))
         .route("/verify", post(auth::verify))
 }

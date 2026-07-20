@@ -16,17 +16,12 @@ use crate::{
 use super::config::OutputMode;
 
 async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
-    let channels = handles::select_related_channels(conn, None).await?;
-    let admins = handles::select_global_admins(conn).await?;
-
-    for admin in admins {
-        if let Err(e) =
-            handles::insert_user_channel(conn, admin.id, channels.iter().map(|c| c.id).collect())
-                .await
-        {
-            error!("Update global admin: {e}");
-        };
-    }
+    sqlx::query(
+        "INSERT OR IGNORE INTO user_channels (channel_id, user_id)
+         SELECT channels.id, user.id FROM channels CROSS JOIN user WHERE user.role_id = 1",
+    )
+    .execute(conn)
+    .await?;
 
     Ok(())
 }
@@ -52,7 +47,7 @@ pub async fn initialize_channels(
             shutdown.clone(),
             system.clone(),
         )
-        .await;
+        .await?;
 
         if copy_assets
             && index == 0
@@ -81,33 +76,25 @@ pub async fn create_channel(
     system: SystemStat,
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
-    let channel = handles::insert_channel(conn, target_channel).await?;
-    let outputs = [
-        models::Output::new(channel.id, OutputMode::HLS),
-        models::Output::new(channel.id, OutputMode::Stream),
-        models::Output::new(channel.id, OutputMode::Desktop),
-    ];
+    let channel = create_channel_records(conn, target_channel).await?;
 
-    handles::new_channel_presets(conn, channel.id).await?;
-    handles::update_channel(conn, channel.id, channel.clone()).await?;
-
-    let mut output_id = 1;
-
-    for (index, output) in outputs.iter().enumerate() {
-        let id = handles::insert_output(conn, channel.id, output).await?;
-
-        if index == 0 {
-            output_id = id;
+    let config = match get_config(conn, channel.id).await {
+        Ok(config) => config,
+        Err(error) => {
+            rollback_channel_creation(conn, channel.id).await;
+            return Err(error);
         }
-    }
-
-    handles::insert_configuration(conn, channel.id, output_id).await?;
-
-    let config = get_config(conn, channel.id).await?;
+    };
 
     let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
     let manager =
-        ChannelManager::new(conn.clone(), channel.clone(), config, shutdown, system).await;
+        match ChannelManager::new(conn.clone(), channel.clone(), config, shutdown, system).await {
+            Ok(manager) => manager,
+            Err(error) => {
+                rollback_channel_creation(conn, channel.id).await;
+                return Err(error);
+            }
+        };
 
     if let Err(e) = manager.storage.copy_assets().await {
         error!("{e}");
@@ -116,7 +103,48 @@ pub async fn create_channel(
     controllers.write().await.add(manager);
     queue.lock().await.push(m_queue);
 
-    map_global_admins(conn).await?;
+    Ok(channel)
+}
+
+async fn rollback_channel_creation(conn: &Pool<Sqlite>, channel_id: i32) {
+    if let Err(error) = handles::delete_channel(conn, &channel_id).await {
+        error!("Could not roll back channel {channel_id} after initialization failed: {error}");
+    }
+}
+
+async fn create_channel_records(
+    conn: &Pool<Sqlite>,
+    target_channel: Channel,
+) -> Result<Channel, ServiceError> {
+    let mut transaction = conn.begin().await?;
+    let channel = handles::insert_channel(&mut *transaction, target_channel).await?;
+    let outputs = [
+        models::Output::new(channel.id, OutputMode::HLS),
+        models::Output::new(channel.id, OutputMode::Stream),
+        models::Output::new(channel.id, OutputMode::Desktop),
+    ];
+
+    handles::new_channel_presets(&mut *transaction, channel.id).await?;
+
+    let mut output_id = 1;
+
+    for (index, output) in outputs.iter().enumerate() {
+        let id = handles::insert_output(&mut *transaction, channel.id, output).await?;
+
+        if index == 0 {
+            output_id = id;
+        }
+    }
+
+    handles::insert_configuration(&mut *transaction, channel.id, output_id).await?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO user_channels (channel_id, user_id)
+         SELECT $1, id FROM user WHERE role_id = 1",
+    )
+    .bind(channel.id)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
 
     Ok(channel)
 }
@@ -155,4 +183,96 @@ pub async fn delete_channel(
     map_global_admins(conn).await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn channel_creation_rolls_back_all_records_on_failure() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        handles::db_migrate(&pool).await.unwrap();
+        sqlx::query(
+            "CREATE TRIGGER reject_test_configuration
+             BEFORE INSERT ON configurations WHEN NEW.channel_id > 1
+             BEGIN SELECT RAISE(FAIL, 'forced failure'); END",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channels")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+        let result = create_channel_records(
+            &pool,
+            Channel {
+                name: "rollback-test".to_string(),
+                ..Channel::default()
+            },
+        )
+        .await;
+
+        assert!(result.is_err());
+        let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channels")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(after, before);
+        let orphan_outputs: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM outputs WHERE channel_id NOT IN (SELECT id FROM channels)",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(orphan_outputs, 0);
+    }
+
+    #[tokio::test]
+    async fn channel_creation_assigns_the_channel_to_every_global_admin() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        handles::db_migrate(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO user (mail, username, password, role_id, two_factor) VALUES
+             ('one@example.org', 'admin-one', 'hash', 1, 0),
+             ('two@example.org', 'admin-two', 'hash', 1, 0),
+             ('user@example.org', 'regular-user', 'hash', 3, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let channel = create_channel_records(
+            &pool,
+            Channel {
+                name: "admin-mapping-test".to_string(),
+                ..Channel::default()
+            },
+        )
+        .await
+        .unwrap();
+        let assigned_roles: Vec<i32> = sqlx::query_scalar(
+            "SELECT user.role_id FROM user_channels
+             JOIN user ON user.id = user_channels.user_id
+             WHERE user_channels.channel_id = $1 ORDER BY user.role_id",
+        )
+        .bind(channel.id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(assigned_roles, [1, 1]);
+    }
 }

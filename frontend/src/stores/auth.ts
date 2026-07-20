@@ -56,6 +56,24 @@ export const useAuth = defineStore('auth', {
             this.uuid = null
         },
 
+        async logout() {
+            const refresh = this.jwtRefresh || localStorage.getItem('refresh') || ''
+            this.removeToken()
+            this.cancelVerification()
+
+            if (!refresh) return
+
+            try {
+                await fetch('/auth/logout', {
+                    method: 'POST',
+                    headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
+                    body: JSON.stringify({ refresh }),
+                })
+            } catch {
+                // Local logout must still succeed while the backend is unavailable.
+            }
+        },
+
         beginVerification() {
             // A previous session must not redirect the pending two-factor
             // login to the authenticated part of the application.
@@ -142,12 +160,12 @@ export const useAuth = defineStore('auth', {
                     }
 
                     const data = (await response.json()) as Partial<Token>
-                    if (!data.access) {
+                    if (!data.access || !data.refresh) {
                         this.removeToken()
                         return false
                     }
 
-                    this.updateToken(data.access, this.jwtRefresh)
+                    this.updateToken(data.access, data.refresh)
                     return true
                 } catch {
                     this.removeToken()

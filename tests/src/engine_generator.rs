@@ -53,7 +53,8 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
         tokio_util::sync::CancellationToken::new(),
         SystemStat::new(),
     )
-    .await;
+    .await
+    .expect("test storage should initialize");
 
     (config, manager)
 }

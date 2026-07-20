@@ -97,15 +97,10 @@ router.beforeEach(async (to) => {
     const auth = useAuth()
     const configStore = useConfig()
 
-    const isInitRoute = to.name === 'init'
-    const setupResponse = await fetch('/api/setup').catch(() => undefined)
-    if (setupResponse?.ok) {
-        const setup = await setupResponse.json()
-        if (setup.required && !isInitRoute) {
+    if (to.name === 'home') {
+        const setupResponse = await fetch('/api/setup').catch(() => undefined)
+        if (setupResponse?.ok && (await setupResponse.json()).required) {
             return { name: 'init' }
-        }
-        if (!setup.required && isInitRoute) {
-            return { name: 'login' }
         }
     }
 

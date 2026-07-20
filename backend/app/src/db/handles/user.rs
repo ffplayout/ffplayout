@@ -3,8 +3,8 @@ use argon2::{
     password_hash::{SaltString, rand_core::OsRng},
 };
 use sqlx::{
-    QueryBuilder, Row, Sqlite,
-    sqlite::{SqlitePool, SqliteQueryResult},
+    Executor, QueryBuilder, Row, Sqlite,
+    sqlite::{SqliteConnection, SqlitePool, SqliteQueryResult},
 };
 use tokio::task;
 
@@ -43,17 +43,6 @@ pub async fn select_user(pool: &SqlitePool, id: i32) -> Result<User, ProcessErro
     Ok(result)
 }
 
-pub async fn select_global_admins(pool: &SqlitePool) -> Result<Vec<User>, ProcessError> {
-    const QUERY: &str = "SELECT u.id, u.mail, u.username, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM user u
-        left join user_channels uc on uc.user_id = u.id
-    WHERE u.role_id = 1
-    GROUP BY u.id";
-
-    let result = sqlx::query_as(QUERY).fetch_all(pool).await?;
-
-    Ok(result)
-}
-
 pub async fn select_users(pool: &SqlitePool) -> Result<Vec<User>, ProcessError> {
     const QUERY: &str = "SELECT id, username FROM user";
 
@@ -67,27 +56,29 @@ pub async fn insert_user(pool: &SqlitePool, user: User) -> Result<(), ServiceErr
 
     let password_hash = task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
-        let hash = Argon2::default()
+        Argon2::default()
             .hash_password(user.password.as_bytes(), &salt)
-            .unwrap();
-
-        hash.to_string()
+            .map(|hash| hash.to_string())
     })
-    .await?;
+    .await?
+    .map_err(|error| ServiceError::Conflict(error.to_string()))?;
 
+    let mut transaction = pool.begin().await?;
     let user_id: i32 = sqlx::query(QUERY)
         .bind(user.mail)
         .bind(user.username)
         .bind(password_hash)
         .bind(user.role_id)
         .bind(user.two_factor)
-        .fetch_one(pool)
+        .fetch_one(&mut *transaction)
         .await?
         .get("id");
 
     if let Some(channel_ids) = user.channel_ids {
-        insert_user_channel(pool, user_id, channel_ids).await?;
+        insert_user_channel(&mut transaction, user_id, channel_ids).await?;
     }
+
+    transaction.commit().await?;
 
     Ok(())
 }
@@ -95,43 +86,52 @@ pub async fn insert_user(pool: &SqlitePool, user: User) -> Result<(), ServiceErr
 pub async fn insert_or_update_user(pool: &SqlitePool, user: User) -> Result<(), ServiceError> {
     let password_hash = task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
-        let hash = Argon2::default()
+        Argon2::default()
             .hash_password(user.password.as_bytes(), &salt)
-            .unwrap();
-
-        hash.to_string()
+            .map(|hash| hash.to_string())
     })
-    .await?;
+    .await?
+    .map_err(|error| ServiceError::Conflict(error.to_string()))?;
 
     const QUERY: &str = "INSERT INTO user (mail, username, password, role_id, two_factor) VALUES($1, $2, $3, $4, $5)
             ON CONFLICT(username) DO UPDATE SET
                 mail = excluded.mail, username = excluded.username, password = excluded.password, role_id = excluded.role_id, two_factor = excluded.two_factor
         RETURNING id";
 
+    let mut transaction = pool.begin().await?;
     let user_id: i32 = sqlx::query(QUERY)
         .bind(user.mail)
         .bind(user.username)
         .bind(password_hash)
         .bind(user.role_id)
         .bind(user.two_factor)
-        .fetch_one(pool)
+        .fetch_one(&mut *transaction)
         .await?
         .get("id");
 
     if let Some(channel_ids) = user.channel_ids {
-        insert_user_channel(pool, user_id, channel_ids).await?;
+        sqlx::query("DELETE FROM user_channels WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&mut *transaction)
+            .await?;
+        insert_user_channel(&mut transaction, user_id, channel_ids).await?;
     }
+
+    transaction.commit().await?;
 
     Ok(())
 }
 
-pub async fn update_user(
-    pool: &SqlitePool,
+pub async fn update_user<'e, E>(
+    executor: E,
     id: i32,
     two_factor: Option<bool>,
     mail: Option<String>,
     password_hash: Option<String>,
-) -> Result<(), ProcessError> {
+) -> Result<(), ProcessError>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
     if two_factor.is_none() && mail.is_none() && password_hash.is_none() {
         return Ok(());
     }
@@ -161,7 +161,7 @@ pub async fn update_user(
 
     query.push(" WHERE id = ");
     query.push_bind(id);
-    query.build().execute(pool).await?;
+    query.build().execute(executor).await?;
 
     Ok(())
 }
@@ -175,7 +175,7 @@ pub async fn delete_user(pool: &SqlitePool, id: i32) -> Result<SqliteQueryResult
 }
 
 pub async fn insert_user_channel(
-    pool: &SqlitePool,
+    executor: &mut SqliteConnection,
     user_id: i32,
     channel_ids: Vec<i32>,
 ) -> Result<(), ProcessError> {
@@ -186,7 +186,7 @@ pub async fn insert_user_channel(
         sqlx::query(QUERY)
             .bind(channel)
             .bind(user_id)
-            .execute(pool)
+            .execute(&mut *executor)
             .await?;
     }
 
@@ -221,49 +221,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn selects_all_global_admins_with_their_own_channels() {
-        let pool = SqlitePool::connect(":memory:").await.unwrap();
-        sqlx::query(
-            "CREATE TABLE user (
-                id INTEGER PRIMARY KEY,
-                mail TEXT,
-                username TEXT,
-                password TEXT,
-                role_id INTEGER,
-                two_factor INTEGER
-            )",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query("CREATE TABLE user_channels (user_id INTEGER, channel_id INTEGER)")
+    async fn insert_user_rolls_back_when_channel_assignment_fails() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::handles::db_migrate(&pool).await.unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::query(
-            "INSERT INTO user (id, username, role_id, two_factor) VALUES
-                (1, 'admin-one', 1, 0),
-                (2, 'admin-two', 1, 0),
-                (3, 'regular-user', 3, 0)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO user_channels (user_id, channel_id) VALUES
-                (1, 10),
-                (2, 20),
-                (3, 30)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
+        let user = User {
+            mail: Some("rollback@example.org".to_string()),
+            username: "rollback-user".to_string(),
+            password: "test-password".to_string(),
+            role_id: Some(3),
+            channel_ids: Some(vec![i32::MAX]),
+            ..User::default()
+        };
 
-        let mut admins = select_global_admins(&pool).await.unwrap();
-        admins.sort_by_key(|user| user.id);
-
-        assert_eq!(admins.len(), 2);
-        assert_eq!(admins[0].channel_ids, Some(vec![10]));
-        assert_eq!(admins[1].channel_ids, Some(vec![20]));
+        assert!(insert_user(&pool, user).await.is_err());
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user WHERE username = $1")
+            .bind("rollback-user")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
     }
 }

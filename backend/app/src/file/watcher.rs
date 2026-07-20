@@ -97,21 +97,31 @@ pub async fn watch(
                                     continue;
                                 };
 
+                                let is_supported = include_file_extension(&config, new_path);
+                                let mut replacement = if is_supported {
+                                    Some(Media::new(0, &new_path.to_string_lossy(), false).await)
+                                } else {
+                                    None
+                                };
                                 let mut media_list = sources.lock().await;
 
                                 if let Some(index) = media_list
                                     .iter()
                                     .position(|x| *x.source == old_path.display().to_string())
                                 {
-                                    let media =
-                                        Media::new(index, &new_path.to_string_lossy(), false).await;
-                                    media_list[index] = media;
-                                    info!(channel = id; "Move file: <span class=\"log-addr\">{old_path:?}</span> to <span class=\"log-addr\">{new_path:?}</span>");
-                                } else if include_file_extension(&config, new_path) {
-                                    let index = media_list.len();
-                                    let media =
-                                        Media::new(index, &new_path.to_string_lossy(), false).await;
-
+                                    if let Some(mut media) = replacement.take() {
+                                        media.index = Some(index);
+                                        media_list[index] = media;
+                                        info!(channel = id; "Move file: <span class=\"log-addr\">{old_path:?}</span> to <span class=\"log-addr\">{new_path:?}</span>");
+                                    } else {
+                                        media_list.remove(index);
+                                        for (index, media) in media_list.iter_mut().enumerate() {
+                                            media.index = Some(index);
+                                        }
+                                        info!(channel = id; "Remove renamed unsupported file: <span class=\"log-addr\">{old_path:?}</span>");
+                                    }
+                                } else if let Some(mut media) = replacement {
+                                    media.index = Some(media_list.len());
                                     media_list.push(media);
                                     info!(channel = id; "Create new file: <span class=\"log-addr\">{new_path:?}</span>");
                                 }

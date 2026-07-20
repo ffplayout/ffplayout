@@ -177,6 +177,10 @@ pub async fn complete_setup(
         .execute(&mut *transaction)
         .await?;
 
+    sqlx::query("UPDATE global SET setup_completed = 1 WHERE id = 1")
+        .execute(&mut *transaction)
+        .await?;
+
     transaction.commit().await?;
 
     initialize_channels(
@@ -188,7 +192,6 @@ pub async fn complete_setup(
         true,
     )
     .await?;
-    handles::mark_setup_completed(&state.pool).await?;
 
     Ok("Setup completed")
 }

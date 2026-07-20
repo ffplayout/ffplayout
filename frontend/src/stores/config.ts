@@ -51,15 +51,12 @@ export const useConfig = defineStore('config', {
             }
         },
 
-        logout() {
+        async logout() {
             const authStore = useAuth()
             const router = useRouter()
-            localStorage.removeItem('token')
-            localStorage.removeItem('refresh')
-            authStore.removeToken()
-            authStore.cancelVerification()
+            await authStore.logout()
 
-            router.push({ name: 'login' })
+            await router.push({ name: 'login' })
         },
 
         async getChannelConfig() {

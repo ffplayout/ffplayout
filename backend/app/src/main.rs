@@ -169,7 +169,7 @@ async fn async_main() -> Result<(), ProcessError> {
                 shutdown.clone(),
                 system.clone(),
             )
-            .await;
+            .await?;
 
             if ARGS.foreground {
                 let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));

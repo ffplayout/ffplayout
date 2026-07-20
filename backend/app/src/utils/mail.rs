@@ -7,10 +7,13 @@ use lettre::{
 use log::*;
 use tokio::{
     sync::Mutex,
-    time::{Duration, interval},
+    time::{Duration, Instant, interval},
 };
 
 use crate::utils::{config::Mail, errors::ProcessError, round_to_nearest_ten};
+
+const MAX_MAIL_LINES: usize = 1000;
+const MAX_MAIL_RETRIES: u8 = 3;
 
 #[derive(Clone, Debug)]
 pub struct MailQueue {
@@ -18,6 +21,8 @@ pub struct MailQueue {
     pub config: Mail,
     pub lines: Vec<String>,
     pub raw_lines: Vec<String>,
+    retry_attempts: u8,
+    retry_after: Option<Instant>,
 }
 
 impl MailQueue {
@@ -27,6 +32,8 @@ impl MailQueue {
             config,
             lines: vec![],
             raw_lines: vec![],
+            retry_attempts: 0,
+            retry_after: None,
         }
     }
 
@@ -47,19 +54,50 @@ impl MailQueue {
     }
 
     pub fn push(&mut self, line: String) {
+        if self.lines.len() == MAX_MAIL_LINES {
+            self.lines.remove(0);
+        }
         self.lines.push(line);
     }
 
     pub fn push_raw(&mut self, line: String) {
+        if self.raw_lines.len() == MAX_MAIL_LINES {
+            self.raw_lines.remove(0);
+        }
         self.raw_lines.push(line);
-    }
-
-    fn text(&self) -> String {
-        self.lines.join("\n")
     }
 
     fn is_empty(&self) -> bool {
         self.lines.is_empty()
+    }
+
+    fn take_batch(&mut self) -> String {
+        std::mem::take(&mut self.lines).join("\n")
+    }
+
+    fn retry_due(&self, now: Instant) -> bool {
+        self.retry_after.is_some_and(|deadline| deadline <= now)
+    }
+
+    fn delivery_succeeded(&mut self) {
+        self.retry_attempts = 0;
+        self.retry_after = None;
+    }
+
+    fn delivery_failed(&mut self, batch: String, now: Instant) {
+        self.retry_attempts += 1;
+        if self.retry_attempts >= MAX_MAIL_RETRIES {
+            self.delivery_succeeded();
+            return;
+        }
+
+        let mut failed_lines = batch.lines().map(str::to_string).collect::<Vec<_>>();
+        failed_lines.append(&mut self.lines);
+        if failed_lines.len() > MAX_MAIL_LINES {
+            failed_lines.drain(..failed_lines.len() - MAX_MAIL_LINES);
+        }
+        self.lines = failed_lines;
+        self.retry_after = Some(now + Duration::from_secs(30 * (1 << (self.retry_attempts - 1))));
     }
 }
 
@@ -124,6 +162,7 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
 
             {
                 let mut queues = mail_queues.lock().await;
+                let now = Instant::now();
 
                 // Process mail queues and send emails
                 for queue in queues.iter_mut() {
@@ -131,23 +170,74 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
                     let mut q_lock = queue.lock().await;
 
                     let expire = round_to_nearest_ten(q_lock.config.interval.max(30));
+                    let retry_due = q_lock.retry_due(now);
 
-                    if interval % expire == 0 && !q_lock.is_empty() {
+                    if (retry_due || (q_lock.retry_after.is_none() && interval % expire == 0))
+                        && !q_lock.is_empty()
+                    {
                         if q_lock.config.recipient.contains('@') {
-                            tasks.push((q_lock.config.clone(), q_lock.text().clone(), q_lock.id));
+                            let config = q_lock.config.clone();
+                            let id = q_lock.id;
+                            let batch = q_lock.take_batch();
+                            tasks.push((config, batch, id, queue.clone()));
+                        } else {
+                            q_lock.clear();
+                            q_lock.delivery_succeeded();
                         }
-
-                        // Clear the messages after sending the email
-                        q_lock.clear();
                     }
                 }
             }
 
-            for (config, text, id) in tasks {
-                if let Err(e) = send_mail(&config, text, false).await {
-                    error!(target: "{file}", channel = id; "Failed to send mail: {e}");
+            for (config, text, id, queue) in tasks {
+                match send_mail(&config, text.clone(), false).await {
+                    Ok(()) => queue.lock().await.delivery_succeeded(),
+                    Err(error) => {
+                        queue.lock().await.delivery_failed(text, Instant::now());
+                        error!("Failed to send mail for channel {id}: {error}");
+                    }
                 }
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn queue_keeps_only_the_latest_lines() {
+        let mut queue = MailQueue::new(1, Mail::default());
+        for index in 0..=MAX_MAIL_LINES {
+            queue.push(format!("line-{index}"));
+            queue.push_raw(format!("raw-{index}"));
+        }
+
+        assert_eq!(queue.lines.len(), MAX_MAIL_LINES);
+        assert_eq!(queue.raw_lines.len(), MAX_MAIL_LINES);
+        assert_eq!(queue.lines.first().unwrap(), "line-1");
+        assert_eq!(queue.raw_lines.first().unwrap(), "raw-1");
+    }
+
+    #[test]
+    fn failed_delivery_retries_twice_then_discards_batch() {
+        let now = Instant::now();
+        let mut queue = MailQueue::new(1, Mail::default());
+
+        queue.delivery_failed("first".to_string(), now);
+        assert_eq!(queue.retry_attempts, 1);
+        assert_eq!(queue.lines, ["first"]);
+        assert!(!queue.retry_due(now));
+
+        let batch = queue.take_batch();
+        queue.delivery_failed(batch, now);
+        assert_eq!(queue.retry_attempts, 2);
+        assert_eq!(queue.lines, ["first"]);
+
+        let batch = queue.take_batch();
+        queue.delivery_failed(batch, now);
+        assert_eq!(queue.retry_attempts, 0);
+        assert!(queue.lines.is_empty());
+        assert!(queue.retry_after.is_none());
+    }
 }

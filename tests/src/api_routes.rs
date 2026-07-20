@@ -15,7 +15,7 @@ use tower::util::ServiceExt;
 
 use ffplayout::{
     api::{
-        auth::{decode_jwt, decode_refresh_jwt, login, refresh},
+        auth::{decode_jwt, decode_refresh_jwt, login, logout, refresh},
         file_access::FileAccessState,
         state::AppState,
     },
@@ -67,7 +67,8 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager, Pool<Sqlite>) {
         CancellationToken::new(),
         SystemStat::new(),
     )
-    .await;
+    .await
+    .expect("test storage should initialize");
 
     (config, manager, pool)
 }
@@ -102,6 +103,7 @@ async fn test_login() {
 
     let app = Router::new()
         .route("/auth/login", post(login))
+        .route("/auth/logout", post(logout))
         .route("/auth/refresh", post(refresh))
         .with_state(app_state);
 
@@ -168,6 +170,83 @@ async fn test_login() {
         .await
         .unwrap();
     assert_eq!(claims.role, Role::User);
+    let rotated_refresh = refreshed["refresh"].as_str().unwrap();
+    assert!(decode_refresh_jwt(rotated_refresh).await.is_ok());
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": refresh_token}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": rotated_refresh}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"username": "admin", "password": "admin"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(res.status().is_success());
+    let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let tokens: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let logout_refresh = tokens["refresh"].as_str().unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/logout")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": logout_refresh}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"refresh": logout_refresh}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
 
     let payload = json!({"username": "admin", "password": "1234"});
 

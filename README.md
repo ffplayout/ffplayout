@@ -39,6 +39,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - image source (will loop until out duration is reached)
 - import playlist from text or m3u file, with CLI or frontend
 - generate playlist based on [template](/docs/playlist_gen.md)
+- run an [external task](/docs/external_tasks.md) when a clip starts
 - During playlist import, all video clips are validated and, if desired, checked to ensure that the audio track is not completely muted.
 - run multiple channels (experimental *)
 - WebVTT [subtitles](/docs/closed_captions.md) in HLS mode (experimental *)

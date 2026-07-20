@@ -1,5 +1,5 @@
 use sqlx::{
-    Row,
+    Executor, Row, Sqlite,
     sqlite::{SqlitePool, SqliteQueryResult},
 };
 
@@ -13,11 +13,14 @@ pub async fn select_outputs(pool: &SqlitePool, channel: i32) -> Result<Vec<Outpu
     Ok(result)
 }
 
-pub async fn insert_output(
-    pool: &SqlitePool,
+pub async fn insert_output<'e, E>(
+    executor: E,
     channel_id: i32,
     output: &Output,
-) -> Result<i32, ProcessError> {
+) -> Result<i32, ProcessError>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
     const QUERY: &str = "INSERT INTO outputs (channel_id, name, hls_variants, stream_url, stream_type, stream_format, hls_playlist_name, hls_segment_duration, hls_list_size, desktop_fullscreen, width, height, fps, video_codec, video_options, audio_codec, audio_bitrate) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id";
 
     let output_id = sqlx::query(QUERY)
@@ -38,7 +41,7 @@ pub async fn insert_output(
         .bind(&output.video_options)
         .bind(&output.audio_codec)
         .bind(output.audio_bitrate)
-        .fetch_one(pool)
+        .fetch_one(executor)
         .await?
         .get("id");
 

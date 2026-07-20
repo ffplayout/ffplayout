@@ -37,18 +37,21 @@ pub struct LocalStorage {
 }
 
 impl LocalStorage {
-    pub async fn new(root: PathBuf, extensions: Vec<String>) -> Self {
+    pub async fn new(root: PathBuf, extensions: Vec<String>) -> Result<Self, ServiceError> {
         if !root.is_dir() {
-            fs::create_dir_all(&root)
-                .await
-                .unwrap_or_else(|_| panic!("Can't create storage folder: {root:?}"));
+            fs::create_dir_all(&root).await.map_err(|error| {
+                ServiceError::Conflict(format!(
+                    "Cannot create storage folder {}: {error}",
+                    root.display()
+                ))
+            })?;
         }
 
-        Self {
+        Ok(Self {
             root: Arc::new(RwLock::new(root)),
             extensions: Arc::new(RwLock::new(extensions)),
             watch_handler: Arc::new(Mutex::new(None)),
-        }
+        })
     }
 }
 
@@ -523,5 +526,25 @@ async fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<MoveObjec
             error!("{e}");
             Err(ServiceError::BadRequest("Error in file copy!".into()))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn storage_creation_returns_error_instead_of_panicking() {
+        let base = std::env::temp_dir().join(format!(
+            "ffplayout-storage-error-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        fs::write(&base, b"not a directory").await.unwrap();
+
+        let result = LocalStorage::new(base.join("child"), Vec::new()).await;
+
+        assert!(matches!(result, Err(ServiceError::Conflict(_))));
+        fs::remove_file(base).await.unwrap();
     }
 }

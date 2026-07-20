@@ -25,11 +25,15 @@ These endpoints do not use a bearer token.
 | --- | --- | --- |
 | `POST` | `/auth/login` | `{ "username": "...", "password": "..." }`. Returns `{ "access": "...", "refresh": "..." }`, or a verification message when two-factor authentication is required. |
 | `POST` | `/auth/verify` | `{ "username": "...", "code": "123456" }`. Returns access and refresh tokens. Verification codes expire after five minutes. |
-| `POST` | `/auth/refresh` | `{ "refresh": "..." }`. Returns `{ "access": "..." }`. |
+| `POST` | `/auth/refresh` | `{ "refresh": "..." }`. Rotates it and returns a new `{ "access": "...", "refresh": "..." }` pair. |
+| `POST` | `/auth/logout` | `{ "refresh": "..." }`. Revokes the complete refresh-token family for the session. |
 | `GET` | `/api/setup` | Reports whether first-time setup is required. |
 | `POST` | `/api/setup` | Completes first-time setup. It works only while no user exists. |
 
-Access tokens are valid for three days and refresh tokens for 30 days.
+Access tokens are valid for 45 minutes and refresh tokens for 14 days. Refresh
+tokens are single-use: each successful refresh replaces the submitted token.
+Reusing an already rotated token revokes the complete token family and requires
+a new login.
 
 ```bash
 curl -X POST http://127.0.0.1:8787/auth/login \
