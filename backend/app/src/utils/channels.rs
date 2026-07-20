@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use log::*;
 use sqlx::{Pool, Sqlite};
@@ -13,7 +13,7 @@ use crate::{
     utils::{config::get_config, errors::ServiceError, mail::MailQueue, system::SystemStat},
 };
 
-use super::config::OutputMode;
+use super::config::{DEFAULT_INGEST_PORT, OutputMode, parse_rtmp_ingest_port};
 
 async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     sqlx::query(
@@ -117,6 +117,11 @@ async fn create_channel_records(
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
     let mut transaction = conn.begin().await?;
+    let configured_ingest_urls =
+        sqlx::query_scalar::<_, String>("SELECT ingest_url FROM configurations")
+            .fetch_all(&mut *transaction)
+            .await?;
+    let ingest_url = default_ingest_url(next_available_ingest_port(&configured_ingest_urls)?);
     let channel = handles::insert_channel(&mut *transaction, target_channel).await?;
     let outputs = [
         models::Output::new(channel.id, OutputMode::HLS),
@@ -136,7 +141,7 @@ async fn create_channel_records(
         }
     }
 
-    handles::insert_configuration(&mut *transaction, channel.id, output_id).await?;
+    handles::insert_configuration(&mut *transaction, channel.id, output_id, &ingest_url).await?;
     sqlx::query(
         "INSERT OR IGNORE INTO user_channels (channel_id, user_id)
          SELECT $1, id FROM user WHERE role_id = 1",
@@ -147,6 +152,23 @@ async fn create_channel_records(
     transaction.commit().await?;
 
     Ok(channel)
+}
+
+fn default_ingest_url(port: u16) -> String {
+    format!("rtmp://127.0.0.1:{port}/live/stream")
+}
+
+fn next_available_ingest_port(configured_urls: &[String]) -> Result<u16, ServiceError> {
+    let used_ports = configured_urls
+        .iter()
+        .filter_map(|url| parse_rtmp_ingest_port(url).ok())
+        .collect::<HashSet<_>>();
+
+    (DEFAULT_INGEST_PORT..=u16::MAX)
+        .find(|port| !used_ports.contains(port))
+        .ok_or_else(|| {
+            ServiceError::BadRequest("no free unprivileged ingest port available".to_string())
+        })
 }
 
 pub async fn delete_channel(
@@ -274,5 +296,70 @@ mod tests {
         .unwrap();
 
         assert_eq!(assigned_roles, [1, 1]);
+    }
+
+    #[tokio::test]
+    async fn channel_creation_assigns_the_next_free_ingest_port() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        handles::db_migrate(&pool).await.unwrap();
+
+        let second = create_channel_records(
+            &pool,
+            Channel {
+                name: "second-channel".to_string(),
+                ..Channel::default()
+            },
+        )
+        .await
+        .unwrap();
+        let third = create_channel_records(
+            &pool,
+            Channel {
+                name: "third-channel".to_string(),
+                ..Channel::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let second_url: String =
+            sqlx::query_scalar("SELECT ingest_url FROM configurations WHERE channel_id = $1")
+                .bind(second.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let third_url: String =
+            sqlx::query_scalar("SELECT ingest_url FROM configurations WHERE channel_id = $1")
+                .bind(third.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        assert_eq!(second_url, "rtmp://127.0.0.1:1937/live/stream");
+        assert_eq!(third_url, "rtmp://127.0.0.1:1938/live/stream");
+        sqlx::query("UPDATE configurations SET ingest_enable = 1 WHERE channel_id IN (1, $1)")
+            .bind(second.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(
+            handles::ingest_port_in_use(&pool, third.id, 1936)
+                .await
+                .unwrap()
+        );
+        assert!(
+            handles::ingest_port_in_use(&pool, third.id, 1937)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !handles::ingest_port_in_use(&pool, third.id, 1938)
+                .await
+                .unwrap()
+        );
     }
 }

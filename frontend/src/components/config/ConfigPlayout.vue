@@ -35,6 +35,33 @@ const extensions = computed({
 
 const output = computed(() => configStore.playout.output.mode)
 
+const ingestPort = computed<number | null>({
+    get() {
+        try {
+            const url = new URL(configStore.playout.ingest.ingest_url)
+            const port = Number(url.port)
+
+            return Number.isInteger(port) && port > 0 ? port : null
+        } catch {
+            return null
+        }
+    },
+
+    set(port) {
+        if (port === null || !Number.isInteger(port) || port < 1024 || port > 65535) {
+            return
+        }
+
+        try {
+            const url = new URL(configStore.playout.ingest.ingest_url)
+            url.port = String(port)
+            configStore.playout.ingest.ingest_url = url.toString()
+        } catch {
+            // The URL field remains the source of truth until it is valid.
+        }
+    },
+})
+
 const outputId = computed({
     get() {
         return configStore.playout.output.id
@@ -212,10 +239,17 @@ async function applyVolume() {
 
 async function onSubmitPlayout() {
     const { requiresRestart, volumeChanged } = configStore.playoutChangeSummary()
-    const update = await configStore.setPlayoutConfig(configStore.playout)
-    configStore.onetimeInfo = true
+    try {
+        const update = await configStore.setPlayoutConfig(configStore.playout)
+        configStore.onetimeInfo = true
 
-    if (update.status === 200) {
+        if (!update.ok) {
+            const message = await update.text()
+            const summary = t('config.updatePlayoutFailed')
+            indexStore.msgAlert('error', message ? `${summary}: ${message}` : summary, 3)
+            return
+        }
+
         indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
 
         if (volumeChanged) {
@@ -223,32 +257,23 @@ async function onSubmitPlayout() {
         }
 
         const id = configStore.channels[configStore.i]?.id
-
-        await fetch(`/api/control/${id}/process`, {
+        const response = await fetch(`/api/control/${id}/process`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'status' }),
         })
-            .then(async (response) => {
-                if (!response.ok) {
-                    throw new Error(await response.text())
-                }
+        if (!response.ok) {
+            throw new Error(await response.text())
+        }
 
-                return response.json()
-            })
-            .then(async (response) => {
-                if (response === 'active' && requiresRestart) {
-                    configStore.showRestartModal = true
-                }
+        if ((await response.json()) === 'active' && requiresRestart) {
+            configStore.showRestartModal = true
+        }
 
-                await configStore.getPlayoutConfig()
-                await configStore.getPlayoutOutputs()
-            })
-            .catch((e) => {
-                indexStore.msgAlert('error', e.data, 3)
-            })
-    } else {
-        indexStore.msgAlert('error', t('config.updatePlayoutFailed'), 2)
+        await configStore.getPlayoutConfig()
+        await configStore.getPlayoutOutputs()
+    } catch (error) {
+        indexStore.msgAlert('error', error instanceof Error ? error.message : String(error), 3)
     }
 }
 </script>
@@ -500,6 +525,17 @@ async function onSubmitPlayout() {
                         type="text"
                         class="input input-sm w-full max-w-lg"
                     />
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Port</legend>
+                    <input
+                        v-model.number="ingestPort"
+                        type="number"
+                        min="1024"
+                        max="65535"
+                        class="input input-sm w-full max-w-40"
+                    />
+                    <p class="fieldset-label">1024 - 65535; must be unique across channels</p>
                 </fieldset>
             </div>
 

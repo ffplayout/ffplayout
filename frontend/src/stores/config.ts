@@ -36,12 +36,13 @@ export const useConfig = defineStore('config', {
 
     getters: {},
     actions: {
-        async configInit() {
+        async configInit(channelId?: number) {
             const authStore = useAuth()
 
             if (authStore.isLogin) {
                 await authStore.obtainUuid()
                 await this.getChannelConfig().then(async () => {
+                    this.selectChannel(channelId)
                     await this.getPlayoutConfig()
                     await this.getPlayoutOutputs()
                     await this.getPlayoutCodecs()
@@ -104,6 +105,11 @@ export const useConfig = defineStore('config', {
 
                     indexStore.msgAlert('error', e, 3)
                 })
+        },
+
+        selectChannel(channelId?: number) {
+            const index = this.channels.findIndex((channel) => channel.id === channelId)
+            this.i = index >= 0 ? index : 0
         },
 
         async getPlayoutConfig() {

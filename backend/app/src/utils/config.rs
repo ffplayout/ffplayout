@@ -430,6 +430,49 @@ impl Ingest {
     }
 }
 
+pub const MIN_INGEST_PORT: u16 = 1024;
+pub const DEFAULT_INGEST_PORT: u16 = 1936;
+
+/// Extract the explicit listen port from an RTMP ingest URL.
+///
+/// The RTMP listener must use an unprivileged port so every channel can be
+/// started by the regular service user.
+pub fn parse_rtmp_ingest_port(url: &str) -> Result<u16, String> {
+    let authority_and_path = url
+        .strip_prefix("rtmp://")
+        .ok_or_else(|| "ingest URL must use the rtmp:// scheme".to_string())?;
+    let authority = authority_and_path
+        .split_once('/')
+        .map(|(authority, _)| authority)
+        .ok_or_else(|| "ingest URL must include a stream path".to_string())?;
+
+    let (host, port) = if let Some(rest) = authority.strip_prefix('[') {
+        let (host, port) = rest
+            .split_once("]:")
+            .ok_or_else(|| "ingest URL must include a port".to_string())?;
+        (host, port)
+    } else {
+        authority
+            .rsplit_once(':')
+            .ok_or_else(|| "ingest URL must include a port".to_string())?
+    };
+
+    if host.is_empty() {
+        return Err("ingest URL must include a host".to_string());
+    }
+
+    let port = port
+        .parse::<u16>()
+        .map_err(|_| "ingest URL port must be between 1024 and 65535".to_string())?;
+    if port < MIN_INGEST_PORT {
+        return Err(format!(
+            "ingest URL port must be between {MIN_INGEST_PORT} and 65535"
+        ));
+    }
+
+    Ok(port)
+}
+
 #[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Playlist {
@@ -1144,5 +1187,31 @@ mod output_tests {
             .video_options
             .insert("quality".to_string(), "52".to_string());
         assert!(output.validate().is_ok());
+    }
+}
+
+#[cfg(test)]
+mod ingest_tests {
+    use super::{MIN_INGEST_PORT, parse_rtmp_ingest_port};
+
+    #[test]
+    fn parses_unprivileged_rtmp_ingest_ports() {
+        assert_eq!(
+            parse_rtmp_ingest_port("rtmp://127.0.0.1:1936/live/stream"),
+            Ok(1936)
+        );
+        assert_eq!(
+            parse_rtmp_ingest_port("rtmp://[::1]:1940/live/stream"),
+            Ok(1940)
+        );
+    }
+
+    #[test]
+    fn rejects_privileged_or_invalid_rtmp_ingest_urls() {
+        assert!(parse_rtmp_ingest_port("rtmp://127.0.0.1:1023/live/stream").is_err());
+        assert!(parse_rtmp_ingest_port("rtmp://127.0.0.1/live/stream").is_err());
+        assert!(parse_rtmp_ingest_port("http://127.0.0.1:1936/live/stream").is_err());
+        assert!(parse_rtmp_ingest_port("rtmp://:1936/live/stream").is_err());
+        assert!(MIN_INGEST_PORT > 0);
     }
 }

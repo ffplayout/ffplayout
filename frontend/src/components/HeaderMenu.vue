@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import SvgIcon from '@/components/utils/SvgIcon.vue'
@@ -11,6 +11,7 @@ import { useConfig } from '@/stores/config'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 
 const authStore = useAuth()
 const configStore = useConfig()
@@ -66,11 +67,14 @@ async function logout() {
     await router.push({ name: 'login' })
 }
 
-function selectChannel(index: number) {
-    configStore.i = index
+function channelLink(path: string) {
+    const channelId = configStore.channels[configStore.i]?.id
 
-    configStore.getPlayoutConfig()
-    configStore.getPlayoutOutputs()
+    return channelId ? { path, query: { channel: channelId } } : path
+}
+
+async function selectChannel(channelId: number) {
+    await router.push({ path: route.path, query: { ...route.query, channel: channelId } })
 }
 
 function toggleTheme() {
@@ -109,7 +113,7 @@ function toggleTheme() {
                     <template v-for="item in menuItems" :key="item.name">
                         <li class="bg-base-100 rounded-md py-1">
                             <RouterLink
-                                :to="item.link"
+                                :to="channelLink(item.link)"
                                 class="h-6.75 text-base"
                                 exact-active-class="is-active"
                                 @click="closeMenu()"
@@ -128,9 +132,9 @@ function toggleTheme() {
                                 </div>
                             </summary>
                             <ul class="p-2">
-                                <li v-for="(channel, index) in configStore.channels" :key="index">
+                                <li v-for="channel in configStore.channels" :key="channel.id">
                                     <span>
-                                        <a class="dropdown-item cursor-pointer" @click="selectChannel(index)">{{
+                                        <a class="dropdown-item cursor-pointer" @click="selectChannel(channel.id)">{{
                                             channel.name
                                         }}</a>
                                     </span>
@@ -140,7 +144,7 @@ function toggleTheme() {
                     </li>
                     <li class="bg-base-100 rounded-md">
                         <RouterLink
-                            to="/configure"
+                            :to="channelLink('/configure')"
                             class="h-6.75 leading-5"
                             active-class="is-active"
                             :title="t('button.configure')"
@@ -168,7 +172,7 @@ function toggleTheme() {
                 <template v-for="item in menuItems" :key="item.name">
                     <li class="bg-base-100 rounded-md p-0">
                         <RouterLink
-                            :to="item.link"
+                            :to="channelLink(item.link)"
                             class="px-2 h-6.75 relative text-base text-base-content"
                             active-class="is-active"
                         >
@@ -187,8 +191,8 @@ function toggleTheme() {
                             </div>
                         </summary>
                         <ul class="p-2 bg-base-100 rounded-md mt-1! w-36" tabindex="0">
-                            <li v-for="(channel, index) in configStore.channels" :key="index">
-                                <a class="dropdown-item cursor-pointer" @click="selectChannel(index)">
+                            <li v-for="channel in configStore.channels" :key="channel.id">
+                                <a class="dropdown-item cursor-pointer" @click="selectChannel(channel.id)">
                                     {{ channel.name }}
                                 </a>
                             </li>
@@ -197,7 +201,7 @@ function toggleTheme() {
                 </li>
                 <li class="bg-base-100 rounded-md p-0">
                     <RouterLink
-                        to="/configure"
+                        :to="channelLink('/configure')"
                         class="h-6.75 leading-5"
                         active-class="is-active"
                         :title="t('button.configure')"

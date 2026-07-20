@@ -55,6 +55,12 @@ async function changeLang(lang: any) {
     locale.value = lang.code
     localStorage.setItem('language', lang.code)
 }
+
+function channelLink(path: string) {
+    const channelId = configStore.channels[configStore.i]?.id
+
+    return channelId ? { path, query: { channel: channelId } } : path
+}
 </script>
 <template>
     <div class="w-full min-h-screen xs:h-full flex justify-center items-center">
@@ -62,16 +68,16 @@ async function changeLang(lang: any) {
             <SystemStats v-if="configStore.channels.length > 0" />
 
             <div class="w-full flex flex-wrap justify-center gap-1 md:gap-0 md:join mt-5">
-                <RouterLink to="/player" class="btn btn-primary join-item px-2">
+                <RouterLink :to="channelLink('/player')" class="btn btn-primary join-item px-2">
                     {{ t('button.player') }}
                 </RouterLink>
-                <RouterLink to="/media" class="btn btn-primary join-item px-2">
+                <RouterLink :to="channelLink('/media')" class="btn btn-primary join-item px-2">
                     {{ t('button.media') }}
                 </RouterLink>
-                <RouterLink to="/message" class="btn btn-primary join-item px-2">
+                <RouterLink :to="channelLink('/message')" class="btn btn-primary join-item px-2">
                     {{ t('button.message') }}
                 </RouterLink>
-                <RouterLink to="/logging" class="btn btn-primary join-item px-2">
+                <RouterLink :to="channelLink('/logging')" class="btn btn-primary join-item px-2">
                     {{ t('button.logging') }}
                 </RouterLink>
                 <div class="dropdown">
@@ -86,7 +92,7 @@ async function changeLang(lang: any) {
                         </li>
                     </ul>
                 </div>
-                <RouterLink to="/configure" class="btn btn-primary join-item px-2" :title="t('button.configure')">
+                <RouterLink :to="channelLink('/configure')" class="btn btn-primary join-item px-2" :title="t('button.configure')">
                     <i class="bi bi-gear text-[17px]" />
                 </RouterLink>
                 <label class="join-item btn btn-primary swap swap-rotate px-2">

@@ -18,7 +18,7 @@ use crate::{
     },
     file::norm_abs_path,
     utils::{
-        config::{OutputMode, PlayoutConfig, get_config},
+        config::{OutputMode, PlayoutConfig, get_config, parse_rtmp_ingest_port},
         errors::ServiceError,
     },
 };
@@ -224,6 +224,15 @@ pub async fn update_playout_config(
     data.processing
         .hls_subtitle()
         .map_err(ServiceError::BadRequest)?;
+    if data.ingest.enable {
+        let ingest_port =
+            parse_rtmp_ingest_port(&data.ingest.ingest_url).map_err(ServiceError::BadRequest)?;
+        if handles::ingest_port_in_use(&state.pool, id, ingest_port).await? {
+            return Err(ServiceError::BadRequest(format!(
+                "ingest port {ingest_port} is already assigned to another channel"
+            )));
+        }
+    }
     ff_engine::AudioEffectsControl::new(data.processing.volume)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     data.output.validate().map_err(ServiceError::BadRequest)?;
