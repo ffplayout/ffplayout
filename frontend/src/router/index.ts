@@ -109,7 +109,7 @@ router.beforeEach(async (to) => {
         }
     }
 
-    await configStore.configInit()
+    await auth.inspectToken()
 
     const isVerificationRoute = to.name === 'verification'
     const isPublicRoute = to.meta.public === true
@@ -131,6 +131,10 @@ router.beforeEach(async (to) => {
 
     if (auth.isLogin && to.name === 'login') {
         return { name: 'home' }
+    }
+
+    if (!isPublicRoute) {
+        await configStore.configInit()
     }
 
     const allowedRoles = to.meta.roles as string[] | undefined

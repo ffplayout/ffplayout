@@ -183,7 +183,7 @@ mod enabled {
                 let overlay_size = stats.overlay_size();
                 let _ = writeln!(
                     stages,
-                    "    {:<16} <span class=\"log-number\">{:>7.3}s</span> <span class=\"log-number\">{:>5.1}%</span> <span class=\"log-number\">{:>6.2}ms</span> <span class=\"log-number\">{:>6.2}ms</span> <span class=\"log-number\">{:>6}</span> <span class=\"log-number\">{:>10}</span>\n",
+                    "    {:<16} <span class=\"log-number\">{:>7.3}s</span> <span class=\"log-number\">{:>5.1}%</span> <span class=\"log-number\">{:>6.2}ms</span> <span class=\"log-number\">{:>6.2}ms</span> <span class=\"log-number\">{:>6}</span> <span class=\"log-number\">{:>10}</span>",
                     stage.name(),
                     stats.total.as_secs_f64(),
                     share,

@@ -2,6 +2,13 @@ import { defineStore } from 'pinia'
 import { jwtDecode } from 'jwt-decode'
 import { useIndex } from '@/stores/index'
 
+type LoginResult = {
+    status: number
+    verificationRequired: boolean
+}
+
+let refreshRequest: Promise<boolean> | null = null
+
 export const useAuth = defineStore('auth', {
     state: () => ({
         isLogin: false,
@@ -19,6 +26,10 @@ export const useAuth = defineStore('auth', {
     actions: {
         updateToken(token: string, refresh: string) {
             const decodedToken = jwtDecode<JwtPayloadExt>(token)
+            const decodedRefresh = jwtDecode<JwtPayloadExt>(refresh)
+            if (decodedToken.token_type !== 'access' || decodedRefresh.token_type !== 'refresh') {
+                throw new Error('Invalid token types')
+            }
 
             localStorage.setItem('token', token)
             localStorage.setItem('refresh', refresh)
@@ -41,6 +52,8 @@ export const useAuth = defineStore('auth', {
             this.jwtRefresh = ''
             this.authHeader = {}
             this.id = 0
+            this.role = ''
+            this.uuid = null
         },
 
         beginVerification() {
@@ -54,111 +67,140 @@ export const useAuth = defineStore('auth', {
             this.verificationPending = false
         },
 
-        async obtainVerificationCode(password: string) {
-            let code = 400
-
+        async obtainVerificationCode(password: string): Promise<LoginResult> {
             const payload = {
                 username: this.username,
                 password,
             }
 
-            await fetch('/auth/login', {
-                method: 'POST',
-                headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
-                body: JSON.stringify(payload),
-            })
-                .then((resp) => {
-                    code = resp.status
-                    return resp.json()
+            try {
+                const response = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
+                    body: JSON.stringify(payload),
                 })
-                .then((response: Token) => {
-                    if (response?.access) {
-                        this.updateToken(response.access, response.refresh)
-                    }
-                })
-                .catch((e) => {
-                    code = typeof e.status === 'number' ? e.status : code
-                })
+                const data = (await response.json()) as Partial<Token>
 
-            return code
+                if (!response.ok) {
+                    return { status: response.status, verificationRequired: false }
+                }
+                if (data.access && data.refresh) {
+                    this.updateToken(data.access, data.refresh)
+                    return { status: response.status, verificationRequired: false }
+                }
+
+                return { status: response.status, verificationRequired: true }
+            } catch {
+                return { status: 400, verificationRequired: false }
+            }
         },
 
         async verifyCode(verificationCode: string) {
-            let code = 400
-
             const payload = {
                 username: this.username,
                 code: verificationCode,
             }
 
-            await fetch('/auth/verify', {
-                method: 'POST',
-                headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
-                body: JSON.stringify(payload),
-            })
-                .then((resp) => {
-                    code = resp.status
-
-                    if (code === 200) {
-                        return resp.json()
-                    }
-                })
-                .then((response: Token) => {
-                    if (response?.access) {
-                        this.updateToken(response.access, response.refresh)
-                    }
-                })
-                .catch((e) => {
-                    code = typeof e.status === 'number' ? e.status : code
+            try {
+                const response = await fetch('/auth/verify', {
+                    method: 'POST',
+                    headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
+                    body: JSON.stringify(payload),
                 })
 
-            return code
+                if (!response.ok) {
+                    return response.status
+                }
+
+                const data = (await response.json()) as Partial<Token>
+                if (!data.access || !data.refresh) {
+                    return 400
+                }
+
+                this.updateToken(data.access, data.refresh)
+                return response.status
+            } catch {
+                return 400
+            }
         },
 
-        async refreshToken() {
-            await fetch('/auth/refresh', {
-                method: 'POST',
-                headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
-                body: JSON.stringify({ refresh: this.jwtRefresh }),
-            })
-                .then((resp) => resp.json())
-                .then((response: any) => {
-                    if (response.access) {
-                        this.updateToken(response.access, this.jwtRefresh)
+        async refreshToken(): Promise<boolean> {
+            if (refreshRequest) {
+                return refreshRequest
+            }
+
+            refreshRequest = (async () => {
+                try {
+                    const response = await fetch('/auth/refresh', {
+                        method: 'POST',
+                        headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
+                        body: JSON.stringify({ refresh: this.jwtRefresh }),
+                    })
+                    if (!response.ok) {
+                        this.removeToken()
+                        return false
                     }
-                })
-                .catch(() => {
+
+                    const data = (await response.json()) as Partial<Token>
+                    if (!data.access) {
+                        this.removeToken()
+                        return false
+                    }
+
+                    this.updateToken(data.access, this.jwtRefresh)
+                    return true
+                } catch {
                     this.removeToken()
-                })
+                    return false
+                }
+            })()
+
+            try {
+                return await refreshRequest
+            } finally {
+                refreshRequest = null
+            }
         },
 
         async inspectToken() {
             const token = localStorage.getItem('token')
             const refresh = localStorage.getItem('refresh')
 
-            if (token && refresh) {
+            if (!token || !refresh) {
+                this.removeToken()
+                return
+            }
+
+            try {
+                const decodedToken = jwtDecode<JwtPayloadExt>(token)
+                const decodedRefresh = jwtDecode<JwtPayloadExt>(refresh)
+
+                if (decodedToken.token_type !== 'access' || decodedRefresh.token_type !== 'refresh') {
+                    this.removeToken()
+                    return
+                }
+
                 this.jwtToken = token
                 this.jwtRefresh = refresh
                 this.authHeader = { Authorization: `Bearer ${token}` }
-
-                const decodedToken = jwtDecode<JwtPayloadExt>(token)
-                const decodedRefresh = jwtDecode<JwtPayloadExt>(refresh)
-                const timestamp = Date.now() / 1000
-                const expireToken = decodedToken.exp
-                const expireRefresh = decodedRefresh.exp || 0
-
                 this.id = decodedToken.id
                 this.role = decodedToken.role
 
-                if (expireToken && this.jwtToken && expireToken - timestamp > 15) {
+                const timestamp = Date.now() / 1000
+                const expireToken = decodedToken.exp || 0
+                const expireRefresh = decodedRefresh.exp || 0
+
+                if (expireToken - timestamp > 15) {
                     this.isLogin = true
-                } else if (expireRefresh && expireRefresh - timestamp > 0) {
-                    await this.refreshToken()
-                } else {
-                    // Prompt user to re-login.
-                    this.removeToken()
+                    return
                 }
-            } else {
+                if (expireRefresh - timestamp > 0) {
+                    await this.refreshToken()
+                    return
+                }
+
+                this.removeToken()
+            } catch {
                 this.removeToken()
             }
         },

@@ -38,7 +38,6 @@ export const useConfig = defineStore('config', {
     actions: {
         async configInit() {
             const authStore = useAuth()
-            await authStore.inspectToken()
 
             if (authStore.isLogin) {
                 await authStore.obtainUuid()

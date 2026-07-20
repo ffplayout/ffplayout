@@ -8,6 +8,7 @@ declare global {
         id: number
         channels: number[]
         role: string
+        token_type: 'access' | 'refresh'
     }
 
     interface PlaylistExt extends Ply {
