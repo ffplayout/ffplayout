@@ -121,6 +121,12 @@ enum DesktopMessage {
     ClipFinished,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DesktopDiscontinuity {
+    video_pts: i64,
+    audio_pts: i64,
+}
+
 #[derive(Debug, Clone)]
 struct DesktopSubtitleCue {
     start_ms: i64,
@@ -130,6 +136,7 @@ struct DesktopSubtitleCue {
 
 pub(crate) struct DesktopFrameSender {
     sender: SyncSender<DesktopMessage>,
+    discontinuity_sender: SyncSender<DesktopDiscontinuity>,
     audio_effects: Arc<Mutex<AudioEffectChain>>,
     audio_level_meter: AudioLevelMeter,
     current_logo_opacity: f64,
@@ -231,6 +238,7 @@ impl DesktopOutput {
         F: FnOnce(&mut DesktopFrameSender) -> T + Send + 'static,
     {
         let (sender, receiver) = sync_channel(OUTPUT_CHANNEL_CAPACITY);
+        let (discontinuity_sender, discontinuity_receiver) = sync_channel(1);
         let audio_effects = Arc::clone(&self.audio_effects);
         let audio_level_callback = self.audio_level_callback.clone();
         let audio_sample_rate = self.audio_sample_rate;
@@ -241,6 +249,7 @@ impl DesktopOutput {
                 benchmark::activate(worker_benchmark);
                 let mut output = DesktopFrameSender {
                     sender,
+                    discontinuity_sender,
                     audio_effects,
                     audio_level_meter: AudioLevelMeter::new(
                         audio_sample_rate,
@@ -256,7 +265,7 @@ impl DesktopOutput {
             .map_err(|error| anyhow!("failed to start decode worker: {error}"))?;
 
         benchmark::activate(benchmark.clone());
-        let render_result = self.renderer.run_clip(receiver);
+        let render_result = self.renderer.run_clip(receiver, discontinuity_receiver);
         if let Err(error) = render_result {
             if error.downcast_ref::<PlaybackStopped>().is_some() {
                 benchmark::detach();
@@ -345,6 +354,16 @@ impl FrameOutput for DesktopFrameSender {
                 })
                 .map_err(|_| PlaybackStopped.into())
         })
+    }
+
+    fn reset_after_skip(&mut self, video_pts: i64, audio_pts: i64) -> Result<bool> {
+        self.discontinuity_sender
+            .send(DesktopDiscontinuity {
+                video_pts,
+                audio_pts,
+            })
+            .map_err(|_| PlaybackStopped)?;
+        Ok(true)
     }
 
     fn set_video_end(&mut self, video_end_pts: Option<i64>) -> Result<()> {
@@ -484,10 +503,18 @@ impl DesktopRenderer {
         })
     }
 
-    fn run_clip(&mut self, receiver: Receiver<DesktopMessage>) -> Result<()> {
+    fn run_clip(
+        &mut self,
+        receiver: Receiver<DesktopMessage>,
+        discontinuity_receiver: Receiver<DesktopDiscontinuity>,
+    ) -> Result<()> {
         loop {
             self.handle_events()?;
             self.apply_pending_window_aspect_constraint()?;
+            if let Ok(discontinuity) = discontinuity_receiver.try_recv() {
+                self.apply_discontinuity(discontinuity);
+                return Ok(());
+            }
             self.flush_pending_audio()?;
             self.render_due_video()?;
 
@@ -498,7 +525,13 @@ impl DesktopRenderer {
                 continue;
             }
 
-            match receiver.recv_timeout(SCHEDULER_INTERVAL) {
+            let message = receiver.recv_timeout(SCHEDULER_INTERVAL);
+            if let Ok(discontinuity) = discontinuity_receiver.try_recv() {
+                self.apply_discontinuity(discontinuity);
+                return Ok(());
+            }
+
+            match message {
                 Ok(DesktopMessage::ClipStarted) => {
                     self.video_end_pts = None;
                     self.video_finished = false;
@@ -544,6 +577,28 @@ impl DesktopRenderer {
                 Err(RecvTimeoutError::Timeout) => {}
             }
         }
+    }
+
+    fn apply_discontinuity(&mut self, discontinuity: DesktopDiscontinuity) {
+        let video_pts = discontinuity.video_pts.max(0);
+        let audio_pts = discontinuity.audio_pts.max(0) as u64;
+
+        self.audio.pause();
+        self.audio.clear();
+        self.video_queue.clear();
+        self.pending_audio.clear();
+        self.pending_audio_samples = 0;
+        self.submitted_audio_samples = audio_pts;
+        self.audio_started = false;
+        self.audio_clock.reset_at(audio_pts, Instant::now());
+        self.video_end_pts = None;
+        self.video_finished = false;
+        self.last_rendered_video_pts = video_pts.checked_sub(1);
+        self.last_video_present = None;
+        self.last_starvation_report = None;
+        self.subtitles.clear();
+        self.active_subtitle_text = None;
+        self.subtitle_texture = None;
     }
 
     fn finish(mut self) -> Result<()> {
@@ -599,7 +654,10 @@ impl DesktopRenderer {
         {
             self.audio.resume();
             self.audio_started = true;
-            self.audio_clock.reset(Instant::now());
+            let consumed_samples = self
+                .submitted_audio_samples
+                .saturating_sub(self.queued_audio_samples());
+            self.audio_clock.reset_at(consumed_samples, Instant::now());
         }
     }
 
@@ -1577,9 +1635,9 @@ impl AudioMasterClock {
         }
     }
 
-    fn reset(&mut self, now: Instant) {
-        self.last_consumed_samples = 0;
-        self.anchor_samples = 0;
+    fn reset_at(&mut self, samples: u64, now: Instant) {
+        self.last_consumed_samples = samples;
+        self.anchor_samples = samples;
         self.anchor_time = now;
     }
 
@@ -1617,7 +1675,7 @@ mod tests {
     fn audio_clock_interpolates_between_device_buffer_requests() {
         let start = Instant::now();
         let mut clock = AudioMasterClock::new(48_000, 1_024);
-        clock.reset(start);
+        clock.reset_at(0, start);
 
         assert_eq!(clock.position(4_800, 3_776, start), 0);
         assert_eq!(
@@ -1634,12 +1692,33 @@ mod tests {
     fn audio_clock_reanchors_when_sdl_requests_another_buffer() {
         let start = Instant::now();
         let mut clock = AudioMasterClock::new(48_000, 1_024);
-        clock.reset(start);
+        clock.reset_at(0, start);
 
         assert_eq!(clock.position(4_800, 2_752, start), 1_024);
         assert_eq!(
             clock.position(4_800, 2_752, start + Duration::from_millis(10)),
             1_504
+        );
+    }
+
+    #[test]
+    fn audio_clock_reanchors_at_skip_position() {
+        let start = Instant::now();
+        let mut clock = AudioMasterClock::new(48_000, 1_024);
+        clock.reset_at(96_000, start);
+
+        assert_eq!(clock.position(100_800, 4_800, start), 96_000);
+        assert_eq!(
+            clock.position(100_800, 4_800, start + Duration::from_millis(10)),
+            96_000
+        );
+        assert_eq!(
+            clock.position(100_800, 3_776, start + Duration::from_millis(20)),
+            96_000
+        );
+        assert_eq!(
+            clock.position(100_800, 3_776, start + Duration::from_millis(30)),
+            96_480
         );
     }
 
