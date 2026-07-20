@@ -34,7 +34,7 @@ A clear and concise description of what you expected to happen.
 - OS: [e.g. debian 12]
 - ffplayout version
 - ffmpeg version
-- are you using the current master of ffplayout?
+- are you using the current main of ffplayout?
 
 ### Config Settings:
 
