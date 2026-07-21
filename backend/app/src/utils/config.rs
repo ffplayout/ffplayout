@@ -1212,6 +1212,6 @@ mod ingest_tests {
         assert!(parse_rtmp_ingest_port("rtmp://127.0.0.1/live/stream").is_err());
         assert!(parse_rtmp_ingest_port("http://127.0.0.1:1936/live/stream").is_err());
         assert!(parse_rtmp_ingest_port("rtmp://:1936/live/stream").is_err());
-        assert!(MIN_INGEST_PORT > 0);
+        const { assert!(MIN_INGEST_PORT > 0) };
     }
 }

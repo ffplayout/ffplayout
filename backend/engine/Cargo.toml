@@ -19,7 +19,7 @@ tokio = ["dep:tokio"]
 [dependencies]
 anyhow = "1"
 cosmic-text = "0.19"
-ffmpeg-next = "8"
+ffmpeg-next = { git = "https://github.com/zmwangx/rust-ffmpeg.git" }
 log = { version = "0.4", features = ["kv"] }
 regex = "1"
 rten-simd = "0.24"
