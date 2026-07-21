@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    fmt,
     str::FromStr,
     sync::{Arc, PoisonError, RwLock},
 };
@@ -188,6 +189,33 @@ pub struct OutputConfig {
     pub ingest_log_level: LogLevel,
     pub ffmpeg_ignore_lines: Vec<String>,
     pub channel_id: Option<i32>,
+    pub desktop_control_callback: Option<DesktopControlCallback>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DesktopControlCommand {
+    Back,
+    Next,
+    Reset,
+}
+
+#[derive(Clone)]
+pub struct DesktopControlCallback(Arc<dyn Fn(DesktopControlCommand) + Send + Sync>);
+
+impl fmt::Debug for DesktopControlCallback {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("DesktopControlCallback(..)")
+    }
+}
+
+impl DesktopControlCallback {
+    pub fn new(callback: impl Fn(DesktopControlCommand) + Send + Sync + 'static) -> Self {
+        Self(Arc::new(callback))
+    }
+
+    pub fn invoke(&self, command: DesktopControlCommand) {
+        (self.0)(command);
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -1023,6 +1051,7 @@ impl OutputConfig {
             ingest_log_level: LogLevel::Warning,
             ffmpeg_ignore_lines: Vec::new(),
             channel_id: None,
+            desktop_control_callback: None,
         }
     }
 
@@ -1043,6 +1072,11 @@ impl OutputConfig {
 
     pub fn with_desktop_fullscreen(mut self, fullscreen: bool) -> Self {
         self.desktop_fullscreen = fullscreen;
+        self
+    }
+
+    pub fn with_desktop_control_callback(mut self, callback: DesktopControlCallback) -> Self {
+        self.desktop_control_callback = Some(callback);
         self
     }
 

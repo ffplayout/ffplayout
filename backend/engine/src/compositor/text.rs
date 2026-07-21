@@ -83,6 +83,25 @@ pub(crate) fn render_wrapped_text_bitmap(
 }
 
 #[cfg(feature = "desktop")]
+pub(crate) fn render_left_aligned_text_bitmap(
+    text: &str,
+    font_size: f32,
+    font_weight: Weight,
+    color: RgbaColor,
+    max_width: u32,
+) -> Result<TextBitmap> {
+    render_text_bitmap(
+        text,
+        font_size,
+        font_weight,
+        color,
+        Some(max_width.max(2)),
+        Some(Wrap::WordOrGlyph),
+        Some(Align::Left),
+    )
+}
+
+#[cfg(feature = "desktop")]
 fn render_text_bitmap(
     text: &str,
     font_size: f32,

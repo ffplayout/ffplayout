@@ -33,9 +33,9 @@ use crate::{
     benchmark::{self, BenchHandle, Stage},
     compositor::{
         logo::{LogoOverlay, logo_position},
-        text::{TextBitmap, render_wrapped_text_bitmap},
+        text::{TextBitmap, render_left_aligned_text_bitmap, render_wrapped_text_bitmap},
     },
-    utils::config::{OutputConfig, RgbaColor},
+    utils::config::{DesktopControlCallback, DesktopControlCommand, OutputConfig, RgbaColor},
 };
 
 mod audio;
@@ -65,6 +65,8 @@ const SUBTITLE_FULLSCREEN_FONT_SIZE: f32 = 44.0;
 const SUBTITLE_OUTLINE: u32 = 2;
 const SUBTITLE_MARGIN_BOTTOM: u32 = 56;
 const SUBTITLE_MAX_WIDTH_PERCENT: u32 = 92;
+const HELP_OVERLAY_PADDING: u32 = 24;
+const HELP_OVERLAY_MARGIN: u32 = 8;
 
 fn video_prebuffer_ready(queue_len: usize, video_finished: bool, force: bool) -> bool {
     force || video_finished || queue_len >= VIDEO_PREBUFFER_FRAMES
@@ -159,6 +161,9 @@ struct DesktopRenderer {
     volume_overlay_until: Option<Instant>,
     last_video: Option<VideoSurface>,
     frame_converter: DesktopFrameConverter,
+    desktop_control_callback: Option<DesktopControlCallback>,
+    help_visible: bool,
+    help_bitmap: Option<RgbaBitmap>,
 }
 
 thread_local! {
@@ -448,6 +453,9 @@ impl DesktopRenderer {
             volume_overlay_until: None,
             last_video: None,
             frame_converter: DesktopFrameConverter::default(),
+            desktop_control_callback: cfg.desktop_control_callback.clone(),
+            help_visible: false,
+            help_bitmap: None,
         })
     }
 
@@ -822,6 +830,7 @@ impl DesktopRenderer {
                         // Rebuild using the actual physical window dimensions.
                         self.active_subtitle_text = None;
                         self.subtitle_bitmap = None;
+                        self.help_bitmap = None;
                         refresh = true;
                     }
                     if !self.with_window(|window| window.fullscreen()) && width > 0 && height > 0 {
@@ -834,6 +843,15 @@ impl DesktopRenderer {
                     self.subtitle_bitmap = None;
                     refresh = true;
                 }
+                WindowAction::Control(command) => {
+                    if let Some(callback) = &self.desktop_control_callback {
+                        callback.invoke(command);
+                    }
+                }
+                WindowAction::ToggleHelp => {
+                    self.help_visible = !self.help_visible;
+                    refresh = true;
+                }
                 WindowAction::AdjustVolume(delta) => {
                     let volume = adjusted_volume(self.audio_effects_control.volume(), delta);
                     self.audio_effects_control.set_volume(volume)?;
@@ -843,6 +861,7 @@ impl DesktopRenderer {
                 WindowAction::FullscreenChanged => {
                     self.active_subtitle_text = None;
                     self.subtitle_bitmap = None;
+                    self.help_bitmap = None;
                     refresh = true;
                 }
             }
@@ -896,6 +915,7 @@ impl DesktopRenderer {
             })
         });
         let volume_overlay = self.volume_overlay_until.is_some();
+        let help = self.help_bitmap();
         self.with_window(|window| {
             window.set_frame(WindowFrame {
                 video: self.last_video.clone(),
@@ -903,8 +923,25 @@ impl DesktopRenderer {
                 logo,
                 volume: self.audio_effects_control.volume(),
                 volume_overlay,
+                help,
             });
         });
+    }
+
+    fn help_bitmap(&mut self) -> Option<RgbaBitmap> {
+        if !self.help_visible {
+            return None;
+        }
+        if self.help_bitmap.is_none() {
+            self.help_bitmap = self
+                .with_window(|window| {
+                    create_help_bitmap(window.size().0, window.uses_large_subtitles())
+                })
+                .map_err(|error| log::warn!("failed to render desktop help: {error}"))
+                .ok()
+                .flatten();
+        }
+        self.help_bitmap.clone()
     }
 
     fn subtitle_for_current_frame(&mut self) -> Option<RgbaBitmap> {
@@ -1049,6 +1086,7 @@ struct WindowFrame {
     logo: Option<WindowLogo>,
     volume: f64,
     volume_overlay: bool,
+    help: Option<RgbaBitmap>,
 }
 
 #[derive(Clone)]
@@ -1064,6 +1102,8 @@ enum WindowAction {
     ToggleSubtitles,
     AdjustVolume(f64),
     FullscreenChanged,
+    Control(DesktopControlCommand),
+    ToggleHelp,
 }
 
 impl DesktopWindow {
@@ -1222,6 +1262,21 @@ impl ApplicationHandler for DesktopWindowApp {
                     PhysicalKey::Code(KeyCode::KeyS) if !event.repeat => {
                         self.actions.push(WindowAction::ToggleSubtitles);
                     }
+                    PhysicalKey::Code(KeyCode::KeyE) if !event.repeat => {
+                        self.actions
+                            .push(WindowAction::Control(DesktopControlCommand::Back));
+                    }
+                    PhysicalKey::Code(KeyCode::KeyT) if !event.repeat => {
+                        self.actions
+                            .push(WindowAction::Control(DesktopControlCommand::Next));
+                    }
+                    PhysicalKey::Code(KeyCode::KeyR) if !event.repeat => {
+                        self.actions
+                            .push(WindowAction::Control(DesktopControlCommand::Reset));
+                    }
+                    PhysicalKey::Code(KeyCode::KeyH) if !event.repeat => {
+                        self.actions.push(WindowAction::ToggleHelp);
+                    }
                     PhysicalKey::Code(KeyCode::ArrowLeft) => {
                         self.actions
                             .push(WindowAction::AdjustVolume(-DESKTOP_VOLUME_STEP));
@@ -1241,6 +1296,7 @@ impl ApplicationHandler for DesktopWindowApp {
 struct SoftbufferRenderer {
     surface: Surface<Arc<Window>, Arc<Window>>,
     _context: SoftbufferContext<Arc<Window>>,
+    window: Arc<Window>,
     width: u32,
     height: u32,
 }
@@ -1249,10 +1305,12 @@ impl SoftbufferRenderer {
     fn new(window: Arc<Window>) -> Result<Self> {
         let context =
             SoftbufferContext::new(Arc::clone(&window)).map_err(|error| anyhow!("{error}"))?;
-        let surface = Surface::new(&context, window).map_err(|error| anyhow!("{error}"))?;
+        let surface =
+            Surface::new(&context, Arc::clone(&window)).map_err(|error| anyhow!("{error}"))?;
         Ok(Self {
             surface,
             _context: context,
+            window,
             width: 0,
             height: 0,
         })
@@ -1295,6 +1353,13 @@ impl SoftbufferRenderer {
         if frame.volume_overlay {
             draw_volume_overlay(&mut target, self.width, self.height, frame.volume);
         }
+        if let Some(help) = &frame.help {
+            draw_help_overlay(&mut target, self.width, self.height, help);
+        }
+        // Wayland uses this frame callback to throttle RedrawRequested events.
+        // Without it, both softbuffer SHM buffers can be in flight and the
+        // next buffer_mut call blocks waiting for the compositor.
+        self.window.pre_present_notify();
         target.present().map_err(|error| anyhow!("{error}"))
     }
 }
@@ -1479,6 +1544,44 @@ fn draw_volume_overlay(target: &mut [u32], width: u32, height: u32, volume: f64)
     );
 }
 
+fn draw_help_overlay(target: &mut [u32], width: u32, height: u32, help: &RgbaBitmap) {
+    let panel_width = help
+        .width
+        .saturating_add(HELP_OVERLAY_PADDING * 2)
+        .min(width);
+    let panel_height = help
+        .height
+        .saturating_add(HELP_OVERLAY_PADDING * 2)
+        .min(height);
+    let panel = Rect {
+        x: HELP_OVERLAY_MARGIN.min(width.saturating_sub(panel_width)),
+        y: HELP_OVERLAY_MARGIN.min(height.saturating_sub(panel_height)),
+        width: panel_width,
+        height: panel_height,
+    };
+    fill_blended_rect(target, width, height, panel, 0x101214, 205);
+
+    let bitmap_width = help
+        .width
+        .min(panel.width.saturating_sub(HELP_OVERLAY_PADDING * 2));
+    let bitmap_height = help
+        .height
+        .min(panel.height.saturating_sub(HELP_OVERLAY_PADDING * 2));
+    draw_bitmap_scaled(
+        target,
+        width,
+        height,
+        help,
+        Rect {
+            x: panel.x + (panel.width.saturating_sub(bitmap_width)) / 2,
+            y: panel.y + (panel.height.saturating_sub(bitmap_height)) / 2,
+            width: bitmap_width,
+            height: bitmap_height,
+        },
+        255,
+    );
+}
+
 fn fill_blended_rect(
     target: &mut [u32],
     stride: u32,
@@ -1607,6 +1710,27 @@ fn create_subtitle_bitmap(
         pixels,
         width,
         height,
+    }))
+}
+
+fn create_help_bitmap(window_width: u32, large_display: bool) -> Result<Option<RgbaBitmap>> {
+    let font_size = if large_display { 28.0 } else { 18.0 };
+    let bitmap = render_left_aligned_text_bitmap(
+        "Keyboard shortcuts\n\nE  Previous clip\nR  Reset playlist\nT  Next clip\n\nF  Fullscreen\nEsc  Stop playout\nLeft/Right  Volume\nS  Toggle subtitles\nH  Close help",
+        font_size,
+        Weight::SEMIBOLD,
+        RgbaColor {
+            r: 248,
+            g: 248,
+            b: 248,
+            a: 255,
+        },
+        (window_width * 3 / 5).clamp(280, 680),
+    )?;
+    Ok(Some(RgbaBitmap {
+        pixels: bitmap.pixels,
+        width: bitmap.width,
+        height: bitmap.height,
     }))
 }
 

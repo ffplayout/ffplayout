@@ -36,10 +36,11 @@ use playout::{PlaybackRestart, PlaybackSkipped, Timeline, play_clip, write_fallb
 pub use utils::{
     clock,
     config::{
-        HlsSubtitle, HlsVariant, LogLevel, LogoConfig, OutputConfig, OutputSize, RgbaColor,
-        StreamType, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition, TextScroll,
-        TextWeight, VideoOptionChoice, VideoOptionKind, VideoOptionSpec, VideoOptionVisibility,
-        VideoOptions, audio_codec_uses_bitrate, validate_video_options, video_codec_uses_bitrate,
+        DesktopControlCallback, DesktopControlCommand, HlsSubtitle, HlsVariant, LogLevel,
+        LogoConfig, OutputConfig, OutputSize, RgbaColor, StreamType, TextBackgroundConfig,
+        TextConfig, TextOverlayState, TextPosition, TextScroll, TextWeight, VideoOptionChoice,
+        VideoOptionKind, VideoOptionSpec, VideoOptionVisibility, VideoOptions,
+        audio_codec_uses_bitrate, validate_video_options, video_codec_uses_bitrate,
         video_option_defaults, video_option_specs,
     },
     ffmpeg_capabilities::{

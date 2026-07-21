@@ -34,6 +34,8 @@ The desktop window has these controls:
 - `Esc`: stop desktop playout.
 - Left and right arrow keys: decrease or increase volume. Holding a key repeats the adjustment and shows the volume slider.
 - `S`: toggle WebVTT subtitle rendering.
+- `E`, `R`, `T`: previous clip, reset the playlist state, next clip.
+- `H`: show or hide the desktop keyboard shortcuts.
 
 ## HLS
 
