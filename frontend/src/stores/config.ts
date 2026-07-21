@@ -1,5 +1,4 @@
 import { cloneDeep } from 'es-toolkit/object'
-import { isEqual } from 'es-toolkit/predicate'
 import { defineStore } from 'pinia'
 import { useRouter } from 'vue-router'
 
@@ -188,22 +187,6 @@ export const useConfig = defineStore('config', {
             })
 
             return update
-        },
-
-        playoutChangeSummary() {
-            if (!this.playoutSaved.processing) {
-                return { requiresRestart: true, volumeChanged: false }
-            }
-
-            const current = cloneDeep(this.playout)
-            const saved = cloneDeep(this.playoutSaved)
-            const volumeChanged = current.processing.volume !== saved.processing.volume
-            current.processing.volume = saved.processing.volume
-
-            return {
-                requiresRestart: !isEqual(current, saved),
-                volumeChanged,
-            }
         },
 
         async applyAudioEffects(volume: number) {

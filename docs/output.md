@@ -23,9 +23,10 @@ Of course, you can also use media platforms that support streaming input.
 
 ## Desktop
 
-In desktop mode, ffplayout renders directly through the engine's SDL2 desktop
-output. You need a desktop session and a build with the `desktop` feature
-enabled; no external **ffplay** process is used.
+In desktop mode, ffplayout renders directly through the engine's native
+`winit`/`softbuffer` output with audio provided by CPAL. You need a desktop
+session and a build with the `desktop` feature enabled; no external **ffplay**
+process is used.
 
 The desktop window has these controls:
 
@@ -33,7 +34,6 @@ The desktop window has these controls:
 - `Esc`: stop desktop playout.
 - Left and right arrow keys: decrease or increase volume. Holding a key repeats the adjustment and shows the volume slider.
 - `S`: toggle WebVTT subtitle rendering.
-- Double-click the window or use the titlebar fullscreen button: toggle fullscreen.
 
 ## HLS
 

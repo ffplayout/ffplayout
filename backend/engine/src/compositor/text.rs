@@ -64,16 +64,6 @@ pub(crate) struct TextBitmap {
 }
 
 #[cfg(feature = "desktop")]
-pub(crate) fn render_plain_text_bitmap(
-    text: &str,
-    font_size: f32,
-    font_weight: Weight,
-    color: RgbaColor,
-) -> Result<TextBitmap> {
-    render_text_bitmap(text, font_size, font_weight, color, None, None, None)
-}
-
-#[cfg(feature = "desktop")]
 pub(crate) fn render_wrapped_text_bitmap(
     text: &str,
     font_size: f32,

@@ -1,14 +1,19 @@
-use anyhow::{Context, Result, anyhow};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
-use std::time::{Duration, Instant};
+
 #[cfg(feature = "tokio")]
 use std::{
     sync::mpsc,
     thread::{self, JoinHandle},
 };
+
+use anyhow::{Context, Result, anyhow};
+
 #[cfg(feature = "tokio")]
 use tokio::sync::oneshot;
 
@@ -151,14 +156,14 @@ pub struct AsyncPlayout {
 }
 
 /// How to wait for the playout worker to finish. Desktop-output sessions run
-/// as a job on the shared, process-lifetime SDL thread (see
-/// `output::sdl_thread`) instead of on their own dedicated `JoinHandle`, so
+/// as a job on the shared, process-lifetime desktop thread (see
+/// `output::desktop::thread`) instead of on their own dedicated `JoinHandle`, so
 /// completion is signalled through a channel instead.
 #[cfg(feature = "tokio")]
 enum WorkerCompletion {
     Thread(JoinHandle<()>),
     #[cfg(feature = "desktop")]
-    SdlThread(oneshot::Receiver<()>),
+    DesktopThread(oneshot::Receiver<()>),
 }
 
 #[cfg(feature = "tokio")]
@@ -218,7 +223,7 @@ impl AsyncPlayout {
         let playback_control = PlaybackControl::default();
         let worker_playback_control = playback_control.clone();
 
-        output::sdl_thread::spawn(move || {
+        output::desktop::thread::spawn(move || {
             match Playout::open_desktop(config, fallback_duration) {
                 Ok(mut playout) => {
                     playout.playback_control = worker_playback_control;
@@ -238,7 +243,7 @@ impl AsyncPlayout {
 
         Ok(Self {
             commands,
-            completion: WorkerCompletion::SdlThread(done_rx),
+            completion: WorkerCompletion::DesktopThread(done_rx),
             playback_control,
             hls_health: None,
         })
@@ -393,7 +398,7 @@ impl AsyncPlayout {
                 }
             }
             #[cfg(feature = "desktop")]
-            WorkerCompletion::SdlThread(done_rx) => {
+            WorkerCompletion::DesktopThread(done_rx) => {
                 if done_rx.await.is_err() && finish_result.is_ok() {
                     return Err(anyhow!("desktop playout worker stopped unexpectedly"));
                 }
@@ -498,9 +503,7 @@ impl Playout {
     pub fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
         init_ffmpeg(&config)?;
-        let sdl = output::init_desktop_sdl()?;
-        let config = output::desktop_config_for_primary_display(config, &sdl);
-        let output = Output::open_desktop(&config, sdl)?;
+        let output = Output::open_desktop(&config)?;
 
         Ok(Self::with_output(config, output, fallback_duration))
     }

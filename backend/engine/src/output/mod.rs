@@ -1,11 +1,9 @@
 use std::{error::Error, fmt};
 
 #[cfg(feature = "desktop")]
-mod desktop;
+pub(crate) mod desktop;
 mod encoded;
 mod hls;
-#[cfg(feature = "desktop")]
-pub(crate) mod sdl_thread;
 mod vtt;
 
 pub use hls::resolved_variant_playlist_path;
@@ -14,7 +12,7 @@ use anyhow::Result;
 #[cfg(feature = "desktop")]
 use anyhow::anyhow;
 #[cfg(feature = "desktop")]
-use desktop::{DesktopFrameSender, DesktopOutput, DesktopSdl};
+use desktop::{DesktopFrameSender, DesktopOutput};
 use encoded::{EncodedFormat, EncodedOutput};
 use ffmpeg_next::frame;
 
@@ -72,19 +70,6 @@ pub(crate) trait FrameOutput {
     ) -> Result<()> {
         Ok(())
     }
-}
-
-#[cfg(feature = "desktop")]
-pub(crate) fn init_desktop_sdl() -> Result<DesktopSdl> {
-    desktop::init_sdl()
-}
-
-#[cfg(feature = "desktop")]
-pub(crate) fn desktop_config_for_primary_display(
-    config: OutputConfig,
-    desktop_sdl: &DesktopSdl,
-) -> OutputConfig {
-    desktop::config_for_primary_display(config, desktop_sdl)
 }
 
 pub(crate) struct Output {
@@ -145,9 +130,9 @@ impl Output {
     }
 
     #[cfg(feature = "desktop")]
-    pub(crate) fn open_desktop(cfg: &OutputConfig, desktop_sdl: DesktopSdl) -> Result<Self> {
+    pub(crate) fn open_desktop(cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
-            kind: OutputKind::Desktop(Box::new(DesktopOutput::open(cfg, desktop_sdl)?)),
+            kind: OutputKind::Desktop(Box::new(DesktopOutput::open(cfg)?)),
         })
     }
 

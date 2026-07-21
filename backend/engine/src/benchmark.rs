@@ -11,7 +11,11 @@ pub(crate) enum Stage {
     Vtt,
     EncodeMux,
     #[cfg(feature = "desktop")]
-    DesktopOutput,
+    DesktopSend,
+    #[cfg(feature = "desktop")]
+    DesktopConvert,
+    #[cfg(feature = "desktop")]
+    DesktopPresent,
     LiveQueue,
 }
 
@@ -29,7 +33,11 @@ impl Stage {
         Self::Vtt,
         Self::EncodeMux,
         #[cfg(feature = "desktop")]
-        Self::DesktopOutput,
+        Self::DesktopSend,
+        #[cfg(feature = "desktop")]
+        Self::DesktopConvert,
+        #[cfg(feature = "desktop")]
+        Self::DesktopPresent,
         Self::LiveQueue,
     ];
 
@@ -48,7 +56,11 @@ impl Stage {
             Self::Vtt => 8,
             Self::EncodeMux => 9,
             #[cfg(feature = "desktop")]
-            Self::DesktopOutput => 10,
+            Self::DesktopSend => 10,
+            #[cfg(feature = "desktop")]
+            Self::DesktopConvert => 11,
+            #[cfg(feature = "desktop")]
+            Self::DesktopPresent => 12,
             Self::LiveQueue => Self::COUNT - 1,
         }
     }
@@ -66,7 +78,11 @@ impl Stage {
             Self::Vtt => "vtt",
             Self::EncodeMux => "encode_mux",
             #[cfg(feature = "desktop")]
-            Self::DesktopOutput => "desktop_out",
+            Self::DesktopSend => "desktop_send",
+            #[cfg(feature = "desktop")]
+            Self::DesktopConvert => "desktop_convert",
+            #[cfg(feature = "desktop")]
+            Self::DesktopPresent => "desktop_present",
             Self::LiveQueue => "live_queue",
         }
     }

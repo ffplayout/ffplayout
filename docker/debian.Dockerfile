@@ -14,8 +14,8 @@ RUN apt-get update && \
         libavfilter-dev \
         libavformat-dev \
         libavutil-dev \
+        libasound2-dev \
         libclang-dev \
-        libsdl2-dev \
         libsqlite3-dev \
         libswresample-dev \
         libswscale-dev \

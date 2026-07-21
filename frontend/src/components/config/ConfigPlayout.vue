@@ -225,20 +225,7 @@ const formatIgnoreLines = computed({
     },
 })
 
-async function applyVolume() {
-    try {
-        const response = await configStore.applyAudioEffects(configStore.playout.processing.volume)
-        if (!response.ok) {
-            throw new Error(await response.text())
-        }
-        indexStore.msgAlert('success', t('config.volumeApplied'), 2)
-    } catch {
-        indexStore.msgAlert('error', t('config.volumeApplyFailed'), 3)
-    }
-}
-
 async function onSubmitPlayout() {
-    const { requiresRestart, volumeChanged } = configStore.playoutChangeSummary()
     try {
         const update = await configStore.setPlayoutConfig(configStore.playout)
         configStore.onetimeInfo = true
@@ -250,11 +237,9 @@ async function onSubmitPlayout() {
             return
         }
 
-        indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
+        const { requires_restart: requiresRestart } = (await update.json()) as { requires_restart: boolean }
 
-        if (volumeChanged) {
-            await applyVolume()
-        }
+        indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
 
         const id = configStore.channels[configStore.i]?.id
         const response = await fetch(`/api/control/${id}/process`, {

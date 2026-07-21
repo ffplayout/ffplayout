@@ -15,7 +15,7 @@ workspace = true
 default = ["desktop", "embed_frontend"]
 desktop = ["ff-engine/desktop"]
 embed_frontend = []
-dev-metrics = ["dep:console-subscriber", "tokio/tracing"]
+dev-metrics = ["dep:console-subscriber", "dep:tracing-subscriber", "tokio/tracing"]
 processing-bench = ["ff-engine/processing-bench"]
 
 [dependencies]
@@ -34,6 +34,7 @@ chrono = { version = "0.4", default-features = false, features = [
 chrono-tz = { version = "0.10", features = ["serde"] }
 clap = { version = "4.3", features = ["derive", "env"] }
 console-subscriber = { version = "0.5", optional = true }
+tracing-subscriber = { version = "0.3", optional = true }
 derive_more = { version = "2", features = ["display"] }
 faccess = "0.2"
 flexi_logger = { version = "0.31", features = ["async", "colors", "kv"] }
@@ -95,8 +96,8 @@ name = "ffplayout"
 priority = "optional"
 section = "net"
 license-file = ["../../LICENSE", "0"]
-depends = ""
-suggests = ["ffmpeg", "libsdl2-2.0-0"]
+depends = "libasound2t64"
+suggests = ["ffmpeg"]
 copyright = "Copyright (c) 2024, Jonathan Baecker. All rights reserved."
 assets = [
     [

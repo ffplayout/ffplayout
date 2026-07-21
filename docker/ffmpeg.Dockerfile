@@ -31,24 +31,8 @@ RUN apt-get update && \
         ninja-build \
         perl \
         pkg-config \
-        libpulse-dev \
-        libx11-dev \
-        libxext-dev \
-        libxrandr-dev \
-        libxcursor-dev \
-        libxfixes-dev \
-        libxi-dev \
-        libxss-dev \
-        libxkbcommon-dev \
-        libwayland-dev \
-        libva-dev libdrm-dev \
-        libgbm-dev \
-        libgl1-mesa-dev \
-        libegl1-mesa-dev \
-        libudev-dev \
-        libdbus-1-dev \
-        libpipewire-0.3-dev \
-        xz-utils && \
+        libva-dev \
+        libdrm-dev && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /tmp
@@ -208,26 +192,6 @@ RUN git clone --depth 1 --branch 10.2.0 "https://github.com/harfbuzz/harfbuzz.gi
     ninja -C build && \
     ninja -C build install
 
-RUN git clone --depth 1 https://github.com/alsa-project/alsa-lib && \
-    cd alsa-lib && \
-    autoreconf -i && \
-    ./configure --enable-shared=no --enable-static=yes --without-libdl && \
-    make -j "$(nproc)" && \
-    make install
-
-RUN git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL2 && \
-    cmake -S SDL2 -B SDL2/build \
-        -G Ninja \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" \
-        -DSDL_SHARED=OFF \
-        -DSDL_STATIC=ON \
-        -DSDL_TESTS=OFF \
-        -DSDL_TEST_LIBRARY=OFF \
-        -DSDL2_DISABLE_INSTALL=OFF && \
-    cmake --build SDL2/build  && \
-    cmake --install SDL2/build
-
 RUN git clone https://github.com/intel/libvpl.git && \
     cd libvpl && \
     cmake -S . -B build \
@@ -259,7 +223,6 @@ RUN mkdir -p /ffmpeg-debug && \
         --disable-debug \
         --disable-doc \
         --disable-ffplay \
-        --disable-autodetect \
         --disable-shared \
         --enable-avfilter \
         --enable-gpl \
@@ -274,11 +237,11 @@ RUN mkdir -p /ffmpeg-debug && \
         --enable-libmp3lame \
         --enable-libopus \
         --enable-libsrt \
-        --enable-libvpl \
         --enable-libvpx \
         --enable-libx264 \
         --enable-libx265 \
         --enable-openssl \
+        --enable-libvpl \
         --enable-vaapi \
         --enable-libdrm \
         --enable-libsvtav1 \

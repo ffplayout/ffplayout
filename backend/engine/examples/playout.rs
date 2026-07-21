@@ -36,7 +36,7 @@ struct Args {
     )]
     output: Option<String>,
 
-    /// Play video and audio in an SDL2 desktop window
+    /// Play video and audio in a native desktop window
     #[cfg(feature = "desktop")]
     #[arg(long, conflicts_with_all = ["output", "hls"])]
     desktop: bool,

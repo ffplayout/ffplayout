@@ -23,6 +23,7 @@ RUN apt-get update && \
         curl \
         gnupg \
         libclang-dev \
+        libasound2-dev \
         liblzma-dev \
         libsqlite3-dev \
         perl \

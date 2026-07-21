@@ -54,7 +54,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     *manager.playback_control.lock().await = playout.playback_control();
     if config.output.mode == OutputMode::Desktop {
         info!(channel = config.general.channel_id;
-            "Desktop output uses backend/engine SDL2 renderer"
+            "Desktop output uses backend/engine winit/softbuffer renderer"
         );
     }
 

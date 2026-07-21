@@ -12,19 +12,21 @@ workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:sdl2"]
+desktop = ["dep:cpal", "dep:softbuffer", "dep:winit"]
 processing-bench = []
 tokio = ["dep:tokio"]
 
 [dependencies]
 anyhow = "1"
+cpal = { version = "0.18", optional = true }
 cosmic-text = "0.19"
 ffmpeg-next = { git = "https://github.com/zmwangx/rust-ffmpeg.git" }
 log = { version = "0.4", features = ["kv"] }
 regex = "1"
 rten-simd = "0.24"
-sdl2 = { version = "0.38", optional = true, features = ["unsafe_textures"] }
+softbuffer = { version = "0.4", optional = true }
 tokio = { version = "1.44", optional = true, features = ["rt", "sync"] }
+winit = { version = "0.30", optional = true }
 
 [dev-dependencies]
 clap = { version = "4", features = ["derive"] }
