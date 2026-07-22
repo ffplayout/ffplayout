@@ -709,9 +709,8 @@ impl DesktopRenderer {
             let samples = self.pending_silence_samples.min(1_024) as usize;
             self.audio.queue(&vec![0.0; samples * AUDIO_CHANNELS])?;
             self.pending_silence_samples -= samples as u64;
-            self.submitted_audio_samples = self
-                .submitted_audio_samples
-                .saturating_add(samples as u64);
+            self.submitted_audio_samples =
+                self.submitted_audio_samples.saturating_add(samples as u64);
         }
         self.start_audio_if_ready(false);
         Ok(())
@@ -723,9 +722,7 @@ impl DesktopRenderer {
         let (covered, remaining) =
             split_audio_padding(self.submitted_audio_samples, virtual_position, samples);
         self.submitted_audio_samples = self.submitted_audio_samples.saturating_add(covered);
-        self.pending_silence_samples = self
-            .pending_silence_samples
-            .saturating_add(remaining);
+        self.pending_silence_samples = self.pending_silence_samples.saturating_add(remaining);
         if covered > 0 {
             self.audio_clock.reset_at(
                 self.submitted_audio_samples.saturating_sub(queued),
@@ -1363,21 +1360,11 @@ mod tests {
         clock.reset_at(0, start);
         assert_eq!(clock.position(4_800, 3_776, start, false), 0);
         assert_eq!(
-            clock.position(
-                4_800,
-                3_776,
-                start + Duration::from_millis(10),
-                false
-            ),
+            clock.position(4_800, 3_776, start + Duration::from_millis(10), false),
             480
         );
         assert_eq!(
-            clock.position(
-                4_800,
-                3_776,
-                start + Duration::from_millis(30),
-                false
-            ),
+            clock.position(4_800, 3_776, start + Duration::from_millis(30), false),
             1_024
         );
     }
@@ -1389,12 +1376,7 @@ mod tests {
         clock.reset_at(0, start);
         assert_eq!(clock.position(4_800, 2_752, start, false), 1_024);
         assert_eq!(
-            clock.position(
-                4_800,
-                2_752,
-                start + Duration::from_millis(10),
-                false
-            ),
+            clock.position(4_800, 2_752, start + Duration::from_millis(10), false),
             1_504
         );
     }
@@ -1406,30 +1388,15 @@ mod tests {
         clock.reset_at(96_000, start);
         assert_eq!(clock.position(100_800, 4_800, start, false), 96_000);
         assert_eq!(
-            clock.position(
-                100_800,
-                4_800,
-                start + Duration::from_millis(10),
-                false
-            ),
+            clock.position(100_800, 4_800, start + Duration::from_millis(10), false),
             96_000
         );
         assert_eq!(
-            clock.position(
-                100_800,
-                3_776,
-                start + Duration::from_millis(20),
-                false
-            ),
+            clock.position(100_800, 3_776, start + Duration::from_millis(20), false),
             96_000
         );
         assert_eq!(
-            clock.position(
-                100_800,
-                3_776,
-                start + Duration::from_millis(30),
-                false
-            ),
+            clock.position(100_800, 3_776, start + Duration::from_millis(30), false),
             96_480
         );
     }
@@ -1448,7 +1415,10 @@ mod tests {
 
     #[test]
     fn audio_padding_only_queues_silence_not_covered_by_underflow() {
-        assert_eq!(split_audio_padding(48_000, 72_000, 48_000), (24_000, 24_000));
+        assert_eq!(
+            split_audio_padding(48_000, 72_000, 48_000),
+            (24_000, 24_000)
+        );
         assert_eq!(split_audio_padding(48_000, 48_000, 48_000), (0, 48_000));
         assert_eq!(split_audio_padding(48_000, 120_000, 48_000), (48_000, 0));
     }
