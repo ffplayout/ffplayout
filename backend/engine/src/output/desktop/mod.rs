@@ -1,7 +1,6 @@
 use std::{
     cell::RefCell,
     collections::VecDeque,
-    num::NonZeroU32,
     sync::{
         Arc, Mutex,
         mpsc::{Receiver, SyncSender, TryRecvError, sync_channel},
@@ -11,9 +10,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use cosmic_text::Weight;
-use ffmpeg_next::{Rational, Rescale, frame, software::scaling, util::format::pixel::Pixel};
-use softbuffer::{Context as SoftbufferContext, Surface};
+use ffmpeg_next::{Rational, Rescale, frame};
 #[cfg(target_os = "linux")]
 use winit::platform::wayland::EventLoopBuilderExtWayland;
 use winit::{
@@ -31,17 +28,34 @@ use crate::{
     analysis::audio_level::{AudioLevelCallback, AudioLevelMeter},
     audio_mixer::{AudioEffectChain, AudioEffectsControl},
     benchmark::{self, BenchHandle, Stage},
-    compositor::{
-        logo::{LogoOverlay, logo_position},
-        text::{TextBitmap, render_left_aligned_text_bitmap, render_wrapped_text_bitmap},
-    },
-    utils::config::{DesktopControlCallback, DesktopControlCommand, OutputConfig, RgbaColor},
+    compositor::logo::LogoOverlay,
+    utils::config::{DesktopControlCallback, DesktopControlCommand, OutputConfig},
 };
 
 mod audio;
+#[cfg(feature = "desktop-cpu")]
+mod cpu;
+#[cfg(not(feature = "desktop-cpu"))]
+mod gpu;
+mod graphics;
+mod render;
 pub(crate) mod thread;
+mod timing;
+mod video;
 
 use audio::DesktopAudio;
+#[cfg(feature = "desktop-cpu")]
+use cpu::WindowRenderer;
+#[cfg(not(feature = "desktop-cpu"))]
+use gpu::WindowRenderer;
+use graphics::{
+    DesktopLogo, RgbaBitmap, create_desktop_logo, create_help_bitmap, create_subtitle_bitmap,
+};
+#[cfg(test)]
+use graphics::{SUBTITLE_FONT_SIZE, SUBTITLE_FULLSCREEN_FONT_SIZE, subtitle_font_size};
+use render::{WindowFrame, WindowLogo};
+use timing::{AudioMasterClock, adjusted_volume, video_pts_in_audio_samples};
+use video::{DesktopFrameConverter, VideoSurface};
 
 const AUDIO_CHANNELS: usize = 2;
 const AUDIO_PREBUFFER_MS: u64 = 100;
@@ -60,13 +74,6 @@ const DESKTOP_VOLUME_MIN: f64 = 0.0;
 const DESKTOP_VOLUME_MAX: f64 = 1.5;
 const VOLUME_OVERLAY_DURATION: Duration = Duration::from_millis(900);
 const WINDOW_ASPECT_SETTLE: Duration = Duration::from_millis(120);
-const SUBTITLE_FONT_SIZE: f32 = 24.0;
-const SUBTITLE_FULLSCREEN_FONT_SIZE: f32 = 44.0;
-const SUBTITLE_OUTLINE: u32 = 2;
-const SUBTITLE_MARGIN_BOTTOM: u32 = 56;
-const SUBTITLE_MAX_WIDTH_PERCENT: u32 = 92;
-const HELP_OVERLAY_PADDING: u32 = 24;
-const HELP_OVERLAY_MARGIN: u32 = 8;
 
 fn video_prebuffer_ready(queue_len: usize, video_finished: bool, force: bool) -> bool {
     force || video_finished || queue_len >= VIDEO_PREBUFFER_FRAMES
@@ -168,32 +175,6 @@ struct DesktopRenderer {
 
 thread_local! {
     static DESKTOP_WINDOW: RefCell<Option<DesktopWindow>> = const { RefCell::new(None) };
-}
-
-#[derive(Clone)]
-struct RgbaBitmap {
-    pixels: Vec<u8>,
-    width: u32,
-    height: u32,
-}
-
-struct DesktopLogo {
-    bitmap: RgbaBitmap,
-    position: String,
-    opacity: u8,
-}
-
-#[derive(Clone)]
-struct VideoSurface {
-    width: u32,
-    height: u32,
-    pixels: Arc<[u32]>,
-    pts: i64,
-}
-
-struct DesktopFrameConverter {
-    scaler: Option<scaling::Context>,
-    converted: frame::Video,
 }
 
 impl DesktopOutput {
@@ -853,7 +834,12 @@ impl DesktopRenderer {
                     refresh = true;
                 }
                 WindowAction::AdjustVolume(delta) => {
-                    let volume = adjusted_volume(self.audio_effects_control.volume(), delta);
+                    let volume = adjusted_volume(
+                        self.audio_effects_control.volume(),
+                        delta,
+                        DESKTOP_VOLUME_MIN,
+                        DESKTOP_VOLUME_MAX,
+                    );
                     self.audio_effects_control.set_volume(volume)?;
                     self.volume_overlay_until = Some(Instant::now() + VOLUME_OVERLAY_DURATION);
                     refresh = true;
@@ -979,80 +965,6 @@ impl Drop for DesktopRenderer {
     }
 }
 
-impl Default for DesktopFrameConverter {
-    fn default() -> Self {
-        Self {
-            scaler: None,
-            converted: frame::Video::empty(),
-        }
-    }
-}
-
-impl DesktopFrameConverter {
-    fn convert(&mut self, frame: &frame::Video) -> Result<VideoSurface> {
-        let width = frame.width();
-        let height = frame.height();
-        if width == 0 || height == 0 {
-            return Err(anyhow!("desktop video frame has zero dimensions"));
-        }
-
-        let reconfigure = self.scaler.as_ref().is_none_or(|scaler| {
-            let input = scaler.input();
-            input.format != frame.format() || input.width != width || input.height != height
-        });
-        if reconfigure {
-            if let Some(scaler) = &mut self.scaler {
-                scaler.cached(
-                    frame.format(),
-                    width,
-                    height,
-                    Pixel::BGRZ,
-                    width,
-                    height,
-                    scaling::flag::Flags::FAST_BILINEAR,
-                );
-            } else {
-                self.scaler = Some(scaling::Context::get(
-                    frame.format(),
-                    width,
-                    height,
-                    Pixel::BGRZ,
-                    width,
-                    height,
-                    scaling::flag::Flags::FAST_BILINEAR,
-                )?);
-            }
-            self.converted = frame::Video::empty();
-        }
-        self.scaler
-            .as_mut()
-            .expect("desktop scaler must be initialized")
-            .run(frame, &mut self.converted)?;
-
-        let mut pixels = vec![0_u32; width as usize * height as usize];
-        let stride = self.converted.stride(0) / 4;
-        for (target_row, source_row) in pixels
-            .chunks_exact_mut(width as usize)
-            .zip(self.converted.plane::<[u8; 4]>(0).chunks_exact(stride))
-        {
-            for (target, source) in target_row.iter_mut().zip(source_row) {
-                *target = bgrz_to_softbuffer_pixel(*source);
-            }
-        }
-
-        Ok(VideoSurface {
-            width,
-            height,
-            pixels: pixels.into(),
-            pts: frame.pts().unwrap_or_default(),
-        })
-    }
-}
-
-fn bgrz_to_softbuffer_pixel([blue, green, red, _]: [u8; 4]) -> u32 {
-    (u32::from(red) << 16) | (u32::from(green) << 8) | u32::from(blue)
-}
-
 struct DesktopWindow {
     event_loop: EventLoop<()>,
     app: DesktopWindowApp,
@@ -1060,7 +972,7 @@ struct DesktopWindow {
 
 struct DesktopWindowApp {
     window: Arc<Window>,
-    renderer: SoftbufferRenderer,
+    renderer: WindowRenderer,
     actions: Vec<WindowAction>,
     frame: Option<WindowFrame>,
     size: (u32, u32),
@@ -1077,23 +989,6 @@ fn prepare_desktop_window(width: u32, height: u32, fullscreen: bool) -> Result<(
             Ok(())
         }
     })
-}
-
-#[derive(Clone)]
-struct WindowFrame {
-    video: Option<VideoSurface>,
-    subtitle: Option<RgbaBitmap>,
-    logo: Option<WindowLogo>,
-    volume: f64,
-    volume_overlay: bool,
-    help: Option<RgbaBitmap>,
-}
-
-#[derive(Clone)]
-struct WindowLogo {
-    bitmap: RgbaBitmap,
-    position: String,
-    opacity: u8,
 }
 
 enum WindowAction {
@@ -1129,8 +1024,7 @@ impl DesktopWindow {
                 .context("creating desktop window")?,
         );
         let size = window.inner_size();
-        let mut renderer = SoftbufferRenderer::new(Arc::clone(&window))?;
-        renderer.resize(size.width, size.height)?;
+        let renderer = WindowRenderer::new(Arc::clone(&window), width, height)?;
 
         Ok(Self {
             event_loop,
@@ -1154,9 +1048,13 @@ impl DesktopWindow {
             fullscreen.then(|| Fullscreen::Borderless(self.app.window.current_monitor())),
         );
 
+        if width > 0 && height > 0 {
+            self.app.renderer.resize_buffer(width, height)?;
+        }
+
         if !fullscreen && width > 0 && height > 0 {
             self.app.size = (width, height);
-            self.app.renderer.resize(width, height)?;
+            self.app.renderer.resize_surface(width, height)?;
             let _ = self
                 .app
                 .window
@@ -1225,7 +1123,7 @@ impl ApplicationHandler for DesktopWindowApp {
             WindowEvent::CloseRequested => self.actions.push(WindowAction::Stop),
             WindowEvent::Resized(size) => {
                 self.size = (size.width, size.height);
-                if let Err(error) = self.renderer.resize(size.width, size.height) {
+                if let Err(error) = self.renderer.resize_surface(size.width, size.height) {
                     log::warn!("desktop renderer resize failed: {error}");
                 }
                 self.actions
@@ -1293,573 +1191,16 @@ impl ApplicationHandler for DesktopWindowApp {
     }
 }
 
-struct SoftbufferRenderer {
-    surface: Surface<Arc<Window>, Arc<Window>>,
-    _context: SoftbufferContext<Arc<Window>>,
-    window: Arc<Window>,
-    width: u32,
-    height: u32,
-}
-
-impl SoftbufferRenderer {
-    fn new(window: Arc<Window>) -> Result<Self> {
-        let context =
-            SoftbufferContext::new(Arc::clone(&window)).map_err(|error| anyhow!("{error}"))?;
-        let surface =
-            Surface::new(&context, Arc::clone(&window)).map_err(|error| anyhow!("{error}"))?;
-        Ok(Self {
-            surface,
-            _context: context,
-            window,
-            width: 0,
-            height: 0,
-        })
-    }
-
-    fn resize(&mut self, width: u32, height: u32) -> Result<()> {
-        self.width = width;
-        self.height = height;
-        let (Some(width), Some(height)) = (NonZeroU32::new(width), NonZeroU32::new(height)) else {
-            return Ok(());
-        };
-        self.surface
-            .resize(width, height)
-            .map_err(|error| anyhow!("{error}"))
-    }
-
-    fn render(&mut self, frame: &WindowFrame, size: (u32, u32)) -> Result<()> {
-        if self.width == 0 || self.height == 0 {
-            return Ok(());
-        }
-        let mut target = self
-            .surface
-            .buffer_mut()
-            .map_err(|error| anyhow!("{error}"))?;
-        if let Some(video) = &frame.video {
-            let rect = fit_rect(video.width, video.height, self.width, self.height);
-            if rect.width != self.width || rect.height != self.height {
-                target.fill(0);
-            }
-            scale_nearest(video, &mut target, self.width, rect);
-        } else {
-            target.fill(0);
-        }
-        if let Some(logo) = &frame.logo {
-            draw_logo(&mut target, self.width, self.height, size, logo)?;
-        }
-        if let Some(subtitle) = &frame.subtitle {
-            draw_subtitle(&mut target, self.width, self.height, subtitle);
-        }
-        if frame.volume_overlay {
-            draw_volume_overlay(&mut target, self.width, self.height, frame.volume);
-        }
-        if let Some(help) = &frame.help {
-            draw_help_overlay(&mut target, self.width, self.height, help);
-        }
-        // Wayland uses this frame callback to throttle RedrawRequested events.
-        // Without it, both softbuffer SHM buffers can be in flight and the
-        // next buffer_mut call blocks waiting for the compositor.
-        self.window.pre_present_notify();
-        target.present().map_err(|error| anyhow!("{error}"))
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Rect {
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-}
-
-fn fit_rect(src_width: u32, src_height: u32, dst_width: u32, dst_height: u32) -> Rect {
-    if src_width == 0 || src_height == 0 || dst_width == 0 || dst_height == 0 {
-        return Rect {
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-        };
-    }
-    let scale = (dst_width as f64 / src_width as f64).min(dst_height as f64 / src_height as f64);
-    let width = (src_width as f64 * scale).round().max(1.0) as u32;
-    let height = (src_height as f64 * scale).round().max(1.0) as u32;
-    Rect {
-        x: (dst_width - width) / 2,
-        y: (dst_height - height) / 2,
-        width,
-        height,
-    }
-}
-
-fn scale_nearest(video: &VideoSurface, target: &mut [u32], stride: u32, dst: Rect) {
-    if dst.width == 0 || dst.height == 0 {
-        return;
-    }
-    if video.width == dst.width && video.height == dst.height {
-        for row in 0..dst.height as usize {
-            let source_start = row * video.width as usize;
-            let target_start = (dst.y as usize + row) * stride as usize + dst.x as usize;
-            target[target_start..target_start + dst.width as usize]
-                .copy_from_slice(&video.pixels[source_start..source_start + video.width as usize]);
-        }
-        return;
-    }
-    for dy in 0..dst.height {
-        let sy = (dy as u64 * video.height as u64 / dst.height as u64) as u32;
-        for dx in 0..dst.width {
-            let sx = (dx as u64 * video.width as u64 / dst.width as u64) as u32;
-            let src = (sy * video.width + sx) as usize;
-            let dest = ((dst.y + dy) * stride + dst.x + dx) as usize;
-            target[dest] = video.pixels[src];
-        }
-    }
-}
-
-fn draw_logo(
-    target: &mut [u32],
-    width: u32,
-    height: u32,
-    window_size: (u32, u32),
-    logo: &WindowLogo,
-) -> Result<()> {
-    let (x, y) = logo_position(
-        &logo.position,
-        window_size.0.max(1),
-        window_size.1.max(1),
-        logo.bitmap.width,
-        logo.bitmap.height,
-    )?;
-    let scale_x = f64::from(width) / f64::from(window_size.0.max(1));
-    let scale_y = f64::from(height) / f64::from(window_size.1.max(1));
-    let x = (f64::from(x) * scale_x).round().max(0.0) as u32;
-    let y = (f64::from(y) * scale_y).round().max(0.0) as u32;
-    let scaled_width = (f64::from(logo.bitmap.width) * scale_x).round().max(1.0) as u32;
-    let scaled_height = (f64::from(logo.bitmap.height) * scale_y).round().max(1.0) as u32;
-    draw_bitmap_scaled(
-        target,
-        width,
-        height,
-        &logo.bitmap,
-        Rect {
-            x,
-            y,
-            width: scaled_width,
-            height: scaled_height,
-        },
-        logo.opacity,
-    );
-    Ok(())
-}
-
-fn draw_subtitle(target: &mut [u32], width: u32, height: u32, subtitle: &RgbaBitmap) {
-    let x = (width.saturating_sub(subtitle.width)) / 2;
-    let y = height.saturating_sub(subtitle.height + SUBTITLE_MARGIN_BOTTOM);
-    draw_bitmap_scaled(
-        target,
-        width,
-        height,
-        subtitle,
-        Rect {
-            x,
-            y,
-            width: subtitle.width,
-            height: subtitle.height,
-        },
-        255,
-    );
-}
-
-fn draw_bitmap_scaled(
-    target: &mut [u32],
-    target_width: u32,
-    target_height: u32,
-    bitmap: &RgbaBitmap,
-    dst: Rect,
-    opacity: u8,
-) {
-    if dst.width == 0 || dst.height == 0 {
-        return;
-    }
-    let x_end = dst.x.saturating_add(dst.width).min(target_width);
-    let y_end = dst.y.saturating_add(dst.height).min(target_height);
-    for y in dst.y..y_end {
-        let source_y = ((y - dst.y) as u64 * bitmap.height as u64 / dst.height as u64) as u32;
-        for x in dst.x..x_end {
-            let source_x = ((x - dst.x) as u64 * bitmap.width as u64 / dst.width as u64) as u32;
-            let index = (source_y * bitmap.width + source_x) as usize * 4;
-            let alpha = (u16::from(bitmap.pixels[index + 3]) * u16::from(opacity) / 255) as u8;
-            if alpha > 0 {
-                let color = (u32::from(bitmap.pixels[index]) << 16)
-                    | (u32::from(bitmap.pixels[index + 1]) << 8)
-                    | u32::from(bitmap.pixels[index + 2]);
-                let target_index = (y * target_width + x) as usize;
-                target[target_index] = blend(target[target_index], color, alpha);
-            }
-        }
-    }
-}
-
-fn draw_volume_overlay(target: &mut [u32], width: u32, height: u32, volume: f64) {
-    let panel_width = (width / 3).clamp(180, 360);
-    let panel_height = 28;
-    let margin = 24;
-    let x = (width.saturating_sub(panel_width)) / 2;
-    let y = height.saturating_sub(panel_height + margin);
-    fill_blended_rect(
-        target,
-        width,
-        height,
-        Rect {
-            x,
-            y,
-            width: panel_width,
-            height: panel_height,
-        },
-        0x101214,
-        220,
-    );
-    let track_margin = 8;
-    let track_height = 6;
-    let track_width = panel_width.saturating_sub(track_margin * 2);
-    let track = Rect {
-        x: x + track_margin,
-        y: y + (panel_height - track_height) / 2,
-        width: track_width,
-        height: track_height,
-    };
-    fill_blended_rect(target, width, height, track, 0x4E5660, 255);
-    let fill_width =
-        ((volume / DESKTOP_VOLUME_MAX).clamp(0.0, 1.0) * f64::from(track_width)).round() as u32;
-    fill_blended_rect(
-        target,
-        width,
-        height,
-        Rect {
-            width: fill_width,
-            ..track
-        },
-        0xEEEEEE,
-        255,
-    );
-}
-
-fn draw_help_overlay(target: &mut [u32], width: u32, height: u32, help: &RgbaBitmap) {
-    let panel_width = help
-        .width
-        .saturating_add(HELP_OVERLAY_PADDING * 2)
-        .min(width);
-    let panel_height = help
-        .height
-        .saturating_add(HELP_OVERLAY_PADDING * 2)
-        .min(height);
-    let panel = Rect {
-        x: HELP_OVERLAY_MARGIN.min(width.saturating_sub(panel_width)),
-        y: HELP_OVERLAY_MARGIN.min(height.saturating_sub(panel_height)),
-        width: panel_width,
-        height: panel_height,
-    };
-    fill_blended_rect(target, width, height, panel, 0x101214, 205);
-
-    let bitmap_width = help
-        .width
-        .min(panel.width.saturating_sub(HELP_OVERLAY_PADDING * 2));
-    let bitmap_height = help
-        .height
-        .min(panel.height.saturating_sub(HELP_OVERLAY_PADDING * 2));
-    draw_bitmap_scaled(
-        target,
-        width,
-        height,
-        help,
-        Rect {
-            x: panel.x + (panel.width.saturating_sub(bitmap_width)) / 2,
-            y: panel.y + (panel.height.saturating_sub(bitmap_height)) / 2,
-            width: bitmap_width,
-            height: bitmap_height,
-        },
-        255,
-    );
-}
-
-fn fill_blended_rect(
-    target: &mut [u32],
-    stride: u32,
-    canvas_height: u32,
-    rect: Rect,
-    color: u32,
-    alpha: u8,
-) {
-    let x_end = rect.x.saturating_add(rect.width).min(stride);
-    let y_end = rect.y.saturating_add(rect.height).min(canvas_height);
-    for y in rect.y..y_end {
-        for x in rect.x..x_end {
-            let index = (y * stride + x) as usize;
-            target[index] = blend(target[index], color, alpha);
-        }
-    }
-}
-
-fn blend(dst: u32, src: u32, alpha: u8) -> u32 {
-    let alpha = u32::from(alpha);
-    let inverse = 255 - alpha;
-    let channel = |shift| {
-        (((src >> shift) & 0xff_u32) * alpha + ((dst >> shift) & 0xff_u32) * inverse) / 255_u32
-    };
-    (channel(16) << 16) | (channel(8) << 8) | channel(0)
-}
-
-fn create_desktop_logo(
-    config: &crate::utils::config::LogoConfig,
-    output_width: u32,
-    output_height: u32,
-) -> Result<DesktopLogo> {
-    let logo = LogoOverlay::load(config, output_width, output_height)?;
-    Ok(DesktopLogo {
-        bitmap: RgbaBitmap {
-            pixels: yuva420p_to_rgba(&logo),
-            width: logo.width,
-            height: logo.height,
-        },
-        position: config.position.clone(),
-        opacity: logo.opacity,
-    })
-}
-
-fn yuva420p_to_rgba(logo: &LogoOverlay) -> Vec<u8> {
-    let width = logo.width as usize;
-    let height = logo.height as usize;
-    let y_plane = logo.frame.data(0);
-    let u_plane = logo.frame.data(1);
-    let v_plane = logo.frame.data(2);
-    let a_plane = logo.frame.data(3);
-    let y_stride = logo.frame.stride(0);
-    let u_stride = logo.frame.stride(1);
-    let v_stride = logo.frame.stride(2);
-    let a_stride = logo.frame.stride(3);
-    let mut pixels = vec![0_u8; width * height * 4];
-    for y in 0..height {
-        for x in 0..width {
-            let (r, g, b) = yuv_to_rgb(
-                i32::from(y_plane[y * y_stride + x]),
-                i32::from(u_plane[(y / 2) * u_stride + x / 2]),
-                i32::from(v_plane[(y / 2) * v_stride + x / 2]),
-            );
-            let destination = (y * width + x) * 4;
-            pixels[destination..destination + 4].copy_from_slice(&[
-                r,
-                g,
-                b,
-                a_plane[y * a_stride + x],
-            ]);
-        }
-    }
-    pixels
-}
-
-fn create_subtitle_bitmap(
-    text: &str,
-    window_width: u32,
-    large_display: bool,
-) -> Result<Option<RgbaBitmap>> {
-    let max_width = (window_width * SUBTITLE_MAX_WIDTH_PERCENT / 100).max(1);
-    let font_size = subtitle_font_size(large_display);
-    let text_width = max_width.saturating_sub(SUBTITLE_OUTLINE * 2).max(1);
-    let white = render_wrapped_text_bitmap(
-        text,
-        font_size,
-        Weight::SEMIBOLD,
-        RgbaColor {
-            r: 248,
-            g: 248,
-            b: 248,
-            a: 255,
-        },
-        text_width,
-    )?;
-    let black = render_wrapped_text_bitmap(
-        text,
-        font_size,
-        Weight::SEMIBOLD,
-        RgbaColor {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 230,
-        },
-        text_width,
-    )?;
-    let width = white.width + SUBTITLE_OUTLINE * 2;
-    let height = white.height + SUBTITLE_OUTLINE * 2;
-    let mut pixels = vec![0_u8; width as usize * height as usize * 4];
-    let outline = SUBTITLE_OUTLINE as i32;
-    for y in -outline..=outline {
-        for x in -outline..=outline {
-            if x == 0 && y == 0 {
-                continue;
-            }
-            let distance = ((x * x + y * y) as f32).sqrt();
-            if distance <= outline as f32 + 0.25 {
-                let alpha = (1.0 - distance / (outline as f32 + 0.75)).clamp(0.25, 1.0);
-                composite_bitmap(&mut pixels, width, &black, outline + x, outline + y, alpha);
-            }
-        }
-    }
-    composite_bitmap(&mut pixels, width, &white, outline, outline, 1.0);
-    Ok(Some(RgbaBitmap {
-        pixels,
-        width,
-        height,
-    }))
-}
-
-fn create_help_bitmap(window_width: u32, large_display: bool) -> Result<Option<RgbaBitmap>> {
-    let font_size = if large_display { 28.0 } else { 18.0 };
-    let bitmap = render_left_aligned_text_bitmap(
-        "Keyboard shortcuts\n\nE  Previous clip\nR  Reset playlist\nT  Next clip\n\nF  Fullscreen\nEsc  Stop playout\nLeft/Right  Volume\nS  Toggle subtitles\nH  Close help",
-        font_size,
-        Weight::SEMIBOLD,
-        RgbaColor {
-            r: 248,
-            g: 248,
-            b: 248,
-            a: 255,
-        },
-        (window_width * 3 / 5).clamp(280, 680),
-    )?;
-    Ok(Some(RgbaBitmap {
-        pixels: bitmap.pixels,
-        width: bitmap.width,
-        height: bitmap.height,
-    }))
-}
-
-fn subtitle_font_size(large_display: bool) -> f32 {
-    if large_display {
-        SUBTITLE_FULLSCREEN_FONT_SIZE
-    } else {
-        SUBTITLE_FONT_SIZE
-    }
-}
-
-fn composite_bitmap(
-    destination: &mut [u8],
-    destination_width: u32,
-    source: &TextBitmap,
-    x: i32,
-    y: i32,
-    alpha_scale: f32,
-) {
-    for source_y in 0..source.height as usize {
-        let destination_y = y + source_y as i32;
-        if destination_y < 0 {
-            continue;
-        }
-        for source_x in 0..source.width as usize {
-            let destination_x = x + source_x as i32;
-            if destination_x < 0 {
-                continue;
-            }
-            let destination_index =
-                (destination_y as usize * destination_width as usize + destination_x as usize) * 4;
-            let source_index = (source_y * source.width as usize + source_x) * 4;
-            if destination_index + 4 > destination.len() {
-                continue;
-            }
-            let pixel = [
-                source.pixels[source_index],
-                source.pixels[source_index + 1],
-                source.pixels[source_index + 2],
-                (f32::from(source.pixels[source_index + 3]) * alpha_scale).round() as u8,
-            ];
-            alpha_composite_rgba(
-                &mut destination[destination_index..destination_index + 4],
-                &pixel,
-            );
-        }
-    }
-}
-
-fn alpha_composite_rgba(destination: &mut [u8], source: &[u8]) {
-    let alpha = u16::from(source[3]);
-    let inverse = 255 - alpha;
-    for channel in 0..3 {
-        destination[channel] =
-            ((u16::from(destination[channel]) * inverse + u16::from(source[channel]) * alpha + 127)
-                / 255) as u8;
-    }
-    destination[3] = (u16::from(destination[3]) + alpha
-        - ((u16::from(destination[3]) * alpha + 127) / 255)) as u8;
-}
-
-fn yuv_to_rgb(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
-    let c = y.saturating_sub(16);
-    let d = u - 128;
-    let e = v - 128;
-    (
-        clamp_rgb((298 * c + 409 * e + 128) >> 8),
-        clamp_rgb((298 * c - 100 * d - 208 * e + 128) >> 8),
-        clamp_rgb((298 * c + 516 * d + 128) >> 8),
-    )
-}
-
-fn clamp_rgb(value: i32) -> u8 {
-    value.clamp(0, 255) as u8
-}
-
-struct AudioMasterClock {
-    sample_rate: u32,
-    device_buffer_samples: u64,
-    last_consumed_samples: u64,
-    anchor_samples: u64,
-    anchor_time: Instant,
-}
-
-impl AudioMasterClock {
-    fn new(sample_rate: u32, device_buffer_samples: u64) -> Self {
-        Self {
-            sample_rate,
-            device_buffer_samples,
-            last_consumed_samples: 0,
-            anchor_samples: 0,
-            anchor_time: Instant::now(),
-        }
-    }
-
-    fn reset_at(&mut self, samples: u64, now: Instant) {
-        self.last_consumed_samples = samples;
-        self.anchor_samples = samples;
-        self.anchor_time = now;
-    }
-
-    fn position(&mut self, submitted: u64, queued: u64, now: Instant) -> u64 {
-        let consumed = submitted.saturating_sub(queued);
-        if consumed != self.last_consumed_samples {
-            self.last_consumed_samples = consumed;
-            self.anchor_samples = consumed.saturating_sub(self.device_buffer_samples);
-            self.anchor_time = now;
-        }
-        let elapsed_samples = (now.duration_since(self.anchor_time).as_secs_f64()
-            * f64::from(self.sample_rate)) as u64;
-        self.anchor_samples
-            .saturating_add(elapsed_samples)
-            .min(consumed)
-    }
-}
-
-fn video_pts_in_audio_samples(video_pts: i64, video_time_base: Rational, sample_rate: u32) -> u64 {
-    video_pts
-        .rescale(video_time_base, Rational(1, sample_rate as i32))
-        .max(0) as u64
-}
-
-fn adjusted_volume(volume: f64, delta: f64) -> f64 {
-    (volume + delta).clamp(DESKTOP_VOLUME_MIN, DESKTOP_VOLUME_MAX)
-}
-
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "desktop-cpu"))]
+    use super::gpu::yuv_color_parameters;
+    use super::render::fit_rect;
     use super::*;
+    #[cfg(feature = "desktop-cpu")]
+    use super::{cpu::scale_nearest, render::Rect, video::bgrz_to_rgb_pixel};
+    #[cfg(not(feature = "desktop-cpu"))]
+    use ffmpeg_next::util::color;
 
     #[test]
     fn audio_clock_interpolates_between_device_buffer_requests() {
@@ -1921,9 +1262,10 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "desktop-cpu")]
     #[test]
-    fn bgrz_pixels_match_softbuffer_rgb_layout() {
-        assert_eq!(bgrz_to_softbuffer_pixel([0x33, 0x22, 0x11, 0]), 0x0011_2233);
+    fn bgrz_pixels_are_converted_to_rgb() {
+        assert_eq!(bgrz_to_rgb_pixel([0x33, 0x22, 0x11, 0]), 0x0011_2233);
     }
 
     #[test]
@@ -1957,9 +1299,18 @@ mod tests {
 
     #[test]
     fn desktop_volume_adjustment_is_clamped() {
-        assert_eq!(adjusted_volume(1.0, 0.05), 1.05);
-        assert_eq!(adjusted_volume(1.49, 0.05), DESKTOP_VOLUME_MAX);
-        assert_eq!(adjusted_volume(0.01, -0.05), DESKTOP_VOLUME_MIN);
+        assert_eq!(
+            adjusted_volume(1.0, 0.05, DESKTOP_VOLUME_MIN, DESKTOP_VOLUME_MAX),
+            1.05
+        );
+        assert_eq!(
+            adjusted_volume(1.49, 0.05, DESKTOP_VOLUME_MIN, DESKTOP_VOLUME_MAX),
+            DESKTOP_VOLUME_MAX
+        );
+        assert_eq!(
+            adjusted_volume(0.01, -0.05, DESKTOP_VOLUME_MIN, DESKTOP_VOLUME_MAX),
+            DESKTOP_VOLUME_MIN
+        );
     }
 
     #[test]
@@ -1971,6 +1322,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "desktop-cpu")]
     #[test]
     fn one_to_one_video_copy_preserves_pixels() {
         let video = VideoSurface {
@@ -1994,5 +1346,14 @@ mod tests {
         );
 
         assert_eq!(target, [1, 2, 3, 4]);
+    }
+
+    #[cfg(not(feature = "desktop-cpu"))]
+    #[test]
+    fn bt709_limited_range_uses_video_range_offset() {
+        let parameters = yuv_color_parameters(color::Space::BT709, color::Range::MPEG);
+        assert_eq!(parameters[0], 1.1644);
+        assert_eq!(parameters[12], -16.0 / 255.0);
+        assert_eq!(parameters[13], -0.5);
     }
 }

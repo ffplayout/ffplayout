@@ -14,6 +14,7 @@ workspace = true
 [features]
 default = ["desktop", "embed_frontend"]
 desktop = ["ff-engine/desktop"]
+desktop-cpu = ["desktop", "ff-engine/desktop-cpu"]
 embed_frontend = []
 dev-metrics = ["dep:console-subscriber", "dep:tracing-subscriber", "tokio/tracing"]
 processing-bench = ["ff-engine/processing-bench"]

@@ -12,7 +12,8 @@ workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:cpal", "dep:softbuffer", "dep:winit"]
+desktop = ["dep:cpal", "dep:pixels", "dep:winit"]
+desktop-cpu = ["desktop", "dep:softbuffer"]
 processing-bench = []
 tokio = ["dep:tokio"]
 
@@ -22,6 +23,7 @@ cpal = { version = "0.18", optional = true }
 cosmic-text = "0.19"
 ffmpeg-next = { git = "https://github.com/zmwangx/rust-ffmpeg.git" }
 log = { version = "0.4", features = ["kv"] }
+pixels = { version = "0.17", optional = true }
 regex = "1"
 rten-simd = "0.24"
 softbuffer = { version = "0.4", optional = true }

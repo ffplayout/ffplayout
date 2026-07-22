@@ -24,9 +24,19 @@ Of course, you can also use media platforms that support streaming input.
 ## Desktop
 
 In desktop mode, ffplayout renders directly through the engine's native
-`winit`/`softbuffer` output with audio provided by CPAL. You need a desktop
-session and a build with the `desktop` feature enabled; no external **ffplay**
-process is used.
+`winit`/`pixels` output with audio provided by CPAL. `pixels` uses `wgpu` for
+GPU-backed YUV-to-RGB conversion, scaling, composition, and presentation. The
+desktop renderer uploads Y, U, and V planes directly instead of building a
+full-frame CPU RGB buffer. You need a desktop session and a build with the
+`desktop` feature enabled; no external **ffplay** process is used.
+
+For systems where the GPU renderer is not usable, build with the optional
+`desktop-cpu` feature. It replaces `pixels` with the CPU-only `softbuffer`
+renderer:
+
+```bash
+cargo build -p ffplayout --features desktop-cpu
+```
 
 The desktop window has these controls:
 

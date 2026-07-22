@@ -55,8 +55,13 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let playout = open_playout(&config, output_config.clone()).await?;
     *manager.playback_control.lock().await = playout.playback_control();
     if config.output.mode == OutputMode::Desktop {
+        #[cfg(feature = "desktop-cpu")]
         info!(channel = config.general.channel_id;
-            "Desktop output uses backend/engine winit/softbuffer renderer"
+            "Desktop output uses backend/engine winit/softbuffer CPU renderer"
+        );
+        #[cfg(not(feature = "desktop-cpu"))]
+        info!(channel = config.general.channel_id;
+            "Desktop output uses backend/engine winit/pixels renderer"
         );
     }
 

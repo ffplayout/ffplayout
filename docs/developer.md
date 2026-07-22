@@ -37,7 +37,7 @@ export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 
 The optional `processing-bench` feature prints periodic wall-clock timings for
 video and audio decode, audio processing and encoding, scale, overlay,
-subtitle, encoded-output, and desktop SDL stages. It is intended for local CPU
+subtitle, encoded-output, and desktop presentation stages. It is intended for local CPU
 profiling and is disabled in normal builds.
 
 ```bash
