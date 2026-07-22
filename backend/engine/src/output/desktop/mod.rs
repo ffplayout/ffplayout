@@ -35,7 +35,7 @@ use crate::{
 mod audio;
 #[cfg(feature = "desktop-cpu")]
 mod cpu;
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 mod gpu;
 mod graphics;
 mod render;
@@ -46,7 +46,7 @@ mod video;
 use audio::DesktopAudio;
 #[cfg(feature = "desktop-cpu")]
 use cpu::WindowRenderer;
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 use gpu::WindowRenderer;
 use graphics::{
     DesktopLogo, RgbaBitmap, create_desktop_logo, create_help_bitmap, create_subtitle_bitmap,
@@ -1193,13 +1193,13 @@ impl ApplicationHandler for DesktopWindowApp {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(not(feature = "desktop-cpu"))]
+    #[cfg(feature = "desktop-gpu")]
     use super::gpu::yuv_color_parameters;
     use super::render::fit_rect;
     use super::*;
     #[cfg(feature = "desktop-cpu")]
     use super::{cpu::scale_nearest, render::Rect, video::bgrz_to_rgb_pixel};
-    #[cfg(not(feature = "desktop-cpu"))]
+    #[cfg(feature = "desktop-gpu")]
     use ffmpeg_next::util::color;
 
     #[test]
@@ -1348,7 +1348,7 @@ mod tests {
         assert_eq!(target, [1, 2, 3, 4]);
     }
 
-    #[cfg(not(feature = "desktop-cpu"))]
+    #[cfg(feature = "desktop-gpu")]
     #[test]
     fn bt709_limited_range_uses_video_range_offset() {
         let parameters = yuv_color_parameters(color::Space::BT709, color::Range::MPEG);

@@ -1,4 +1,4 @@
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
@@ -15,7 +15,7 @@ use super::{
 
 pub(super) type WindowRenderer = PixelsRenderer;
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 pub(super) struct PixelsRenderer {
     pixels: Pixels<'static>,
     window: Arc<Window>,
@@ -23,7 +23,7 @@ pub(super) struct PixelsRenderer {
     sprites: GpuSpriteRenderer,
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 impl PixelsRenderer {
     pub(super) fn new(window: Arc<Window>, _width: u32, _height: u32) -> Result<Self> {
         let size = window.inner_size();
@@ -75,7 +75,7 @@ impl PixelsRenderer {
     }
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 struct GpuYuvRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -88,7 +88,7 @@ struct GpuYuvRenderer {
     last_pts: Option<i64>,
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 struct GpuYuvTextures {
     width: u32,
     height: u32,
@@ -102,7 +102,7 @@ struct GpuYuvTextures {
     bind_group: wgpu::BindGroup,
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 impl GpuYuvRenderer {
     fn new(context: &pixels::PixelsContext<'_>, surface_format: wgpu::TextureFormat) -> Self {
         let device = context.device.clone();
@@ -322,7 +322,7 @@ impl GpuYuvRenderer {
     }
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 fn texture_binding(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -336,7 +336,7 @@ fn texture_binding(binding: u32) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 fn create_plane_texture(
     device: &wgpu::Device,
     width: u32,
@@ -359,7 +359,7 @@ fn create_plane_texture(
     })
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 fn write_plane(queue: &wgpu::Queue, texture: &wgpu::Texture, width: u32, height: u32, data: &[u8]) {
     queue.write_texture(
         wgpu::TexelCopyTextureInfo {
@@ -382,7 +382,7 @@ fn write_plane(queue: &wgpu::Queue, texture: &wgpu::Texture, width: u32, height:
     );
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 pub(super) fn yuv_color_parameters(space: color::Space, range: color::Range) -> [f32; 16] {
     let (matrix, offset) = match (space, range) {
         (color::Space::BT709 | color::Space::BT2020NCL, color::Range::JPEG) => (
@@ -416,7 +416,7 @@ pub(super) fn yuv_color_parameters(space: color::Space, range: color::Range) -> 
     parameters
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 fn f32_bytes(values: &[f32]) -> Vec<u8> {
     values
         .iter()
@@ -424,7 +424,7 @@ fn f32_bytes(values: &[f32]) -> Vec<u8> {
         .collect()
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 const YUV_SHADER: &str = r#"
 struct Parameters {
     column0: vec4<f32>,
@@ -487,7 +487,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 struct GpuSpriteRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -496,7 +496,7 @@ struct GpuSpriteRenderer {
     sampler: wgpu::Sampler,
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 impl GpuSpriteRenderer {
     fn new(context: &pixels::PixelsContext<'_>, surface_format: wgpu::TextureFormat) -> Self {
         let device = context.device.clone();
@@ -719,7 +719,7 @@ impl GpuSpriteRenderer {
     }
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 fn solid_bitmap(color: [u8; 4]) -> RgbaBitmap {
     RgbaBitmap {
         pixels: color.to_vec(),
@@ -728,7 +728,7 @@ fn solid_bitmap(color: [u8; 4]) -> RgbaBitmap {
     }
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 fn volume_bitmap(volume: f64) -> RgbaBitmap {
     let width = 240_u32;
     let height = 28_u32;
@@ -754,7 +754,7 @@ fn volume_bitmap(volume: f64) -> RgbaBitmap {
     }
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 fn write_rgba_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, bitmap: &RgbaBitmap) {
     queue.write_texture(
         wgpu::TexelCopyTextureInfo {
@@ -777,7 +777,7 @@ fn write_rgba_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, bitmap: &Rgb
     );
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 const SPRITE_SHADER: &str = r#"
 struct Parameters { transform: vec4<f32>, opacity: vec4<f32> };
 @group(0) @binding(0) var image: texture_2d<f32>;

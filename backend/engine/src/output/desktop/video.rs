@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 use ffmpeg_next::util::color;
 use ffmpeg_next::{frame, software::scaling, util::format::pixel::Pixel};
 
@@ -9,15 +9,15 @@ use ffmpeg_next::{frame, software::scaling, util::format::pixel::Pixel};
 pub(super) struct VideoSurface {
     pub(super) width: u32,
     pub(super) height: u32,
-    #[cfg(not(feature = "desktop-cpu"))]
+    #[cfg(feature = "desktop-gpu")]
     pub(super) y: Arc<[u8]>,
-    #[cfg(not(feature = "desktop-cpu"))]
+    #[cfg(feature = "desktop-gpu")]
     pub(super) u: Arc<[u8]>,
-    #[cfg(not(feature = "desktop-cpu"))]
+    #[cfg(feature = "desktop-gpu")]
     pub(super) v: Arc<[u8]>,
-    #[cfg(not(feature = "desktop-cpu"))]
+    #[cfg(feature = "desktop-gpu")]
     pub(super) color_space: color::Space,
-    #[cfg(not(feature = "desktop-cpu"))]
+    #[cfg(feature = "desktop-gpu")]
     pub(super) color_range: color::Range,
     #[cfg(feature = "desktop-cpu")]
     pub(super) pixels: Arc<[u32]>,
@@ -99,7 +99,7 @@ impl DesktopFrameConverter {
             })
         }
 
-        #[cfg(not(feature = "desktop-cpu"))]
+        #[cfg(feature = "desktop-gpu")]
         {
             let chroma_width = width.div_ceil(2) as usize;
             let chroma_height = height.div_ceil(2) as usize;
@@ -122,12 +122,12 @@ fn output_pixel_format() -> Pixel {
     Pixel::BGRZ
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 fn output_pixel_format() -> Pixel {
     Pixel::YUV420P
 }
 
-#[cfg(not(feature = "desktop-cpu"))]
+#[cfg(feature = "desktop-gpu")]
 fn copy_frame_plane(frame: &frame::Video, plane: usize, width: usize, height: usize) -> Vec<u8> {
     let stride = frame.stride(plane);
     let source = frame.data(plane);

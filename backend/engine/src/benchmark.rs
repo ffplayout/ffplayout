@@ -10,11 +10,11 @@ pub(crate) enum Stage {
     TextRuntime,
     Vtt,
     EncodeMux,
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     DesktopSend,
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     DesktopConvert,
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     DesktopPresent,
     LiveQueue,
 }
@@ -32,11 +32,11 @@ impl Stage {
         Self::TextRuntime,
         Self::Vtt,
         Self::EncodeMux,
-        #[cfg(feature = "desktop")]
+        #[cfg(feature = "desktop-base")]
         Self::DesktopSend,
-        #[cfg(feature = "desktop")]
+        #[cfg(feature = "desktop-base")]
         Self::DesktopConvert,
-        #[cfg(feature = "desktop")]
+        #[cfg(feature = "desktop-base")]
         Self::DesktopPresent,
         Self::LiveQueue,
     ];
@@ -55,11 +55,11 @@ impl Stage {
             Self::TextRuntime => 7,
             Self::Vtt => 8,
             Self::EncodeMux => 9,
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             Self::DesktopSend => 10,
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             Self::DesktopConvert => 11,
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             Self::DesktopPresent => 12,
             Self::LiveQueue => Self::COUNT - 1,
         }
@@ -77,11 +77,11 @@ impl Stage {
             Self::TextRuntime => "text_runtime",
             Self::Vtt => "vtt",
             Self::EncodeMux => "encode_mux",
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             Self::DesktopSend => "desktop_send",
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             Self::DesktopConvert => "desktop_convert",
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             Self::DesktopPresent => "desktop_present",
             Self::LiveQueue => "live_queue",
         }
@@ -264,7 +264,7 @@ mod enabled {
         });
     }
 
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     pub(crate) fn detach() {
         BENCH.with(|bench| {
             bench.borrow_mut().take();
@@ -337,7 +337,7 @@ pub(crate) use enabled::current;
 #[cfg(feature = "processing-bench")]
 pub(crate) use enabled::{BenchHandle, activate};
 
-#[cfg(all(feature = "processing-bench", feature = "desktop"))]
+#[cfg(all(feature = "processing-bench", feature = "desktop-base"))]
 pub(crate) use enabled::detach;
 
 #[cfg(not(feature = "processing-bench"))]
@@ -360,7 +360,7 @@ pub(crate) fn current() -> Option<BenchHandle> {
     None
 }
 
-#[cfg(all(not(feature = "processing-bench"), feature = "desktop"))]
+#[cfg(all(not(feature = "processing-bench"), feature = "desktop-base"))]
 #[inline]
 pub(crate) fn detach() {}
 

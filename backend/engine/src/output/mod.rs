@@ -1,6 +1,6 @@
 use std::{error::Error, fmt};
 
-#[cfg(feature = "desktop")]
+#[cfg(feature = "desktop-base")]
 pub(crate) mod desktop;
 mod encoded;
 mod hls;
@@ -9,14 +9,14 @@ mod vtt;
 pub use hls::resolved_variant_playlist_path;
 
 use anyhow::Result;
-#[cfg(feature = "desktop")]
+#[cfg(feature = "desktop-base")]
 use anyhow::anyhow;
-#[cfg(feature = "desktop")]
+#[cfg(feature = "desktop-base")]
 use desktop::{DesktopFrameSender, DesktopOutput};
 use encoded::{EncodedFormat, EncodedOutput};
 use ffmpeg_next::frame;
 
-#[cfg(feature = "desktop")]
+#[cfg(feature = "desktop-base")]
 use crate::benchmark::BenchHandle;
 use crate::{
     HlsHealth,
@@ -78,7 +78,7 @@ pub(crate) struct Output {
 
 enum OutputKind {
     Encoded(Box<EncodedOutput>),
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     Desktop(Box<DesktopOutput>),
 }
 
@@ -129,7 +129,7 @@ impl Output {
         })
     }
 
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     pub(crate) fn open_desktop(cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
             kind: OutputKind::Desktop(Box::new(DesktopOutput::open(cfg)?)),
@@ -139,7 +139,7 @@ impl Output {
     pub(crate) fn audio_frame_size(&self) -> usize {
         match &self.kind {
             OutputKind::Encoded(output) => output.audio_frame_size(),
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.audio_frame_size(),
         }
     }
@@ -147,7 +147,7 @@ impl Output {
     pub(crate) fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
         match &mut self.kind {
             OutputKind::Encoded(output) => output.encode_video(frame),
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.encode_video(frame),
         }
     }
@@ -155,7 +155,7 @@ impl Output {
     pub(crate) fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
         match &mut self.kind {
             OutputKind::Encoded(output) => output.encode_audio(frame),
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.encode_audio(frame),
         }
     }
@@ -163,7 +163,7 @@ impl Output {
     pub(crate) fn set_playout_rate(&mut self, rate: f64) {
         match &mut self.kind {
             OutputKind::Encoded(output) => output.set_playout_rate(rate),
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => {}
         }
     }
@@ -171,17 +171,17 @@ impl Output {
     pub(crate) fn finish(self) -> Result<()> {
         match self.kind {
             OutputKind::Encoded(output) => output.finish(),
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.finish(),
         }
     }
 
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     pub(crate) fn is_desktop(&self) -> bool {
         matches!(self.kind, OutputKind::Desktop(_))
     }
 
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     pub(crate) fn run_desktop<T, F>(&mut self, benchmark: BenchHandle, operation: F) -> Result<T>
     where
         T: Send + 'static,
@@ -215,7 +215,7 @@ impl FrameOutput for Output {
     ) {
         match &mut self.kind {
             OutputKind::Encoded(_) => blend_logo(frame, logo, opacity_factor),
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => {}
         }
     }
@@ -223,7 +223,7 @@ impl FrameOutput for Output {
     fn benchmarks_logo_overlay(&self) -> bool {
         match self.kind {
             OutputKind::Encoded(_) => true,
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => false,
         }
     }
@@ -238,7 +238,7 @@ impl FrameOutput for Output {
             OutputKind::Encoded(output) => {
                 output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
             }
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => Ok(()),
         }
     }

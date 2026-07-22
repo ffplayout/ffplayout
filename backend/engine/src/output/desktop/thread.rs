@@ -6,19 +6,19 @@
 //! one desktop-output session can be active at once - reasonable, since
 //! there is only one local display anyway.
 
-#[cfg(all(feature = "desktop", feature = "tokio"))]
+#[cfg(all(feature = "desktop-base", feature = "tokio"))]
 use std::{
     sync::{OnceLock, mpsc},
     thread,
 };
 
-#[cfg(all(feature = "desktop", feature = "tokio"))]
+#[cfg(all(feature = "desktop-base", feature = "tokio"))]
 type Job = Box<dyn FnOnce() + Send>;
 
-#[cfg(all(feature = "desktop", feature = "tokio"))]
+#[cfg(all(feature = "desktop-base", feature = "tokio"))]
 static DESKTOP_THREAD: OnceLock<mpsc::SyncSender<Job>> = OnceLock::new();
 
-#[cfg(all(feature = "desktop", feature = "tokio"))]
+#[cfg(all(feature = "desktop-base", feature = "tokio"))]
 fn desktop_thread() -> &'static mpsc::SyncSender<Job> {
     DESKTOP_THREAD.get_or_init(|| {
         // Rendezvous channel: `send` blocks until the dedicated thread has
@@ -43,7 +43,7 @@ fn desktop_thread() -> &'static mpsc::SyncSender<Job> {
 /// the job has been *accepted* by that thread (not until it finishes) -
 /// callers that need to wait for completion should signal it themselves,
 /// e.g. via a channel captured in the closure.
-#[cfg(all(feature = "desktop", feature = "tokio"))]
+#[cfg(all(feature = "desktop-base", feature = "tokio"))]
 pub(crate) fn spawn(job: impl FnOnce() + Send + 'static) {
     desktop_thread()
         .send(Box::new(job))

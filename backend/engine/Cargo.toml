@@ -12,8 +12,10 @@ workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:cpal", "dep:pixels", "dep:winit"]
-desktop-cpu = ["desktop", "dep:softbuffer"]
+desktop-base = ["dep:cpal", "dep:winit"]
+desktop-gpu = ["desktop-base", "dep:pixels"]
+desktop = ["desktop-gpu"]
+desktop-cpu = ["desktop-base", "dep:softbuffer"]
 processing-bench = []
 tokio = ["dep:tokio"]
 

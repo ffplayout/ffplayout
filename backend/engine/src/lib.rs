@@ -163,7 +163,7 @@ pub struct AsyncPlayout {
 #[cfg(feature = "tokio")]
 enum WorkerCompletion {
     Thread(JoinHandle<()>),
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     DesktopThread(oneshot::Receiver<()>),
 }
 
@@ -216,7 +216,7 @@ impl AsyncPlayout {
         Ok(playout)
     }
 
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     pub async fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         let (commands, command_rx) = mpsc::channel();
         let (ready_tx, ready_rx) = oneshot::channel();
@@ -398,7 +398,7 @@ impl AsyncPlayout {
                     return Err(anyhow!("playout worker panicked during finish"));
                 }
             }
-            #[cfg(feature = "desktop")]
+            #[cfg(feature = "desktop-base")]
             WorkerCompletion::DesktopThread(done_rx) => {
                 if done_rx.await.is_err() && finish_result.is_ok() {
                     return Err(anyhow!("desktop playout worker stopped unexpectedly"));
@@ -500,7 +500,7 @@ impl Playout {
         Ok(Self::with_output(config, output, fallback_duration))
     }
 
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     pub fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
         init_ffmpeg(&config)?;
@@ -564,11 +564,11 @@ impl Playout {
     }
 
     fn with_output(config: OutputConfig, output: Output, fallback_duration: f64) -> Self {
-        #[cfg(feature = "desktop")]
+        #[cfg(feature = "desktop-base")]
         if !output.is_desktop() {
             benchmark::start(config.channel_id);
         }
-        #[cfg(not(feature = "desktop"))]
+        #[cfg(not(feature = "desktop-base"))]
         benchmark::start(config.channel_id);
 
         Self {
@@ -645,7 +645,7 @@ impl Playout {
         let subtitles_media_path = subtitles_media_path.map(str::to_string);
         self.output.set_playout_rate(playout_rate);
 
-        #[cfg(feature = "desktop")]
+        #[cfg(feature = "desktop-base")]
         if self.output.is_desktop() {
             let config = self.config.clone();
             let fallback_duration = self.fallback_duration;
