@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use ffmpeg_next::util::color;
-use pixels::{Pixels, SurfaceTexture, wgpu};
 use winit::window::Window;
 
 use super::{
@@ -13,28 +12,50 @@ use super::{
     video::VideoSurface,
 };
 
-pub(super) type WindowRenderer = PixelsRenderer;
+pub(super) type WindowRenderer = WgpuRenderer;
 
 #[cfg(feature = "desktop-gpu")]
-pub(super) struct PixelsRenderer {
-    pixels: Pixels<'static>,
+pub(super) struct WgpuRenderer {
     window: Arc<Window>,
+    surface: wgpu::Surface<'static>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
     yuv: GpuYuvRenderer,
     sprites: GpuSpriteRenderer,
 }
 
 #[cfg(feature = "desktop-gpu")]
-impl PixelsRenderer {
+impl WgpuRenderer {
     pub(super) fn new(window: Arc<Window>, _width: u32, _height: u32) -> Result<Self> {
         let size = window.inner_size();
-        let surface =
-            SurfaceTexture::new(size.width.max(1), size.height.max(1), Arc::clone(&window));
-        let pixels = Pixels::new(1, 1, surface).map_err(|error| anyhow!("{error}"))?;
-        let yuv = GpuYuvRenderer::new(pixels.context(), pixels.surface_texture_format());
-        let sprites = GpuSpriteRenderer::new(pixels.context(), pixels.surface_texture_format());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let surface = instance
+            .create_surface(Arc::clone(&window))
+            .map_err(|error| anyhow!("creating WGPU surface: {error}"))?;
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: Some(&surface),
+        }))
+        .map_err(|error| anyhow!("requesting WGPU adapter: {error}"))?;
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("ffplayout_desktop_device"),
+            ..Default::default()
+        }))
+        .map_err(|error| anyhow!("requesting WGPU device: {error}"))?;
+        let config = surface
+            .get_default_config(&adapter, size.width.max(1), size.height.max(1))
+            .ok_or_else(|| anyhow!("WGPU adapter does not support the desktop surface"))?;
+        surface.configure(&device, &config);
+        let yuv = GpuYuvRenderer::new(&device, &queue, config.format);
+        let sprites = GpuSpriteRenderer::new(&device, &queue, config.format);
         Ok(Self {
-            pixels,
             window,
+            surface,
+            device,
+            queue,
+            config,
             yuv,
             sprites,
         })
@@ -44,9 +65,10 @@ impl PixelsRenderer {
         if width == 0 || height == 0 {
             return Ok(());
         }
-        self.pixels
-            .resize_surface(width, height)
-            .map_err(|error| anyhow!("{error}"))
+        self.config.width = width;
+        self.config.height = height;
+        self.surface.configure(&self.device, &self.config);
+        Ok(())
     }
 
     pub(super) fn resize_buffer(&mut self, width: u32, height: u32) -> Result<()> {
@@ -65,13 +87,33 @@ impl PixelsRenderer {
         // requests the compositor frame callback that releases the next
         // redraw, including after a surface resize.
         self.window.pre_present_notify();
-        self.pixels
-            .render_with(|encoder, target, _| {
-                self.yuv.render(encoder, target, size);
-                self.sprites.render(encoder, target, frame, size);
-                Ok(())
-            })
-            .map_err(|error| anyhow!("{error}"))
+        let surface_texture = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Outdated => {
+                self.surface.configure(&self.device, &self.config);
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(anyhow!("WGPU desktop surface became unavailable"));
+            }
+        };
+        let target = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("ffplayout_desktop_encoder"),
+            });
+        self.yuv.render(&mut encoder, &target, size);
+        self.sprites.render(&mut encoder, &target, frame, size);
+        self.queue.submit(Some(encoder.finish()));
+        surface_texture.present();
+        Ok(())
     }
 }
 
@@ -104,9 +146,13 @@ struct GpuYuvTextures {
 
 #[cfg(feature = "desktop-gpu")]
 impl GpuYuvRenderer {
-    fn new(context: &pixels::PixelsContext<'_>, surface_format: wgpu::TextureFormat) -> Self {
-        let device = context.device.clone();
-        let queue = context.queue.clone();
+    fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        surface_format: wgpu::TextureFormat,
+    ) -> Self {
+        let device = device.clone();
+        let queue = queue.clone();
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("ffplayout_yuv_bind_group_layout"),
             entries: &[
@@ -498,9 +544,13 @@ struct GpuSpriteRenderer {
 
 #[cfg(feature = "desktop-gpu")]
 impl GpuSpriteRenderer {
-    fn new(context: &pixels::PixelsContext<'_>, surface_format: wgpu::TextureFormat) -> Self {
-        let device = context.device.clone();
-        let queue = context.queue.clone();
+    fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        surface_format: wgpu::TextureFormat,
+    ) -> Self {
+        let device = device.clone();
+        let queue = queue.clone();
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("ffplayout_sprite_bind_group_layout"),
             entries: &[

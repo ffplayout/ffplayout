@@ -772,9 +772,8 @@ fn resample_audio_frame(
     let input_samples = i32::try_from(input.samples()).context("audio frame is too large")?;
     // SAFETY: the context is initialized and owned by `resampler`; the input
     // sample count was checked to fit FFmpeg's API type above.
-    let output_capacity = unsafe {
-        ffmpeg_next::ffi::swr_get_out_samples(resampler.as_mut_ptr(), input_samples)
-    };
+    let output_capacity =
+        unsafe { ffmpeg_next::ffi::swr_get_out_samples(resampler.as_mut_ptr(), input_samples) };
     if output_capacity < 0 {
         return Err(ffmpeg_next::Error::from(output_capacity))
             .context("calculating audio resampler output capacity");
@@ -1486,8 +1485,8 @@ mod tests {
 
     use super::{
         FrameRateConverter, LogoFade, PlaybackControl, Rational, Timeline, fit_dimensions,
-        padding_to_sync, parse_duration_us, play_clip, should_play_loop_iteration,
-        resample_audio_frame, single_frame_repeat_frames, synchronize_after_skip,
+        padding_to_sync, parse_duration_us, play_clip, resample_audio_frame,
+        should_play_loop_iteration, single_frame_repeat_frames, synchronize_after_skip,
     };
     use crate::{output::FrameOutput, utils::config::OutputConfig};
 
@@ -1639,9 +1638,7 @@ mod tests {
         let expected = FRAME_SAMPLES * FRAME_COUNT * OUTPUT_RATE as usize / INPUT_RATE as usize;
         assert!(output_samples.abs_diff(expected) < 64);
         assert!(
-            resampler
-                .delay()
-                .is_none_or(|delay| delay.output < 64),
+            resampler.delay().is_none_or(|delay| delay.output < 64),
             "resampler retained too many output samples: {:?}",
             resampler.delay()
         );
