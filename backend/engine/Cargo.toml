@@ -30,7 +30,12 @@ log = { version = "0.4", features = ["kv"] }
 pollster = { version = "0.4", optional = true }
 regex = "1"
 rten-simd = "0.24"
-softbuffer = { version = "0.4", optional = true }
+softbuffer = { version = "0.4", optional = true, default-features = false, features = [
+    "wayland",
+    "wayland-dlopen",
+    "x11",
+    "x11-dlopen",
+] }
 tokio = { version = "1.44", optional = true, features = ["rt", "sync"] }
 winit = { version = "0.30", optional = true }
 
