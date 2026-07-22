@@ -8,8 +8,6 @@ import { useAuth } from '@/stores/auth'
 import { useConfig } from '@/stores/config'
 import { useIndex } from '@/stores/index'
 
-import GenericModal from '@/components/utils/GenericModal.vue'
-
 const { t } = useI18n()
 const authStore = useAuth()
 const configStore = useConfig()
@@ -69,28 +67,12 @@ async function save() {
         settings.value = await response.json()
         savedSettings.value = cloneDeep(settings.value)
         smtpPassword.value = ''
-        configStore.showRestartModal = true
         indexStore.msgAlert('success', t('config.updateGlobalSuccess'), 2)
     } catch {
         indexStore.msgAlert('error', t('config.updateGlobalFailed'), 3)
     }
 }
 
-async function restart(res: boolean) {
-    if (res) {
-        await Promise.all(
-            configStore.channels.map(({ id }) =>
-                fetch(`/api/control/${id}/process`, {
-                    method: 'POST',
-                    headers: { ...configStore.contentType, ...authStore.authHeader },
-                    body: JSON.stringify({ command: 'restart' }),
-                }),
-            ),
-        )
-    }
-
-    configStore.showRestartModal = false
-}
 </script>
 
 <template>
@@ -136,10 +118,4 @@ async function restart(res: boolean) {
             </div>
         </form>
     </div>
-    <GenericModal
-        :title="t('config.restartTile')"
-        :text="t('config.restartText')"
-        :show="configStore.showRestartModal"
-        :modal-action="restart"
-    />
 </template>

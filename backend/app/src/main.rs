@@ -19,6 +19,9 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
+#[cfg(feature = "dev-metrics")]
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
 use ffplayout::{
     ARGS,
     api::file_access::FileAccessState,
@@ -62,7 +65,15 @@ pub static MAX_BLOCKING_THREADS: LazyLock<usize> =
 
 fn main() -> Result<(), ProcessError> {
     #[cfg(feature = "dev-metrics")]
-    console_subscriber::init();
+    tracing_subscriber::registry()
+        // Do not install console_subscriber's formatting layer. Winit emits
+        // high-frequency tracing spans that are not application log records.
+        .with(
+            console_subscriber::ConsoleLayer::builder()
+                .with_default_env()
+                .spawn(),
+        )
+        .init();
 
     tokio::runtime::Builder::new_multi_thread()
         .max_blocking_threads(*MAX_BLOCKING_THREADS)

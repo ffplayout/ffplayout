@@ -4,7 +4,7 @@ use std::{
     sync::OnceLock,
 };
 
-use ffmpeg_next::{ffi, format::Pixel};
+use ffmpeg_next::{codec, ffi, format::Pixel, media};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FfmpegCapabilities {
@@ -141,7 +141,7 @@ impl AvVersion {
 }
 
 fn linked_avformat_version() -> AvVersion {
-    let version = unsafe { ffi::avformat_version() };
+    let version = ffmpeg_next::format::version();
     AvVersion {
         major: version >> 16,
         minor: (version >> 8) & 0xff,
@@ -158,36 +158,37 @@ fn detect_encoders() -> Vec<FfmpegCodec> {
     let mut opaque: *mut c_void = ptr::null_mut();
 
     loop {
-        let codec = unsafe { ffi::av_codec_iterate(&mut opaque) };
-        if codec.is_null() {
+        let codec_ptr = unsafe { ffi::av_codec_iterate(&mut opaque) };
+        if codec_ptr.is_null() {
             break;
         }
-        if unsafe { ffi::av_codec_is_encoder(codec) } == 0 {
+        let codec = unsafe { codec::codec::Codec::wrap(codec_ptr) };
+        if !codec.is_encoder() {
             continue;
         }
 
-        let media_type = match unsafe { (*codec).type_ } {
-            ffi::AVMediaType::AVMEDIA_TYPE_AUDIO => FfmpegMediaType::Audio,
-            ffi::AVMediaType::AVMEDIA_TYPE_VIDEO => FfmpegMediaType::Video,
-            ffi::AVMediaType::AVMEDIA_TYPE_SUBTITLE => FfmpegMediaType::Subtitle,
+        let media_type = match codec.medium() {
+            media::Type::Audio => FfmpegMediaType::Audio,
+            media::Type::Video => FfmpegMediaType::Video,
+            media::Type::Subtitle => FfmpegMediaType::Subtitle,
             _ => continue,
         };
-        let name = c_string(unsafe { (*codec).name });
+        let name = codec.name().to_string();
         if name.is_empty() {
             continue;
         }
 
-        let codec_id_raw = unsafe { (*codec).id };
+        let codec_id_raw = codec.id().into();
         encoders.push(FfmpegCodec {
-            name,
-            display_name: c_string(unsafe { (*codec).long_name }),
+            display_name: codec.description().to_string(),
             codec_id: codec_id_name(codec_id_raw),
             media_type,
-            hardware: is_hardware_encoder(codec),
-            wrapper: non_empty_c_string(unsafe { (*codec).wrapper_name }),
+            hardware: is_hardware_encoder(codec, &name),
+            wrapper: codec_wrapper_name(codec),
             engine_video_format: media_type != FfmpegMediaType::Video
-                || video_encoder_supports_engine_format(codec),
+                || video_encoder_supports_engine_format(codec, &name),
             codec_id_raw,
+            name,
         });
     }
 
@@ -202,7 +203,7 @@ fn detect_muxers() -> Vec<FfmpegMuxer> {
             let muxer = muxer_for_name(name)?;
             Some(FfmpegMuxer {
                 name: name.to_string(),
-                long_name: c_string(unsafe { (*muxer).long_name }),
+                long_name: muxer.description().to_string(),
             })
         })
         .collect()
@@ -213,7 +214,7 @@ fn muxer_supports_codec(muxer_name: &str, codec_id: ffi::AVCodecID) -> bool {
         return false;
     };
 
-    unsafe { ffi::avformat_query_codec(muxer, codec_id, ffi::FF_COMPLIANCE_NORMAL) > 0 }
+    unsafe { ffi::avformat_query_codec(muxer.as_ptr(), codec_id, ffi::FF_COMPLIANCE_NORMAL) > 0 }
 }
 
 fn output_muxer_supports_codec(
@@ -267,23 +268,23 @@ fn mpegts_output_supports_codec(codec: &FfmpegCodec) -> bool {
     }
 }
 
-fn muxer_for_name(name: &str) -> Option<*const ffi::AVOutputFormat> {
+fn muxer_for_name(name: &str) -> Option<ffmpeg_next::format::format::Output> {
     let name = CString::new(name).ok()?;
     let muxer = unsafe { ffi::av_guess_format(name.as_ptr(), ptr::null(), ptr::null()) };
-    (!muxer.is_null()).then_some(muxer)
+    (!muxer.is_null())
+        .then(|| unsafe { ffmpeg_next::format::format::Output::wrap(muxer.cast_mut()) })
 }
 
 fn codec_id_name(codec_id: ffi::AVCodecID) -> String {
-    c_string(unsafe { ffi::avcodec_get_name(codec_id) })
+    codec::Id::from(codec_id).name().to_string()
 }
 
-fn is_hardware_encoder(codec: *const ffi::AVCodec) -> bool {
-    let capabilities = unsafe { (*codec).capabilities };
+fn is_hardware_encoder(codec: codec::codec::Codec, name: &str) -> bool {
+    let capabilities = unsafe { (*codec.as_ptr()).capabilities };
     if capabilities & ffi::AV_CODEC_CAP_HARDWARE as i32 != 0 {
         return true;
     }
 
-    let name = c_string(unsafe { (*codec).name });
     matches!(
         name.rsplit_once('_').map(|(_, suffix)| suffix),
         Some(
@@ -292,38 +293,37 @@ fn is_hardware_encoder(codec: *const ffi::AVCodec) -> bool {
     )
 }
 
-fn video_encoder_supports_engine_format(codec: *const ffi::AVCodec) -> bool {
-    let mut formats = unsafe { (*codec).pix_fmts };
-    if formats.is_null() {
+fn video_encoder_supports_engine_format(codec: codec::codec::Codec, name: &str) -> bool {
+    let Ok(video) = codec.video() else {
+        return false;
+    };
+    let Some(formats) = video.formats() else {
         return true;
-    }
+    };
 
-    loop {
-        let format = unsafe { *formats };
-        if format == ffi::AVPixelFormat::AV_PIX_FMT_NONE {
-            return false;
-        }
-        let pixel = Pixel::from(format);
+    for pixel in formats {
         if pixel == Pixel::YUV420P
-            || (is_qsv_encoder(codec) && pixel == Pixel::NV12)
-            || (is_vaapi_encoder(codec) && pixel == Pixel::VAAPI)
+            || (is_qsv_encoder(name) && pixel == Pixel::NV12)
+            || (is_vaapi_encoder(name) && pixel == Pixel::VAAPI)
         {
             return true;
         }
-        formats = unsafe { formats.add(1) };
     }
+
+    false
 }
 
-fn is_qsv_encoder(codec: *const ffi::AVCodec) -> bool {
-    c_string(unsafe { (*codec).name }).ends_with("_qsv")
+fn is_qsv_encoder(name: &str) -> bool {
+    name.ends_with("_qsv")
 }
 
-fn is_vaapi_encoder(codec: *const ffi::AVCodec) -> bool {
-    c_string(unsafe { (*codec).name }).ends_with("_vaapi")
+fn is_vaapi_encoder(name: &str) -> bool {
+    name.ends_with("_vaapi")
 }
 
-fn c_string(value: *const std::ffi::c_char) -> String {
-    non_empty_c_string(value).unwrap_or_default()
+fn codec_wrapper_name(codec: codec::codec::Codec) -> Option<String> {
+    let wrapper_name = unsafe { (*codec.as_ptr()).wrapper_name };
+    non_empty_c_string(wrapper_name)
 }
 
 fn non_empty_c_string(value: *const std::ffi::c_char) -> Option<String> {

@@ -13,9 +13,11 @@ workspace = true
 
 [features]
 default = ["desktop", "embed_frontend"]
-desktop = ["ff-engine/desktop"]
+desktop-base = []
+desktop = ["desktop-base", "ff-engine/desktop"]
+desktop-cpu = ["desktop-base", "ff-engine/desktop-cpu"]
 embed_frontend = []
-dev-metrics = ["dep:console-subscriber", "tokio/tracing"]
+dev-metrics = ["dep:console-subscriber", "dep:tracing-subscriber", "tokio/tracing"]
 processing-bench = ["ff-engine/processing-bench"]
 
 [dependencies]
@@ -23,7 +25,18 @@ ff-engine = { path = "../engine", default-features = false, features = [
     "tokio",
 ] }
 
-axum = { version = "0.8", features = ["multipart", "macros"] }
+axum = { version = "0.8", default-features = false, features = [
+    "form",
+    "http1",
+    "json",
+    "matched-path",
+    "multipart",
+    "macros",
+    "original-uri",
+    "query",
+    "tokio",
+    "tracing",
+] }
 argon2 = "0.5"
 async-walkdir = "2"
 chrono = { version = "0.4", default-features = false, features = [
@@ -34,13 +47,14 @@ chrono = { version = "0.4", default-features = false, features = [
 chrono-tz = { version = "0.10", features = ["serde"] }
 clap = { version = "4.3", features = ["derive", "env"] }
 console-subscriber = { version = "0.5", optional = true }
+tracing-subscriber = { version = "0.3", optional = true }
 derive_more = { version = "2", features = ["display"] }
 faccess = "0.2"
 flexi_logger = { version = "0.31", features = ["async", "colors", "kv"] }
 iana-time-zone = "0.1"
 include_dir = "0.7"
 inquire = "0.9"
-jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
 lazy-limit = "1"
 lettre = { version = "0.11", features = [
     "builder",
@@ -51,14 +65,7 @@ lettre = { version = "0.11", features = [
 ], default-features = false }
 lexical-sort = "0.3"
 local-ip-address = "0.6"
-log = { version = "0.4", features = [
-    "std",
-    "serde",
-    "kv",
-    "kv_std",
-    "kv_sval",
-    "kv_serde",
-] }
+log = { version = "0.4", features = ["std", "kv"] }
 mime_guess = "2"
 nix = { version = "0.31", features = ["user", "fs"] }
 notify = "8.0"
@@ -73,9 +80,30 @@ reqwest = { version = "0.13", default-features = false, features = ["json"] }
 sanitize-filename = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sysinfo = { version = "0.39", features = ["linux-netdevs", "linux-tmpfs"] }
-sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }
-tokio = { version = "1.44", features = ["full"] }
+sysinfo = { version = "0.39", default-features = false, features = [
+    "disk",
+    "network",
+    "system",
+    "linux-netdevs",
+    "linux-tmpfs",
+] }
+sqlx = { version = "0.9", default-features = false, features = [
+    "macros",
+    "migrate",
+    "runtime-tokio",
+    "sqlite",
+] }
+tokio = { version = "1.44", features = [
+    "fs",
+    "io-util",
+    "macros",
+    "net",
+    "process",
+    "rt-multi-thread",
+    "signal",
+    "sync",
+    "time",
+] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 toml_edit = { version = "0.25", features = ["serde"] }
@@ -95,8 +123,8 @@ name = "ffplayout"
 priority = "optional"
 section = "net"
 license-file = ["../../LICENSE", "0"]
-depends = ""
-suggests = ["ffmpeg", "libsdl2-2.0-0"]
+depends = "libasound2t64"
+suggests = ["ffmpeg"]
 copyright = "Copyright (c) 2024, Jonathan Baecker. All rights reserved."
 assets = [
     [

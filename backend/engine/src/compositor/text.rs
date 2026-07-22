@@ -9,7 +9,7 @@ use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Sw
 use ffmpeg_next::{frame, util::format::pixel::Pixel};
 use regex::Regex;
 
-#[cfg(feature = "desktop")]
+#[cfg(feature = "desktop-base")]
 use cosmic_text::{Align, Wrap};
 
 use crate::{
@@ -56,24 +56,14 @@ pub(crate) fn available_font_families() -> Vec<String> {
         .collect()
 }
 
-#[cfg(feature = "desktop")]
+#[cfg(feature = "desktop-base")]
 pub(crate) struct TextBitmap {
     pub pixels: Vec<u8>,
     pub width: u32,
     pub height: u32,
 }
 
-#[cfg(feature = "desktop")]
-pub(crate) fn render_plain_text_bitmap(
-    text: &str,
-    font_size: f32,
-    font_weight: Weight,
-    color: RgbaColor,
-) -> Result<TextBitmap> {
-    render_text_bitmap(text, font_size, font_weight, color, None, None, None)
-}
-
-#[cfg(feature = "desktop")]
+#[cfg(feature = "desktop-base")]
 pub(crate) fn render_wrapped_text_bitmap(
     text: &str,
     font_size: f32,
@@ -92,7 +82,26 @@ pub(crate) fn render_wrapped_text_bitmap(
     )
 }
 
-#[cfg(feature = "desktop")]
+#[cfg(feature = "desktop-base")]
+pub(crate) fn render_left_aligned_text_bitmap(
+    text: &str,
+    font_size: f32,
+    font_weight: Weight,
+    color: RgbaColor,
+    max_width: u32,
+) -> Result<TextBitmap> {
+    render_text_bitmap(
+        text,
+        font_size,
+        font_weight,
+        color,
+        Some(max_width.max(2)),
+        Some(Wrap::WordOrGlyph),
+        Some(Align::Left),
+    )
+}
+
+#[cfg(feature = "desktop-base")]
 fn render_text_bitmap(
     text: &str,
     font_size: f32,

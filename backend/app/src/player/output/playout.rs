@@ -22,6 +22,7 @@ use crate::{
     },
     utils::{
         config::{OutputMode, PlayoutConfig},
+        control::{PlayerCtl, control_state},
         errors::ServiceError,
         text::text_config,
     },
@@ -49,12 +50,18 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         manager.audio_effects.clone(),
         manager.audio_level.clone(),
         manager.text_overlay.clone(),
+        desktop_control_callback(manager.clone()),
     )?;
     let playout = open_playout(&config, output_config.clone()).await?;
     *manager.playback_control.lock().await = playout.playback_control();
     if config.output.mode == OutputMode::Desktop {
+        #[cfg(feature = "desktop-cpu")]
         info!(channel = config.general.channel_id;
-            "Desktop output uses backend/engine SDL2 renderer"
+            "Desktop output uses backend/engine winit/softbuffer CPU renderer"
+        );
+        #[cfg(not(feature = "desktop-cpu"))]
+        info!(channel = config.general.channel_id;
+            "Desktop output uses backend/engine winit/pixels renderer"
         );
     }
 
@@ -359,7 +366,7 @@ async fn open_playout(
     }
 }
 
-#[cfg(feature = "desktop")]
+#[cfg(feature = "desktop-base")]
 async fn open_desktop_playout(
     output_config: OutputConfig,
     fallback_duration: f64,
@@ -369,7 +376,7 @@ async fn open_desktop_playout(
         .map_err(engine_error)
 }
 
-#[cfg(not(feature = "desktop"))]
+#[cfg(not(feature = "desktop-base"))]
 async fn open_desktop_playout(
     _output_config: OutputConfig,
     _fallback_duration: f64,
@@ -385,6 +392,7 @@ fn engine_output_config(
     audio_effects: ff_engine::AudioEffectsControl,
     audio_level: std::sync::Arc<std::sync::Mutex<Option<ff_engine::AudioLevel>>>,
     text_overlay_state: TextOverlayState,
+    desktop_control_callback: ff_engine::DesktopControlCallback,
 ) -> Result<OutputConfig, ServiceError> {
     let width = config.output.width;
     let height = config.output.height;
@@ -436,6 +444,7 @@ fn engine_output_config(
         .with_text(text)
         .with_text_overlay_state(text_overlay_state)
         .with_desktop_fullscreen(config.output.desktop_fullscreen)
+        .with_desktop_control_callback(desktop_control_callback)
         .with_logging(ffmpeg_log_level, ingest_log_level)
         .with_ffmpeg_ignore_lines(config.logging.ignore_lines.clone())
         .with_channel_id(config.general.channel_id)
@@ -447,6 +456,32 @@ fn engine_output_config(
             config.output.audio_codec.clone(),
             u64::from(config.output.audio_bitrate) * 1_000,
         ))
+}
+
+fn desktop_control_callback(manager: ChannelManager) -> ff_engine::DesktopControlCallback {
+    let runtime = tokio::runtime::Handle::current();
+    let pool = manager.db_pool.clone();
+
+    ff_engine::DesktopControlCallback::new(move |command| {
+        let manager = manager.clone();
+        let pool = pool.clone();
+        let control = match command {
+            ff_engine::DesktopControlCommand::Back => PlayerCtl::Back,
+            ff_engine::DesktopControlCommand::Next => PlayerCtl::Next,
+            ff_engine::DesktopControlCommand::Reset => PlayerCtl::Reset,
+        };
+
+        if manager.is_processing.swap(true, Ordering::SeqCst) {
+            return;
+        }
+
+        runtime.spawn(async move {
+            if let Err(error) = control_state(&pool, &manager, &control).await {
+                error!(channel = manager.id; "desktop control failed: {error}");
+            }
+            manager.is_processing.store(false, Ordering::SeqCst);
+        });
+    })
 }
 
 fn validate_supported_config(config: &PlayoutConfig) -> Result<(), ServiceError> {

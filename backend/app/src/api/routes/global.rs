@@ -76,6 +76,22 @@ pub async fn update_global(
 
     handles::update_global_runtime_settings(&state.pool, settings.clone()).await?;
 
+    // Keep per-channel recipients intact while applying shared SMTP settings
+    // to the queues that are already running.
+    for queue in state.mail_queues.lock().await.iter() {
+        let mut queue = queue.lock().await;
+        queue.config.smtp_server.clone_from(&settings.smtp_server);
+        queue.config.smtp_starttls = settings.smtp_starttls;
+        queue.config.smtp_user.clone_from(&settings.smtp_user);
+        queue
+            .config
+            .smtp_password
+            .clone_from(&settings.smtp_password);
+        queue.config.smtp_port = settings.smtp_port;
+        queue.config.show =
+            !settings.smtp_password.is_empty() && settings.smtp_server != "mail.example.org";
+    }
+
     Ok(Json(settings.into()))
 }
 

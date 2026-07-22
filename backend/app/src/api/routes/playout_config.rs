@@ -18,7 +18,7 @@ use crate::{
     },
     file::norm_abs_path,
     utils::{
-        config::{OutputMode, PlayoutConfig, get_config},
+        config::{OutputMode, PlayoutConfig, get_config, parse_rtmp_ingest_port},
         errors::ServiceError,
     },
 };
@@ -70,6 +70,39 @@ pub struct PlayoutCodecOptions {
     pub srt: OutputCodecOptions,
     pub udp: OutputCodecOptions,
     pub custom: OutputCodecOptions,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlayoutConfigUpdate {
+    pub requires_restart: bool,
+}
+
+/// Only volume and mail are consumed by long-lived runtime controls. The
+/// engine creates input, compositor and output contexts when playout starts,
+/// therefore every other configuration change requires a fresh instance.
+fn requires_playout_restart(current: &PlayoutConfig, updated: &PlayoutConfig) -> bool {
+    let Ok(mut current) = serde_json::to_value(current) else {
+        return true;
+    };
+    let Ok(mut updated) = serde_json::to_value(updated) else {
+        return true;
+    };
+
+    for config in [&mut current, &mut updated] {
+        let Some(config) = config.as_object_mut() else {
+            return true;
+        };
+
+        config.remove("mail");
+        if let Some(processing) = config
+            .get_mut("processing")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            processing.remove("volume");
+        }
+    }
+
+    current != updated
 }
 
 fn codec_option(codec: &ff_engine::FfmpegCodec) -> CodecOption {
@@ -193,7 +226,7 @@ pub async fn update_playout_config(
     user: AuthUser,
     details: AuthDetails<Role>,
     Json(mut data): Json<PlayoutConfig>,
-) -> Result<Json<&'static str>, ServiceError> {
+) -> Result<Json<PlayoutConfigUpdate>, ServiceError> {
     ensure_any_authority(&details, &[&Role::GlobalAdmin, &Role::ChannelAdmin])?;
     user.ensure_channel_or_admin(id)?;
 
@@ -204,7 +237,8 @@ pub async fn update_playout_config(
     .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
     let p = manager.channel.lock().await.storage.clone();
     let storage = Path::new(&p);
-    let config_id = manager.config.read().await.general.id;
+    let config = manager.config.read().await.clone();
+    let config_id = config.general.id;
 
     let (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
     let (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
@@ -224,6 +258,15 @@ pub async fn update_playout_config(
     data.processing
         .hls_subtitle()
         .map_err(ServiceError::BadRequest)?;
+    if data.ingest.enable {
+        let ingest_port =
+            parse_rtmp_ingest_port(&data.ingest.ingest_url).map_err(ServiceError::BadRequest)?;
+        if handles::ingest_port_in_use(&state.pool, id, ingest_port).await? {
+            return Err(ServiceError::BadRequest(format!(
+                "ingest port {ingest_port} is already assigned to another channel"
+            )));
+        }
+    }
     ff_engine::AudioEffectsControl::new(data.processing.volume)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     data.output.validate().map_err(ServiceError::BadRequest)?;
@@ -282,9 +325,14 @@ pub async fn update_playout_config(
         }
     }
 
+    let requires_restart = requires_playout_restart(&config, &new_config);
+    manager
+        .audio_effects
+        .set_volume(new_config.processing.volume)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     manager.update_config(new_config).await;
 
-    Ok(Json("Update success"))
+    Ok(Json(PlayoutConfigUpdate { requires_restart }))
 }
 
 /// **Get Output**
@@ -331,4 +379,29 @@ pub async fn get_playout_codecs(
         udp: output_codec_options(ff_engine::FfmpegOutputTarget::Udp),
         custom: custom_output_codec_options(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::requires_playout_restart;
+    use crate::utils::config::PlayoutConfig;
+
+    #[test]
+    fn mail_and_volume_changes_do_not_require_restart() {
+        let current = PlayoutConfig::default();
+        let mut updated = current.clone();
+        updated.mail.recipient = "ops@example.org".to_string();
+        updated.processing.volume = 0.75;
+
+        assert!(!requires_playout_restart(&current, &updated));
+    }
+
+    #[test]
+    fn output_change_requires_restart() {
+        let current = PlayoutConfig::default();
+        let mut updated = current.clone();
+        updated.output.width = 1920;
+
+        assert!(requires_playout_restart(&current, &updated));
+    }
 }

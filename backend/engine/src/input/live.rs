@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     ffi::{CStr, CString},
-    fmt, ptr,
+    fmt,
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -13,11 +13,10 @@ use std::{
 
 use anyhow::{Context, Result};
 use ffmpeg_next::{
-    Dictionary, Error as FfmpegError, ffi, format, frame, media,
+    Dictionary, ffi, format, frame, media,
     util::{
         channel_layout::ChannelLayout,
         format::sample::{Sample, Type as SampleType},
-        interrupt,
     },
 };
 use log::{error, info, warn};
@@ -952,63 +951,32 @@ fn open_rtmp_listener(
     options.set("timeout", "0");
     logging::clear_unexpected_rtmp_stream();
 
-    let url_cstring =
-        CString::new(url).with_context(|| format!("RTMP input URL contains NUL byte: {url}"))?;
-    let interrupt = interrupt::new(Box::new(move || {
-        abort.load(Ordering::Relaxed) || listener_abort.load(Ordering::Relaxed)
-    }));
+    let input = format::input_with_interrupt_and_dictionary(
+        url,
+        move || abort.load(Ordering::Relaxed) || listener_abort.load(Ordering::Relaxed),
+        options,
+    )
+    .with_context(|| format!("failed to listen for RTMP input at {url}"))?;
 
-    // `ffmpeg-next`'s safe `format::input_with*` helpers open a file/stream and
-    // return only once the input is fully ready; they provide no way to attach
-    // an interrupt callback before `avformat_open_input` starts blocking in
-    // "listen" mode (which waits for an incoming RTMP publisher). Reaching the
-    // interrupt callback and swapping the auto-allocated dictionary back out
-    // requires driving the C API directly.
-    unsafe {
-        let mut ps = ffi::avformat_alloc_context();
-        if ps.is_null() {
-            anyhow::bail!("failed to allocate RTMP input context");
-        }
-
-        (*ps).interrupt_callback = interrupt.interrupt;
-
-        let mut opts = options.disown();
-        let open_result =
-            ffi::avformat_open_input(&mut ps, url_cstring.as_ptr(), ptr::null_mut(), &mut opts);
-        Dictionary::own(opts);
-
-        if open_result != 0 {
-            ffi::avformat_close_input(&mut ps);
-            return Err(FfmpegError::from(open_result))
-                .with_context(|| format!("failed to listen for RTMP input at {url}"));
-        }
-
-        let stream_info_result = ffi::avformat_find_stream_info(ps, ptr::null_mut());
-        if stream_info_result < 0 {
-            ffi::avformat_close_input(&mut ps);
-            return Err(FfmpegError::from(stream_info_result))
-                .with_context(|| format!("failed to read RTMP stream info at {url}"));
-        }
-
-        if let Some((actual_key, expected_key)) = logging::take_unexpected_rtmp_stream() {
-            ffi::avformat_close_input(&mut ps);
-            anyhow::bail!(
-                "incoming RTMP stream key {actual_key:?} does not match configured key {expected_key:?}"
-            );
-        }
-
-        if let Some(expected_key) = rtmp_stream_key(url)
-            && let Some(actual_key) = rtmp_context_option(ps, "rtmp_playpath")
-            && actual_key != expected_key
-        {
-            ffi::avformat_close_input(&mut ps);
-            anyhow::bail!(
-                "incoming RTMP stream key {actual_key:?} does not match configured key {expected_key:?}"
-            );
-        }
-
-        Ok(format::context::Input::wrap(ps))
+    if let Some((actual_key, expected_key)) = logging::take_unexpected_rtmp_stream() {
+        anyhow::bail!(
+            "incoming RTMP stream key {actual_key:?} does not match configured key {expected_key:?}"
+        );
     }
+
+    // ffmpeg-next does not expose protocol-private AVOptions. Limit the raw
+    // context access to this fallback validation of FFmpeg's RTMP playpath.
+    let context = unsafe { input.as_ptr().cast_mut() };
+    if let Some(expected_key) = rtmp_stream_key(url)
+        && let Some(actual_key) = unsafe { rtmp_context_option(context, "rtmp_playpath") }
+        && actual_key != expected_key
+    {
+        anyhow::bail!(
+            "incoming RTMP stream key {actual_key:?} does not match configured key {expected_key:?}"
+        );
+    }
+
+    Ok(input)
 }
 
 fn rtmp_stream_key(url: &str) -> Option<String> {

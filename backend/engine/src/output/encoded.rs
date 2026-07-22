@@ -90,6 +90,9 @@ impl VaapiUpload {
             return Err(ffmpeg::Error::from(result))
                 .context("failed to create VAAPI device /dev/dri/renderD128");
         }
+        if device_ctx.is_null() {
+            return Err(anyhow!("VAAPI device creation returned no device context"));
+        }
 
         let frames_ctx = unsafe { ffmpeg::ffi::av_hwframe_ctx_alloc(device_ctx) };
         unsafe { ffmpeg::ffi::av_buffer_unref(&mut device_ctx) };
@@ -98,6 +101,10 @@ impl VaapiUpload {
         }
 
         let frames = unsafe { (*frames_ctx).data.cast::<ffmpeg::ffi::AVHWFramesContext>() };
+        if frames.is_null() {
+            unsafe { ffmpeg::ffi::av_buffer_unref(&mut (frames_ctx as *mut _)) };
+            return Err(anyhow!("VAAPI frame context has no frame pool data"));
+        }
         unsafe {
             (*frames).format = ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_VAAPI;
             (*frames).sw_format = ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_NV12;
@@ -134,12 +141,17 @@ impl VaapiUpload {
         if result < 0 {
             return Err(ffmpeg::Error::from(result)).context("failed to allocate VAAPI frame");
         }
-        self.frame.set_pts(source.pts());
         let result = unsafe {
             ffmpeg::ffi::av_hwframe_transfer_data(self.frame.as_mut_ptr(), source.as_ptr(), 0)
         };
         if result < 0 {
             return Err(ffmpeg::Error::from(result)).context("failed to upload frame to VAAPI");
+        }
+        let result =
+            unsafe { ffmpeg::ffi::av_frame_copy_props(self.frame.as_mut_ptr(), source.as_ptr()) };
+        if result < 0 {
+            return Err(ffmpeg::Error::from(result))
+                .context("failed to copy VAAPI frame properties");
         }
         Ok(&self.frame)
     }
@@ -293,7 +305,9 @@ impl EncodedOutput {
         }
 
         match output_format {
-            EncodedFormat::Auto | EncodedFormat::Stream { .. } => octx.write_header()?,
+            EncodedFormat::Auto | EncodedFormat::Stream { .. } => {
+                octx.write_header()?;
+            }
             EncodedFormat::Hls {
                 segment_seconds,
                 list_size,
@@ -1053,16 +1067,10 @@ fn preferred_audio_sample_format(codec: codec::codec::Codec) -> Result<Sample> {
 fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOutputStream> {
     let mut stream = octx.add_stream(codec::Id::WEBVTT)?;
     stream.set_time_base(Rational(1, 1_000));
-    // `add_stream` only sets up an encoder-backed stream; WebVTT subtitles here
-    // are muxed as pre-formatted text packets without an actual encoder, so the
-    // safe API has no way to mark the stream's codec parameters as a subtitle
-    // stream. Setting `codec_type`/`codec_id` on the raw `AVCodecParameters` is
-    // the only way to make the muxer (and downstream HLS players) recognize it.
-    unsafe {
-        let codecpar = (*stream.as_mut_ptr()).codecpar;
-        (*codecpar).codec_type = ffmpeg::ffi::AVMediaType::AVMEDIA_TYPE_SUBTITLE;
-        (*codecpar).codec_id = ffmpeg::ffi::AVCodecID::AV_CODEC_ID_WEBVTT;
-    }
+    let mut parameters = codec::Parameters::new();
+    parameters.set_medium(ffmpeg::media::Type::Subtitle);
+    parameters.set_id(codec::Id::WEBVTT);
+    stream.set_parameters(parameters);
     Ok(SubtitleOutputStream {
         stream_index: stream.index(),
     })
@@ -1541,7 +1549,7 @@ mod open_tests {
 
         for stream in output.octx.streams() {
             let parameters = stream.parameters();
-            let bit_rate = unsafe { (*parameters.as_ptr()).bit_rate };
+            let bit_rate = parameters.bit_rate();
             assert!(bit_rate > 0, "stream {} has no bitrate", stream.index());
         }
         for index in 0..16 {

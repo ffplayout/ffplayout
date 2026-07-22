@@ -1,5 +1,4 @@
 import { cloneDeep } from 'es-toolkit/object'
-import { isEqual } from 'es-toolkit/predicate'
 import { defineStore } from 'pinia'
 import { useRouter } from 'vue-router'
 
@@ -36,12 +35,13 @@ export const useConfig = defineStore('config', {
 
     getters: {},
     actions: {
-        async configInit() {
+        async configInit(channelId?: number) {
             const authStore = useAuth()
 
             if (authStore.isLogin) {
                 await authStore.obtainUuid()
                 await this.getChannelConfig().then(async () => {
+                    this.selectChannel(channelId)
                     await this.getPlayoutConfig()
                     await this.getPlayoutOutputs()
                     await this.getPlayoutCodecs()
@@ -104,6 +104,11 @@ export const useConfig = defineStore('config', {
 
                     indexStore.msgAlert('error', e, 3)
                 })
+        },
+
+        selectChannel(channelId?: number) {
+            const index = this.channels.findIndex((channel) => channel.id === channelId)
+            this.i = index >= 0 ? index : 0
         },
 
         async getPlayoutConfig() {
@@ -182,22 +187,6 @@ export const useConfig = defineStore('config', {
             })
 
             return update
-        },
-
-        playoutChangeSummary() {
-            if (!this.playoutSaved.processing) {
-                return { requiresRestart: true, volumeChanged: false }
-            }
-
-            const current = cloneDeep(this.playout)
-            const saved = cloneDeep(this.playoutSaved)
-            const volumeChanged = current.processing.volume !== saved.processing.volume
-            current.processing.volume = saved.processing.volume
-
-            return {
-                requiresRestart: !isEqual(current, saved),
-                volumeChanged,
-            }
         },
 
         async applyAudioEffects(volume: number) {

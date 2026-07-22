@@ -22,7 +22,7 @@ struct Args {
 
     /// Output file or URL, e.g. out.mp4 or rtmp://host/live/stream
     #[cfg_attr(
-        feature = "desktop",
+        feature = "desktop-base",
         arg(
             short,
             long,
@@ -31,23 +31,23 @@ struct Args {
         )
     )]
     #[cfg_attr(
-        not(feature = "desktop"),
+        not(feature = "desktop-base"),
         arg(short, long, required_unless_present = "hls", conflicts_with = "hls")
     )]
     output: Option<String>,
 
-    /// Play video and audio in an SDL2 desktop window
-    #[cfg(feature = "desktop")]
+    /// Play video and audio in a native desktop window
+    #[cfg(feature = "desktop-base")]
     #[arg(long, conflicts_with_all = ["output", "hls"])]
     desktop: bool,
 
     /// Publish a live HLS playlist, e.g. /var/www/live/index.m3u8
     #[cfg_attr(
-        feature = "desktop",
+        feature = "desktop-base",
         arg(long, value_name = "PLAYLIST", conflicts_with_all = ["output", "desktop"])
     )]
     #[cfg_attr(
-        not(feature = "desktop"),
+        not(feature = "desktop-base"),
         arg(long, value_name = "PLAYLIST", conflicts_with = "output")
     )]
     hls: Option<String>,
@@ -127,11 +127,11 @@ struct Args {
 
 impl Args {
     fn desktop(&self) -> bool {
-        #[cfg(feature = "desktop")]
+        #[cfg(feature = "desktop-base")]
         {
             self.desktop
         }
-        #[cfg(not(feature = "desktop"))]
+        #[cfg(not(feature = "desktop-base"))]
         {
             false
         }
@@ -190,11 +190,11 @@ fn main() -> Result<()> {
     let live_config = config.clone();
 
     let mut playout = if args.desktop() {
-        #[cfg(feature = "desktop")]
+        #[cfg(feature = "desktop-base")]
         {
             Playout::open_desktop(config, args.fallback_duration)?
         }
-        #[cfg(not(feature = "desktop"))]
+        #[cfg(not(feature = "desktop-base"))]
         {
             return Err(anyhow!(
                 "--desktop is not available because this binary was built without the desktop feature"

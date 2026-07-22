@@ -488,12 +488,20 @@ pub fn init_logging(
         .module("log", LevelFilter::Error)
         .module("mio", LevelFilter::Error)
         .module("neli", LevelFilter::Error)
+        .module("naga", LevelFilter::Error)
+        .module("pixels", LevelFilter::Error)
         .module("reqwest", LevelFilter::Error)
         .module("rpc", LevelFilter::Error)
         .module("rustls", LevelFilter::Error)
         .module("serial_test", LevelFilter::Error)
+        .module("sctk", LevelFilter::Error)
         .module("sqlx", LevelFilter::Error)
-        .module("tokio", LevelFilter::Error);
+        .module("tokio", LevelFilter::Error)
+        // The tracing crate mirrors unannotated spans (such as winit's window
+        // operations) into the log facade under this target.
+        .module("tracing::span", LevelFilter::Error)
+        .module("wgpu", LevelFilter::Error)
+        .module("winit", LevelFilter::Error);
 
     let mut logger = Logger::with(builder.build()).write_mode(WriteMode::Async);
 

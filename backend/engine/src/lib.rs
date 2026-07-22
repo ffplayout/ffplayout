@@ -1,14 +1,19 @@
-use anyhow::{Context, Result, anyhow};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
-use std::time::{Duration, Instant};
+
 #[cfg(feature = "tokio")]
 use std::{
     sync::mpsc,
     thread::{self, JoinHandle},
 };
+
+use anyhow::{Context, Result, anyhow};
+
 #[cfg(feature = "tokio")]
 use tokio::sync::oneshot;
 
@@ -31,10 +36,11 @@ use playout::{PlaybackRestart, PlaybackSkipped, Timeline, play_clip, write_fallb
 pub use utils::{
     clock,
     config::{
-        HlsSubtitle, HlsVariant, LogLevel, LogoConfig, OutputConfig, OutputSize, RgbaColor,
-        StreamType, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition, TextScroll,
-        TextWeight, VideoOptionChoice, VideoOptionKind, VideoOptionSpec, VideoOptionVisibility,
-        VideoOptions, audio_codec_uses_bitrate, validate_video_options, video_codec_uses_bitrate,
+        DesktopControlCallback, DesktopControlCommand, HlsSubtitle, HlsVariant, LogLevel,
+        LogoConfig, OutputConfig, OutputSize, RgbaColor, StreamType, TextBackgroundConfig,
+        TextConfig, TextOverlayState, TextPosition, TextScroll, TextWeight, VideoOptionChoice,
+        VideoOptionKind, VideoOptionSpec, VideoOptionVisibility, VideoOptions,
+        audio_codec_uses_bitrate, validate_video_options, video_codec_uses_bitrate,
         video_option_defaults, video_option_specs,
     },
     ffmpeg_capabilities::{
@@ -151,14 +157,14 @@ pub struct AsyncPlayout {
 }
 
 /// How to wait for the playout worker to finish. Desktop-output sessions run
-/// as a job on the shared, process-lifetime SDL thread (see
-/// `output::sdl_thread`) instead of on their own dedicated `JoinHandle`, so
+/// as a job on the shared, process-lifetime desktop thread (see
+/// `output::desktop::thread`) instead of on their own dedicated `JoinHandle`, so
 /// completion is signalled through a channel instead.
 #[cfg(feature = "tokio")]
 enum WorkerCompletion {
     Thread(JoinHandle<()>),
-    #[cfg(feature = "desktop")]
-    SdlThread(oneshot::Receiver<()>),
+    #[cfg(feature = "desktop-base")]
+    DesktopThread(oneshot::Receiver<()>),
 }
 
 #[cfg(feature = "tokio")]
@@ -210,7 +216,7 @@ impl AsyncPlayout {
         Ok(playout)
     }
 
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     pub async fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         let (commands, command_rx) = mpsc::channel();
         let (ready_tx, ready_rx) = oneshot::channel();
@@ -218,7 +224,7 @@ impl AsyncPlayout {
         let playback_control = PlaybackControl::default();
         let worker_playback_control = playback_control.clone();
 
-        output::sdl_thread::spawn(move || {
+        output::desktop::thread::spawn(move || {
             match Playout::open_desktop(config, fallback_duration) {
                 Ok(mut playout) => {
                     playout.playback_control = worker_playback_control;
@@ -238,7 +244,7 @@ impl AsyncPlayout {
 
         Ok(Self {
             commands,
-            completion: WorkerCompletion::SdlThread(done_rx),
+            completion: WorkerCompletion::DesktopThread(done_rx),
             playback_control,
             hls_health: None,
         })
@@ -392,8 +398,8 @@ impl AsyncPlayout {
                     return Err(anyhow!("playout worker panicked during finish"));
                 }
             }
-            #[cfg(feature = "desktop")]
-            WorkerCompletion::SdlThread(done_rx) => {
+            #[cfg(feature = "desktop-base")]
+            WorkerCompletion::DesktopThread(done_rx) => {
                 if done_rx.await.is_err() && finish_result.is_ok() {
                     return Err(anyhow!("desktop playout worker stopped unexpectedly"));
                 }
@@ -494,13 +500,11 @@ impl Playout {
         Ok(Self::with_output(config, output, fallback_duration))
     }
 
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "desktop-base")]
     pub fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
         init_ffmpeg(&config)?;
-        let sdl = output::init_desktop_sdl()?;
-        let config = output::desktop_config_for_primary_display(config, &sdl);
-        let output = Output::open_desktop(&config, sdl)?;
+        let output = Output::open_desktop(&config)?;
 
         Ok(Self::with_output(config, output, fallback_duration))
     }
@@ -560,11 +564,11 @@ impl Playout {
     }
 
     fn with_output(config: OutputConfig, output: Output, fallback_duration: f64) -> Self {
-        #[cfg(feature = "desktop")]
+        #[cfg(feature = "desktop-base")]
         if !output.is_desktop() {
             benchmark::start(config.channel_id);
         }
-        #[cfg(not(feature = "desktop"))]
+        #[cfg(not(feature = "desktop-base"))]
         benchmark::start(config.channel_id);
 
         Self {
@@ -641,7 +645,7 @@ impl Playout {
         let subtitles_media_path = subtitles_media_path.map(str::to_string);
         self.output.set_playout_rate(playout_rate);
 
-        #[cfg(feature = "desktop")]
+        #[cfg(feature = "desktop-base")]
         if self.output.is_desktop() {
             let config = self.config.clone();
             let fallback_duration = self.fallback_duration;

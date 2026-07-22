@@ -129,7 +129,9 @@ router.beforeEach(async (to) => {
     }
 
     if (!isPublicRoute) {
-        await configStore.configInit()
+        const channelQuery = Array.isArray(to.query.channel) ? to.query.channel[0] : to.query.channel
+        const channelId = channelQuery ? Number(channelQuery) : undefined
+        await configStore.configInit(Number.isSafeInteger(channelId) ? channelId : undefined)
     }
 
     const allowedRoles = to.meta.roles as string[] | undefined

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import dayjs from 'dayjs'
 import { isEqual } from 'es-toolkit/predicate'
@@ -15,6 +16,8 @@ import { useConfig } from '@/stores/config'
 import { useMedia } from '@/stores/media'
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 const authStore = useAuth()
 const configStore = useConfig()
 const mediaStore = useMedia()
@@ -74,11 +77,12 @@ async function addNewChannel() {
             return response.json()
         })
         .then((chl) => {
-            i.value = channel.value.id - 1
             configStore.channels.push(cloneDeep(chl as Channel))
             configStore.channelsRaw.push(chl as Channel)
             configStore.configCount = configStore.channels.length
             configStore.timezone = channel.value.timezone || 'UTC'
+            configStore.selectChannel(chl.id)
+            void router.replace({ path: route.path, query: { ...route.query, channel: chl.id } })
 
             indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
         })
@@ -162,13 +166,18 @@ async function deleteChannel() {
         headers: authStore.authHeader,
     })
 
-    i.value = configStore.i - 1
-
     await configStore.getChannelConfig()
+    const previousChannel = configStore.channels[Math.max(0, i.value - 1)]
+    configStore.selectChannel(previousChannel?.id)
     await configStore.getPlayoutConfig()
     await configStore.getPlayoutOutputs()
     await configStore.getUserConfig()
     await mediaStore.getTree('')
+
+    const selectedChannel = configStore.channels[configStore.i]?.id
+    if (selectedChannel) {
+        await router.replace({ path: route.path, query: { ...route.query, channel: selectedChannel } })
+    }
 
     if (response.status === 200) {
         indexStore.msgAlert('success', t('config.deleteChannelSuccess'), 2)

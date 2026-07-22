@@ -753,9 +753,8 @@ fn receive_audio_frames<O: FrameOutput>(
             raw.set_channel_layout(audio.input_channel_layout);
         }
 
-        let mut converted = frame::Audio::empty();
-        benchmark::measure(Stage::AudioProcess, || {
-            audio.resampler.run(&raw, &mut converted)
+        let mut converted = benchmark::measure(Stage::AudioProcess, || {
+            resample_audio_frame(&mut audio.resampler, &raw)
         })?;
         let samples = converted.samples() as i64;
         converted.set_pts(Some(timeline.audio_pts));
@@ -764,6 +763,31 @@ fn receive_audio_frames<O: FrameOutput>(
         *decoded_samples += samples;
     }
     Ok(())
+}
+
+fn resample_audio_frame(
+    resampler: &mut resampling::Context,
+    input: &frame::Audio,
+) -> Result<frame::Audio> {
+    let input_samples = i32::try_from(input.samples()).context("audio frame is too large")?;
+    // SAFETY: the context is initialized and owned by `resampler`; the input
+    // sample count was checked to fit FFmpeg's API type above.
+    let output_capacity =
+        unsafe { ffmpeg_next::ffi::swr_get_out_samples(resampler.as_mut_ptr(), input_samples) };
+    if output_capacity < 0 {
+        return Err(ffmpeg_next::Error::from(output_capacity))
+            .context("calculating audio resampler output capacity");
+    }
+
+    let output = *resampler.output();
+    let mut converted = frame::Audio::new(
+        output.format,
+        output_capacity.max(1) as usize,
+        output.channel_layout,
+    );
+    converted.set_rate(output.rate);
+    resampler.run(input, &mut converted)?;
+    Ok(converted)
 }
 
 /// Drains samples still buffered inside the resampler after decoder EOF;
@@ -1461,8 +1485,8 @@ mod tests {
 
     use super::{
         FrameRateConverter, LogoFade, PlaybackControl, Rational, Timeline, fit_dimensions,
-        padding_to_sync, parse_duration_us, play_clip, should_play_loop_iteration,
-        single_frame_repeat_frames, synchronize_after_skip,
+        padding_to_sync, parse_duration_us, play_clip, resample_audio_frame,
+        should_play_loop_iteration, single_frame_repeat_frames, synchronize_after_skip,
     };
     use crate::{output::FrameOutput, utils::config::OutputConfig};
 
@@ -1470,6 +1494,7 @@ mod tests {
     struct RecordingOutput {
         video_frames: Vec<(u32, u32, i64)>,
         audio_samples: usize,
+        audio_frame_samples: Vec<usize>,
         reset_on_skip: bool,
         skip_target: Option<(i64, i64)>,
     }
@@ -1490,6 +1515,7 @@ mod tests {
 
         fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
             self.audio_samples += frame.samples();
+            self.audio_frame_samples.push(frame.samples());
             Ok(())
         }
 
@@ -1574,6 +1600,80 @@ mod tests {
     #[test]
     fn rounds_both_streams_to_a_shared_boundary() {
         assert_eq!(padding_to_sync(30, 44_101, 30, 44_100).unwrap(), (1, 1_469));
+    }
+
+    #[test]
+    fn upsampling_does_not_accumulate_resampler_delay() {
+        use ffmpeg_next::{
+            format::sample::{Sample, Type},
+            software::resampling,
+            util::channel_layout::ChannelLayout,
+        };
+
+        const INPUT_RATE: u32 = 44_100;
+        const OUTPUT_RATE: u32 = 48_000;
+        const FRAME_SAMPLES: usize = 1_024;
+        const FRAME_COUNT: usize = 100;
+
+        let format = Sample::F32(Type::Planar);
+        let mut resampler = resampling::Context::get(
+            format,
+            ChannelLayout::STEREO,
+            INPUT_RATE,
+            format,
+            ChannelLayout::STEREO,
+            OUTPUT_RATE,
+        )
+        .unwrap();
+        let mut input = frame::Audio::new(format, FRAME_SAMPLES, ChannelLayout::STEREO);
+        input.set_rate(INPUT_RATE);
+        let mut output_samples = 0_usize;
+
+        for _ in 0..FRAME_COUNT {
+            let output = resample_audio_frame(&mut resampler, &input).unwrap();
+            assert!(output.samples() > FRAME_SAMPLES);
+            output_samples += output.samples();
+        }
+
+        let expected = FRAME_SAMPLES * FRAME_COUNT * OUTPUT_RATE as usize / INPUT_RATE as usize;
+        assert!(output_samples.abs_diff(expected) < 64);
+        assert!(
+            resampler.delay().is_none_or(|delay| delay.output < 64),
+            "resampler retained too many output samples: {:?}",
+            resampler.delay()
+        );
+    }
+
+    #[test]
+    fn resamples_44_1_khz_media_during_decode() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let mut timeline = Timeline::new();
+        let mut output = RecordingOutput::default();
+
+        play_clip(
+            &media_mix_asset("av_sync.mp4"),
+            &cfg,
+            &mut timeline,
+            &mut output,
+            None,
+            Some(1.0),
+            None,
+            LogoFade::default(),
+            &PlaybackControl::default(),
+        )
+        .unwrap();
+
+        assert!(
+            output
+                .audio_frame_samples
+                .iter()
+                .any(|samples| *samples > 1_024)
+        );
+        assert!(
+            (48_000..=50_000).contains(&output.audio_samples),
+            "unexpected one-second audio output: {} samples",
+            output.audio_samples
+        );
     }
 
     #[test]

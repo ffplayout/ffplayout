@@ -5,7 +5,10 @@ use sqlx::{
 
 use crate::{
     db::models::Configuration,
-    utils::{config::PlayoutConfig, errors::ProcessError},
+    utils::{
+        config::{PlayoutConfig, parse_rtmp_ingest_port},
+        errors::ProcessError,
+    },
 };
 
 pub async fn select_configuration(
@@ -23,19 +26,41 @@ pub async fn insert_configuration<'e, E>(
     executor: E,
     channel_id: i32,
     output_id: i32,
+    ingest_url: &str,
 ) -> Result<SqliteQueryResult, ProcessError>
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    const QUERY: &str = "INSERT INTO configurations (channel_id, output_id) VALUES($1, $2)";
+    const QUERY: &str =
+        "INSERT INTO configurations (channel_id, output_id, ingest_url) VALUES($1, $2, $3)";
 
     let result = sqlx::query(QUERY)
         .bind(channel_id)
         .bind(output_id)
+        .bind(ingest_url)
         .execute(executor)
         .await?;
 
     Ok(result)
+}
+
+pub async fn ingest_port_in_use(
+    pool: &SqlitePool,
+    channel_id: i32,
+    port: u16,
+) -> Result<bool, ProcessError> {
+    const QUERY: &str =
+        "SELECT ingest_url FROM configurations WHERE channel_id != $1 AND ingest_enable = 1";
+
+    let urls = sqlx::query_scalar::<_, String>(QUERY)
+        .bind(channel_id)
+        .fetch_all(pool)
+        .await?;
+
+    Ok(urls
+        .iter()
+        .filter_map(|url| parse_rtmp_ingest_port(url).ok())
+        .any(|configured_port| configured_port == port))
 }
 
 pub async fn update_configuration(
