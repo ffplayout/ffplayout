@@ -19,7 +19,11 @@ pub(super) struct VideoSurface {
     pub(super) color_space: color::Space,
     #[cfg(feature = "desktop-gpu")]
     pub(super) color_range: color::Range,
-    #[cfg(feature = "desktop-cpu")]
+    #[cfg(feature = "desktop-gpu")]
+    pub(super) color_primaries: color::Primaries,
+    #[cfg(feature = "desktop-gpu")]
+    pub(super) color_transfer: color::TransferCharacteristic,
+    #[cfg(all(feature = "desktop-cpu", not(feature = "desktop-gpu")))]
     pub(super) pixels: Arc<[u32]>,
     pub(super) pts: i64,
 }
@@ -79,7 +83,7 @@ impl DesktopFrameConverter {
             .expect("desktop scaler must be initialized")
             .run(frame, &mut self.converted)?;
 
-        #[cfg(feature = "desktop-cpu")]
+        #[cfg(all(feature = "desktop-cpu", not(feature = "desktop-gpu")))]
         {
             let mut pixels = vec![0_u32; width as usize * height as usize];
             let stride = self.converted.stride(0) / 4;
@@ -111,13 +115,15 @@ impl DesktopFrameConverter {
                 v: copy_frame_plane(&self.converted, 2, chroma_width, chroma_height).into(),
                 color_space: frame.color_space(),
                 color_range: frame.color_range(),
+                color_primaries: frame.color_primaries(),
+                color_transfer: frame.color_transfer_characteristic(),
                 pts: frame.pts().unwrap_or_default(),
             })
         }
     }
 }
 
-#[cfg(feature = "desktop-cpu")]
+#[cfg(all(feature = "desktop-cpu", not(feature = "desktop-gpu")))]
 fn output_pixel_format() -> Pixel {
     Pixel::BGRZ
 }
@@ -141,7 +147,7 @@ fn copy_frame_plane(frame: &frame::Video, plane: usize, width: usize, height: us
     pixels
 }
 
-#[cfg(feature = "desktop-cpu")]
+#[cfg(all(feature = "desktop-cpu", not(feature = "desktop-gpu")))]
 pub(super) fn bgrz_to_rgb_pixel([blue, green, red, _]: [u8; 4]) -> u32 {
     (u32::from(red) << 16) | (u32::from(green) << 8) | u32::from(blue)
 }

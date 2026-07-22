@@ -12,9 +12,12 @@ authors = ["Jonathan Baecker <jonbae77@gmail.com>"]
 edition = "2024"
 
 [profile.release]
-opt-level = 3
-strip = true
+debug = false
 lto = true
+strip = true
+opt-level = 3
+codegen-units = 1
+panic = "abort"
 
 [workspace.lints.clippy]
 correctness = { level = "deny", priority = -1 }

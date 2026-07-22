@@ -13,14 +13,16 @@ workspace = true
 [features]
 default = ["desktop"]
 desktop-base = ["dep:cpal", "dep:winit"]
-desktop-gpu = ["desktop-base", "dep:pollster", "dep:wgpu"]
+desktop-gpu = ["desktop-base", "dep:bytemuck", "dep:pollster", "dep:wgpu"]
 desktop = ["desktop-gpu"]
+# Cargo features are additive; when both renderers are enabled, desktop-gpu takes precedence.
 desktop-cpu = ["desktop-base", "dep:softbuffer"]
 processing-bench = []
 tokio = ["dep:tokio"]
 
 [dependencies]
 anyhow = "1"
+bytemuck = { version = "1", optional = true }
 cpal = { version = "0.18", optional = true }
 cosmic-text = "0.19"
 ffmpeg-next = { git = "https://github.com/zmwangx/rust-ffmpeg.git" }
@@ -48,6 +50,7 @@ wgpu = { version = "29", optional = true, default-features = false, features = [
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
 glob = "0.3"
+naga = { version = "29", features = ["wgsl-in"] }
 
 [[bench]]
 name = "overlay_blend"

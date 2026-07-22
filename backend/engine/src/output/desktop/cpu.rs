@@ -2,6 +2,7 @@ use std::{num::NonZeroU32, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use softbuffer::{Context as SoftbufferContext, Surface};
+use winit::event_loop::OwnedDisplayHandle;
 use winit::window::Window;
 
 use super::{
@@ -26,7 +27,12 @@ pub(super) struct SoftbufferRenderer {
 
 #[cfg(feature = "desktop-cpu")]
 impl SoftbufferRenderer {
-    pub(super) fn new(window: Arc<Window>, _width: u32, _height: u32) -> Result<Self> {
+    pub(super) fn new(
+        window: Arc<Window>,
+        _display_handle: OwnedDisplayHandle,
+        _width: u32,
+        _height: u32,
+    ) -> Result<Self> {
         let context =
             SoftbufferContext::new(Arc::clone(&window)).map_err(|error| anyhow!("{error}"))?;
         let surface =
@@ -54,6 +60,10 @@ impl SoftbufferRenderer {
     pub(super) fn resize_buffer(&mut self, _width: u32, _height: u32) -> Result<()> {
         Ok(())
     }
+
+    pub(super) fn reset_frame_cache(&mut self) {}
+
+    pub(super) fn release_frame_resources(&mut self) {}
 
     pub(super) fn render(&mut self, frame: &WindowFrame, size: (u32, u32)) -> Result<()> {
         if self.width == 0 || self.height == 0 {

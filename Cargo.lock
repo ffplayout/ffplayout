@@ -1562,6 +1562,7 @@ name = "ff-engine"
 version = "2.0.0-rc2"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "clap",
  "cosmic-text",
  "cpal",
@@ -1569,6 +1570,7 @@ dependencies = [
  "ffmpeg-next",
  "glob",
  "log",
+ "naga",
  "pollster",
  "regex",
  "rten-simd",

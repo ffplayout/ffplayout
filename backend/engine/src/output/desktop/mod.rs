@@ -33,7 +33,7 @@ use crate::{
 };
 
 mod audio;
-#[cfg(feature = "desktop-cpu")]
+#[cfg(all(feature = "desktop-cpu", not(feature = "desktop-gpu")))]
 mod cpu;
 #[cfg(feature = "desktop-gpu")]
 mod gpu;
@@ -44,7 +44,7 @@ mod timing;
 mod video;
 
 use audio::DesktopAudio;
-#[cfg(feature = "desktop-cpu")]
+#[cfg(all(feature = "desktop-cpu", not(feature = "desktop-gpu")))]
 use cpu::WindowRenderer;
 #[cfg(feature = "desktop-gpu")]
 use gpu::WindowRenderer;
@@ -1024,7 +1024,12 @@ impl DesktopWindow {
                 .context("creating desktop window")?,
         );
         let size = window.inner_size();
-        let renderer = WindowRenderer::new(Arc::clone(&window), width, height)?;
+        let renderer = WindowRenderer::new(
+            Arc::clone(&window),
+            event_loop.owned_display_handle(),
+            width,
+            height,
+        )?;
 
         Ok(Self {
             event_loop,
@@ -1043,6 +1048,7 @@ impl DesktopWindow {
         self.app.frame = None;
         self.app.actions.clear();
         self.app.occluded = false;
+        self.app.renderer.reset_frame_cache();
         self.app.window.set_visible(true);
         self.app.window.set_fullscreen(
             fullscreen.then(|| Fullscreen::Borderless(self.app.window.current_monitor())),
@@ -1066,6 +1072,7 @@ impl DesktopWindow {
 
     fn hide(&mut self) {
         self.app.frame = None;
+        self.app.renderer.release_frame_resources();
         self.app.window.set_visible(false);
     }
 
@@ -1197,7 +1204,7 @@ mod tests {
     use super::gpu::yuv_color_parameters;
     use super::render::fit_rect;
     use super::*;
-    #[cfg(feature = "desktop-cpu")]
+    #[cfg(all(feature = "desktop-cpu", not(feature = "desktop-gpu")))]
     use super::{cpu::scale_nearest, render::Rect, video::bgrz_to_rgb_pixel};
     #[cfg(feature = "desktop-gpu")]
     use ffmpeg_next::util::color;
@@ -1262,7 +1269,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "desktop-cpu")]
+    #[cfg(all(feature = "desktop-cpu", not(feature = "desktop-gpu")))]
     #[test]
     fn bgrz_pixels_are_converted_to_rgb() {
         assert_eq!(bgrz_to_rgb_pixel([0x33, 0x22, 0x11, 0]), 0x0011_2233);
@@ -1322,7 +1329,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "desktop-cpu")]
+    #[cfg(all(feature = "desktop-cpu", not(feature = "desktop-gpu")))]
     #[test]
     fn one_to_one_video_copy_preserves_pixels() {
         let video = VideoSurface {
@@ -1355,5 +1362,17 @@ mod tests {
         assert_eq!(parameters[0], 1.1644);
         assert_eq!(parameters[12], -16.0 / 255.0);
         assert_eq!(parameters[13], -0.5);
+    }
+
+    #[cfg(feature = "desktop-gpu")]
+    #[test]
+    fn bt2020_uses_its_own_chroma_coefficients() {
+        let full = yuv_color_parameters(color::Space::BT2020NCL, color::Range::JPEG);
+        assert_eq!(full[6], 1.8814);
+        assert_eq!(full[8], 1.4746);
+
+        let limited = yuv_color_parameters(color::Space::BT2020NCL, color::Range::MPEG);
+        assert_eq!(limited[6], 2.1418);
+        assert_eq!(limited[8], 1.6787);
     }
 }

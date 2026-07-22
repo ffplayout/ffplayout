@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use cosmic_text::Weight;
 
@@ -16,7 +18,7 @@ pub(super) const SUBTITLE_MAX_WIDTH_PERCENT: u32 = 92;
 
 #[derive(Clone)]
 pub(super) struct RgbaBitmap {
-    pub(super) pixels: Vec<u8>,
+    pub(super) pixels: Arc<[u8]>,
     pub(super) width: u32,
     pub(super) height: u32,
 }
@@ -35,7 +37,7 @@ pub(super) fn create_desktop_logo(
     let logo = LogoOverlay::load(config, output_width, output_height)?;
     Ok(DesktopLogo {
         bitmap: RgbaBitmap {
-            pixels: yuva420p_to_rgba(&logo),
+            pixels: yuva420p_to_rgba(&logo).into(),
             width: logo.width,
             height: logo.height,
         },
@@ -94,7 +96,7 @@ pub(super) fn create_subtitle_bitmap(
     }
     composite_bitmap(&mut pixels, width, &white, outline, outline, 1.0);
     Ok(Some(RgbaBitmap {
-        pixels,
+        pixels: pixels.into(),
         width,
         height,
     }))
@@ -118,7 +120,7 @@ pub(super) fn create_help_bitmap(
         (window_width * 3 / 5).clamp(280, 680),
     )?;
     Ok(Some(RgbaBitmap {
-        pixels: bitmap.pixels,
+        pixels: bitmap.pixels.into(),
         width: bitmap.width,
         height: bitmap.height,
     }))
