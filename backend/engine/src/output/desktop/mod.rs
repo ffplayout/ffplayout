@@ -12,15 +12,18 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{Rational, Rescale, frame};
 #[cfg(target_os = "linux")]
-use winit::platform::wayland::EventLoopBuilderExtWayland;
+use winit::platform::{
+    wayland::{EventLoopBuilderExtWayland, WindowAttributesExtWayland},
+    x11::WindowAttributesExtX11,
+};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
-    event::{ElementState, WindowEvent},
+    event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     platform::pump_events::EventLoopExtPumpEvents,
-    window::{Fullscreen, Window, WindowId},
+    window::{Fullscreen, Icon, Window, WindowId},
 };
 
 use super::{FrameOutput, PlaybackStopped, vtt};
@@ -38,6 +41,7 @@ mod cpu;
 #[cfg(feature = "desktop-gpu")]
 mod gpu;
 mod graphics;
+mod icon;
 mod render;
 pub(crate) mod thread;
 mod timing;
@@ -68,6 +72,19 @@ const VIDEO_STARVATION_GRACE_FRAMES: i64 = 2;
 const SCHEDULER_INTERVAL: Duration = Duration::from_millis(2);
 const VIDEO_CHANNEL_CAPACITY: usize = 8;
 const AUDIO_CHANNEL_CAPACITY: usize = 32;
+const DESKTOP_DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(500);
+
+const DESKTOP_WINDOW_TITLE: &str = "ffplayout";
+const DESKTOP_APPLICATION_ID: &str = "ffplayout";
+
+fn desktop_window_icon() -> Result<Icon> {
+    Icon::from_rgba(
+        icon::desktop_icon_rgba(),
+        icon::DESKTOP_ICON_WIDTH,
+        icon::DESKTOP_ICON_HEIGHT,
+    )
+    .context("creating desktop window icon")
+}
 const CONTROL_CHANNEL_CAPACITY: usize = 8;
 const DESKTOP_VOLUME_STEP: f64 = 0.05;
 const DESKTOP_VOLUME_MIN: f64 = 0.0;
@@ -977,6 +994,7 @@ struct DesktopWindowApp {
     frame: Option<WindowFrame>,
     size: (u32, u32),
     occluded: bool,
+    last_primary_click: Option<Instant>,
 }
 
 fn prepare_desktop_window(width: u32, height: u32, fullscreen: bool) -> Result<()> {
@@ -1013,10 +1031,25 @@ impl DesktopWindow {
             .build()
             .context("creating desktop window event loop")?;
         let attributes = Window::default_attributes()
-            .with_title("ffplayout")
+            .with_title(DESKTOP_WINDOW_TITLE)
+            .with_window_icon(Some(desktop_window_icon()?))
             .with_inner_size(LogicalSize::new(f64::from(width), f64::from(height)))
             .with_resizable(true)
             .with_fullscreen(fullscreen.then_some(Fullscreen::Borderless(None)));
+        // Wayland uses this as the application ID; X11 uses it as the window class.
+        // Both let desktop shells associate this window with ffplayout instead of "Unknown".
+        #[cfg(target_os = "linux")]
+        let attributes = WindowAttributesExtWayland::with_name(
+            attributes,
+            DESKTOP_APPLICATION_ID,
+            DESKTOP_APPLICATION_ID,
+        );
+        #[cfg(target_os = "linux")]
+        let attributes = WindowAttributesExtX11::with_name(
+            attributes,
+            DESKTOP_APPLICATION_ID,
+            DESKTOP_APPLICATION_ID,
+        );
         #[allow(deprecated)]
         let window = Arc::new(
             event_loop
@@ -1040,6 +1073,7 @@ impl DesktopWindow {
                 frame: None,
                 size: (size.width, size.height),
                 occluded: false,
+                last_primary_click: None,
             },
         })
     }
@@ -1113,6 +1147,16 @@ impl DesktopWindow {
     }
 }
 
+impl DesktopWindowApp {
+    fn toggle_fullscreen(&mut self) {
+        let fullscreen = self.window.fullscreen().is_none();
+        self.window.set_fullscreen(
+            fullscreen.then(|| Fullscreen::Borderless(self.window.current_monitor())),
+        );
+        self.actions.push(WindowAction::FullscreenChanged);
+    }
+}
+
 impl ApplicationHandler for DesktopWindowApp {
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {}
 
@@ -1157,12 +1201,7 @@ impl ApplicationHandler for DesktopWindowApp {
                 match event.physical_key {
                     PhysicalKey::Code(KeyCode::Escape) => self.actions.push(WindowAction::Stop),
                     PhysicalKey::Code(KeyCode::KeyF) if !event.repeat => {
-                        let fullscreen = self.window.fullscreen().is_none();
-                        self.window.set_fullscreen(
-                            fullscreen
-                                .then(|| Fullscreen::Borderless(self.window.current_monitor())),
-                        );
-                        self.actions.push(WindowAction::FullscreenChanged);
+                        self.toggle_fullscreen();
                     }
                     PhysicalKey::Code(KeyCode::KeyS) if !event.repeat => {
                         self.actions.push(WindowAction::ToggleSubtitles);
@@ -1193,6 +1232,21 @@ impl ApplicationHandler for DesktopWindowApp {
                     _ => {}
                 }
             }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
+                let now = Instant::now();
+                if self.last_primary_click.is_some_and(|last_click| {
+                    now.duration_since(last_click) <= DESKTOP_DOUBLE_CLICK_INTERVAL
+                }) {
+                    self.last_primary_click = None;
+                    self.toggle_fullscreen();
+                } else {
+                    self.last_primary_click = Some(now);
+                }
+            }
             _ => {}
         }
     }
@@ -1208,6 +1262,11 @@ mod tests {
     use super::{cpu::scale_nearest, render::Rect, video::bgrz_to_rgb_pixel};
     #[cfg(feature = "desktop-gpu")]
     use ffmpeg_next::util::color;
+
+    #[test]
+    fn embedded_desktop_icon_is_valid() {
+        assert!(desktop_window_icon().is_ok());
+    }
 
     #[test]
     fn audio_clock_interpolates_between_device_buffer_requests() {
