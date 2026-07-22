@@ -147,7 +147,7 @@ impl WgpuRenderer {
         self.state.queue.submit(Some(encoder.finish()));
         // On Wayland this must describe the buffer submission that immediately follows.
         self.window.pre_present_notify();
-        surface_texture.present();
+        self.state.queue.present(surface_texture);
         if reconfigure_after_present {
             self.state.configure_surface();
         }
@@ -165,6 +165,7 @@ impl WgpuState {
             power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: false,
             compatible_surface: Some(&surface),
+            apply_limit_buckets: false,
         }))
         .map_err(|error| anyhow!("requesting WGPU adapter: {error}"))?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
@@ -225,6 +226,7 @@ fn surface_config(
         present_mode: wgpu::PresentMode::AutoVsync,
         desired_maximum_frame_latency: 2,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        color_space: wgpu::SurfaceColorSpace::Auto,
         view_formats: Vec::new(),
     })
 }
