@@ -92,8 +92,8 @@ const DESKTOP_VOLUME_MAX: f64 = 1.5;
 const VOLUME_OVERLAY_DURATION: Duration = Duration::from_millis(900);
 const WINDOW_ASPECT_SETTLE: Duration = Duration::from_millis(120);
 
-fn video_prebuffer_ready(queue_len: usize, video_finished: bool, force: bool) -> bool {
-    force || video_finished || queue_len >= VIDEO_PREBUFFER_FRAMES
+fn video_prebuffer_ready(queue_len: usize, video_decoded: bool, force: bool) -> bool {
+    force || video_decoded || queue_len >= VIDEO_PREBUFFER_FRAMES
 }
 
 fn scaled_aspect_dimension(value: u32, numerator: u32, denominator: u32) -> u32 {
@@ -104,6 +104,11 @@ fn scaled_aspect_dimension(value: u32, numerator: u32, denominator: u32) -> u32 
 
 fn video_frame_is_too_late(frame_pts: i64, expected_pts: i64, queue_len: usize) -> bool {
     queue_len > 1 && expected_pts.saturating_sub(frame_pts) > VIDEO_DROP_THRESHOLD_FRAMES
+}
+
+fn split_audio_padding(submitted: u64, virtual_position: u64, padding: u64) -> (u64, u64) {
+    let covered = virtual_position.saturating_sub(submitted).min(padding);
+    (covered, padding - covered)
 }
 
 pub(super) struct DesktopOutput {
@@ -117,7 +122,9 @@ enum DesktopControlMessage {
     ClipStarted,
     Subtitles(Vec<DesktopSubtitleCue>),
     VideoEnd(Option<i64>),
+    VideoDecoded,
     VideoFinished,
+    AudioPadding(u64),
     ClipFinished,
 }
 
@@ -160,6 +167,7 @@ struct DesktopRenderer {
     video_queue: VecDeque<frame::Video>,
     pending_audio: VecDeque<(Vec<f32>, usize)>,
     pending_audio_samples: u64,
+    pending_silence_samples: u64,
     submitted_audio_samples: u64,
     audio_started: bool,
     sample_rate: u32,
@@ -167,6 +175,7 @@ struct DesktopRenderer {
     audio_clock: AudioMasterClock,
     video_time_base: Rational,
     video_end_pts: Option<i64>,
+    video_decoded: bool,
     video_finished: bool,
     last_rendered_video_pts: Option<i64>,
     last_video_present: Option<Instant>,
@@ -376,6 +385,12 @@ impl FrameOutput for DesktopFrameSender {
             .map_err(|_| PlaybackStopped.into())
     }
 
+    fn video_decoded(&mut self) -> Result<()> {
+        self.control_sender
+            .send(DesktopControlMessage::VideoDecoded)
+            .map_err(|_| PlaybackStopped.into())
+    }
+
     fn write_vtt_subtitles(
         &mut self,
         media_path: &str,
@@ -407,6 +422,14 @@ impl FrameOutput for DesktopFrameSender {
             .send(DesktopControlMessage::VideoFinished)
             .map_err(|_| PlaybackStopped.into())
     }
+
+    fn pad_audio(&mut self, samples: i64) -> Result<bool> {
+        let samples = u64::try_from(samples).map_err(|_| anyhow!("negative audio padding"))?;
+        self.control_sender
+            .send(DesktopControlMessage::AudioPadding(samples))
+            .map_err(|_| PlaybackStopped)?;
+        Ok(true)
+    }
 }
 
 impl DesktopRenderer {
@@ -426,6 +449,7 @@ impl DesktopRenderer {
             video_queue: VecDeque::with_capacity(VIDEO_CHANNEL_CAPACITY),
             pending_audio: VecDeque::new(),
             pending_audio_samples: 0,
+            pending_silence_samples: 0,
             submitted_audio_samples: 0,
             audio_started: false,
             fps: cfg.fps,
@@ -434,6 +458,7 @@ impl DesktopRenderer {
             audio_clock: AudioMasterClock::new(cfg.sample_rate, device_buffer_samples),
             video_time_base: cfg.video_time_base,
             video_end_pts: None,
+            video_decoded: false,
             video_finished: false,
             last_rendered_video_pts: None,
             last_video_present: None,
@@ -523,6 +548,7 @@ impl DesktopRenderer {
                 Ok(DesktopControlMessage::ClipStarted) => {
                     received = true;
                     self.video_end_pts = None;
+                    self.video_decoded = false;
                     self.video_finished = false;
                     self.last_starvation_report = None;
                     self.subtitles.clear();
@@ -539,10 +565,19 @@ impl DesktopRenderer {
                     received = true;
                     self.video_end_pts = video_end_pts;
                 }
+                Ok(DesktopControlMessage::VideoDecoded) => {
+                    received = true;
+                    self.video_decoded = true;
+                    self.start_audio_if_ready(false);
+                }
                 Ok(DesktopControlMessage::VideoFinished) => {
                     received = true;
                     self.video_finished = true;
                     self.start_audio_if_ready(false);
+                }
+                Ok(DesktopControlMessage::AudioPadding(samples)) => {
+                    received = true;
+                    self.apply_audio_padding(samples);
                 }
                 Ok(DesktopControlMessage::ClipFinished) => {
                     received = true;
@@ -604,10 +639,12 @@ impl DesktopRenderer {
         self.video_queue.clear();
         self.pending_audio.clear();
         self.pending_audio_samples = 0;
+        self.pending_silence_samples = 0;
         self.submitted_audio_samples = audio_pts;
         self.audio_started = false;
         self.audio_clock.reset_at(audio_pts, Instant::now());
         self.video_end_pts = None;
+        self.video_decoded = false;
         self.video_finished = false;
         self.last_rendered_video_pts = video_pts.checked_sub(1);
         self.last_video_present = None;
@@ -620,26 +657,36 @@ impl DesktopRenderer {
     }
 
     fn finish(mut self) -> Result<()> {
-        self.flush_pending_audio()?;
-        self.start_audio_if_ready(true);
-        let remaining_samples = self.pending_audio_samples + self.queued_audio_samples();
-        let deadline = Instant::now()
-            + Duration::from_secs_f64(remaining_samples as f64 / f64::from(self.sample_rate))
-            + Duration::from_secs(2);
-        while !self.pending_audio.is_empty() || self.queued_audio_samples() > 0 {
-            if Instant::now() >= deadline {
-                log::warn!("desktop audio did not drain in time; finishing playback anyway");
-                break;
-            }
-            self.handle_events()?;
+        let result = (|| {
             self.flush_pending_audio()?;
-            self.render_due_video()?;
-            std_thread::sleep(SCHEDULER_INTERVAL);
-        }
-        std_thread::sleep(Duration::from_secs_f64(
-            self.device_buffer_samples as f64 / f64::from(self.sample_rate),
-        ));
-        self.render_due_video_at(self.submitted_audio_samples)
+            self.start_audio_if_ready(true);
+            let remaining_samples = self.pending_audio_samples
+                + self.pending_silence_samples
+                + self.queued_audio_samples();
+            let deadline = Instant::now()
+                + Duration::from_secs_f64(remaining_samples as f64 / f64::from(self.sample_rate))
+                + Duration::from_secs(2);
+            while !self.pending_audio.is_empty()
+                || self.pending_silence_samples > 0
+                || self.queued_audio_samples() > 0
+            {
+                if Instant::now() >= deadline {
+                    log::warn!("desktop audio did not drain in time; finishing playback anyway");
+                    break;
+                }
+                self.handle_events()?;
+                self.flush_pending_audio()?;
+                self.render_due_video()?;
+                std_thread::sleep(SCHEDULER_INTERVAL);
+            }
+            std_thread::sleep(Duration::from_secs_f64(
+                self.device_buffer_samples as f64 / f64::from(self.sample_rate),
+            ));
+            self.render_due_video_at(self.submitted_audio_samples)
+        })();
+        drop(self);
+        close_desktop_window();
+        result
     }
 
     fn flush_pending_audio(&mut self) -> Result<()> {
@@ -655,12 +702,40 @@ impl DesktopRenderer {
                 .submitted_audio_samples
                 .saturating_add(samples_per_channel as u64);
         }
+        while self.pending_audio.is_empty()
+            && self.pending_silence_samples > 0
+            && self.queued_audio_samples() < self.max_queue_samples()
+        {
+            let samples = self.pending_silence_samples.min(1_024) as usize;
+            self.audio.queue(&vec![0.0; samples * AUDIO_CHANNELS])?;
+            self.pending_silence_samples -= samples as u64;
+            self.submitted_audio_samples = self
+                .submitted_audio_samples
+                .saturating_add(samples as u64);
+        }
         self.start_audio_if_ready(false);
         Ok(())
     }
 
+    fn apply_audio_padding(&mut self, samples: u64) {
+        let queued = self.queued_audio_samples();
+        let virtual_position = self.played_audio_samples();
+        let (covered, remaining) =
+            split_audio_padding(self.submitted_audio_samples, virtual_position, samples);
+        self.submitted_audio_samples = self.submitted_audio_samples.saturating_add(covered);
+        self.pending_silence_samples = self
+            .pending_silence_samples
+            .saturating_add(remaining);
+        if covered > 0 {
+            self.audio_clock.reset_at(
+                self.submitted_audio_samples.saturating_sub(queued),
+                Instant::now(),
+            );
+        }
+    }
+
     fn start_audio_if_ready(&mut self, force: bool) {
-        let video_ready = video_prebuffer_ready(self.video_queue.len(), self.video_finished, force);
+        let video_ready = video_prebuffer_ready(self.video_queue.len(), self.video_decoded, force);
         if !self.audio_started
             && video_ready
             && (force || self.queued_audio_samples() >= self.prebuffer_samples())
@@ -790,10 +865,16 @@ impl DesktopRenderer {
     }
 
     fn played_audio_samples(&mut self) -> u64 {
+        let queued = self.queued_audio_samples();
+        let allow_underflow = self.audio_started
+            && queued == 0
+            && self.pending_audio_samples == 0
+            && self.video_queue.len() == VIDEO_CHANNEL_CAPACITY;
         self.audio_clock.position(
             self.submitted_audio_samples,
-            self.queued_audio_samples(),
+            queued,
             Instant::now(),
+            allow_underflow,
         )
     }
 
@@ -1007,6 +1088,13 @@ fn prepare_desktop_window(width: u32, height: u32, fullscreen: bool) -> Result<(
             Ok(())
         }
     })
+}
+
+fn close_desktop_window() {
+    DESKTOP_WINDOW.with(|window| {
+        let window = window.borrow_mut().take();
+        drop(window);
+    });
 }
 
 enum WindowAction {
@@ -1273,13 +1361,23 @@ mod tests {
         let start = Instant::now();
         let mut clock = AudioMasterClock::new(48_000, 1_024);
         clock.reset_at(0, start);
-        assert_eq!(clock.position(4_800, 3_776, start), 0);
+        assert_eq!(clock.position(4_800, 3_776, start, false), 0);
         assert_eq!(
-            clock.position(4_800, 3_776, start + Duration::from_millis(10)),
+            clock.position(
+                4_800,
+                3_776,
+                start + Duration::from_millis(10),
+                false
+            ),
             480
         );
         assert_eq!(
-            clock.position(4_800, 3_776, start + Duration::from_millis(30)),
+            clock.position(
+                4_800,
+                3_776,
+                start + Duration::from_millis(30),
+                false
+            ),
             1_024
         );
     }
@@ -1289,9 +1387,14 @@ mod tests {
         let start = Instant::now();
         let mut clock = AudioMasterClock::new(48_000, 1_024);
         clock.reset_at(0, start);
-        assert_eq!(clock.position(4_800, 2_752, start), 1_024);
+        assert_eq!(clock.position(4_800, 2_752, start, false), 1_024);
         assert_eq!(
-            clock.position(4_800, 2_752, start + Duration::from_millis(10)),
+            clock.position(
+                4_800,
+                2_752,
+                start + Duration::from_millis(10),
+                false
+            ),
             1_504
         );
     }
@@ -1301,19 +1404,53 @@ mod tests {
         let start = Instant::now();
         let mut clock = AudioMasterClock::new(48_000, 1_024);
         clock.reset_at(96_000, start);
-        assert_eq!(clock.position(100_800, 4_800, start), 96_000);
+        assert_eq!(clock.position(100_800, 4_800, start, false), 96_000);
         assert_eq!(
-            clock.position(100_800, 4_800, start + Duration::from_millis(10)),
+            clock.position(
+                100_800,
+                4_800,
+                start + Duration::from_millis(10),
+                false
+            ),
             96_000
         );
         assert_eq!(
-            clock.position(100_800, 3_776, start + Duration::from_millis(20)),
+            clock.position(
+                100_800,
+                3_776,
+                start + Duration::from_millis(20),
+                false
+            ),
             96_000
         );
         assert_eq!(
-            clock.position(100_800, 3_776, start + Duration::from_millis(30)),
+            clock.position(
+                100_800,
+                3_776,
+                start + Duration::from_millis(30),
+                false
+            ),
             96_480
         );
+    }
+
+    #[test]
+    fn audio_clock_advances_during_confirmed_underflow() {
+        let start = Instant::now();
+        let mut clock = AudioMasterClock::new(48_000, 1_024);
+        clock.reset_at(48_000, start);
+
+        assert_eq!(
+            clock.position(48_000, 0, start + Duration::from_secs(1), true),
+            96_000
+        );
+    }
+
+    #[test]
+    fn audio_padding_only_queues_silence_not_covered_by_underflow() {
+        assert_eq!(split_audio_padding(48_000, 72_000, 48_000), (24_000, 24_000));
+        assert_eq!(split_audio_padding(48_000, 48_000, 48_000), (0, 48_000));
+        assert_eq!(split_audio_padding(48_000, 120_000, 48_000), (48_000, 0));
     }
 
     #[test]
