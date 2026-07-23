@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    io,
+    fs, io,
     path::Path,
     str::FromStr,
     sync::{LazyLock, OnceLock},
@@ -63,16 +63,27 @@ pub static DB_PATH: LazyLock<Result<Cow<'static, Path>, io::Error>> = LazyLock::
 
     if path.is_file() {
         path.access(faccess::AccessMode::WRITE)?;
-    } else if let Some(p) = path.parent() {
-        p.access(faccess::AccessMode::WRITE)?;
     } else {
-        return Err(io::Error::other("Database path not found"));
+        ensure_database_parent(&path)?;
     }
 
     info!("Database path: {}", path.display());
 
     Ok(path)
 });
+
+fn ensure_database_parent(path: &Path) -> io::Result<()> {
+    // `Path::parent()` is an empty path for a plain file name such as
+    // `ffplayout.db`. That means the current working directory is the parent,
+    // not that the database has no valid location. Create explicitly supplied
+    // parent directories on first run as well.
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    parent.access(faccess::AccessMode::WRITE)
+}
 
 pub static GLOBAL_SETTINGS: OnceLock<GlobalSettings> = OnceLock::new();
 pub async fn db_pool() -> Result<Pool<Sqlite>, ProcessError> {
@@ -123,4 +134,34 @@ pub async fn init_globales(conn: &Pool<Sqlite>) -> Result<(), ProcessError> {
         .map_err(|_| "Failed to set global settings")?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::ensure_database_parent;
+
+    #[test]
+    fn creates_a_missing_database_parent_directory() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ffplayout-db-parent-test-{}-{suffix}",
+            std::process::id()
+        ));
+        let database = root.join("nested").join("ffplayout.db");
+
+        ensure_database_parent(&database).unwrap();
+
+        assert!(database.parent().unwrap().is_dir());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn treats_a_plain_database_file_name_as_the_current_directory() {
+        ensure_database_parent(std::path::Path::new("ffplayout.db")).unwrap();
+    }
 }
