@@ -366,7 +366,7 @@ async fn open_playout(
     }
 }
 
-#[cfg(feature = "desktop-base")]
+#[cfg(any(feature = "desktop", feature = "desktop-cpu"))]
 async fn open_desktop_playout(
     output_config: OutputConfig,
     fallback_duration: f64,
@@ -376,7 +376,7 @@ async fn open_desktop_playout(
         .map_err(engine_error)
 }
 
-#[cfg(not(feature = "desktop-base"))]
+#[cfg(not(any(feature = "desktop", feature = "desktop-cpu")))]
 async fn open_desktop_playout(
     _output_config: OutputConfig,
     _fallback_duration: f64,

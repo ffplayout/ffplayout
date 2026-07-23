@@ -12,12 +12,7 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{Rational, Rescale, frame};
 #[cfg(target_os = "linux")]
-use winit::platform::{
-    wayland::{EventLoopBuilderExtWayland, WindowAttributesExtWayland},
-    x11::WindowAttributesExtX11,
-};
-#[cfg(target_os = "windows")]
-use winit::platform::windows::EventLoopBuilderExtWindows;
+use winit::platform::{wayland::WindowAttributesExtWayland, x11::WindowAttributesExtX11};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
@@ -45,6 +40,7 @@ mod gpu;
 mod graphics;
 mod icon;
 mod render;
+#[cfg(feature = "tokio")]
 pub(crate) mod thread;
 mod timing;
 mod video;
@@ -1109,16 +1105,6 @@ enum WindowAction {
 impl DesktopWindow {
     fn open(width: u32, height: u32, fullscreen: bool) -> Result<Self> {
         let mut event_loop_builder = EventLoop::<()>::builder();
-        // Desktop sessions are serialized on the persistent desktop worker.
-        // Wayland and X11 share this Linux platform flag, which permits that
-        // worker to own the event loop instead of the process main thread.
-        #[cfg(target_os = "linux")]
-        EventLoopBuilderExtWayland::with_any_thread(&mut event_loop_builder, true);
-        // The desktop renderer owns a dedicated OS thread so its window,
-        // event loop and GPU resources never cross thread boundaries. Winit
-        // requires this explicit opt-in on Windows.
-        #[cfg(target_os = "windows")]
-        EventLoopBuilderExtWindows::with_any_thread(&mut event_loop_builder, true);
         let event_loop = event_loop_builder
             .build()
             .context("creating desktop window event loop")?;
