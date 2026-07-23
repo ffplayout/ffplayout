@@ -158,15 +158,10 @@ pub struct AsyncPlayout {
     hls_health: Option<HlsHealth>,
 }
 
-/// How to wait for the playout worker to finish. Desktop-output sessions run
-/// as a job on the process main thread (see
-/// `output::desktop::thread`) instead of on their own dedicated `JoinHandle`, so
-/// completion is signalled through a channel instead.
+/// How to wait for the playout worker to finish.
 #[cfg(feature = "tokio")]
 enum WorkerCompletion {
     Thread(JoinHandle<()>),
-    #[cfg(feature = "desktop-base")]
-    DesktopThread(oneshot::Receiver<()>),
 }
 
 #[cfg(feature = "tokio")]
@@ -220,36 +215,7 @@ impl AsyncPlayout {
 
     #[cfg(feature = "desktop-base")]
     pub async fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
-        let (commands, command_rx) = mpsc::channel();
-        let (ready_tx, ready_rx) = oneshot::channel();
-        let (done_tx, done_rx) = oneshot::channel();
-        let playback_control = PlaybackControl::default();
-        let worker_playback_control = playback_control.clone();
-
-        output::desktop::thread::spawn(move || {
-            match Playout::open_desktop(config, fallback_duration) {
-                Ok(mut playout) => {
-                    playout.playback_control = worker_playback_control;
-                    let _ = ready_tx.send(Ok(()));
-                    run_async_playout_worker(playout, command_rx);
-                }
-                Err(error) => {
-                    let _ = ready_tx.send(Err(error));
-                }
-            }
-            let _ = done_tx.send(());
-        })?;
-
-        ready_rx
-            .await
-            .context("playout worker stopped during open")??;
-
-        Ok(Self {
-            commands,
-            completion: WorkerCompletion::DesktopThread(done_rx),
-            playback_control,
-            hls_health: None,
-        })
+        Self::open_with(move || Playout::open_desktop(config, fallback_duration)).await
     }
 
     async fn open_with<F>(open: F) -> Result<Self>
@@ -398,12 +364,6 @@ impl AsyncPlayout {
             WorkerCompletion::Thread(worker) => {
                 if worker.join().is_err() && finish_result.is_ok() {
                     return Err(anyhow!("playout worker panicked during finish"));
-                }
-            }
-            #[cfg(feature = "desktop-base")]
-            WorkerCompletion::DesktopThread(done_rx) => {
-                if done_rx.await.is_err() && finish_result.is_ok() {
-                    return Err(anyhow!("desktop playout worker stopped unexpectedly"));
                 }
             }
         }

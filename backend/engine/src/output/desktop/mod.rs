@@ -40,7 +40,6 @@ mod gpu;
 mod graphics;
 mod icon;
 mod render;
-#[cfg(feature = "tokio")]
 pub(crate) mod thread;
 mod timing;
 mod video;
@@ -160,6 +159,7 @@ pub(crate) struct DesktopFrameSender {
 }
 
 struct DesktopRenderer {
+    window: DesktopWindowHandle,
     audio: DesktopAudio,
     audio_effects_control: AudioEffectsControl,
     video_queue: VecDeque<frame::Video>,
@@ -432,7 +432,7 @@ impl FrameOutput for DesktopFrameSender {
 
 impl DesktopRenderer {
     fn open(cfg: &OutputConfig) -> Result<Self> {
-        prepare_desktop_window(cfg.width, cfg.height, cfg.desktop_fullscreen)?;
+        let window = prepare_desktop_window(cfg.width, cfg.height, cfg.desktop_fullscreen)?;
         let audio = DesktopAudio::open(cfg.sample_rate)?;
         let device_buffer_samples = audio.device_buffer_samples();
         let logo = cfg
@@ -442,6 +442,7 @@ impl DesktopRenderer {
             .transpose()?;
 
         Ok(Self {
+            window,
             audio,
             audio_effects_control: cfg.audio_effects.clone(),
             video_queue: VecDeque::with_capacity(VIDEO_CHANNEL_CAPACITY),
@@ -477,17 +478,6 @@ impl DesktopRenderer {
             desktop_control_callback: cfg.desktop_control_callback.clone(),
             help_visible: false,
             help_bitmap: None,
-        })
-    }
-
-    fn with_window<T>(&self, operation: impl FnOnce(&mut DesktopWindow) -> T) -> T {
-        DESKTOP_WINDOW.with(|window| {
-            let mut window = window.borrow_mut();
-            operation(
-                window
-                    .as_mut()
-                    .expect("desktop window must be initialized before rendering"),
-            )
         })
     }
 
@@ -889,8 +879,10 @@ impl DesktopRenderer {
     }
 
     fn handle_events(&mut self) -> Result<()> {
-        self.with_window(DesktopWindow::pump_events);
-        let actions = self.with_window(DesktopWindow::take_actions);
+        if !thread::is_running() {
+            pump_desktop_window_events();
+        }
+        let actions = self.window.take_actions();
         let mut refresh = self
             .volume_overlay_until
             .is_some_and(|until| Instant::now() >= until);
@@ -910,7 +902,7 @@ impl DesktopRenderer {
                         self.help_bitmap = None;
                         refresh = true;
                     }
-                    if !self.with_window(|window| window.fullscreen()) && width > 0 && height > 0 {
+                    if !self.window.fullscreen() && width > 0 && height > 0 {
                         self.pending_aspect_resize = Some((width, height, Instant::now()));
                     }
                 }
@@ -980,7 +972,7 @@ impl DesktopRenderer {
         };
         self.last_window_size = target;
         if target != (width, height) {
-            self.with_window(|window| window.request_size(target.0, target.1));
+            self.window.request_size(target.0, target.1);
         }
     }
 
@@ -998,15 +990,13 @@ impl DesktopRenderer {
         });
         let volume_overlay = self.volume_overlay_until.is_some();
         let help = self.help_bitmap();
-        self.with_window(|window| {
-            window.set_frame(WindowFrame {
-                video: self.last_video.clone(),
-                subtitle,
-                logo,
-                volume: self.audio_effects_control.volume(),
-                volume_overlay,
-                help,
-            });
+        self.window.set_frame(WindowFrame {
+            video: self.last_video.clone(),
+            subtitle,
+            logo,
+            volume: self.audio_effects_control.volume(),
+            volume_overlay,
+            help,
         });
     }
 
@@ -1015,10 +1005,8 @@ impl DesktopRenderer {
             return None;
         }
         if self.help_bitmap.is_none() {
-            self.help_bitmap = self
-                .with_window(|window| {
-                    create_help_bitmap(window.size().0, window.uses_large_subtitles())
-                })
+            let (size, large) = self.window.size_and_large_subtitles();
+            self.help_bitmap = create_help_bitmap(size.0, large)
                 .map_err(|error| log::warn!("failed to render desktop help: {error}"))
                 .ok()
                 .flatten();
@@ -1032,12 +1020,11 @@ impl DesktopRenderer {
         if self.active_subtitle_text.as_deref() != text.as_deref() {
             self.active_subtitle_text = text.clone();
             self.subtitle_bitmap = text.and_then(|text| {
-                self.with_window(|window| {
-                    create_subtitle_bitmap(&text, window.size().0, window.uses_large_subtitles())
-                })
-                .map_err(|error| log::warn!("failed to render desktop subtitle: {error}"))
-                .ok()
-                .flatten()
+                let (size, large) = self.window.size_and_large_subtitles();
+                create_subtitle_bitmap(&text, size.0, large)
+                    .map_err(|error| log::warn!("failed to render desktop subtitle: {error}"))
+                    .ok()
+                    .flatten()
             });
         }
         self.subtitle_bitmap.clone()
@@ -1060,7 +1047,7 @@ impl Drop for DesktopRenderer {
         // Winit permits only one event loop per process. Keep the thread-local
         // window and its event loop alive across channel restarts, but hide it
         // until the next desktop session reconfigures and shows it again.
-        self.with_window(DesktopWindow::hide);
+        hide_desktop_window();
     }
 }
 
@@ -1069,26 +1056,90 @@ struct DesktopWindow {
     app: DesktopWindowApp,
 }
 
+#[derive(Clone)]
+struct DesktopWindowHandle {
+    window: Arc<Window>,
+    shared: Arc<Mutex<DesktopWindowShared>>,
+}
+
+struct DesktopWindowShared {
+    actions: Vec<WindowAction>,
+    frame: Option<WindowFrame>,
+    size: (u32, u32),
+    fullscreen: bool,
+    maximized: bool,
+    requested_size: Option<(u32, u32)>,
+}
+
+impl DesktopWindowShared {
+    fn update_window_state(&mut self, size: (u32, u32), maximized: bool) {
+        self.size = size;
+        self.maximized = maximized;
+    }
+}
+
 struct DesktopWindowApp {
     window: Arc<Window>,
     renderer: WindowRenderer,
-    actions: Vec<WindowAction>,
-    frame: Option<WindowFrame>,
+    shared: Arc<Mutex<DesktopWindowShared>>,
     size: (u32, u32),
     occluded: bool,
     last_primary_click: Option<Instant>,
 }
 
-fn prepare_desktop_window(width: u32, height: u32, fullscreen: bool) -> Result<()> {
+fn prepare_desktop_window(
+    width: u32,
+    height: u32,
+    fullscreen: bool,
+) -> Result<DesktopWindowHandle> {
+    if thread::is_running() {
+        thread::call(move || prepare_desktop_window_on_current_thread(width, height, fullscreen))?
+    } else {
+        prepare_desktop_window_on_current_thread(width, height, fullscreen)
+    }
+}
+
+fn prepare_desktop_window_on_current_thread(
+    width: u32,
+    height: u32,
+    fullscreen: bool,
+) -> Result<DesktopWindowHandle> {
     DESKTOP_WINDOW.with(|window| {
         let mut window = window.borrow_mut();
         if let Some(window) = window.as_mut() {
-            window.reconfigure(width, height, fullscreen)
+            window.reconfigure(width, height, fullscreen)?;
+            Ok(window.handle())
         } else {
             *window = Some(DesktopWindow::open(width, height, fullscreen)?);
-            Ok(())
+            Ok(window
+                .as_ref()
+                .expect("desktop window was just initialized")
+                .handle())
         }
     })
+}
+
+pub(super) fn pump_desktop_window_events() {
+    DESKTOP_WINDOW.with(|window| {
+        if let Some(window) = window.borrow_mut().as_mut() {
+            window.pump_events();
+        }
+    });
+}
+
+fn hide_desktop_window() {
+    let hide = || {
+        DESKTOP_WINDOW.with(|window| {
+            if let Some(window) = window.borrow_mut().as_mut() {
+                window.hide();
+            }
+        });
+    };
+    if thread::is_running() {
+        let _ = thread::call(hide);
+    } else {
+        hide();
+    }
 }
 
 enum WindowAction {
@@ -1112,6 +1163,7 @@ impl DesktopWindow {
             .with_window_icon(Some(desktop_window_icon()?))
             .with_inner_size(LogicalSize::new(f64::from(width), f64::from(height)))
             .with_resizable(true)
+            .with_visible(false)
             .with_fullscreen(fullscreen.then_some(Fullscreen::Borderless(None)));
         // Wayland uses this as the application ID; X11 uses it as the window class.
         // Both let desktop shells associate this window with ffplayout instead of "Unknown".
@@ -1134,33 +1186,53 @@ impl DesktopWindow {
                 .context("creating desktop window")?,
         );
         let size = window.inner_size();
-        let renderer = WindowRenderer::new(
+        let shared = Arc::new(Mutex::new(DesktopWindowShared {
+            actions: Vec::new(),
+            frame: Some(WindowFrame::default()),
+            size: (size.width, size.height),
+            fullscreen,
+            maximized: false,
+            requested_size: None,
+        }));
+        let mut renderer = WindowRenderer::new(
             Arc::clone(&window),
             event_loop.owned_display_handle(),
             width,
             height,
         )?;
+        renderer.resize_surface(size.width, size.height)?;
 
-        Ok(Self {
+        let desktop_window = Self {
             event_loop,
             app: DesktopWindowApp {
                 window,
                 renderer,
-                actions: Vec::new(),
-                frame: None,
+                shared,
                 size: (size.width, size.height),
                 occluded: false,
                 last_primary_click: None,
             },
-        })
+        };
+        desktop_window.app.window.set_visible(true);
+        desktop_window.app.window.request_redraw();
+        Ok(desktop_window)
     }
 
     fn reconfigure(&mut self, width: u32, height: u32, fullscreen: bool) -> Result<()> {
-        self.app.frame = None;
-        self.app.actions.clear();
+        {
+            let mut shared = self
+                .app
+                .shared
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            shared.frame = Some(WindowFrame::default());
+            shared.actions.clear();
+            shared.fullscreen = fullscreen;
+            shared.maximized = false;
+            shared.requested_size = None;
+        }
         self.app.occluded = false;
         self.app.renderer.reset_frame_cache();
-        self.app.window.set_visible(true);
         self.app.window.set_fullscreen(
             fullscreen.then(|| Fullscreen::Borderless(self.app.window.current_monitor())),
         );
@@ -1171,18 +1243,28 @@ impl DesktopWindow {
 
         if !fullscreen && width > 0 && height > 0 {
             self.app.size = (width, height);
+            self.app
+                .shared
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .size = (width, height);
             self.app.renderer.resize_surface(width, height)?;
             let _ = self
                 .app
                 .window
                 .request_inner_size(PhysicalSize::new(width, height));
         }
+        self.app.window.set_visible(true);
         self.app.window.request_redraw();
         Ok(())
     }
 
     fn hide(&mut self) {
-        self.app.frame = None;
+        self.app
+            .shared
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .frame = None;
         self.app.renderer.release_frame_resources();
         self.app.window.set_visible(false);
     }
@@ -1193,44 +1275,91 @@ impl DesktopWindow {
             .pump_app_events(Some(Duration::ZERO), &mut self.app);
     }
 
-    fn take_actions(&mut self) -> Vec<WindowAction> {
-        std::mem::take(&mut self.app.actions)
+    fn handle(&self) -> DesktopWindowHandle {
+        DesktopWindowHandle {
+            window: Arc::clone(&self.app.window),
+            shared: Arc::clone(&self.app.shared),
+        }
+    }
+}
+
+impl DesktopWindowHandle {
+    fn take_actions(&self) -> Vec<WindowAction> {
+        let mut shared = self
+            .shared
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        std::mem::take(&mut shared.actions)
     }
 
-    fn set_frame(&mut self, frame: WindowFrame) {
-        self.app.frame = Some(frame);
-        if !self.app.occluded {
-            self.app.window.request_redraw();
-        }
+    fn set_frame(&self, frame: WindowFrame) {
+        self.shared
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .frame = Some(frame);
+        self.window.request_redraw();
     }
 
     fn fullscreen(&self) -> bool {
-        self.app.window.fullscreen().is_some()
+        self.shared
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .fullscreen
     }
 
-    fn uses_large_subtitles(&self) -> bool {
-        self.fullscreen() || self.app.window.is_maximized()
-    }
-
-    fn size(&self) -> (u32, u32) {
-        self.app.size
+    fn size_and_large_subtitles(&self) -> ((u32, u32), bool) {
+        let shared = self
+            .shared
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        (shared.size, shared.fullscreen || shared.maximized)
     }
 
     fn request_size(&self, width: u32, height: u32) {
-        let _ = self
-            .app
-            .window
-            .request_inner_size(PhysicalSize::new(width, height));
+        self.shared
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .requested_size = Some((width, height));
+        self.window.request_redraw();
     }
 }
 
 impl DesktopWindowApp {
+    fn push_action(&self, action: WindowAction) {
+        self.shared
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .actions
+            .push(action);
+    }
+
+    fn apply_requested_size(&self) {
+        let requested_size = self
+            .shared
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .requested_size
+            .take();
+        if let Some((width, height)) = requested_size {
+            let _ = self
+                .window
+                .request_inner_size(PhysicalSize::new(width, height));
+        }
+    }
+
     fn toggle_fullscreen(&mut self) {
         let fullscreen = self.window.fullscreen().is_none();
         self.window.set_fullscreen(
             fullscreen.then(|| Fullscreen::Borderless(self.window.current_monitor())),
         );
-        self.actions.push(WindowAction::FullscreenChanged);
+        {
+            let mut shared = self
+                .shared
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            shared.fullscreen = fullscreen;
+            shared.actions.push(WindowAction::FullscreenChanged);
+        }
     }
 }
 
@@ -1247,15 +1376,20 @@ impl ApplicationHandler for DesktopWindowApp {
             return;
         }
 
+        self.apply_requested_size();
+
         match event {
-            WindowEvent::CloseRequested => self.actions.push(WindowAction::Stop),
+            WindowEvent::CloseRequested => self.push_action(WindowAction::Stop),
             WindowEvent::Resized(size) => {
                 self.size = (size.width, size.height);
+                self.shared
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .update_window_state(self.size, self.window.is_maximized());
                 if let Err(error) = self.renderer.resize_surface(size.width, size.height) {
                     log::warn!("desktop renderer resize failed: {error}");
                 }
-                self.actions
-                    .push(WindowAction::Resize(size.width, size.height));
+                self.push_action(WindowAction::Resize(size.width, size.height));
                 self.window.request_redraw();
             }
             WindowEvent::Occluded(occluded) => {
@@ -1265,8 +1399,14 @@ impl ApplicationHandler for DesktopWindowApp {
                 }
             }
             WindowEvent::RedrawRequested => {
+                let frame = self
+                    .shared
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .frame
+                    .clone();
                 if !self.occluded
-                    && let Some(frame) = &self.frame
+                    && let Some(frame) = &frame
                     && let Err(error) = benchmark::measure_success(Stage::DesktopPresent, || {
                         self.renderer.render(frame, self.size)
                     })
@@ -1276,35 +1416,30 @@ impl ApplicationHandler for DesktopWindowApp {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 match event.physical_key {
-                    PhysicalKey::Code(KeyCode::Escape) => self.actions.push(WindowAction::Stop),
+                    PhysicalKey::Code(KeyCode::Escape) => self.push_action(WindowAction::Stop),
                     PhysicalKey::Code(KeyCode::KeyF) if !event.repeat => {
                         self.toggle_fullscreen();
                     }
                     PhysicalKey::Code(KeyCode::KeyS) if !event.repeat => {
-                        self.actions.push(WindowAction::ToggleSubtitles);
+                        self.push_action(WindowAction::ToggleSubtitles);
                     }
                     PhysicalKey::Code(KeyCode::KeyE) if !event.repeat => {
-                        self.actions
-                            .push(WindowAction::Control(DesktopControlCommand::Back));
+                        self.push_action(WindowAction::Control(DesktopControlCommand::Back));
                     }
                     PhysicalKey::Code(KeyCode::KeyT) if !event.repeat => {
-                        self.actions
-                            .push(WindowAction::Control(DesktopControlCommand::Next));
+                        self.push_action(WindowAction::Control(DesktopControlCommand::Next));
                     }
                     PhysicalKey::Code(KeyCode::KeyR) if !event.repeat => {
-                        self.actions
-                            .push(WindowAction::Control(DesktopControlCommand::Reset));
+                        self.push_action(WindowAction::Control(DesktopControlCommand::Reset));
                     }
                     PhysicalKey::Code(KeyCode::KeyH) if !event.repeat => {
-                        self.actions.push(WindowAction::ToggleHelp);
+                        self.push_action(WindowAction::ToggleHelp);
                     }
                     PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                        self.actions
-                            .push(WindowAction::AdjustVolume(-DESKTOP_VOLUME_STEP));
+                        self.push_action(WindowAction::AdjustVolume(-DESKTOP_VOLUME_STEP));
                     }
                     PhysicalKey::Code(KeyCode::ArrowRight) => {
-                        self.actions
-                            .push(WindowAction::AdjustVolume(DESKTOP_VOLUME_STEP));
+                        self.push_action(WindowAction::AdjustVolume(DESKTOP_VOLUME_STEP));
                     }
                     _ => {}
                 }

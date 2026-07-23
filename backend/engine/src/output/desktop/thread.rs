@@ -3,7 +3,9 @@
 //! Winit requires the event loop to be created on the process main thread on
 //! macOS and recommends the same on other platforms. The application starts
 //! Tokio on a background thread and runs this host on its main thread. Desktop
-//! jobs are still serialized, but are executed by that main thread.
+//! jobs are serialized and kept short. The desktop playout worker runs on its
+//! own thread so audio and video scheduling continue while a platform window
+//! enters a modal move/resize loop.
 
 use std::{
     sync::{OnceLock, mpsc},
@@ -21,7 +23,7 @@ static DESKTOP_MAIN_THREAD: OnceLock<mpsc::SyncSender<Job>> = OnceLock::new();
 /// thread owns all desktop window jobs. Must be called from `main` before a
 /// desktop `AsyncPlayout` is opened.
 pub fn run_on_main_thread<R: Send + 'static>(background: impl FnOnce() -> R + Send + 'static) -> R {
-    let (jobs_tx, jobs_rx) = mpsc::sync_channel::<Job>(0);
+    let (jobs_tx, jobs_rx) = mpsc::sync_channel::<Job>(64);
     if DESKTOP_MAIN_THREAD.set(jobs_tx).is_err() {
         panic!("desktop main-thread host was initialized more than once");
     }
@@ -45,6 +47,8 @@ pub fn run_on_main_thread<R: Send + 'static>(background: impl FnOnce() -> R + Se
             }
         }
 
+        super::pump_desktop_window_events();
+
         if let Ok(result) = done_rx.try_recv() {
             return result;
         }
@@ -58,4 +62,18 @@ pub(crate) fn spawn(job: impl FnOnce() + Send + 'static) -> Result<()> {
         .ok_or_else(|| anyhow!("desktop main-thread host is not running"))?
         .send(Box::new(job))
         .map_err(|_| anyhow!("desktop main-thread host stopped"))
+}
+
+pub(crate) fn call<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 'static) -> Result<T> {
+    let (result_tx, result_rx) = mpsc::sync_channel(1);
+    spawn(move || {
+        let _ = result_tx.send(operation());
+    })?;
+    result_rx
+        .recv()
+        .map_err(|_| anyhow!("desktop main-thread operation stopped"))
+}
+
+pub(crate) fn is_running() -> bool {
+    DESKTOP_MAIN_THREAD.get().is_some()
 }

@@ -203,8 +203,8 @@ unsafe extern "C" fn log_callback(
 fn should_skip_ffmpeg_log(message: &str) -> bool {
     INGEST_INTERRUPTED.with(Cell::get)
         || skipped_ffmpeg_log_patterns()
-        .iter()
-        .any(|pattern| pattern.is_match(message))
+            .iter()
+            .any(|pattern| pattern.is_match(message))
         || USER_SKIPPED_FFMPEG_LOG_LINES
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -410,9 +410,13 @@ mod tests {
     fn skips_ingest_errors_after_an_intentional_interrupt() {
         with_ingest_logs(Some(1), || {
             mark_ingest_interrupted();
-            assert!(should_skip_ffmpeg_log("Cannot open connection tcp://127.0.0.1:1936"));
+            assert!(should_skip_ffmpeg_log(
+                "Cannot open connection tcp://127.0.0.1:1936"
+            ));
         });
 
-        assert!(!should_skip_ffmpeg_log("Cannot open connection tcp://127.0.0.1:1936"));
+        assert!(!should_skip_ffmpeg_log(
+            "Cannot open connection tcp://127.0.0.1:1936"
+        ));
     }
 }

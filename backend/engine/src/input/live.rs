@@ -954,7 +954,8 @@ fn open_rtmp_listener(
     let input = format::input_with_interrupt_and_dictionary(
         url,
         move || {
-            let interrupted = abort.load(Ordering::Relaxed) || listener_abort.load(Ordering::Relaxed);
+            let interrupted =
+                abort.load(Ordering::Relaxed) || listener_abort.load(Ordering::Relaxed);
             if interrupted {
                 logging::mark_ingest_interrupted();
             }
