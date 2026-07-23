@@ -235,7 +235,12 @@ async fn play_loop(
             }
             ClipResult::Played => {}
             ClipResult::Skipped => {
-                debug!(channel = id; "Skipped current clip by control command");
+                // Global shutdown also uses `skip_current` to interrupt the
+                // decoder. That expected cleanup must not look like a manual
+                // skip in the log.
+                if manager.is_alive.load(Ordering::SeqCst) {
+                    debug!(channel = id; "Skipped current clip by control command");
+                }
             }
             ClipResult::Fallback { reason } => {
                 error!(channel = id;

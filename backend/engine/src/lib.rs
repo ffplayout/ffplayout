@@ -457,11 +457,11 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                     playout_rate,
                     &mut live,
                 );
-                let stopped = matches!(result, Ok(ClipResult::Stopped));
                 let _ = response.send(result);
-                if stopped {
-                    break;
-                }
+                // A closed desktop window reports `Stopped`, but the owner
+                // still sends `Finish` immediately afterwards. Keep this
+                // worker alive so that command can explicitly release the
+                // window and its WGPU resources before process shutdown.
             }
             AsyncCommand::StartRtmpLive {
                 url,

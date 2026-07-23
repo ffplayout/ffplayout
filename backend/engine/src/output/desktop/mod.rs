@@ -803,17 +803,21 @@ impl DesktopRenderer {
             .video_end_pts
             .is_some_and(|video_end_pts| expected_video_pts >= video_end_pts);
         let now = Instant::now();
-        let may_report = self
-            .last_starvation_report
-            .is_none_or(|last_report| now.duration_since(last_report) >= Duration::from_secs(1));
-
-        if starved && !self.video_finished && !reached_video_end && may_report {
-            log::debug!(
-                "desktop video queue starved: expected pts {expected_video_pts}, last rendered \
-                 pts {last_video_pts}, queued frames {}",
-                self.video_queue.len()
-            );
-            self.last_starvation_report = Some(now);
+        if starved && !self.video_finished && !reached_video_end {
+            // A decoder is intentionally interrupted during shutdown. Wait
+            // for a sustained underflow before reporting it, so the final
+            // scheduler tick before a window closes is not noisy.
+            let starvation_started = self.last_starvation_report.get_or_insert(now);
+            if now.duration_since(*starvation_started) >= Duration::from_secs(1) {
+                log::debug!(
+                    "desktop video queue starved: expected pts {expected_video_pts}, last rendered \
+                     pts {last_video_pts}, queued frames {}",
+                    self.video_queue.len()
+                );
+                self.last_starvation_report = Some(now);
+            }
+        } else {
+            self.last_starvation_report = None;
         }
 
         if (self.video_finished || reached_video_end)
@@ -1054,7 +1058,11 @@ impl DesktopRenderer {
 
 impl Drop for DesktopRenderer {
     fn drop(&mut self) {
+        // `finish` normally does this explicitly. Keeping the fallback here
+        // prevents WGPU resources in the thread-local window from surviving
+        // an early error path until thread-local destruction at process exit.
         self.with_window(DesktopWindow::hide);
+        close_desktop_window();
     }
 }
 

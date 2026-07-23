@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     os::raw::c_int,
     sync::{
         Mutex, OnceLock, PoisonError,
@@ -41,6 +41,7 @@ const LOG_DEDUP_FLUSH_THRESHOLD: usize = 100;
 thread_local! {
     static UNEXPECTED_RTMP_STREAM: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
     static INGEST_LOG_CONTEXT: RefCell<Option<i32>> = const { RefCell::new(None) };
+    static INGEST_INTERRUPTED: Cell<bool> = const { Cell::new(false) };
 }
 
 static FFMPEG_LOG_LEVEL: AtomicI32 = AtomicI32::new(ffi::AV_LOG_WARNING);
@@ -95,10 +96,22 @@ fn set_log_callback() {}
 pub(crate) fn with_ingest_logs<T>(channel_id: Option<i32>, operation: impl FnOnce() -> T) -> T {
     INGEST_LOG_CONTEXT.with(|context| {
         let previous = context.replace(channel_id);
-        let result = operation();
-        context.replace(previous);
-        result
+        INGEST_INTERRUPTED.with(|interrupted| {
+            let previous_interrupted = interrupted.replace(false);
+            let result = operation();
+            interrupted.set(previous_interrupted);
+            context.replace(previous);
+            result
+        })
     })
+}
+
+/// Marks the current ingest operation as intentionally interrupted. FFmpeg
+/// often emits a connection error while its I/O interrupt callback unwinds;
+/// that message is expected during shutdown and should not be logged as an
+/// operational failure.
+pub(crate) fn mark_ingest_interrupted() {
+    INGEST_INTERRUPTED.with(|interrupted| interrupted.set(true));
 }
 
 pub(crate) fn clear_unexpected_rtmp_stream() {
@@ -188,7 +201,8 @@ unsafe extern "C" fn log_callback(
 }
 
 fn should_skip_ffmpeg_log(message: &str) -> bool {
-    skipped_ffmpeg_log_patterns()
+    INGEST_INTERRUPTED.with(Cell::get)
+        || skipped_ffmpeg_log_patterns()
         .iter()
         .any(|pattern| pattern.is_match(message))
         || USER_SKIPPED_FFMPEG_LOG_LINES
@@ -321,7 +335,10 @@ fn remember_unexpected_rtmp_stream(message: &str) {
 mod tests {
     use ffmpeg_next::{ffi, util::log::Level as FfmpegLevel};
 
-    use super::{DedupLine, LogDedup, level_value, should_skip_ffmpeg_log};
+    use super::{
+        DedupLine, LogDedup, level_value, mark_ingest_interrupted, should_skip_ffmpeg_log,
+        with_ingest_logs,
+    };
 
     #[test]
     fn deduplicates_consecutive_identical_lines() {
@@ -387,5 +404,15 @@ mod tests {
             "Opening '/tmp/out.ts.tmp' for writing"
         ));
         assert!(!should_skip_ffmpeg_log("Unexpected stream 1, expecting 0"));
+    }
+
+    #[test]
+    fn skips_ingest_errors_after_an_intentional_interrupt() {
+        with_ingest_logs(Some(1), || {
+            mark_ingest_interrupted();
+            assert!(should_skip_ffmpeg_log("Cannot open connection tcp://127.0.0.1:1936"));
+        });
+
+        assert!(!should_skip_ffmpeg_log("Cannot open connection tcp://127.0.0.1:1936"));
     }
 }

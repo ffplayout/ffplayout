@@ -953,7 +953,13 @@ fn open_rtmp_listener(
 
     let input = format::input_with_interrupt_and_dictionary(
         url,
-        move || abort.load(Ordering::Relaxed) || listener_abort.load(Ordering::Relaxed),
+        move || {
+            let interrupted = abort.load(Ordering::Relaxed) || listener_abort.load(Ordering::Relaxed);
+            if interrupted {
+                logging::mark_ingest_interrupted();
+            }
+            interrupted
+        },
         options,
     )
     .with_context(|| format!("failed to listen for RTMP input at {url}"))?;
