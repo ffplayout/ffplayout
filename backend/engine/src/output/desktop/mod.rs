@@ -2,7 +2,7 @@ use std::{
     cell::RefCell,
     collections::VecDeque,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, PoisonError,
         mpsc::{Receiver, SyncSender, TryRecvError, sync_channel},
     },
     thread as std_thread,
@@ -1226,7 +1226,7 @@ impl DesktopWindow {
                 .app
                 .shared
                 .lock()
-                .unwrap_or_else(|error| error.into_inner());
+                .unwrap_or_else(PoisonError::into_inner);
             shared.frame = Some(WindowFrame::default());
             shared.actions.clear();
             shared.fullscreen = fullscreen;
@@ -1248,7 +1248,7 @@ impl DesktopWindow {
             self.app
                 .shared
                 .lock()
-                .unwrap_or_else(|error| error.into_inner())
+                .unwrap_or_else(PoisonError::into_inner)
                 .size = (width, height);
             self.app.renderer.resize_surface(width, height)?;
             let _ = self
@@ -1265,7 +1265,7 @@ impl DesktopWindow {
         self.app
             .shared
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(PoisonError::into_inner)
             .frame = None;
         self.app.renderer.release_frame_resources();
         self.app.window.set_visible(false);
@@ -1287,17 +1287,14 @@ impl DesktopWindow {
 
 impl DesktopWindowHandle {
     fn take_actions(&self) -> Vec<WindowAction> {
-        let mut shared = self
-            .shared
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+        let mut shared = self.shared.lock().unwrap_or_else(PoisonError::into_inner);
         std::mem::take(&mut shared.actions)
     }
 
     fn set_frame(&self, frame: WindowFrame) {
         self.shared
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(PoisonError::into_inner)
             .frame = Some(frame);
         self.window.request_redraw();
     }
@@ -1305,22 +1302,19 @@ impl DesktopWindowHandle {
     fn fullscreen(&self) -> bool {
         self.shared
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(PoisonError::into_inner)
             .fullscreen
     }
 
     fn size_and_large_subtitles(&self) -> ((u32, u32), bool) {
-        let shared = self
-            .shared
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+        let shared = self.shared.lock().unwrap_or_else(PoisonError::into_inner);
         (shared.size, shared.fullscreen || shared.maximized)
     }
 
     fn request_size(&self, width: u32, height: u32) {
         self.shared
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(PoisonError::into_inner)
             .requested_size = Some((width, height));
         self.window.request_redraw();
     }
@@ -1330,7 +1324,7 @@ impl DesktopWindowApp {
     fn push_action(&self, action: WindowAction) {
         self.shared
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(PoisonError::into_inner)
             .actions
             .push(action);
     }
@@ -1339,7 +1333,7 @@ impl DesktopWindowApp {
         let requested_size = self
             .shared
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(PoisonError::into_inner)
             .requested_size
             .take();
         if let Some((width, height)) = requested_size {
@@ -1355,10 +1349,7 @@ impl DesktopWindowApp {
             fullscreen.then(|| Fullscreen::Borderless(self.window.current_monitor())),
         );
         {
-            let mut shared = self
-                .shared
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
+            let mut shared = self.shared.lock().unwrap_or_else(PoisonError::into_inner);
             shared.fullscreen = fullscreen;
             shared.actions.push(WindowAction::FullscreenChanged);
         }
@@ -1386,7 +1377,7 @@ impl ApplicationHandler for DesktopWindowApp {
                 self.size = (size.width, size.height);
                 self.shared
                     .lock()
-                    .unwrap_or_else(|error| error.into_inner())
+                    .unwrap_or_else(PoisonError::into_inner)
                     .update_window_state(self.size, self.window.is_maximized());
                 if let Err(error) = self.renderer.resize_surface(size.width, size.height) {
                     log::warn!("desktop renderer resize failed: {error}");
@@ -1404,7 +1395,7 @@ impl ApplicationHandler for DesktopWindowApp {
                 let frame = self
                     .shared
                     .lock()
-                    .unwrap_or_else(|error| error.into_inner())
+                    .unwrap_or_else(PoisonError::into_inner)
                     .frame
                     .clone();
                 if !self.occluded
