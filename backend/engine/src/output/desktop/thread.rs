@@ -1,51 +1,61 @@
-//! The process-lifetime OS thread dedicated to desktop output.
+//! Main-thread job host for desktop output.
 //!
-//! Every desktop-output session (across restarts and channels) is executed
-//! as a job on this single dedicated thread, so window and audio resources
-//! always live on the same thread for the whole process lifetime. Jobs run one at a time, so only
-//! one desktop-output session can be active at once - reasonable, since
-//! there is only one local display anyway.
+//! Winit requires the event loop to be created on the process main thread on
+//! macOS and recommends the same on other platforms. The application starts
+//! Tokio on a background thread and runs this host on its main thread. Desktop
+//! jobs are still serialized, but are executed by that main thread.
 
-#[cfg(all(feature = "desktop-base", feature = "tokio"))]
 use std::{
     sync::{OnceLock, mpsc},
     thread,
+    time::Duration,
 };
 
-#[cfg(all(feature = "desktop-base", feature = "tokio"))]
+use anyhow::{Result, anyhow};
+
 type Job = Box<dyn FnOnce() + Send>;
 
-#[cfg(all(feature = "desktop-base", feature = "tokio"))]
-static DESKTOP_THREAD: OnceLock<mpsc::SyncSender<Job>> = OnceLock::new();
+static DESKTOP_MAIN_THREAD: OnceLock<mpsc::SyncSender<Job>> = OnceLock::new();
 
-#[cfg(all(feature = "desktop-base", feature = "tokio"))]
-fn desktop_thread() -> &'static mpsc::SyncSender<Job> {
-    DESKTOP_THREAD.get_or_init(|| {
-        // Rendezvous channel: `send` blocks until the dedicated thread has
-        // picked up the job, which keeps queuing semantics simple (jobs run
-        // strictly one after another, in submission order).
-        let (tx, rx) = mpsc::sync_channel::<Job>(0);
+/// Runs the application work on a background thread while this (calling)
+/// thread owns all desktop window jobs. Must be called from `main` before a
+/// desktop `AsyncPlayout` is opened.
+pub fn run_on_main_thread<R: Send + 'static>(background: impl FnOnce() -> R + Send + 'static) -> R {
+    let (jobs_tx, jobs_rx) = mpsc::sync_channel::<Job>(0);
+    if DESKTOP_MAIN_THREAD.set(jobs_tx).is_err() {
+        panic!("desktop main-thread host was initialized more than once");
+    }
 
-        thread::Builder::new()
-            .name("ffplayout-desktop".to_string())
-            .spawn(move || {
-                for job in rx {
-                    job();
-                }
-            })
-            .expect("failed to spawn dedicated desktop thread");
+    let (done_tx, done_rx) = mpsc::sync_channel(1);
+    thread::Builder::new()
+        .name("ffplayout-runtime".to_string())
+        .spawn(move || {
+            let _ = done_tx.send(background());
+        })
+        .expect("failed to start ffplayout runtime thread");
 
-        tx
-    })
+    loop {
+        match jobs_rx.recv_timeout(Duration::from_millis(10)) {
+            Ok(job) => job(),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return done_rx
+                    .recv()
+                    .expect("ffplayout runtime stopped without a result");
+            }
+        }
+
+        if let Ok(result) = done_rx.try_recv() {
+            return result;
+        }
+    }
 }
 
-/// Runs `job` on the dedicated desktop thread. Blocks the caller until
-/// the job has been *accepted* by that thread (not until it finishes) -
-/// callers that need to wait for completion should signal it themselves,
-/// e.g. via a channel captured in the closure.
-#[cfg(all(feature = "desktop-base", feature = "tokio"))]
-pub(crate) fn spawn(job: impl FnOnce() + Send + 'static) {
-    desktop_thread()
+/// Schedules a desktop job for execution by the process main thread.
+pub(crate) fn spawn(job: impl FnOnce() + Send + 'static) -> Result<()> {
+    DESKTOP_MAIN_THREAD
+        .get()
+        .ok_or_else(|| anyhow!("desktop main-thread host is not running"))?
         .send(Box::new(job))
-        .expect("dedicated desktop thread is gone");
+        .map_err(|_| anyhow!("desktop main-thread host stopped"))
 }

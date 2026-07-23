@@ -30,6 +30,8 @@ pub use analysis::audio_level::{AudioLevel, AudioLevelCallback};
 pub use audio_mixer::AudioEffectsControl;
 use input::live::{LiveEnded, LiveOverrideOutput};
 pub use input::live::{LiveReceiver, spawn_rtmp_listener};
+#[cfg(all(feature = "desktop-base", feature = "tokio"))]
+pub use output::desktop::thread::run_on_main_thread as run_desktop_on_main_thread;
 pub use output::resolved_variant_playlist_path;
 use output::{FrameOutput, Output, PlaybackStopped};
 use playout::{PlaybackRestart, PlaybackSkipped, Timeline, play_clip, write_fallback};
@@ -157,7 +159,7 @@ pub struct AsyncPlayout {
 }
 
 /// How to wait for the playout worker to finish. Desktop-output sessions run
-/// as a job on the shared, process-lifetime desktop thread (see
+/// as a job on the process main thread (see
 /// `output::desktop::thread`) instead of on their own dedicated `JoinHandle`, so
 /// completion is signalled through a channel instead.
 #[cfg(feature = "tokio")]
@@ -236,7 +238,7 @@ impl AsyncPlayout {
                 }
             }
             let _ = done_tx.send(());
-        });
+        })?;
 
         ready_rx
             .await
@@ -455,11 +457,11 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                     playout_rate,
                     &mut live,
                 );
-                let stopped = matches!(result, Ok(ClipResult::Stopped));
                 let _ = response.send(result);
-                if stopped {
-                    break;
-                }
+                // A closed desktop window reports `Stopped`, but the owner
+                // still sends `Finish` immediately afterwards. Keep this
+                // worker alive so that command can explicitly release the
+                // window and its WGPU resources before process shutdown.
             }
             AsyncCommand::StartRtmpLive {
                 url,

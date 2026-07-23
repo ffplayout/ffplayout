@@ -6,7 +6,7 @@ ffplayout provides ***.deb** and ***.rpm** packages, which makes it easier to in
 
 1. Download the latest ffplayout from the [release](https://github.com/ffplayout/ffplayout/releases/latest) page and place the package in the **/tmp** folder
 2. Install it with `apt install /tmp/ffplayout_<VERSION>_amd64.deb`
-3. Install FFmpeg 7.0+ runtime libraries and tools (`ffmpeg`, `ffprobe`, `libavcodec`, `libavformat`, `libavutil`, `libswscale`, and `libswresample`), or install FFmpeg to **/usr/local/**
+3. Install FFmpeg 7.1+ runtime libraries and tools (`ffmpeg`, `ffprobe`, `libavcodec`, `libavformat`, `libavutil`, `libswscale`, and `libswresample`), or install FFmpeg to **/usr/local/**. For Windows you can use this shared [FFmpeg libraries](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-gpl-shared-8.1.zip).
 4. Start the service, open **http://[IP ADDRESS]:8787**, and complete the first-time setup in the browser. It creates the global settings and first global admin.
 5. Use a reverse proxy for SSL before exposing ffplayout to the Internet.
 
@@ -64,7 +64,7 @@ the [FFmpeg licensing information](https://ffmpeg.org/legal.html).
 
 **Note:** This is for advanced users only.
 
-- Install FFmpeg 7.0+ runtime libraries and tools, or compile and install them to **/usr/local/**
+- Install FFmpeg 7.1+ runtime libraries and tools, or compile and install them to **/usr/local/**
 - Download the latest archive from the [release](https://github.com/ffplayout/ffplayout/releases/latest) page
 - Copy the ffplayout binary to `/usr/bin/`
 - Copy **assets/ffplayout.conf** to `/etc/ffplayout`

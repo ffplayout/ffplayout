@@ -75,6 +75,16 @@ fn main() -> Result<(), ProcessError> {
         )
         .init();
 
+    #[cfg(any(feature = "desktop", feature = "desktop-cpu"))]
+    {
+        ff_engine::run_desktop_on_main_thread(run_async_main)
+    }
+
+    #[cfg(not(any(feature = "desktop", feature = "desktop-cpu")))]
+    run_async_main()
+}
+
+fn run_async_main() -> Result<(), ProcessError> {
     tokio::runtime::Builder::new_multi_thread()
         .max_blocking_threads(*MAX_BLOCKING_THREADS)
         .name("ff-tokio-runtime")
