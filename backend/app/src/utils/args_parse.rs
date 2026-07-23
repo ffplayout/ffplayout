@@ -255,67 +255,6 @@ fn positive_seconds(value: &str) -> Result<u64, String> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{DEFAULT_LISTEN_ADDRESS, try_parse_args_from};
-
-    #[cfg(feature = "processing-bench")]
-    use super::Args;
-
-    #[test]
-    fn no_arguments_default_to_local_api_listener() {
-        let args = try_parse_args_from(["ffplayout"]).expect("arguments should parse");
-
-        assert_eq!(args.listen.as_deref(), Some(DEFAULT_LISTEN_ADDRESS));
-    }
-
-    #[test]
-    fn explicit_arguments_do_not_enable_default_listener() {
-        let args = try_parse_args_from(["ffplayout", "--channel", "1", "--foreground"])
-            .expect("arguments should parse");
-
-        assert_eq!(args.listen, None);
-        assert_eq!(args.channel, Some(vec![1]));
-        assert!(args.foreground);
-    }
-
-    #[test]
-    fn explicit_listener_is_preserved() {
-        let args = try_parse_args_from(["ffplayout", "--listen", "0.0.0.0:9000"])
-            .expect("arguments should parse");
-
-        assert_eq!(args.listen.as_deref(), Some("0.0.0.0:9000"));
-    }
-
-    #[cfg(feature = "processing-bench")]
-    #[test]
-    fn processing_bench_interval_defaults_to_one_second_with_console_logging() {
-        let args = Args {
-            log_to_console: true,
-            ..Default::default()
-        };
-
-        assert_eq!(args.processing_bench_report_interval(), 1);
-    }
-
-    #[cfg(feature = "processing-bench")]
-    #[test]
-    fn processing_bench_interval_defaults_to_ten_seconds_without_console_logging() {
-        assert_eq!(Args::default().processing_bench_report_interval(), 10);
-    }
-
-    #[cfg(feature = "processing-bench")]
-    #[test]
-    fn explicit_processing_bench_interval_overrides_the_default() {
-        let args = Args {
-            processing_bench_interval: Some(5),
-            ..Default::default()
-        };
-
-        assert_eq!(args.processing_bench_report_interval(), 5);
-    }
-}
-
 fn global_user(args: &mut Args) {
     if args.username.is_none() {
         args.username = Text::new("Username:").prompt().ok();
@@ -597,5 +536,66 @@ async fn update_permissions() {
         if wal.is_file() {
             nix::unistd::chown(&wal, Some(user.uid), Some(user.gid)).expect("Change DB-WAL owner");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DEFAULT_LISTEN_ADDRESS, try_parse_args_from};
+
+    #[cfg(feature = "processing-bench")]
+    use super::Args;
+
+    #[test]
+    fn no_arguments_default_to_local_api_listener() {
+        let args = try_parse_args_from(["ffplayout"]).expect("arguments should parse");
+
+        assert_eq!(args.listen.as_deref(), Some(DEFAULT_LISTEN_ADDRESS));
+    }
+
+    #[test]
+    fn explicit_arguments_do_not_enable_default_listener() {
+        let args = try_parse_args_from(["ffplayout", "--channel", "1", "--foreground"])
+            .expect("arguments should parse");
+
+        assert_eq!(args.listen, None);
+        assert_eq!(args.channel, Some(vec![1]));
+        assert!(args.foreground);
+    }
+
+    #[test]
+    fn explicit_listener_is_preserved() {
+        let args = try_parse_args_from(["ffplayout", "--listen", "0.0.0.0:9000"])
+            .expect("arguments should parse");
+
+        assert_eq!(args.listen.as_deref(), Some("0.0.0.0:9000"));
+    }
+
+    #[cfg(feature = "processing-bench")]
+    #[test]
+    fn processing_bench_interval_defaults_to_one_second_with_console_logging() {
+        let args = Args {
+            log_to_console: true,
+            ..Default::default()
+        };
+
+        assert_eq!(args.processing_bench_report_interval(), 1);
+    }
+
+    #[cfg(feature = "processing-bench")]
+    #[test]
+    fn processing_bench_interval_defaults_to_ten_seconds_without_console_logging() {
+        assert_eq!(Args::default().processing_bench_report_interval(), 10);
+    }
+
+    #[cfg(feature = "processing-bench")]
+    #[test]
+    fn explicit_processing_bench_interval_overrides_the_default() {
+        let args = Args {
+            processing_bench_interval: Some(5),
+            ..Default::default()
+        };
+
+        assert_eq!(args.processing_bench_report_interval(), 5);
     }
 }
