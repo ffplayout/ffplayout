@@ -683,7 +683,6 @@ impl DesktopRenderer {
             self.render_due_video_at(self.submitted_audio_samples)
         })();
         drop(self);
-        close_desktop_window();
         result
     }
 
@@ -1058,11 +1057,10 @@ impl DesktopRenderer {
 
 impl Drop for DesktopRenderer {
     fn drop(&mut self) {
-        // `finish` normally does this explicitly. Keeping the fallback here
-        // prevents WGPU resources in the thread-local window from surviving
-        // an early error path until thread-local destruction at process exit.
+        // Winit permits only one event loop per process. Keep the thread-local
+        // window and its event loop alive across channel restarts, but hide it
+        // until the next desktop session reconfigures and shows it again.
         self.with_window(DesktopWindow::hide);
-        close_desktop_window();
     }
 }
 
@@ -1091,13 +1089,6 @@ fn prepare_desktop_window(width: u32, height: u32, fullscreen: bool) -> Result<(
             Ok(())
         }
     })
-}
-
-fn close_desktop_window() {
-    DESKTOP_WINDOW.with(|window| {
-        let window = window.borrow_mut().take();
-        drop(window);
-    });
 }
 
 enum WindowAction {

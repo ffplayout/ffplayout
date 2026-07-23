@@ -1,6 +1,7 @@
 # API
 
-The API is served by the main ffplayout process. By default it listens on
+The API is served by the main ffplayout process. With no command-line
+arguments, ffplayout starts the API and frontend on
 `http://127.0.0.1:8787`. Set a different address with `--listen` / `-l`:
 
 ```bash

@@ -44,7 +44,23 @@ fn run_npm(args: &[&str]) {
     }
 }
 
+#[cfg(windows)]
+fn embed_windows_resources() {
+    const ICON_PATH: &str = "../../frontend/public/favicon.ico";
+
+    println!("cargo:rerun-if-changed={ICON_PATH}");
+    winresource::WindowsResource::new()
+        .set_icon(ICON_PATH)
+        .compile()
+        .expect("failed to embed Windows executable resources");
+}
+
+#[cfg(not(windows))]
+fn embed_windows_resources() {}
+
 fn main() {
+    embed_windows_resources();
+
     #[cfg(not(debug_assertions))]
     {
         if !Path::new(RUN_P_BIN).exists() {

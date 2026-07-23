@@ -113,6 +113,9 @@ uuid = { version = "1.18", features = ["v4"] }
 [build-dependencies]
 build-print = "1"
 
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
 [[bin]]
 name = "ffplayout"
 path = "src/main.rs"
