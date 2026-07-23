@@ -11,6 +11,7 @@ On Debian/Ubuntu based systems install:
 ```bash
 sudo apt install \
     ffmpeg \
+    libasound2-dev \
     libavcodec-dev \
     libavdevice-dev \
     libavfilter-dev \

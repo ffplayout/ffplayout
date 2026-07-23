@@ -88,6 +88,9 @@ jobs:
             pkg-config
             rpm
           )
+          if [[ "${{ matrix.variant }}" == "desktop" ]]; then
+            packages+=(libasound2-dev)
+          fi
           sudo apt-get install -y "${packages[@]}"
           ffmpeg -version
           test "$(pkg-config --modversion libavformat | cut -d. -f1)" -ge 61
