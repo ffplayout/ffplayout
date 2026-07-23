@@ -59,8 +59,18 @@ pub(crate) trait FrameOutput {
     fn set_video_end(&mut self, _video_end_pts: Option<i64>) -> Result<()> {
         Ok(())
     }
+    /// Signals that all decoded video frames have been queued. Realtime
+    /// outputs can start short clips without ending their timeline early.
+    fn video_decoded(&mut self) -> Result<()> {
+        Ok(())
+    }
     fn video_finished(&mut self) -> Result<()> {
         Ok(())
+    }
+    /// Lets realtime outputs account for silence that already elapsed while
+    /// decode was blocked behind video backpressure.
+    fn pad_audio(&mut self, _samples: i64) -> Result<bool> {
+        Ok(false)
     }
     fn write_vtt_subtitles(
         &mut self,

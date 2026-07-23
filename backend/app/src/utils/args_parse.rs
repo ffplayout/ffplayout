@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::MetadataExt;
@@ -21,6 +24,8 @@ use crate::{
         errors::ProcessError,
     },
 };
+
+const DEFAULT_LISTEN_ADDRESS: &str = "127.0.0.1:8787";
 
 #[derive(Parser, Debug, Default, Clone)]
 #[clap(version,
@@ -111,7 +116,13 @@ pub struct Args {
     #[clap(long, help_heading = Some("General"), help = "List available channel ids")]
     pub list_channels: bool,
 
-    #[clap(short, env, long, help_heading = Some("General"), help = "Listen on IP:PORT, like: 127.0.0.1:8787")]
+    #[clap(
+        short,
+        env,
+        long,
+        help_heading = Some("General"),
+        help = "Listen on IP:PORT; defaults to 127.0.0.1:8787 when no arguments are passed"
+    )]
     pub listen: Option<String>,
 
     #[clap(
@@ -201,6 +212,28 @@ pub struct Args {
     pub test_mail: bool,
 }
 
+pub fn parse_args() -> Args {
+    try_parse_args_from(std::env::args_os()).unwrap_or_else(|error| error.exit())
+}
+
+fn try_parse_args_from<I, T>(args: I) -> Result<Args, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
+    let use_default_listen = args.len() == 1;
+    let mut parsed = Args::try_parse_from(args)?;
+
+    if use_default_listen {
+        parsed
+            .listen
+            .get_or_insert_with(|| DEFAULT_LISTEN_ADDRESS.to_string());
+    }
+
+    Ok(parsed)
+}
+
 #[cfg(feature = "processing-bench")]
 impl Args {
     pub fn processing_bench_report_interval(&self) -> u64 {
@@ -219,36 +252,6 @@ fn positive_seconds(value: &str) -> Result<u64, String> {
         Err("must be at least one second".to_string())
     } else {
         Ok(seconds)
-    }
-}
-
-#[cfg(all(test, feature = "processing-bench"))]
-mod tests {
-    use super::Args;
-
-    #[test]
-    fn processing_bench_interval_defaults_to_one_second_with_console_logging() {
-        let args = Args {
-            log_to_console: true,
-            ..Default::default()
-        };
-
-        assert_eq!(args.processing_bench_report_interval(), 1);
-    }
-
-    #[test]
-    fn processing_bench_interval_defaults_to_ten_seconds_without_console_logging() {
-        assert_eq!(Args::default().processing_bench_report_interval(), 10);
-    }
-
-    #[test]
-    fn explicit_processing_bench_interval_overrides_the_default() {
-        let args = Args {
-            processing_bench_interval: Some(5),
-            ..Default::default()
-        };
-
-        assert_eq!(args.processing_bench_report_interval(), 5);
     }
 }
 
@@ -533,5 +536,66 @@ async fn update_permissions() {
         if wal.is_file() {
             nix::unistd::chown(&wal, Some(user.uid), Some(user.gid)).expect("Change DB-WAL owner");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DEFAULT_LISTEN_ADDRESS, try_parse_args_from};
+
+    #[cfg(feature = "processing-bench")]
+    use super::Args;
+
+    #[test]
+    fn no_arguments_default_to_local_api_listener() {
+        let args = try_parse_args_from(["ffplayout"]).expect("arguments should parse");
+
+        assert_eq!(args.listen.as_deref(), Some(DEFAULT_LISTEN_ADDRESS));
+    }
+
+    #[test]
+    fn explicit_arguments_do_not_enable_default_listener() {
+        let args = try_parse_args_from(["ffplayout", "--channel", "1", "--foreground"])
+            .expect("arguments should parse");
+
+        assert_eq!(args.listen, None);
+        assert_eq!(args.channel, Some(vec![1]));
+        assert!(args.foreground);
+    }
+
+    #[test]
+    fn explicit_listener_is_preserved() {
+        let args = try_parse_args_from(["ffplayout", "--listen", "0.0.0.0:9000"])
+            .expect("arguments should parse");
+
+        assert_eq!(args.listen.as_deref(), Some("0.0.0.0:9000"));
+    }
+
+    #[cfg(feature = "processing-bench")]
+    #[test]
+    fn processing_bench_interval_defaults_to_one_second_with_console_logging() {
+        let args = Args {
+            log_to_console: true,
+            ..Default::default()
+        };
+
+        assert_eq!(args.processing_bench_report_interval(), 1);
+    }
+
+    #[cfg(feature = "processing-bench")]
+    #[test]
+    fn processing_bench_interval_defaults_to_ten_seconds_without_console_logging() {
+        assert_eq!(Args::default().processing_bench_report_interval(), 10);
+    }
+
+    #[cfg(feature = "processing-bench")]
+    #[test]
+    fn explicit_processing_bench_interval_overrides_the_default() {
+        let args = Args {
+            processing_bench_interval: Some(5),
+            ..Default::default()
+        };
+
+        assert_eq!(args.processing_bench_report_interval(), 5);
     }
 }

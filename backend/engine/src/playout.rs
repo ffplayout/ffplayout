@@ -367,6 +367,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     let video_index = video_stream.as_ref().map(format::stream::Stream::index);
     let audio_index = audio_stream.as_ref().map(format::stream::Stream::index);
     let mut video_finished = video.is_none();
+    let video_finished_notified = video_finished;
     let mut decoded_video_frames = 0_i64;
     let mut decoded_audio_samples = 0_i64;
     output.set_video_end(video_end_pts)?;
@@ -381,6 +382,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     }
 
     if video_finished {
+        output.video_decoded()?;
         output.video_finished()?;
     }
 
@@ -460,7 +462,11 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         let last_video_frame = video
             .as_ref()
             .and_then(|video| video.last_composited_frame.as_ref());
-        synchronize_timeline(cfg, timeline, output, last_video_frame)
+        synchronize_timeline(cfg, timeline, output, last_video_frame)?;
+        if !video_finished_notified {
+            output.video_finished()?;
+        }
+        Ok(())
     })();
 
     if let Err(error) = &result
@@ -526,7 +532,7 @@ fn finish_video<O: FrameOutput>(
         logo_fade_plan,
         playback_control,
     )?;
-    output.video_finished()?;
+    output.video_decoded()?;
     *finished = true;
     Ok(())
 }
@@ -1469,6 +1475,11 @@ fn write_silence<O: FrameOutput>(
     output: &mut O,
     mut samples: i64,
 ) -> Result<()> {
+    if samples > 0 && output.pad_audio(samples)? {
+        timeline.audio_pts += samples;
+        return Ok(());
+    }
+
     let frame_samples = output.audio_frame_size().max(1);
     while samples > 0 {
         let current_samples = samples.min(frame_samples as i64) as usize;
@@ -1495,6 +1506,7 @@ mod tests {
         video_frames: Vec<(u32, u32, i64)>,
         audio_samples: usize,
         audio_frame_samples: Vec<usize>,
+        events: Vec<&'static str>,
         reset_on_skip: bool,
         skip_target: Option<(i64, i64)>,
     }
@@ -1516,6 +1528,12 @@ mod tests {
         fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
             self.audio_samples += frame.samples();
             self.audio_frame_samples.push(frame.samples());
+            self.events.push("audio");
+            Ok(())
+        }
+
+        fn video_finished(&mut self) -> Result<()> {
+            self.events.push("video_finished");
             Ok(())
         }
 
@@ -1674,6 +1692,30 @@ mod tests {
             "unexpected one-second audio output: {} samples",
             output.audio_samples
         );
+    }
+
+    #[test]
+    fn finishes_video_only_after_padding_short_audio() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let mut timeline = Timeline::new();
+        let mut output = RecordingOutput::default();
+
+        play_clip(
+            &media_mix_asset("short_audio.mp4"),
+            &cfg,
+            &mut timeline,
+            &mut output,
+            None,
+            None,
+            None,
+            LogoFade::default(),
+            &PlaybackControl::default(),
+        )
+        .unwrap();
+
+        assert_eq!(timeline.video_pts, 250);
+        assert_eq!(timeline.audio_pts, 480_000);
+        assert_eq!(output.events.last(), Some(&"video_finished"));
     }
 
     #[test]

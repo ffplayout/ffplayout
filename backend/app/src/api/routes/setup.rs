@@ -85,18 +85,16 @@ fn validate_setup_paths(settings: &SetupSettings) -> Result<(), ServiceError> {
 
 fn validate_setup_path(name: &str, value: &str) -> Result<(), ServiceError> {
     let path = Path::new(value.trim());
-    if value.trim().is_empty() || path == Path::new("/") || !path.is_absolute() {
+    if value.trim().is_empty() || !path.is_absolute() || path.parent().is_none() {
         return Err(ServiceError::BadRequest(format!(
             "{name} path must be an absolute directory"
         )));
     }
 
-    if path.components().any(|component| {
-        matches!(
-            component,
-            Component::CurDir | Component::ParentDir | Component::Prefix(_)
-        )
-    }) {
+    if path
+        .components()
+        .any(|component| matches!(component, Component::CurDir | Component::ParentDir))
+    {
         return Err(ServiceError::BadRequest(format!(
             "{name} path must not contain relative components"
         )));
@@ -254,6 +252,8 @@ pub async fn complete_setup(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    use super::validate_setup_path;
     use super::{SetupSettings, validate_setup_paths};
 
     fn settings(storage: &str) -> SetupSettings {
@@ -287,5 +287,19 @@ mod tests {
         assert!(validate_setup_paths(&settings("/mnt/../etc")).is_err());
         assert!(validate_setup_paths(&settings("media")).is_err());
         assert!(validate_setup_paths(&settings("/")).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn setup_paths_allow_windows_drive_and_unc_paths() {
+        assert!(validate_setup_path("Logging", r"C:\Users\jonathan\Videos\logs").is_ok());
+        assert!(validate_setup_path("Logging", r"\\server\share\logs").is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn setup_paths_reject_windows_roots_and_relative_components() {
+        assert!(validate_setup_path("Logging", r"C:\").is_err());
+        assert!(validate_setup_path("Logging", r"C:\logs\..\system").is_err());
     }
 }

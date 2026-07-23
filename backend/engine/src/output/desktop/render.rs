@@ -18,6 +18,19 @@ pub(super) struct WindowFrame {
     pub(super) help: Option<RgbaBitmap>,
 }
 
+impl Default for WindowFrame {
+    fn default() -> Self {
+        Self {
+            video: None,
+            subtitle: None,
+            logo: None,
+            volume: 1.0,
+            volume_overlay: false,
+            help: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct WindowLogo {
     pub(super) bitmap: RgbaBitmap,

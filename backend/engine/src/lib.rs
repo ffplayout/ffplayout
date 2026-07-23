@@ -30,6 +30,8 @@ pub use analysis::audio_level::{AudioLevel, AudioLevelCallback};
 pub use audio_mixer::AudioEffectsControl;
 use input::live::{LiveEnded, LiveOverrideOutput};
 pub use input::live::{LiveReceiver, spawn_rtmp_listener};
+#[cfg(all(feature = "desktop-base", feature = "tokio"))]
+pub use output::desktop::thread::run_on_main_thread as run_desktop_on_main_thread;
 pub use output::resolved_variant_playlist_path;
 use output::{FrameOutput, Output, PlaybackStopped};
 use playout::{PlaybackRestart, PlaybackSkipped, Timeline, play_clip, write_fallback};
@@ -156,15 +158,10 @@ pub struct AsyncPlayout {
     hls_health: Option<HlsHealth>,
 }
 
-/// How to wait for the playout worker to finish. Desktop-output sessions run
-/// as a job on the shared, process-lifetime desktop thread (see
-/// `output::desktop::thread`) instead of on their own dedicated `JoinHandle`, so
-/// completion is signalled through a channel instead.
+/// How to wait for the playout worker to finish.
 #[cfg(feature = "tokio")]
 enum WorkerCompletion {
     Thread(JoinHandle<()>),
-    #[cfg(feature = "desktop-base")]
-    DesktopThread(oneshot::Receiver<()>),
 }
 
 #[cfg(feature = "tokio")]
@@ -218,36 +215,7 @@ impl AsyncPlayout {
 
     #[cfg(feature = "desktop-base")]
     pub async fn open_desktop(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
-        let (commands, command_rx) = mpsc::channel();
-        let (ready_tx, ready_rx) = oneshot::channel();
-        let (done_tx, done_rx) = oneshot::channel();
-        let playback_control = PlaybackControl::default();
-        let worker_playback_control = playback_control.clone();
-
-        output::desktop::thread::spawn(move || {
-            match Playout::open_desktop(config, fallback_duration) {
-                Ok(mut playout) => {
-                    playout.playback_control = worker_playback_control;
-                    let _ = ready_tx.send(Ok(()));
-                    run_async_playout_worker(playout, command_rx);
-                }
-                Err(error) => {
-                    let _ = ready_tx.send(Err(error));
-                }
-            }
-            let _ = done_tx.send(());
-        });
-
-        ready_rx
-            .await
-            .context("playout worker stopped during open")??;
-
-        Ok(Self {
-            commands,
-            completion: WorkerCompletion::DesktopThread(done_rx),
-            playback_control,
-            hls_health: None,
-        })
+        Self::open_with(move || Playout::open_desktop(config, fallback_duration)).await
     }
 
     async fn open_with<F>(open: F) -> Result<Self>
@@ -398,12 +366,6 @@ impl AsyncPlayout {
                     return Err(anyhow!("playout worker panicked during finish"));
                 }
             }
-            #[cfg(feature = "desktop-base")]
-            WorkerCompletion::DesktopThread(done_rx) => {
-                if done_rx.await.is_err() && finish_result.is_ok() {
-                    return Err(anyhow!("desktop playout worker stopped unexpectedly"));
-                }
-            }
         }
 
         finish_result
@@ -455,11 +417,11 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                     playout_rate,
                     &mut live,
                 );
-                let stopped = matches!(result, Ok(ClipResult::Stopped));
                 let _ = response.send(result);
-                if stopped {
-                    break;
-                }
+                // A closed desktop window reports `Stopped`, but the owner
+                // still sends `Finish` immediately afterwards. Keep this
+                // worker alive so that command can explicitly release the
+                // window and its WGPU resources before process shutdown.
             }
             AsyncCommand::StartRtmpLive {
                 url,

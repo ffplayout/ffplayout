@@ -27,7 +27,13 @@ impl AudioMasterClock {
         self.anchor_time = now;
     }
 
-    pub(super) fn position(&mut self, submitted: u64, queued: u64, now: Instant) -> u64 {
+    pub(super) fn position(
+        &mut self,
+        submitted: u64,
+        queued: u64,
+        now: Instant,
+        allow_underflow: bool,
+    ) -> u64 {
         let consumed = submitted.saturating_sub(queued);
         if consumed != self.last_consumed_samples {
             self.last_consumed_samples = consumed;
@@ -36,9 +42,12 @@ impl AudioMasterClock {
         }
         let elapsed_samples = (now.duration_since(self.anchor_time).as_secs_f64()
             * f64::from(self.sample_rate)) as u64;
-        self.anchor_samples
-            .saturating_add(elapsed_samples)
-            .min(consumed)
+        let interpolated = self.anchor_samples.saturating_add(elapsed_samples);
+        if allow_underflow {
+            interpolated
+        } else {
+            interpolated.min(consumed)
+        }
     }
 }
 

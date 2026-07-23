@@ -235,7 +235,12 @@ async fn play_loop(
             }
             ClipResult::Played => {}
             ClipResult::Skipped => {
-                debug!(channel = id; "Skipped current clip by control command");
+                // Global shutdown also uses `skip_current` to interrupt the
+                // decoder. That expected cleanup must not look like a manual
+                // skip in the log.
+                if manager.is_alive.load(Ordering::SeqCst) {
+                    debug!(channel = id; "Skipped current clip by control command");
+                }
             }
             ClipResult::Fallback { reason } => {
                 error!(channel = id;
@@ -366,7 +371,7 @@ async fn open_playout(
     }
 }
 
-#[cfg(feature = "desktop-base")]
+#[cfg(any(feature = "desktop", feature = "desktop-cpu"))]
 async fn open_desktop_playout(
     output_config: OutputConfig,
     fallback_duration: f64,
@@ -376,7 +381,7 @@ async fn open_desktop_playout(
         .map_err(engine_error)
 }
 
-#[cfg(not(feature = "desktop-base"))]
+#[cfg(not(any(feature = "desktop", feature = "desktop-cpu")))]
 async fn open_desktop_playout(
     _output_config: OutputConfig,
     _fallback_duration: f64,

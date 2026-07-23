@@ -4,7 +4,6 @@ use axum::{
     extract::Request,
     response::{IntoResponse, Response},
 };
-use clap::Parser;
 use log::{error, warn};
 
 pub mod api;
@@ -20,9 +19,12 @@ pub mod serve;
 
 use api::auth;
 use db::models::{Role, UserMeta};
-use utils::{args_parse::Args, errors::ServiceError};
+use utils::{
+    args_parse::{Args, parse_args},
+    errors::ServiceError,
+};
 
-pub static ARGS: LazyLock<Args> = LazyLock::new(Args::parse);
+pub static ARGS: LazyLock<Args> = LazyLock::new(parse_args);
 
 #[macro_export]
 macro_rules! vec_strings {

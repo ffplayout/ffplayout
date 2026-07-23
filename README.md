@@ -50,6 +50,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 
 - RAM and CPU usage depends on video resolution; at least 4 dedicated threads and 3GB RAM for 720p are recommended
 - **FFmpeg** v7.0+ development libraries are required; the maximum supported version follows `ffmpeg-next` and is currently FFmpeg 8.1. Builds with `libavformat` before v61.9.100 can use WebVTT subtitles, but may not support custom HLS subtitle display names
+- The macOS and Windows releases do not include FFmpeg shared libraries. Follow the [macOS](docs/install.md#macos) or [Windows](docs/install.md#windows) installation instructions to install them separately.
 
 ### Install
 

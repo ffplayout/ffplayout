@@ -1,15 +1,11 @@
 use std::{
-    cell::RefCell,
-    os::raw::c_int,
+    cell::{Cell, RefCell},
+    ffi::CStr,
+    os::raw::{c_char, c_int, c_void},
     sync::{
         Mutex, OnceLock, PoisonError,
         atomic::{AtomicI32, Ordering},
     },
-};
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::{
-    ffi::CStr,
-    os::raw::{c_char, c_void},
 };
 
 use ffmpeg_next::{ffi, util::log::Level as FfmpegLevel};
@@ -41,6 +37,7 @@ const LOG_DEDUP_FLUSH_THRESHOLD: usize = 100;
 thread_local! {
     static UNEXPECTED_RTMP_STREAM: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
     static INGEST_LOG_CONTEXT: RefCell<Option<i32>> = const { RefCell::new(None) };
+    static INGEST_INTERRUPTED: Cell<bool> = const { Cell::new(false) };
 }
 
 static FFMPEG_LOG_LEVEL: AtomicI32 = AtomicI32::new(ffi::AV_LOG_WARNING);
@@ -57,6 +54,8 @@ type FfmpegVaList = ffi::va_list;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 type FfmpegVaList = *mut ffi::__va_list_tag;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+type FfmpegVaList = ffi::va_list;
+#[cfg(target_os = "windows")]
 type FfmpegVaList = ffi::va_list;
 
 pub(crate) fn init(
@@ -82,23 +81,31 @@ pub(crate) fn init(
     set_log_callback();
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn set_log_callback() {
     unsafe {
         ffi::av_log_set_callback(Some(log_callback));
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn set_log_callback() {}
-
 pub(crate) fn with_ingest_logs<T>(channel_id: Option<i32>, operation: impl FnOnce() -> T) -> T {
     INGEST_LOG_CONTEXT.with(|context| {
         let previous = context.replace(channel_id);
-        let result = operation();
-        context.replace(previous);
-        result
+        INGEST_INTERRUPTED.with(|interrupted| {
+            let previous_interrupted = interrupted.replace(false);
+            let result = operation();
+            interrupted.set(previous_interrupted);
+            context.replace(previous);
+            result
+        })
     })
+}
+
+/// Marks the current ingest operation as intentionally interrupted. FFmpeg
+/// often emits a connection error while its I/O interrupt callback unwinds;
+/// that message is expected during shutdown and should not be logged as an
+/// operational failure.
+pub(crate) fn mark_ingest_interrupted() {
+    INGEST_INTERRUPTED.with(|interrupted| interrupted.set(true));
 }
 
 pub(crate) fn clear_unexpected_rtmp_stream() {
@@ -141,7 +148,6 @@ fn level_value(level: FfmpegLevel) -> c_int {
     c_int::from(level)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 unsafe extern "C" fn log_callback(
     avcl: *mut c_void,
     level: c_int,
@@ -188,9 +194,10 @@ unsafe extern "C" fn log_callback(
 }
 
 fn should_skip_ffmpeg_log(message: &str) -> bool {
-    skipped_ffmpeg_log_patterns()
-        .iter()
-        .any(|pattern| pattern.is_match(message))
+    INGEST_INTERRUPTED.with(Cell::get)
+        || skipped_ffmpeg_log_patterns()
+            .iter()
+            .any(|pattern| pattern.is_match(message))
         || USER_SKIPPED_FFMPEG_LOG_LINES
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -321,7 +328,10 @@ fn remember_unexpected_rtmp_stream(message: &str) {
 mod tests {
     use ffmpeg_next::{ffi, util::log::Level as FfmpegLevel};
 
-    use super::{DedupLine, LogDedup, level_value, should_skip_ffmpeg_log};
+    use super::{
+        DedupLine, LogDedup, level_value, mark_ingest_interrupted, should_skip_ffmpeg_log,
+        with_ingest_logs,
+    };
 
     #[test]
     fn deduplicates_consecutive_identical_lines() {
@@ -387,5 +397,39 @@ mod tests {
             "Opening '/tmp/out.ts.tmp' for writing"
         ));
         assert!(!should_skip_ffmpeg_log("Unexpected stream 1, expecting 0"));
+    }
+
+    #[test]
+    fn skips_ingest_errors_after_an_intentional_interrupt() {
+        with_ingest_logs(Some(1), || {
+            mark_ingest_interrupted();
+            assert!(should_skip_ffmpeg_log(
+                "Cannot open connection tcp://127.0.0.1:1936"
+            ));
+        });
+
+        assert!(!should_skip_ffmpeg_log(
+            "Cannot open connection tcp://127.0.0.1:1936"
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_callback_receives_and_formats_ffmpeg_logs() {
+        super::clear_unexpected_rtmp_stream();
+        super::set_log_callback();
+
+        unsafe {
+            ffi::av_log(
+                std::ptr::null_mut(),
+                ffi::AV_LOG_ERROR,
+                c"Unexpected stream actual, expecting expected\n".as_ptr(),
+            );
+        }
+
+        assert_eq!(
+            super::take_unexpected_rtmp_stream(),
+            Some(("actual".to_string(), "expected".to_string()))
+        );
     }
 }
