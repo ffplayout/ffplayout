@@ -51,7 +51,6 @@ jobs:
     env:
       CARGO_INCREMENTAL: 0
       CARGO_BUILD_JOBS: 1
-      VCPKGRS_DYNAMIC: 1
 
     steps:
       - uses: actions/checkout@v6
@@ -89,9 +88,6 @@ jobs:
             pkg-config
             rpm
           )
-          if [[ "${{ matrix.variant }}" == "desktop" ]]; then
-            packages+=(libsdl2-dev)
-          fi
           sudo apt-get install -y "${packages[@]}"
           ffmpeg -version
           test "$(pkg-config --modversion libavformat | cut -d. -f1)" -ge 61
@@ -101,28 +97,34 @@ jobs:
         run: |
           brew update
           packages=(ffmpeg pkg-config)
-          if [[ "${{ matrix.variant }}" == "desktop" ]]; then
-            packages+=(sdl2)
-          fi
           brew install "${packages[@]}"
           brew_prefix="$(brew --prefix)"
           {
-            echo "PKG_CONFIG_PATH=${brew_prefix}/lib/pkgconfig:${brew_prefix}/opt/ffmpeg/lib/pkgconfig:${brew_prefix}/opt/sdl2/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-            echo "LIBRARY_PATH=${brew_prefix}/lib:${brew_prefix}/opt/ffmpeg/lib:${brew_prefix}/opt/sdl2/lib:${LIBRARY_PATH:-}"
-            echo "DYLD_FALLBACK_LIBRARY_PATH=${brew_prefix}/lib:${brew_prefix}/opt/ffmpeg/lib:${brew_prefix}/opt/sdl2/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
+            echo "PKG_CONFIG_PATH=${brew_prefix}/lib/pkgconfig:${brew_prefix}/opt/ffmpeg/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+            echo "LIBRARY_PATH=${brew_prefix}/lib:${brew_prefix}/opt/ffmpeg/lib:${LIBRARY_PATH:-}"
+            echo "DYLD_FALLBACK_LIBRARY_PATH=${brew_prefix}/lib:${brew_prefix}/opt/ffmpeg/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
           } >> "$GITHUB_ENV"
 
-      - name: Install build dependencies on Windows
+      - name: Download FFmpeg on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $packages = @("ffmpeg:x64-windows")
-          if ("${{ matrix.variant }}" -eq "desktop") {
-            $packages += "sdl2:x64-windows"
+          $ffmpegName = "ffmpeg-n8.1-latest-win64-gpl-shared-8.1"
+          $ffmpegArchive = Join-Path $env:RUNNER_TEMP "$ffmpegName.zip"
+          $ffmpegDir = Join-Path $env:RUNNER_TEMP $ffmpegName
+          $ffmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$ffmpegName.zip"
+
+          Invoke-WebRequest -Uri $ffmpegUrl -OutFile $ffmpegArchive
+          Expand-Archive -Path $ffmpegArchive -DestinationPath $env:RUNNER_TEMP
+
+          if (!(Test-Path "$ffmpegDir\include") -or
+              !(Test-Path "$ffmpegDir\lib") -or
+              !(Test-Path "$ffmpegDir\bin")) {
+            throw "Downloaded FFmpeg archive has an unexpected structure"
           }
-          vcpkg install $packages
-          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
-          echo "VCPKGRS_DYNAMIC=1" >> $env:GITHUB_ENV
+
+          echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
+          echo "$ffmpegDir\bin" >> $env:GITHUB_PATH
 
       - name: Install frontend dependencies
         run: npm ci
