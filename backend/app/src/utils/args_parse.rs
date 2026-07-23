@@ -257,7 +257,10 @@ fn positive_seconds(value: &str) -> Result<u64, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Args, DEFAULT_LISTEN_ADDRESS, try_parse_args_from};
+    use super::{DEFAULT_LISTEN_ADDRESS, try_parse_args_from};
+
+    #[cfg(feature = "processing-bench")]
+    use super::Args;
 
     #[test]
     fn no_arguments_default_to_local_api_listener() {

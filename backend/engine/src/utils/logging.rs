@@ -1,15 +1,11 @@
 use std::{
     cell::{Cell, RefCell},
-    os::raw::c_int,
+    ffi::CStr,
+    os::raw::{c_char, c_int, c_void},
     sync::{
         Mutex, OnceLock, PoisonError,
         atomic::{AtomicI32, Ordering},
     },
-};
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::{
-    ffi::CStr,
-    os::raw::{c_char, c_void},
 };
 
 use ffmpeg_next::{ffi, util::log::Level as FfmpegLevel};
@@ -59,6 +55,8 @@ type FfmpegVaList = ffi::va_list;
 type FfmpegVaList = *mut ffi::__va_list_tag;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 type FfmpegVaList = ffi::va_list;
+#[cfg(target_os = "windows")]
+type FfmpegVaList = ffi::va_list;
 
 pub(crate) fn init(
     ffmpeg_level: LogLevel,
@@ -83,15 +81,11 @@ pub(crate) fn init(
     set_log_callback();
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn set_log_callback() {
     unsafe {
         ffi::av_log_set_callback(Some(log_callback));
     }
 }
-
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn set_log_callback() {}
 
 pub(crate) fn with_ingest_logs<T>(channel_id: Option<i32>, operation: impl FnOnce() -> T) -> T {
     INGEST_LOG_CONTEXT.with(|context| {
@@ -154,7 +148,6 @@ fn level_value(level: FfmpegLevel) -> c_int {
     c_int::from(level)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 unsafe extern "C" fn log_callback(
     avcl: *mut c_void,
     level: c_int,
@@ -418,5 +411,25 @@ mod tests {
         assert!(!should_skip_ffmpeg_log(
             "Cannot open connection tcp://127.0.0.1:1936"
         ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_callback_receives_and_formats_ffmpeg_logs() {
+        super::clear_unexpected_rtmp_stream();
+        super::set_log_callback();
+
+        unsafe {
+            ffi::av_log(
+                std::ptr::null_mut(),
+                ffi::AV_LOG_ERROR,
+                c"Unexpected stream actual, expecting expected\n".as_ptr(),
+            );
+        }
+
+        assert_eq!(
+            super::take_unexpected_rtmp_stream(),
+            Some(("actual".to_string(), "expected".to_string()))
+        );
     }
 }

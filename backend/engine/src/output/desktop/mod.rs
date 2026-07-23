@@ -72,6 +72,8 @@ const AUDIO_CHANNEL_CAPACITY: usize = 32;
 const DESKTOP_DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(500);
 
 const DESKTOP_WINDOW_TITLE: &str = "ffplayout";
+
+#[cfg(target_os = "linux")]
 const DESKTOP_APPLICATION_ID: &str = "ffplayout";
 
 fn desktop_window_icon() -> Result<Icon> {
