@@ -165,7 +165,15 @@ export default {
         smtpPassword: 'SMTP-Passwort',
         smtpPort: 'SMTP-Port',
         smtpStarttls: 'STARTTLS verwenden',
+        notification: 'HTTP-Push-Benachrichtigungen',
+        notificationServer: 'Push-Server',
+        notificationToken: 'Zugriffstoken',
+        notificationHelp: 'Sendet begrenzte Log-Warnungen an einen themenbasierten HTTP-Push-Dienst.',
+        notificationTopic: 'Thema',
+        notificationLevel: 'Mindeststufe',
+        notificationTags: 'Tags',
         passwordConfigured: 'Passwort ist hinterlegt',
+        tokenConfigured: 'Token ist hinterlegt',
         updateGlobalSuccess: 'Globale Einstellungen erfolgreich aktualisiert!',
         updateGlobalFailed: 'Globale Einstellungen konnten nicht aktualisiert werden!',
         channelConf: 'Kanal-Konfiguration',
@@ -210,43 +218,59 @@ export default {
         recordingMinimumFreeSpace: 'Minimaler freier Speicher (GB, 0 = deaktiviert)',
         recordingUpdated: 'Aufnahmekonfiguration aktualisiert',
         placeholderPass: 'Passwort',
+        placeholderToken: 'Token',
         help: 'Hilfe',
-        generalHelp: 'Manchmal kann es passieren, dass eine Datei beschädigt ist, aber dennoch abgespielt werden kann. Dies kann zu einem Streaming-Fehler für alle folgenden Dateien führen. Die einzige Lösung in diesem Fall ist, ffplayout zu stoppen und erneut zu starten.',
-        stopThreshold: 'Der Schwellenwert stoppt ffplayout, wenn es zeitlich asynchron über diesem Wert ist. Eine Zahl unter 3 kann unerwartete Fehler verursachen.',
+        generalHelp:
+            'Manchmal kann es passieren, dass eine Datei beschädigt ist, aber dennoch abgespielt werden kann. Dies kann zu einem Streaming-Fehler für alle folgenden Dateien führen. Die einzige Lösung in diesem Fall ist, ffplayout zu stoppen und erneut zu starten.',
+        stopThreshold:
+            'Der Schwellenwert stoppt ffplayout, wenn es zeitlich asynchron über diesem Wert ist. Eine Zahl unter 3 kann unerwartete Fehler verursachen.',
         mailHelp: `Sende Fehlermeldungen an eine E-Mail-Adresse, wie z.B. fehlende Clips, fehlendes oder ungültiges Playlist-Format usw. Lass den Empfänger leer, wenn du dies nicht benötigst.`,
-        mailInterval: 'Das Intervall bezieht sich auf die Anzahl der Sekunden, bis eine neue E-Mail gesendet wird; der Wert muss in 10er-Schritten und nicht unter 30 Sekunden liegen.',
+        mailInterval:
+            'Das Intervall bezieht sich auf die Anzahl der Sekunden, bis eine neue E-Mail gesendet wird; der Wert muss in 10er-Schritten und nicht unter 30 Sekunden liegen.',
         logHelp: 'Passen Sie das Verhalten des Loggings an.',
-        logDetect: 'Protokolliert eine Fehlermeldung, wenn die Audioleitung während des Validierungsprozesses 15 Sekunden lang stumm ist.',
-        logIgnore: 'Ignoriere Zeichenfolgen, die übereinstimmende Zeilen enthalten; das Format ist eine durch Semikolon getrennte Liste.',
+        logDetect:
+            'Protokolliert eine Fehlermeldung, wenn die Audioleitung während des Validierungsprozesses 15 Sekunden lang stumm ist.',
+        logIgnore:
+            'Ignoriere Zeichenfolgen, die übereinstimmende Zeilen enthalten; das Format ist eine durch Semikolon getrennte Liste.',
         processingHelp: 'Die Standardverarbeitung für alle Clips stellt die Einzigartigkeit sicher.',
-        processingLogoPath: 'Das Logo wird nur verwendet, wenn der Pfad existiert; der Pfad ist relativ zum Speicherordner.',
+        processingLogoPath:
+            'Das Logo wird nur verwendet, wenn der Pfad existiert; der Pfad ist relativ zum Speicherordner.',
         processingLogoScale: `Lass die Skalierung des Logos leer, wenn keine Skalierung erforderlich ist. Das Format lautet 'Breite:Höhe', zum Beispiel: '100:-1' oder '12%:-1' für proportionale Skalierung.`,
         processingLogoPosition: `Die Position wird im Format 'x:y' angegeben.`,
         processingAudioTracks: 'Gib an, wie viele Audiospuren verarbeitet werden sollen.',
         processingAudioIndex: 'Welche Audiospur verwendet werden soll, -1 für alle.',
-        processingCustomFilter: 'Füge benutzerdefinierte Filter zur Verarbeitung hinzu. Die Filterausgaben müssen mit [c_v_out] für Video-Filter und [c_a_out] für Audio-Filter enden.',
-        processingOverrideFilter: 'Achtung: Diese Option überschreibt alle Standardfilter, d.h. es findet keine automatische Formatkorrektur mehr statt, der Befehl muss wie folgt aufgebaut sein: -filter_complex [0:v]fps=25,scale=1280:-1[vout];[0:a:0]volume=0.5[aout] -map [vout] -map [aout]',
-        processingVTTEnable: 'VTT kann nur im HLS-Modus verwendet werden und nur, wenn *.vtt-Dateien mit demselben Namen wie die Videodatei vorhanden sind.',
+        processingCustomFilter:
+            'Füge benutzerdefinierte Filter zur Verarbeitung hinzu. Die Filterausgaben müssen mit [c_v_out] für Video-Filter und [c_a_out] für Audio-Filter enden.',
+        processingOverrideFilter:
+            'Achtung: Diese Option überschreibt alle Standardfilter, d.h. es findet keine automatische Formatkorrektur mehr statt, der Befehl muss wie folgt aufgebaut sein: -filter_complex [0:v]fps=25,scale=1280:-1[vout];[0:a:0]volume=0.5[aout] -map [vout] -map [aout]',
+        processingVTTEnable:
+            'VTT kann nur im HLS-Modus verwendet werden und nur, wenn *.vtt-Dateien mit demselben Namen wie die Videodatei vorhanden sind.',
         processingVTTDummy: 'Ein Platzhalter wird benötigt, wenn keine vtt-Datei vorhanden ist.',
         apply: 'Anwenden',
         volumeApplied: 'Lautstärke angewendet.',
         volumeApplyFailed: 'Lautstärke konnte nicht angewendet werden.',
         ingestHelp: `Starte einen Server für einen Ingest-Stream. Dieser Stream wird den normalen Stream überschreiben, bis er beendet ist. Es gibt nur einen sehr einfachen Authentifizierungsmechanismus, der überprüft, ob der Streamname korrekt ist.`,
-        ingestCustomFilter: 'Wende einen benutzerdefinierten Filter auf den Ingest-Stream auf dieselbe Weise wie im Abschnitt Verarbeitung an.',
+        ingestCustomFilter:
+            'Wende einen benutzerdefinierten Filter auf den Ingest-Stream auf dieselbe Weise wie im Abschnitt Verarbeitung an.',
         playlistHelp: 'Playlist-Verwaltung.',
-        playlistDayStart: 'Zu welcher Zeit die Playlist starten soll; lasse es leer, wenn die Playlist immer von Anfang an starten soll.',
+        playlistDayStart:
+            'Zu welcher Zeit die Playlist starten soll; lasse es leer, wenn die Playlist immer von Anfang an starten soll.',
         playlistLength: 'Ziel-Länge der Playlist; wenn es leer ist, wird die reale Länge nicht berücksichtigt.',
         playlistInfinit: 'Eine einzelne Playlist-Datei endlos wiederholen.',
         storageHelp: 'Speichereinstellungen, die Standorte sind relativ zum Kanal-Speicher.',
-        storageFiller: 'Verwenden Sie einen Platzhalter, um eine fehlende Datei abzuspielen oder um die verbleibende Zeit auf insgesamt 24 Stunden zu füllen. Es kann sich um eine Datei oder einen Ordner mit relativem Pfad handeln, der bei Bedarf wiederholt wird.',
+        storageFiller:
+            'Verwenden Sie einen Platzhalter, um eine fehlende Datei abzuspielen oder um die verbleibende Zeit auf insgesamt 24 Stunden zu füllen. Es kann sich um eine Datei oder einen Ordner mit relativem Pfad handeln, der bei Bedarf wiederholt wird.',
         storageExtension: 'Gib an, welche Dateien gesucht und verwendet werden sollen.',
         storageShuffle: 'Wähle Dateien zufällig aus (im Ordner-Modus und bei der Playlist-Erstellung).',
-        textHelp: 'Texteinblendung direkt über die Playout-Engine. Text kann aus Dateinamen oder über die Control-API kommen.',
+        textHelp:
+            'Texteinblendung direkt über die Playout-Engine. Text kann aus Dateinamen oder über die Control-API kommen.',
         textFont: 'Relativer Pfad zum Kanal-Speicher.',
         textFromFile: 'Extrahiere Text aus einem Dateinamen.',
-        textStyle: 'Definiere Textparameter wie Position, Farbe, Box und Größe. Text über die API überschreibt den angezeigten Text.',
+        textStyle:
+            'Definiere Textparameter wie Position, Farbe, Box und Größe. Text über die API überschreibt den angezeigten Text.',
         textRegex: 'Formatiere Dateinamen, um einen Titel daraus zu extrahieren.',
-        taskHelp: 'Führe ein externes Programm mit einem gegebenen Medienobjekt aus. Das Medienobjekt ist im JSON-Format und enthält alle Informationen über den aktuellen Clip. Das externe Programm kann ein Skript oder eine Binärdatei sein, sollte aber nur für kurze Zeit laufen.',
+        taskHelp:
+            'Führe ein externes Programm mit einem gegebenen Medienobjekt aus. Das Medienobjekt ist im JSON-Format und enthält alle Informationen über den aktuellen Clip. Das externe Programm kann ein Skript oder eine Binärdatei sein, sollte aber nur für kurze Zeit laufen.',
         taskPath: 'Pfad zur ausführbaren Datei.',
         outputHelp: `Wähle die endgültige Playout-Ausgabe. HLS ist der Standard und erzeugt die unten angegebene Media-Playlist. Verwende 'stream' mit einer Ziel-URL für RTMP/SRT/UDP oder 'desktop' für die lokale Wiedergabe.
         Im Produktionsbetrieb sollten HLS-Playlists über Nginx oder einen anderen Webserver bereitgestellt werden.`,
@@ -267,7 +291,8 @@ export default {
         videoMaxrate: 'Maximale Video-Bitrate (kbit/s)',
         audioBitrate: 'Audio-Bitrate (kbit/s)',
         hlsVariants: 'HLS-Varianten',
-        hlsVariantsHelp: 'Füge adaptive Bitraten-Varianten zusätzlich zur Basisausgabe hinzu. Eine Master-Playlist mit allen Streams wird automatisch erstellt.',
+        hlsVariantsHelp:
+            'Füge adaptive Bitraten-Varianten zusätzlich zur Basisausgabe hinzu. Eine Master-Playlist mit allen Streams wird automatisch erstellt.',
         addHlsVariant: 'Variante hinzufügen',
         remove: 'Entfernen',
         restartTile: 'Playout neustarten',
@@ -279,7 +304,8 @@ export default {
         publicPath: 'Public (HLS) Pfad',
         playlistPath: 'Wiedergabelistenpfad',
         storagePath: 'Speicherpfad',
-        sharedStorage: 'ffplayout läuft innerhalb eines Containers, verwenden Sie den gleichen Speicherstamm für alle Kanäle!',
+        sharedStorage:
+            'ffplayout läuft innerhalb eines Containers, verwenden Sie den gleichen Speicherstamm für alle Kanäle!',
         timezone: 'Zeitzone',
     },
     setup: {

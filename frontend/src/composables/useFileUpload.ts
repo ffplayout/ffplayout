@@ -57,12 +57,7 @@ export const useFileUpload = () => {
         resetProgressTracking()
     }
 
-    function updateProgress(
-        loadedBytes: number,
-        fileSize: number,
-        currentIndex: number,
-        batchCount: number,
-    ) {
+    function updateProgress(loadedBytes: number, fileSize: number, currentIndex: number, batchCount: number) {
         const now = Date.now()
         const confirmedBytes = Math.min(loadedBytes, fileSize)
         const deltaBytes = confirmedBytes - lastLoaded

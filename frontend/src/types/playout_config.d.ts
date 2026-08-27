@@ -10,6 +10,10 @@ export type Logging = { ffmpeg_level: string, ingest_level: string, detect_silen
 
 export type Mail = { show: boolean, subject: string, recipient: string, mail_level: string, interval: bigint, };
 
+export type Notification = { show: boolean, topic: string, level: NotificationLevel, tags: string, };
+
+export type NotificationLevel = "INFO" | "WARNING" | "ERROR" | "FATAL";
+
 export type Output = { id: number, mode: OutputMode, stream_url: string, stream_type: StreamType, stream_format: string, hls_playlist_name: string, hls_segment_duration: number, hls_list_size: number, desktop_fullscreen: boolean, width: number, height: number, fps: number, video_codec: string, video_options: { [key in string]: string }, audio_codec: string, audio_bitrate: number, 
 /**
  * Adaptive HLS renditions, one per entry, each formatted as
@@ -29,7 +33,7 @@ export type Playlist = { day_start: string, length: string, infinit: boolean, };
  *
  * This we init ones, when ffplayout is starting and use them globally in the hole program.
  */
-export type PlayoutConfig = { general: General, mail: Mail, logging: Logging, processing: Processing, audio: Audio, ingest: Ingest, playlist: Playlist, storage: Storage, text: Text, task: Task, recording: Recording, output: Output, };
+export type PlayoutConfig = { general: General, mail: Mail, notification: Notification, logging: Logging, processing: Processing, audio: Audio, ingest: Ingest, playlist: Playlist, storage: Storage, text: Text, task: Task, recording: Recording, output: Output, };
 
 export type ProcessMode = "folder" | "playlist";
 

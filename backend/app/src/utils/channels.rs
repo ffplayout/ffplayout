@@ -38,7 +38,11 @@ pub async fn initialize_channels(
 
     for (index, channel) in channels.into_iter().enumerate() {
         let config = get_config(conn, channel.id).await?;
-        let mail_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
+        let mail_queue = Arc::new(Mutex::new(MailQueue::new(
+            channel.id,
+            config.mail.clone(),
+            config.notification.clone(),
+        )));
         let active = channel.active;
         let manager = ChannelManager::new(
             conn.clone(),
@@ -86,7 +90,11 @@ pub async fn create_channel(
         }
     };
 
-    let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
+    let m_queue = Arc::new(Mutex::new(MailQueue::new(
+        channel.id,
+        config.mail.clone(),
+        config.notification.clone(),
+    )));
     let manager =
         match ChannelManager::new(conn.clone(), channel.clone(), config, shutdown, system).await {
             Ok(manager) => manager,
@@ -396,6 +404,7 @@ mod tests {
             "config",
             "config_general",
             "config_mail",
+            "config_notification",
             "config_logging",
             "config_processing",
             "config_audio",

@@ -289,7 +289,10 @@ function deletePlaylistItem(index: number) {
                         <div v-if="!configStore.playout.playlist.infinit" class="px-3 text-left">
                             {{ secondsToTime(item.begin) }}
                         </div>
-                        <div class="flex items-center gap-1 text-left truncate" :class="{ 'handle cursor-grab': width > 768 }">
+                        <div
+                            class="flex items-center gap-1 text-left truncate"
+                            :class="{ 'handle cursor-grab': width > 768 }"
+                        >
                             <span class="truncate">{{ item.title || filename(item.source) }}</span>
                             <i
                                 v-if="item.audio"
@@ -310,11 +313,7 @@ function deletePlaylistItem(index: number) {
                             {{ secToHMS(item.out) }}
                         </div>
                         <div class="text-center hidden 2md:block leading-3">
-                            <input
-                                v-model="item.ad"
-                                class="checkbox checkbox-xs rounded"
-                                type="checkbox"
-                            />
+                            <input v-model="item.ad" class="checkbox checkbox-xs rounded" type="checkbox" />
                         </div>
                         <div class="text-center hover:text-base-content/70">
                             <button class="cursor-pointer" @click="editItem(index)">

@@ -132,7 +132,7 @@ async function handleDrop(event: any, targetFolder: any, isParent: boolean | nul
     } else if (isParent) {
         target = `/${parent(mediaStore.folderTree.source)}/${targetFolder.name}/${itemData.name}`.replace(
             /\/[/]+/g,
-            '/'
+            '/',
         )
     } else {
         target = `/${mediaStore.folderTree.source}/${targetFolder.name}/${itemData.name}`.replace(/\/[/]+/g, '/')
@@ -172,12 +172,8 @@ async function setPreviewData(path: string) {
     previewName.value = fullPath.split('/').slice(-1)[0] || ''
 
     try {
-        previewUrl.value = await createFilePreviewUrl(
-            configStore.channels[configStore.i]?.id,
-            fullPath,
-        )
-    }
-    catch (error) {
+        previewUrl.value = await createFilePreviewUrl(configStore.channels[configStore.i]?.id, fullPath)
+    } catch (error) {
         indexStore.msgAlert('error', error instanceof Error ? error.message : String(error), 5)
         return
     }
@@ -187,8 +183,8 @@ async function setPreviewData(path: string) {
         mediaType(previewName.value) === 'audio'
             ? `audio/${ext}`
             : mediaType(previewName.value) === 'live'
-            ? 'application/x-mpegURL'
-            : `video/${ext}`
+              ? 'application/x-mpegURL'
+              : `video/${ext}`
 
     if (configStore.playout.storage.extensions.includes(`${ext}`)) {
         isVideo.value = true
@@ -338,7 +334,7 @@ async function uploadFiles(upl: boolean) {
             await uploadFilesComposable(filesToUpload, {
                 buildRequest: (_file, currentIndex, batchCount) => ({
                     url: `/api/file/${configStore.channels[configStore.i]?.id}/upload?path=${encodeURIComponent(
-                        mediaStore.crumbs[mediaStore.crumbs.length - 1]?.path ?? ''
+                        mediaStore.crumbs[mediaStore.crumbs.length - 1]?.path ?? '',
                     )}`,
                     headers: authStore.authHeader,
                     method: 'PUT',
@@ -428,7 +424,7 @@ async function uploadFiles(upl: boolean) {
                                                     class="cursor-pointer"
                                                     @click="
                                                         mediaStore.getTree(
-                                                            `/${parent(mediaStore.folderTree.source)}/${folder.name}`
+                                                            `/${parent(mediaStore.folderTree.source)}/${folder.name}`,
                                                         )
                                                     "
                                                 >
@@ -470,7 +466,7 @@ async function uploadFiles(upl: boolean) {
                                                 class="truncate"
                                                 @click="
                                                     mediaStore.getTree(
-                                                        `/${mediaStore.folderTree.source}/${folder.name}`
+                                                        `/${mediaStore.folderTree.source}/${folder.name}`,
                                                     )
                                                 "
                                             >
@@ -485,9 +481,9 @@ async function uploadFiles(upl: boolean) {
                                                     setRenameValues(
                                                         `/${mediaStore.folderTree.source}/${folder.name}`.replace(
                                                             /\/[/]+/g,
-                                                            '/'
+                                                            '/',
                                                         ),
-                                                        true
+                                                        true,
                                                     )
                                                 "
                                             >
@@ -496,12 +492,12 @@ async function uploadFiles(upl: boolean) {
                                             <button
                                                 class="opacity-30 hover:opacity-100 cursor-pointer"
                                                 @click="
-                                                    ;(showDeleteModal = true),
+                                                    ;((showDeleteModal = true),
                                                         (deleteName =
                                                             `/${mediaStore.folderTree.source}/${folder.name}`.replace(
                                                                 /\/[/]+/g,
-                                                                '/'
-                                                            ))
+                                                                '/',
+                                                            )))
                                                 "
                                             >
                                                 <i class="bi-x-circle-fill" />
@@ -533,7 +529,7 @@ async function uploadFiles(upl: boolean) {
                                         <td class="px-2 py-1.5 flex">
                                             <button
                                                 class="w-7 cursor-pointer"
-                                                @click=";(showPreviewModal = true), setPreviewData(element.name)"
+                                                @click=";((showPreviewModal = true), setPreviewData(element.name))"
                                             >
                                                 <i class="bi-play-fill" />
                                             </button>
@@ -546,9 +542,9 @@ async function uploadFiles(upl: boolean) {
                                                     setRenameValues(
                                                         `/${mediaStore.folderTree.source}/${element.name}`.replace(
                                                             /\/[/]+/g,
-                                                            '/'
+                                                            '/',
                                                         ),
-                                                        false
+                                                        false,
                                                     )
                                                 "
                                             >
@@ -558,12 +554,12 @@ async function uploadFiles(upl: boolean) {
                                             <button
                                                 class="w-7 opacity-30 hover:opacity-100 cursor-pointer"
                                                 @click="
-                                                    ;(showDeleteModal = true),
+                                                    ;((showDeleteModal = true),
                                                         (deleteName =
                                                             `/${mediaStore.folderTree.source}/${element.name}`.replace(
                                                                 /\/[/]+/g,
-                                                                '/'
-                                                            ))
+                                                                '/',
+                                                            )))
                                                 "
                                             >
                                                 <i class="bi-x-circle-fill" />

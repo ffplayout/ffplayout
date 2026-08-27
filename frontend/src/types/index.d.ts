@@ -12,7 +12,7 @@ declare global {
     }
 
     interface PlaylistExt extends Ply {
-        startInSec: number,
+        startInSec: number
         lengthInSec: number
     }
 
@@ -139,6 +139,8 @@ declare global {
         smtp_password_set: boolean
         smtp_starttls: boolean
         smtp_port: number
+        notification_server: string
+        notification_token_set: boolean
     }
 
     interface User {
@@ -272,8 +274,8 @@ declare global {
     }
 
     declare namespace Intl {
-        type Key = "calendar" | "collation" | "currency" | "numberingSystem" | "timeZone" | "unit";
+        type Key = 'calendar' | 'collation' | 'currency' | 'numberingSystem' | 'timeZone' | 'unit'
 
-        function supportedValuesOf(input: Key): string[];
-      }
+        function supportedValuesOf(input: Key): string[]
+    }
 }

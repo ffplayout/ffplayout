@@ -20,6 +20,9 @@ pub async fn select_configuration(
         general.stop_threshold AS general_stop_threshold,
         mail.subject AS mail_subject, mail.recipient AS mail_recipient,
         mail.level AS mail_level, mail.interval AS mail_interval,
+        notification.topic AS notification_topic,
+        notification.level AS notification_level,
+        notification.tags AS notification_tags,
         logging.ffmpeg_level AS logging_ffmpeg_level,
         logging.ingest_level AS logging_ingest_level,
         logging.detect_silence AS logging_detect_silence,
@@ -58,6 +61,7 @@ pub async fn select_configuration(
     FROM config c
     JOIN config_general general ON general.config_id = c.id
     JOIN config_mail mail ON mail.config_id = c.id
+    JOIN config_notification notification ON notification.config_id = c.id
     JOIN config_logging logging ON logging.config_id = c.id
     JOIN config_processing processing ON processing.config_id = c.id
     JOIN config_audio audio ON audio.config_id = c.id
@@ -86,6 +90,7 @@ pub async fn insert_configuration(
     for query in [
         "INSERT INTO config_general (config_id) VALUES ($1)",
         "INSERT INTO config_mail (config_id) VALUES ($1)",
+        "INSERT INTO config_notification (config_id) VALUES ($1)",
         "INSERT INTO config_logging (config_id) VALUES ($1)",
         "INSERT INTO config_processing (config_id) VALUES ($1)",
         "INSERT INTO config_audio (config_id) VALUES ($1)",
@@ -153,6 +158,15 @@ pub async fn update_configuration_on(
         .bind(id).bind(config.mail.subject).bind(config.mail.recipient)
         .bind(config.mail.mail_level.as_str()).bind(config.mail.interval)
         .execute(&mut *connection).await?;
+    sqlx::query(
+        "UPDATE config_notification SET topic = $2, level = $3, tags = $4 WHERE config_id = $1",
+    )
+    .bind(id)
+    .bind(config.notification.topic)
+    .bind(config.notification.level.to_string())
+    .bind(config.notification.tags)
+    .execute(&mut *connection)
+    .await?;
     sqlx::query("UPDATE config_logging SET ffmpeg_level = $2, ingest_level = $3, detect_silence = $4, ignore_lines = $5 WHERE config_id = $1")
         .bind(id).bind(config.logging.ffmpeg_level).bind(config.logging.ingest_level)
         .bind(config.logging.detect_silence).bind(config.logging.ignore_lines.join(";"))
@@ -331,10 +345,10 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-
         let config = select_configuration(&pool, 1).await.unwrap();
         assert_eq!(config.general_stop_threshold, 17.5);
         assert_eq!(config.mail_subject, "Migrated subject");
+        assert_eq!(config.notification_level, "FATAL");
         assert_eq!(config.logging_ignore, "custom warning");
         assert_eq!(config.processing_logo, "custom/logo.png");
         assert_eq!(config.processing_volume, 0.42);
@@ -457,6 +471,7 @@ mod tests {
         let original = select_configuration(&pool, 1).await.unwrap();
         config.general.stop_threshold = 23.5;
         config.mail.subject = "Should roll back".to_string();
+        config.notification.topic = "should-roll-back".to_string();
         config.audio.volume = 0.25;
         config.output.id = i32::MAX;
 
@@ -467,6 +482,7 @@ mod tests {
             original.general_stop_threshold
         );
         assert_eq!(unchanged.mail_subject, original.mail_subject);
+        assert_eq!(unchanged.notification_topic, original.notification_topic);
         assert_eq!(unchanged.processing_volume, original.processing_volume);
         assert_eq!(unchanged.output_id, original.output_id);
     }

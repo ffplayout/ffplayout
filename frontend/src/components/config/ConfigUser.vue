@@ -63,10 +63,9 @@ async function getUserConfig() {
     await authFetch<User>(`/api/user/${selected.value}`, {
         method: 'GET',
         headers: authStore.authHeader,
+    }).then((data) => {
+        configStore.configUser = data
     })
-        .then((data) => {
-            configStore.configUser = data
-        })
 }
 
 async function deleteUser() {
@@ -168,18 +167,10 @@ async function onSubmitUser() {
             <select v-model="selected" class="join-item select w-full" @change="onChange($event)">
                 <option v-for="item in users" :key="item.username" :value="item.id">{{ item.username }}</option>
             </select>
-            <button
-                class="join-item btn btn-primary"
-                title="Add new User"
-                @click="showUserModal = true"
-            >
+            <button class="join-item btn btn-primary" title="Add new User" @click="showUserModal = true">
                 <i class="bi-plus-lg" />
             </button>
-            <button
-                class="join-item btn btn-primary"
-                title="Delete selected user"
-                @click="deleteUser()"
-            >
+            <button class="join-item btn btn-primary" title="Delete selected user" @click="deleteUser()">
                 <i class="bi-x-lg" />
             </button>
         </div>

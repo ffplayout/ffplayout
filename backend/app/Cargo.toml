@@ -78,7 +78,8 @@ rand = "0.10"
 real = { version = "0.1", features = ["axum"] }
 regex = "1"
 relative-path = "2"
-reqwest = { version = "0.13", default-features = false, features = ["json"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 sanitize-filename = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

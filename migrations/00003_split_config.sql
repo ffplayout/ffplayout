@@ -7,6 +7,9 @@ ALTER TABLE text_presets RENAME TO legacy_text_preset;
 ALTER TABLE outputs RENAME TO legacy_output;
 ALTER TABLE recordings RENAME TO legacy_recording;
 
+ALTER TABLE config_global ADD COLUMN notification_server TEXT NOT NULL DEFAULT '';
+ALTER TABLE config_global ADD COLUMN notification_token TEXT NOT NULL DEFAULT '';
+
 DROP INDEX IF EXISTS refresh_tokens_family_idx;
 DROP INDEX IF EXISTS refresh_tokens_expiry_idx;
 DROP INDEX IF EXISTS idx_user_channels_unique;
@@ -33,6 +36,14 @@ CREATE TABLE config_mail (
     recipient TEXT NOT NULL DEFAULT '',
     level TEXT NOT NULL DEFAULT 'ERROR',
     interval INTEGER NOT NULL DEFAULT 120,
+    FOREIGN KEY (config_id) REFERENCES config(id) ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE config_notification (
+    config_id INTEGER PRIMARY KEY,
+    topic TEXT NOT NULL DEFAULT '',
+    level TEXT NOT NULL DEFAULT 'FATAL',
+    tags TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (config_id) REFERENCES config(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
@@ -190,6 +201,9 @@ SELECT id, general_stop_threshold FROM configurations;
 
 INSERT INTO config_mail(config_id, subject, recipient, level, interval)
 SELECT id, mail_subject, mail_recipient, mail_level, mail_interval FROM configurations;
+
+INSERT INTO config_notification(config_id)
+SELECT id FROM config;
 
 INSERT INTO config_logging(config_id, ffmpeg_level, ingest_level, detect_silence, ignore_lines)
 SELECT id, logging_ffmpeg_level, logging_ingest_level, logging_detect_silence, logging_ignore FROM configurations;

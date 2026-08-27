@@ -95,6 +95,7 @@ fn requires_playout_restart(current: &PlayoutConfig, updated: &PlayoutConfig) ->
         };
 
         config.remove("mail");
+        config.remove("notification");
         config.remove("audio");
     }
 
@@ -359,6 +360,7 @@ pub async fn update_playout_config(
             }
 
             queue_lock.update(new_config.mail.clone());
+            queue_lock.update_notification(new_config.notification.clone());
             break;
         }
     }
@@ -456,10 +458,11 @@ mod tests {
     use crate::utils::config::PlayoutConfig;
 
     #[test]
-    fn mail_and_volume_changes_do_not_require_restart() {
+    fn notification_and_volume_changes_do_not_require_restart() {
         let current = PlayoutConfig::default();
         let mut updated = current.clone();
         updated.mail.recipient = "ops@example.org".to_string();
+        updated.notification.topic = "ffplayout-alerts".to_string();
         updated.audio.volume = 0.75;
 
         assert!(!requires_playout_restart(&current, &updated));

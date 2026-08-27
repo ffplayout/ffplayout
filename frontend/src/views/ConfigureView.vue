@@ -11,7 +11,7 @@ const authStore = useAuth()
 const route = useRoute()
 
 useHead({
-    title: computed(() => t('button.configure'))
+    title: computed(() => t('button.configure')),
 })
 
 const isChannelRoute = computed(() => route.name === 'configure-channel')

@@ -396,6 +396,7 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
     let global_json: serde_json::Value = serde_json::from_slice(&global_body).unwrap();
     assert!(global_json.get("secret").is_none());
     assert!(global_json.get("smtp_password").is_none());
+    assert!(global_json.get("notification_token").is_none());
 
     let update_global_response = app
         .clone()
@@ -411,7 +412,9 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
                         "smtp_user": "alerts@example.org",
                         "smtp_password": "secret",
                         "smtp_starttls": true,
-                        "smtp_port": 587
+                        "smtp_port": 587,
+                        "notification_server": "https://push.example.org/",
+                        "notification_token": "push-secret"
                     })
                     .to_string(),
                 ))
@@ -426,6 +429,35 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
     assert_eq!(global.smtp_password, "secret");
     assert!(global.smtp_starttls);
     assert_eq!(global.smtp_port, 587);
+    assert_eq!(global.notification_server, "https://push.example.org");
+    assert_eq!(global.notification_token, "push-secret");
+
+    let refreshed_config_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/playout/config/1")
+                .header("authorization", format!("Bearer {admin_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(refreshed_config_response.status(), StatusCode::OK);
+    let refreshed_config_body = to_bytes(refreshed_config_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let refreshed_config: serde_json::Value =
+        serde_json::from_slice(&refreshed_config_body).unwrap();
+    assert_eq!(refreshed_config["notification"]["show"], true);
+
+    let runtime_config = manager.config.read().await;
+    assert_eq!(
+        runtime_config.notification.server,
+        "https://push.example.org"
+    );
+    assert_eq!(runtime_config.notification.token, "push-secret");
+    drop(runtime_config);
 
     let preset = TextPreset {
         name: "HTTP preset".to_string(),
@@ -544,6 +576,8 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
     );
 
     config.mail.subject = "Updated through API".to_string();
+    config.notification.topic = "ffplayout-alerts".to_string();
+    config.notification.tags = "warning,broadcast".to_string();
     config.text.preset_id = Some(preset_id);
     let update_config_response = app
         .clone()
@@ -561,6 +595,8 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
     assert_eq!(update_config_response.status(), StatusCode::OK);
     let stored = handles::select_configuration(&pool, 1).await.unwrap();
     assert_eq!(stored.mail_subject, "Updated through API");
+    assert_eq!(stored.notification_topic, "ffplayout-alerts");
+    assert_eq!(stored.notification_tags, "warning,broadcast");
     assert_eq!(stored.text_preset_id, Some(preset_id));
 
     let mut invalid = config.clone();

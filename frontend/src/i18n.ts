@@ -32,10 +32,10 @@ const instance = createI18n({
     legacy: false,
     locale: 'en-US',
     messages: {
-        'de': deDE,
-        'en': enUS,
+        de: deDE,
+        en: enUS,
         'pt-br': ptBR,
-        'ru': ruRU,
+        ru: ruRU,
     },
 })
 

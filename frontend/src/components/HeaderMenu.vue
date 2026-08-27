@@ -55,9 +55,9 @@ function blurMenu() {
 
 function closeDropdown($event: FocusEvent) {
     setTimeout(() => {
-        const parent = ($event.target as HTMLElement).parentNode;
+        const parent = ($event.target as HTMLElement).parentNode
         if (parent && parent instanceof HTMLElement) {
-            parent.removeAttribute('open');
+            parent.removeAttribute('open')
         }
     }, 200)
 }

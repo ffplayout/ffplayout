@@ -165,7 +165,15 @@ export default {
         smtpPassword: 'SMTP Password',
         smtpPort: 'SMTP Port',
         smtpStarttls: 'Use STARTTLS',
+        notification: 'HTTP Push Notifications',
+        notificationServer: 'Push Server',
+        notificationToken: 'Access Token',
+        notificationHelp: 'Send rate-limited log alerts to a topic-based HTTP push service.',
+        notificationTopic: 'Topic',
+        notificationLevel: 'Minimum Level',
+        notificationTags: 'Tags',
         passwordConfigured: 'Password configured',
+        tokenConfigured: 'Token configured',
         updateGlobalSuccess: 'Global settings updated successfully!',
         updateGlobalFailed: 'Failed to update global settings!',
         channelConf: 'Channel Configuration',
@@ -210,11 +218,15 @@ export default {
         recordingMinimumFreeSpace: 'Minimum free space (GB, 0 = disabled)',
         recordingUpdated: 'Recording configuration updated',
         placeholderPass: 'Password',
+        placeholderToken: 'Token',
         help: 'Help',
-        generalHelp: 'Sometimes it can happen that a file is corrupt but still playable. This can produce a streaming error for all following files. The only solution in this case is to stop ffplayout and start it again.',
-        stopThreshold: 'The threshold stops ffplayout if it is asynchronous in time above this value. A number below 3 can cause unexpected errors.',
+        generalHelp:
+            'Sometimes it can happen that a file is corrupt but still playable. This can produce a streaming error for all following files. The only solution in this case is to stop ffplayout and start it again.',
+        stopThreshold:
+            'The threshold stops ffplayout if it is asynchronous in time above this value. A number below 3 can cause unexpected errors.',
         mailHelp: `Send error messages to an email address, such as missing clips, missing or invalid playlist format, etc.. Leave the recipient blank if you don't need this.`,
-        mailInterval: 'The interval refers to the number of seconds until a new email is sent; the value must be in increments of 10 and not lower then 30 seconds.',
+        mailInterval:
+            'The interval refers to the number of seconds until a new email is sent; the value must be in increments of 10 and not lower then 30 seconds.',
         logHelp: 'Adjust logging behavior.',
         logDetect: 'Logs an error message if the audio line is silent for 15 seconds during the validation process.',
         logIgnore: 'Ignore strings that contain matched lines; the format is a semicolon-separated list.',
@@ -224,9 +236,12 @@ export default {
         processingLogoPosition: `Position is specified in the format 'x:y'`,
         processingAudioTracks: 'Specify how many audio tracks should be processed.',
         processingAudioIndex: 'Which audio line to use, -1 for all.',
-        processingCustomFilter: 'Add custom filters to the processing. The filter outputs must end with [c_v_out] for video filters and [c_a_out] for audio filters.',
-        processingOverrideFilter: 'Attention: This option overwrites all standard filters, i.e. automatic format correction no longer takes place, the command must be structured as follows: -filter_complex [0:v]fps=25,scale=1280:-1[vout];[0:a:0]volume=0.5[aout] -map [vout] -map [aout]',
-        processingVTTEnable: 'VTT can only be used in HLS mode and only if there are *.vtt files with the same name as the video file.',
+        processingCustomFilter:
+            'Add custom filters to the processing. The filter outputs must end with [c_v_out] for video filters and [c_a_out] for audio filters.',
+        processingOverrideFilter:
+            'Attention: This option overwrites all standard filters, i.e. automatic format correction no longer takes place, the command must be structured as follows: -filter_complex [0:v]fps=25,scale=1280:-1[vout];[0:a:0]volume=0.5[aout] -map [vout] -map [aout]',
+        processingVTTEnable:
+            'VTT can only be used in HLS mode and only if there are *.vtt files with the same name as the video file.',
         processingVTTDummy: 'A placeholder is needed if there is no vtt file.',
         apply: 'Apply',
         volumeApplied: 'Volume applied.',
@@ -234,19 +249,23 @@ export default {
         ingestHelp: `Run a server for an ingest stream. This stream will override the normal streaming until it is finished. There is only a very simple authentication mechanism, which checks if the stream name is correct.`,
         ingestCustomFilter: 'Apply a custom filter to the Ingest stream in the same way as in the Processing section.',
         playlistHelp: 'Playlist handling.',
-        playlistDayStart: 'At what time the playlist should start; leave it blank if the playlist should always start at the beginning.',
+        playlistDayStart:
+            'At what time the playlist should start; leave it blank if the playlist should always start at the beginning.',
         playlistLength: 'Target length of the playlist; when it is blank, the real length will not be considered.',
         playlistInfinit: 'Loop a single playlist file infinitely.',
         storageHelp: 'Storage settings, locations are relative to channel storage.',
-        storageFiller: 'Use filler to play in place of a missing file or to fill the remaining time to reach a total of 24 hours. It can be a file or folder, with relative path, and will loop when necessary.',
+        storageFiller:
+            'Use filler to play in place of a missing file or to fill the remaining time to reach a total of 24 hours. It can be a file or folder, with relative path, and will loop when necessary.',
         storageExtension: 'Specify which files to search and use.',
         storageShuffle: 'Pick files randomly (in folder mode and playlist generation).',
         textHelp: 'Overlay text rendered by the playout engine. Text can come from filenames or the control API.',
         textFont: 'Relative path to channel storage.',
         textFromFile: 'Extraction of text from a filename.',
-        textStyle: 'Define text parameters such as position, color, box, and size. Posting text over the API will override the displayed text.',
+        textStyle:
+            'Define text parameters such as position, color, box, and size. Posting text over the API will override the displayed text.',
         textRegex: 'Format file names to extract a title from them.',
-        taskHelp: 'Run an external program with a given media object. The media object is in JSON format and contains all the information about the current clip. The external program can be a script or a binary, but it should only run for a short time.',
+        taskHelp:
+            'Run an external program with a given media object. The media object is in JSON format and contains all the information about the current clip. The external program can be a script or a binary, but it should only run for a short time.',
         taskPath: 'Path to executable.',
         outputHelp: `Choose the final playout output. HLS is the default and creates the media playlist below. Use 'stream' with a target URL for RTMP/SRT/UDP, or 'desktop' for local playback.
         In production, serve HLS playlists through Nginx or another web server.`,
@@ -272,7 +291,8 @@ export default {
         videoMaxrate: 'Maximum video bitrate (kbit/s)',
         audioBitrate: 'Audio bitrate (kbit/s)',
         hlsVariants: 'HLS Variants',
-        hlsVariantsHelp: 'Add adaptive bitrate renditions in addition to the base output. A master playlist referencing all streams is generated automatically.',
+        hlsVariantsHelp:
+            'Add adaptive bitrate renditions in addition to the base output. A master playlist referencing all streams is generated automatically.',
         addHlsVariant: 'Add Variant',
         remove: 'Remove',
         restartTile: 'Restart Playout',

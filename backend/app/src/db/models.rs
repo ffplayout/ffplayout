@@ -24,6 +24,8 @@ pub struct GlobalSettings {
     pub smtp_password: String,
     pub smtp_starttls: bool,
     pub smtp_port: u16,
+    pub notification_server: String,
+    pub notification_token: String,
     pub setup_completed: bool,
 }
 
@@ -46,6 +48,8 @@ impl GlobalSettings {
                 smtp_password: String::new(),
                 smtp_starttls: false,
                 smtp_port: 465,
+                notification_server: String::new(),
+                notification_token: String::new(),
                 setup_completed: true,
             },
         }
@@ -351,6 +355,10 @@ pub struct Configuration {
     pub mail_level: String,
     pub mail_interval: i64,
 
+    pub notification_topic: String,
+    pub notification_level: String,
+    pub notification_tags: String,
+
     pub logging_ffmpeg_level: String,
     pub logging_ingest_level: String,
     pub logging_detect_silence: bool,
@@ -413,6 +421,9 @@ impl Configuration {
             mail_recipient: config.mail.recipient,
             mail_level: config.mail.mail_level.to_string(),
             mail_interval: config.mail.interval,
+            notification_topic: config.notification.topic,
+            notification_level: config.notification.level.to_string(),
+            notification_tags: config.notification.tags,
             logging_ffmpeg_level: config.logging.ffmpeg_level,
             logging_ingest_level: config.logging.ingest_level,
             logging_detect_silence: config.logging.detect_silence,

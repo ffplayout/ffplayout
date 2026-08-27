@@ -77,29 +77,28 @@ async function getPreset(index: number) {
     authFetch<TextPreset[]>(`/api/presets/${configStore.channels[configStore.i]?.id}`, {
         method: 'GET',
         headers: authStore.authHeader,
-    })
-        .then((data) => {
-            if (index === -1) {
-                presets.value = [{ value: -1, name: '' }]
+    }).then((data) => {
+        if (index === -1) {
+            presets.value = [{ value: -1, name: '' }]
 
-                for (let i = 0; i < data.length; i++) {
-                    const elem = data[i]
-                    presets.value.push({ value: i, name: elem.name })
-                }
-
-                const persistentPreset = data.find((preset) => preset.persistent)
-
-                if (persistentPreset) {
-                    selected.value = persistentPreset.name
-                    form.value = persistentPreset
-                } else {
-                    selected.value = null
-                    form.value = defaultForm()
-                }
-            } else {
-                form.value = data[index]
+            for (let i = 0; i < data.length; i++) {
+                const elem = data[i]
+                presets.value.push({ value: i, name: elem.name })
             }
-        })
+
+            const persistentPreset = data.find((preset) => preset.persistent)
+
+            if (persistentPreset) {
+                selected.value = persistentPreset.name
+                form.value = persistentPreset
+            } else {
+                selected.value = null
+                form.value = defaultForm()
+            }
+        } else {
+            form.value = data[index]
+        }
+    })
 }
 
 async function getFontFamilies() {
@@ -304,7 +303,11 @@ async function submitMessage() {
                             </fieldset>
                             <fieldset class="fieldset mt-1">
                                 <legend class="fieldset-legend">{{ t('message.boxColor') }}</legend>
-                                <input v-model="form.background_color" type="color" class="input input-sm w-full cursor-pointer" />
+                                <input
+                                    v-model="form.background_color"
+                                    type="color"
+                                    class="input input-sm w-full cursor-pointer"
+                                />
                             </fieldset>
                         </div>
                         <fieldset class="fieldset mt-1 xs:mt-17.5">
@@ -334,7 +337,11 @@ async function submitMessage() {
                             </fieldset>
                             <fieldset class="fieldset">
                                 <legend class="fieldset-legend">{{ t('message.fontColor') }}</legend>
-                                <input v-model="form.text_color" type="color" class="input input-sm w-full cursor-pointer" />
+                                <input
+                                    v-model="form.text_color"
+                                    type="color"
+                                    class="input input-sm w-full cursor-pointer"
+                                />
                             </fieldset>
                         </div>
                         <div>
@@ -409,11 +416,23 @@ async function submitMessage() {
                         <div class="grid grid-cols-2 gap-2">
                             <fieldset class="fieldset">
                                 <legend class="fieldset-legend">Fade in</legend>
-                                <input v-model="form.fade_in_seconds" type="number" min="0" step="0.1" class="input input-sm w-full" />
+                                <input
+                                    v-model="form.fade_in_seconds"
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    class="input input-sm w-full"
+                                />
                             </fieldset>
                             <fieldset class="fieldset">
                                 <legend class="fieldset-legend">Fade out</legend>
-                                <input v-model="form.fade_out_seconds" type="number" min="0" step="0.1" class="input input-sm w-full" />
+                                <input
+                                    v-model="form.fade_out_seconds"
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    class="input input-sm w-full"
+                                />
                             </fieldset>
                         </div>
                     </div>
@@ -428,7 +447,13 @@ async function submitMessage() {
         <GenericModal :show="showCreateModal" :title="t('message.newPreset')" :modal-action="createNewPreset">
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">{{ t('message.name') }}</legend>
-                <input v-model="newPresetName" type="text" name="overall_alpha" class="input input-sm w-full" required />
+                <input
+                    v-model="newPresetName"
+                    type="text"
+                    name="overall_alpha"
+                    class="input input-sm w-full"
+                    required
+                />
             </fieldset>
         </GenericModal>
 

@@ -332,7 +332,9 @@ function runControl(button: PlayerControlButton) {
 </script>
 <template>
     <div class="w-full">
-        <div class="grid grid-cols-[48px_auto] md:grid-cols-[auto_50px_360px] lg:grid-cols-[auto_50px_510px] xl:grid-cols-[512px_auto_48px_450px]">
+        <div
+            class="grid grid-cols-[48px_auto] md:grid-cols-[auto_50px_360px] lg:grid-cols-[auto_50px_510px] xl:grid-cols-[512px_auto_48px_450px]"
+        >
             <div class="order-1 col-span-2 md:col-span-1 p-1">
                 <div class="bg-base-100 w-full h-full rounded-sm shadow-sm flex items-center p-2">
                     <div class="w-full aspect-video">
@@ -458,18 +460,20 @@ function runControl(button: PlayerControlButton) {
             <div class="order-3 xl:order-4 p-1">
                 <div class="bg-base-100 h-full flex flex-col justify-center rounded-sm shadow">
                     <div class="w-full h-[calc(100%-44px)] grid grid-cols-3">
-                        <div v-for="(column, columnIndex) in playerControlColumns" :key="columnIndex" class="text-center h-full">
-                            <div
-                                v-for="button in column"
-                                :key="button.command"
-                                class="w-full h-1/2 p-2"
-                            >
+                        <div
+                            v-for="(column, columnIndex) in playerControlColumns"
+                            :key="columnIndex"
+                            class="text-center h-full"
+                        >
+                            <div v-for="button in column" :key="button.command" class="w-full h-1/2 p-2">
                                 <button
                                     :title="t(button.label)"
                                     class="btn btn-primary h-full w-full"
                                     :class="[
                                         button.class,
-                                        button.showRunning && playlistStore.playoutIsRunning && 'shadow-glow shadow-lime-600',
+                                        button.showRunning &&
+                                            playlistStore.playoutIsRunning &&
+                                            'shadow-glow shadow-lime-600',
                                     ]"
                                     @click="runControl(button)"
                                 >
