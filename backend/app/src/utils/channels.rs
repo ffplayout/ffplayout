@@ -17,8 +17,8 @@ use super::config::{DEFAULT_INGEST_PORT, OutputMode, parse_rtmp_ingest_port};
 
 async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     sqlx::query(
-        "INSERT OR IGNORE INTO user_channels (channel_id, user_id)
-         SELECT channels.id, user.id FROM channels CROSS JOIN user WHERE user.role_id = 1",
+        "INSERT OR IGNORE INTO auth_user_channels (channel_id, user_id)
+         SELECT channels.id, auth_user.id FROM channels CROSS JOIN auth_user WHERE auth_user.role_id = 1",
     )
     .execute(conn)
     .await?;
@@ -117,10 +117,9 @@ async fn create_channel_records(
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
     let mut transaction = conn.begin().await?;
-    let configured_ingest_urls =
-        sqlx::query_scalar::<_, String>("SELECT ingest_url FROM configurations")
-            .fetch_all(&mut *transaction)
-            .await?;
+    let configured_ingest_urls = sqlx::query_scalar::<_, String>("SELECT url FROM config_ingest")
+        .fetch_all(&mut *transaction)
+        .await?;
     let ingest_url = default_ingest_url(next_available_ingest_port(&configured_ingest_urls)?);
     let channel = handles::insert_channel(&mut *transaction, target_channel).await?;
     let outputs = [
@@ -129,27 +128,18 @@ async fn create_channel_records(
         models::Output::new(channel.id, OutputMode::Desktop),
     ];
 
-    handles::new_channel_presets(&mut *transaction, channel.id).await?;
-
-    let mut output_id = 1;
+    let config_id =
+        handles::insert_configuration(&mut transaction, channel.id, &ingest_url).await?;
+    handles::new_channel_presets(&mut *transaction, config_id).await?;
 
     for (index, output) in outputs.iter().enumerate() {
-        let id = handles::insert_output(&mut *transaction, channel.id, output).await?;
-
-        if index == 0 {
-            output_id = id;
-        }
+        handles::insert_output(&mut *transaction, config_id, output, index == 0).await?;
     }
 
-    handles::insert_configuration(&mut *transaction, channel.id, output_id, &ingest_url).await?;
-    handles::insert_recording(&mut *transaction, channel.id).await?;
-    sqlx::query("INSERT INTO audio_config (channel_id) VALUES($1)")
-        .bind(channel.id)
-        .execute(&mut *transaction)
-        .await?;
+    handles::insert_recording(&mut transaction, config_id, channel.id).await?;
     sqlx::query(
-        "INSERT OR IGNORE INTO user_channels (channel_id, user_id)
-         SELECT $1, id FROM user WHERE role_id = 1",
+        "INSERT OR IGNORE INTO auth_user_channels (channel_id, user_id)
+         SELECT $1, id FROM auth_user WHERE role_id = 1",
     )
     .bind(channel.id)
     .execute(&mut *transaction)
@@ -228,7 +218,7 @@ mod tests {
         handles::db_migrate(&pool).await.unwrap();
         sqlx::query(
             "CREATE TRIGGER reject_test_configuration
-             BEFORE INSERT ON configurations WHEN NEW.channel_id > 1
+             BEFORE INSERT ON config WHEN NEW.channel_id > 1
              BEGIN SELECT RAISE(FAIL, 'forced failure'); END",
         )
         .execute(&pool)
@@ -255,7 +245,7 @@ mod tests {
             .unwrap();
         assert_eq!(after, before);
         let orphan_outputs: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM outputs WHERE channel_id NOT IN (SELECT id FROM channels)",
+            "SELECT COUNT(*) FROM config_output WHERE config_id NOT IN (SELECT id FROM config)",
         )
         .fetch_one(&pool)
         .await
@@ -272,7 +262,7 @@ mod tests {
             .unwrap();
         handles::db_migrate(&pool).await.unwrap();
         sqlx::query(
-            "INSERT INTO user (mail, username, password, role_id, two_factor) VALUES
+            "INSERT INTO auth_user (mail, username, password, role_id, two_factor) VALUES
              ('one@example.org', 'admin-one', 'hash', 1, 0),
              ('two@example.org', 'admin-two', 'hash', 1, 0),
              ('user@example.org', 'regular-user', 'hash', 3, 0)",
@@ -291,9 +281,9 @@ mod tests {
         .await
         .unwrap();
         let assigned_roles: Vec<i32> = sqlx::query_scalar(
-            "SELECT user.role_id FROM user_channels
-             JOIN user ON user.id = user_channels.user_id
-             WHERE user_channels.channel_id = $1 ORDER BY user.role_id",
+            "SELECT auth_user.role_id FROM auth_user_channels
+             JOIN auth_user ON auth_user.id = auth_user_channels.user_id
+             WHERE auth_user_channels.channel_id = $1 ORDER BY auth_user.role_id",
         )
         .bind(channel.id)
         .fetch_all(&pool)
@@ -331,26 +321,35 @@ mod tests {
         .await
         .unwrap();
 
-        let second_url: String =
-            sqlx::query_scalar("SELECT ingest_url FROM configurations WHERE channel_id = $1")
-                .bind(second.id)
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        let third_url: String =
-            sqlx::query_scalar("SELECT ingest_url FROM configurations WHERE channel_id = $1")
-                .bind(third.id)
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let second_url: String = sqlx::query_scalar(
+            "SELECT ingest.url FROM config
+                JOIN config_ingest ingest ON ingest.config_id = config.id
+                WHERE config.channel_id = $1",
+        )
+        .bind(second.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let third_url: String = sqlx::query_scalar(
+            "SELECT ingest.url FROM config
+                JOIN config_ingest ingest ON ingest.config_id = config.id
+                WHERE config.channel_id = $1",
+        )
+        .bind(third.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
 
         assert_eq!(second_url, "rtmp://127.0.0.1:1937/live/stream");
         assert_eq!(third_url, "rtmp://127.0.0.1:1938/live/stream");
-        sqlx::query("UPDATE configurations SET ingest_enable = 1 WHERE channel_id IN (1, $1)")
-            .bind(second.id)
-            .execute(&pool)
-            .await
-            .unwrap();
+        sqlx::query(
+            "UPDATE config_ingest SET enable = 1 WHERE config_id IN
+            (SELECT id FROM config WHERE channel_id IN (1, $1))",
+        )
+        .bind(second.id)
+        .execute(&pool)
+        .await
+        .unwrap();
         assert!(
             handles::ingest_port_in_use(&pool, third.id, 1936)
                 .await
@@ -366,5 +365,58 @@ mod tests {
                 .await
                 .unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn deleting_a_channel_cascades_to_every_config_table() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        handles::db_migrate(&pool).await.unwrap();
+        let channel = create_channel_records(
+            &pool,
+            Channel {
+                name: "cascade-test".to_string(),
+                ..Channel::default()
+            },
+        )
+        .await
+        .unwrap();
+        let config_id: i32 = sqlx::query_scalar("SELECT id FROM config WHERE channel_id = $1")
+            .bind(channel.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+        handles::delete_channel(&pool, &channel.id).await.unwrap();
+
+        for table in [
+            "config",
+            "config_general",
+            "config_mail",
+            "config_logging",
+            "config_processing",
+            "config_audio",
+            "config_ingest",
+            "config_playlist",
+            "config_storage",
+            "config_task",
+            "config_output",
+            "config_recording",
+            "config_text_presets",
+        ] {
+            let query = format!(
+                "SELECT COUNT(*) FROM {table} WHERE {} = $1",
+                if table == "config" { "id" } else { "config_id" }
+            );
+            let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(query))
+                .bind(config_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(count, 0, "orphaned row in {table}");
+        }
     }
 }

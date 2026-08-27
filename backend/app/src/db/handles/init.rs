@@ -18,13 +18,13 @@ pub async fn db_migrate(pool: &SqlitePool) -> Result<bool, ProcessError> {
             .collect();
         let shared = is_running_in_container();
 
-        const QUERY: &str = "CREATE TRIGGER global_row_count
-        BEFORE INSERT ON global
-        WHEN (SELECT COUNT(*) FROM global) >= 1
+        const QUERY: &str = "CREATE TRIGGER config_global_row_count
+        BEFORE INSERT ON config_global
+        WHEN (SELECT COUNT(*) FROM config_global) >= 1
         BEGIN
             SELECT RAISE(FAIL, 'Database is already initialized!');
         END;
-        INSERT INTO global(secret, shared, setup_completed) VALUES($1, $2, 0);";
+        INSERT INTO config_global(secret, shared, setup_completed) VALUES($1, $2, 0);";
 
         sqlx::query(QUERY)
             .bind(secret)

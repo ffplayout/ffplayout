@@ -5179,6 +5179,7 @@ dependencies = [
  "axum",
  "chrono",
  "ffplayout",
+ "protect-axum",
  "serde_json",
  "serial_test",
  "sqlx",

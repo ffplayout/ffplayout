@@ -81,11 +81,14 @@ pub async fn update_preset(
     data.channel_id = channel;
     data.validate().map_err(ServiceError::BadRequest)?;
 
-    if handles::update_preset(&state.pool, channel, &id, data)
-        .await
-        .is_ok()
-    {
-        return Ok("Update Success");
+    match handles::update_preset(&state.pool, channel, &id, data).await {
+        Ok(result) if result.rows_affected() == 1 => return Ok("Update Success"),
+        Ok(_) => {
+            return Err(ServiceError::NotFound(format!(
+                "Text preset {id} not found for channel {channel}"
+            )));
+        }
+        Err(_) => {}
     }
 
     Err(ServiceError::InternalServerError)
@@ -138,11 +141,14 @@ pub async fn delete_preset(
     )?;
     user.ensure_channel_or_admin(channel)?;
 
-    if handles::delete_preset(&state.pool, channel, &id)
-        .await
-        .is_ok()
-    {
-        return Ok("Delete preset Success");
+    match handles::delete_preset(&state.pool, channel, &id).await {
+        Ok(result) if result.rows_affected() == 1 => return Ok("Delete preset Success"),
+        Ok(_) => {
+            return Err(ServiceError::NotFound(format!(
+                "Text preset {id} not found for channel {channel}"
+            )));
+        }
+        Err(_) => {}
     }
 
     Err(ServiceError::InternalServerError)

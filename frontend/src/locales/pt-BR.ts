@@ -143,6 +143,7 @@ export default {
         fontAlpha: 'Fonte Alfa',
         borderWidth: 'Largura da borda',
         send: 'Enviar',
+        persistent: 'Persistente',
         name: 'Nome',
         saveDone: 'Salvar predefinição concluída!',
         saveFailed: 'Falha ao salvar a predefinição!',

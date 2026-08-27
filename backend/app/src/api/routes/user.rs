@@ -142,7 +142,7 @@ pub async fn update_user(
     handles::update_user(&mut *transaction, id, two_factor, mail, password_hash).await?;
 
     if update_channels {
-        sqlx::query("DELETE FROM user_channels WHERE user_id = $1")
+        sqlx::query("DELETE FROM auth_user_channels WHERE user_id = $1")
             .bind(id)
             .execute(&mut *transaction)
             .await?;

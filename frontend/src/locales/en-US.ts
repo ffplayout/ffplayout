@@ -143,6 +143,7 @@ export default {
         fontAlpha: 'Font Alpha',
         borderWidth: 'Border Width',
         send: 'Send',
+        persistent: 'Persistent',
         name: 'Name',
         saveDone: 'Save Preset done!',
         saveFailed: 'Save Preset failed!',

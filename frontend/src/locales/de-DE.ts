@@ -143,6 +143,7 @@ export default {
         fontAlpha: 'Schrifttransparenz',
         borderWidth: 'Rahmenbreite',
         send: 'Senden',
+        persistent: 'Dauerhaft',
         name: 'Name',
         saveDone: 'Voreinstellung gespeichert!',
         saveFailed: 'Voreinstellung speichern fehlgeschlagen!',

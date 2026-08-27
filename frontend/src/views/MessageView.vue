@@ -29,6 +29,7 @@ interface PresetName {
 const defaultForm = (): TextPreset => ({
     id: 0,
     channel_id: configStore.channels[configStore.i]?.id ?? 1,
+    persistent: false,
     name: '',
     text: '',
     use_filename: false,
@@ -56,7 +57,7 @@ const form = ref<TextPreset>(defaultForm())
 
 const showCreateModal = ref(false)
 const showDeleteModal = ref(false)
-const selected = ref(null)
+const selected = ref<string | null>(null)
 const newPresetName = ref('')
 const presets = ref([] as PresetName[])
 const fontFamilies = ref<string[]>([])
@@ -86,7 +87,15 @@ async function getPreset(index: number) {
                     presets.value.push({ value: i, name: elem.name })
                 }
 
-                form.value = defaultForm()
+                const persistentPreset = data.find((preset) => preset.persistent)
+
+                if (persistentPreset) {
+                    selected.value = persistentPreset.name
+                    form.value = persistentPreset
+                } else {
+                    selected.value = null
+                    form.value = defaultForm()
+                }
             } else {
                 form.value = data[index]
             }
@@ -101,10 +110,16 @@ async function getFontFamilies() {
     fontFamilies.value = response
 }
 
-function onChange(event: any) {
-    selected.value = event.target.value
+function onChange(event: Event) {
+    const select = event.target as HTMLSelectElement
+    selected.value = select.value || null
 
-    getPreset(event.target.selectedIndex - 1)
+    if (select.selectedIndex === 0) {
+        form.value = defaultForm()
+        return
+    }
+
+    getPreset(select.selectedIndex - 1)
 }
 
 async function savePreset() {
@@ -222,7 +237,7 @@ async function submitMessage() {
                         :placeholder="t('message.placeholder')"
                     />
 
-                    <div class="mt-2 grid md:grid-cols-[minmax(0,1fr)_160px_auto] gap-4">
+                    <div class="mt-2 grid md:grid-cols-[minmax(0,1fr)_160px_auto_auto] gap-4">
                         <fieldset class="fieldset">
                             <legend class="fieldset-legend">Font</legend>
                             <select v-model="form.font_family" class="select select-sm w-full">
@@ -249,6 +264,17 @@ async function submitMessage() {
                             <label class="fieldset-label text-base-content">
                                 <input v-model="form.use_filename" type="checkbox" class="checkbox" />
                                 Use clip filename
+                            </label>
+                        </fieldset>
+                        <fieldset class="fieldset rounded-box">
+                            <label class="fieldset-label text-base-content">
+                                <input
+                                    v-model="form.persistent"
+                                    type="checkbox"
+                                    class="checkbox"
+                                    :disabled="form.id <= 0"
+                                />
+                                {{ t('message.persistent') }}
                             </label>
                         </fieldset>
                     </div>

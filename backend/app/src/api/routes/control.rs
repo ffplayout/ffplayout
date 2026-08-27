@@ -94,6 +94,18 @@ pub async fn send_text_message(
     }
     .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
+    if data.persistent && data.id <= 0 {
+        return Err(ServiceError::BadRequest(
+            "persistent text overlays require a saved preset".to_string(),
+        ));
+    }
+    handles::set_persistent_preset(&state.pool, id, data.persistent.then_some(data.id)).await?;
+    {
+        let mut config = manager.config.write().await;
+        config.text.preset_id = data.persistent.then_some(data.id);
+        config.text.preset = data.persistent.then_some(data.clone());
+    }
+
     match send_message(manager, data).await {
         Ok(res) => Ok(Json(res)),
         Err(e) => Err(e),

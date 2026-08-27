@@ -88,6 +88,7 @@ declare global {
     interface TextPreset {
         id: number
         channel_id: number
+        persistent: boolean
         name: string
         text: string
         use_filename: boolean

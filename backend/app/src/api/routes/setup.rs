@@ -79,7 +79,7 @@ pub async fn get_setup_status(
     State(state): State<AppState>,
 ) -> Result<Json<SetupStatus>, ServiceError> {
     let settings = handles::select_global(&state.pool).await?;
-    let user_count: i64 = sqlx::query("SELECT COUNT(*) AS count FROM user")
+    let user_count: i64 = sqlx::query("SELECT COUNT(*) AS count FROM auth_user")
         .fetch_one(&state.pool)
         .await?
         .get("count");
@@ -135,10 +135,10 @@ pub async fn complete_setup(
     }
 
     let result = sqlx::query(
-        "UPDATE global SET logs = $1, playlists = $2, public = $3, storage = $4, shared = $5,
+        "UPDATE config_global SET logs = $1, playlists = $2, public = $3, storage = $4, shared = $5,
         smtp_server = $6, smtp_user = $7, smtp_password = $8, smtp_starttls = $9, smtp_port = $10,
         setup_completed = 0 WHERE id = 1 AND setup_completed = 0
-        AND NOT EXISTS (SELECT 1 FROM user)",
+        AND NOT EXISTS (SELECT 1 FROM auth_user)",
     )
     .bind(&settings.logs)
     .bind(&settings.playlists)
@@ -167,15 +167,20 @@ pub async fn complete_setup(
         .await?;
 
     sqlx::query(
-        "UPDATE configurations SET output_id = (
-            SELECT id FROM outputs WHERE channel_id = 1 AND name = 'hls'
-        ) WHERE channel_id = 1",
+        "UPDATE config_output SET active = 0
+         WHERE config_id = (SELECT id FROM config WHERE channel_id = 1)",
+    )
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query(
+        "UPDATE config_output SET active = 1
+         WHERE config_id = (SELECT id FROM config WHERE channel_id = 1) AND name = 'hls'",
     )
     .execute(&mut *transaction)
     .await?;
 
     let user_id: i32 = sqlx::query(
-        "INSERT INTO user (mail, username, password, role_id, two_factor)
+        "INSERT INTO auth_user (mail, username, password, role_id, two_factor)
         VALUES ($1, $2, $3, 1, $4) RETURNING id",
     )
     .bind(data.mail.trim())
@@ -186,12 +191,12 @@ pub async fn complete_setup(
     .await?
     .get("id");
 
-    sqlx::query("INSERT INTO user_channels (channel_id, user_id) VALUES (1, $1)")
+    sqlx::query("INSERT INTO auth_user_channels (channel_id, user_id) VALUES (1, $1)")
         .bind(user_id)
         .execute(&mut *transaction)
         .await?;
 
-    sqlx::query("UPDATE global SET setup_completed = 1 WHERE id = 1")
+    sqlx::query("UPDATE config_global SET setup_completed = 1 WHERE id = 1")
         .execute(&mut *transaction)
         .await?;
 

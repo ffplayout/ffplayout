@@ -144,6 +144,7 @@ export default {
         fontAlpha: 'Font Alpha',
         borderWidth: 'Border Width',
         send: 'Отправить в эфир',
+        persistent: 'Постоянный',
         name: 'Название',
         saveDone: 'Сохранение предустановки выполнено!',
         saveFailed: 'Сохранить пресет не удалось!',

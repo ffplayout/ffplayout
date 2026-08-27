@@ -22,9 +22,9 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
 
     sqlx::query(
         r#"
-        UPDATE global SET public = "assets/hls", logs = "assets/log", playlists = "assets/playlists", storage = "assets/storage";
+        UPDATE config_global SET public = "assets/hls", logs = "assets/log", playlists = "assets/playlists", storage = "assets/storage";
         UPDATE channels SET public = "assets/hls", playlists = "assets/playlists", storage = "assets/storage";
-        UPDATE configurations SET processing_width = 1024, processing_height = 576;
+        UPDATE config_output SET width = 1024, height = 576;
         "#,
     )
     .execute(&pool)

@@ -102,6 +102,7 @@ pub async fn get_program(
         .text
         .preset
         .as_ref()
+        .filter(|preset| preset.use_filename)
         .and_then(|preset| Regex::new(&preset.filename_regex).ok());
 
     for date in date_range {

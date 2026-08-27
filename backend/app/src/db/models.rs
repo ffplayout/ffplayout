@@ -222,9 +222,12 @@ impl FromRow<'_, SqliteRow> for Role {
 #[serde(default)]
 pub struct TextPreset {
     #[sqlx(default)]
-    #[serde(skip_deserializing)]
+    #[serde(default)]
     pub id: i32,
     pub channel_id: i32,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub persistent: bool,
     pub name: String,
     pub text: String,
     pub use_filename: bool,
@@ -254,6 +257,7 @@ impl Default for TextPreset {
         Self {
             id: 0,
             channel_id: 1,
+            persistent: false,
             name: String::new(),
             text: String::new(),
             use_filename: false,
@@ -333,6 +337,10 @@ impl TextPreset {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, sqlx::FromRow)]
+/// Flattened read model assembled from the thematic `config_*` tables.
+///
+/// Keeping this projection separate from persistence lets the runtime build a
+/// `PlayoutConfig` in one query without coupling writes to one wide table.
 pub struct Configuration {
     pub id: i32,
     pub channel_id: i32,
