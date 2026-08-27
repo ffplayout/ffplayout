@@ -37,6 +37,10 @@ Use of remote sources, like https://example.org/video.mp4
 
 Run a script or binary when a clip starts.
 
+### **[HTTP Push Notifications](/docs/notifications.md)**
+
+Configure rate-limited log alerts for topic-based HTTP push services.
+
 ### **[ffplayout API](/docs/api.md)**
 
 Control the engine, playlist and config with the API.

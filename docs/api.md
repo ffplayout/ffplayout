@@ -82,15 +82,15 @@ listed authenticated endpoints also enforce the channel assignment where an
 | `POST` | `/api/channel` | `GA` | Create a channel. |
 | `DELETE` | `/api/channel/{id}` | `GA` | Delete a channel. |
 | `GET` | `/api/channels` | `GA, CA, U` | List channels available to the current user. |
-| `GET` | `/api/global` | `GA` | Read editable global SMTP settings. The SMTP password is represented only by `smtp_password_set`. |
-| `PUT` | `/api/global` | `GA` | Update SMTP settings. Omit `smtp_password` or send an empty value to retain the current password. |
+| `GET` | `/api/global` | `GA` | Read editable global SMTP and HTTP push settings. Secrets are represented only by `smtp_password_set` and `notification_token_set`. |
+| `PUT` | `/api/global` | `GA` | Update SMTP and HTTP push settings. Omit a secret or send an empty value to retain its current value. |
 
 ## Playout configuration and capabilities
 
 | Method | Endpoint | Access | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/playout/config/{id}` | `GA, CA, U` | Read the complete `PlayoutConfig`. |
-| `PUT` | `/api/playout/config/{id}` | `GA, CA` | Replace the complete `PlayoutConfig`. Use the response from `GET` as the request shape. The response contains `requires_restart`; only runtime-safe mail and volume changes return `false`. |
+| `PUT` | `/api/playout/config/{id}` | `GA, CA` | Replace the complete `PlayoutConfig`. Use the response from `GET` as the request shape. The response contains `requires_restart`; mail, notification, and volume changes are runtime-safe and return `false`. |
 | `GET` | `/api/playout/outputs/{id}` | `GA, CA, U` | List configured outputs for the channel. |
 | `GET` | `/api/playout/codecs/{id}` | `GA, CA, U` | List supported codecs for HLS, RTMP, SRT, UDP, and custom outputs, including compatible hardware encoders and their curated encoder-setting schema. |
 | `GET` | `/api/text/fonts` | `GA, CA, U` | List available font families. |
