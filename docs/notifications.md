@@ -71,4 +71,6 @@ multiple playlist positions produces one alert.
 
 Errors raised while sending a notification are not sent as notifications
 themselves, which prevents recursive alert loops. Check the ffplayout logs if a
-push service rejects a request or cannot be reached.
+push service rejects a request or cannot be reached. HTTP notification requests
+time out after ten seconds so an unresponsive service cannot retain background
+tasks indefinitely.

@@ -3,7 +3,7 @@ use std::{
     env, fmt,
     io::{self, IsTerminal, Write},
     path::PathBuf,
-    sync::{Arc, Mutex as StdMutex, RwLock},
+    sync::{Arc, LazyLock, Mutex as StdMutex, RwLock},
     time::Instant,
 };
 
@@ -353,8 +353,8 @@ impl LogWriter for LogDefault {
 }
 
 pub(crate) fn strip_tags(input: &str) -> String {
-    let re = Regex::new(r"<[^>]*>").unwrap();
-    re.replace_all(input, "").to_string()
+    static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
+    TAG.replace_all(input, "").into_owned()
 }
 
 fn format_level(record: &Record) -> String {

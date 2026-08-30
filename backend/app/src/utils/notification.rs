@@ -15,10 +15,17 @@ use crate::utils::{
     mail::MailQueue,
 };
 
-static NOTIFICATION_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+static NOTIFICATION_CLIENT: LazyLock<reqwest::Client> =
+    LazyLock::new(|| build_notification_client(REQUEST_TIMEOUT));
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn build_notification_client(timeout: Duration) -> reqwest::Client {
     let _ = rustls::crypto::ring::default_provider().install_default();
-    reqwest::Client::new()
-});
+    reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .expect("notification HTTP client configuration must be valid")
+}
 const NORMAL_WINDOW: Duration = Duration::from_secs(10 * 60);
 const NORMAL_LIMIT: u8 = 5;
 const FATAL_COOLDOWN: Duration = Duration::from_secs(5 * 60);
@@ -70,7 +77,6 @@ impl NotificationRateLimit {
             state.normal_suppressed += 1;
             return Permit::Suppress;
         }
-        state.normal_fingerprints.insert(fingerprint, now);
 
         if state
             .normal_window_started
@@ -84,6 +90,7 @@ impl NotificationRateLimit {
             return Permit::Suppress;
         }
 
+        state.normal_fingerprints.insert(fingerprint, now);
         state.normal_sent += 1;
         Permit::Send {
             suppressed: std::mem::take(&mut state.normal_suppressed),
@@ -220,6 +227,9 @@ impl LogWriter for LogNotifier {
         )
         .unwrap_or(0);
         let level = record.level();
+        if level > Level::Info {
+            return Ok(());
+        }
         let fatal = is_fatal(record);
         let message = strip_tags(&record.args().to_string());
 
@@ -266,7 +276,7 @@ mod tests {
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,
-        time::timeout,
+        time::{sleep, timeout},
     };
 
     use super::*;
@@ -332,6 +342,26 @@ mod tests {
         assert!(request.contains("priority: 4\r\n"));
         assert!(request.contains("tags: warning,broadcast\r\n"));
         assert!(request.ends_with("test message"));
+    }
+
+    #[tokio::test]
+    async fn notification_client_times_out_when_the_server_never_responds() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (_stream, _) = listener.accept().await.unwrap();
+            sleep(Duration::from_secs(1)).await;
+        });
+
+        let error = build_notification_client(Duration::from_millis(50))
+            .post(format!("http://{address}/alerts"))
+            .body("test")
+            .send()
+            .await
+            .unwrap_err();
+
+        assert!(error.is_timeout());
+        server.abort();
     }
 
     #[tokio::test]
@@ -414,6 +444,21 @@ mod tests {
             rate_limit.permit(1, false, "after-window".to_string(), now + NORMAL_WINDOW,),
             Permit::Send { suppressed: 1 }
         ));
+    }
+
+    #[test]
+    fn rate_limited_unique_messages_do_not_grow_the_fingerprint_cache() {
+        let mut rate_limit = NotificationRateLimit::default();
+        let now = Instant::now();
+
+        for index in 0..usize::from(NORMAL_LIMIT) + 1_000 {
+            let _ = rate_limit.permit(1, false, format!("message-{index}"), now);
+        }
+
+        assert_eq!(
+            rate_limit.channels[&1].normal_fingerprints.len(),
+            usize::from(NORMAL_LIMIT)
+        );
     }
 
     #[test]

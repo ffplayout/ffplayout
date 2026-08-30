@@ -454,7 +454,14 @@ impl NotificationLevel {
             "INFO" => Self::Info,
             "WARNING" => Self::Warning,
             "ERROR" => Self::Error,
-            _ => Self::Fatal,
+            "FATAL" => Self::Fatal,
+            invalid => {
+                log::warn!(
+                    target: "notification",
+                    "Unknown notification level {invalid:?}; falling back to FATAL"
+                );
+                Self::Fatal
+            }
         }
     }
 
@@ -527,6 +534,18 @@ mod notification_level_tests {
         assert!(NotificationLevel::Error.accepts(Level::Error, true));
         assert!(NotificationLevel::Error.accepts(Level::Error, false));
         assert!(!NotificationLevel::Error.accepts(Level::Warn, false));
+    }
+
+    #[test]
+    fn info_notifications_exclude_debug_and_trace_records() {
+        assert!(NotificationLevel::Info.accepts(Level::Info, false));
+        assert!(!NotificationLevel::Info.accepts(Level::Debug, false));
+        assert!(!NotificationLevel::Info.accepts(Level::Trace, false));
+    }
+
+    #[test]
+    fn unknown_notification_level_falls_back_to_fatal() {
+        assert_eq!(NotificationLevel::new("INVALID"), NotificationLevel::Fatal);
     }
 }
 
