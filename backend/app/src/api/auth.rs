@@ -3,10 +3,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use argon2::{
-    Argon2, PasswordHasher, PasswordVerifier,
-    password_hash::{PasswordHash, SaltString, rand_core::OsRng},
-};
+use argon2::{Argon2, PasswordHasher, PasswordVerifier, password_hash::phc::PasswordHash};
 use axum::{Json as AxumJson, extract::State, http::StatusCode, response::IntoResponse};
 use chrono::{DateTime, TimeDelta, Utc};
 use jsonwebtoken::{self, DecodingKey, EncodingKey, Header, Validation};
@@ -37,9 +34,8 @@ pub static VERIFICATION_CODES: LazyLock<Arc<Mutex<HashMap<String, VerificationCo
 /// A throwaway Argon2 hash used to equalize login timing when the username does
 /// not exist, so a failed lookup costs about as much as a real verification.
 static DUMMY_PASSWORD_HASH: LazyLock<String> = LazyLock::new(|| {
-    let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
-        .hash_password(b"ffplayout-dummy-password", &salt)
+        .hash_password(b"ffplayout-dummy-password")
         .expect("dummy password hash must be valid")
         .to_string()
 });

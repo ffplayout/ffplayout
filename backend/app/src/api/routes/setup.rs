@@ -1,9 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use argon2::{
-    Argon2, PasswordHasher,
-    password_hash::{SaltString, rand_core::OsRng},
-};
+use argon2::{Argon2, PasswordHasher};
 use axum::{Json, extract::State};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -104,9 +101,8 @@ pub async fn complete_setup(
 
     let password = data.password;
     let password_hash = task::spawn_blocking(move || {
-        let salt = SaltString::generate(&mut OsRng);
         Argon2::default()
-            .hash_password(password.as_bytes(), &salt)
+            .hash_password(password.as_bytes())
             .map(|hash| hash.to_string())
     })
     .await?

@@ -4,10 +4,7 @@ use axum::{
 };
 use protect_axum::authorities::AuthDetails;
 
-use argon2::{
-    Argon2, PasswordHasher,
-    password_hash::{SaltString, rand_core::OsRng},
-};
+use argon2::{Argon2, PasswordHasher};
 use log::*;
 use tokio::task;
 
@@ -126,10 +123,8 @@ pub async fn update_user(
         None
     } else {
         let password_hash = task::spawn_blocking(move || {
-            let salt = SaltString::generate(&mut OsRng);
-
             Argon2::default()
-                .hash_password(data.password.clone().as_bytes(), &salt)
+                .hash_password(data.password.clone().as_bytes())
                 .map(|p| p.to_string())
         })
         .await?

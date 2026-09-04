@@ -1,7 +1,4 @@
-use argon2::{
-    Argon2, PasswordHasher,
-    password_hash::{SaltString, rand_core::OsRng},
-};
+use argon2::{Argon2, PasswordHasher};
 use sqlx::{
     Executor, QueryBuilder, Row, Sqlite,
     sqlite::{SqliteConnection, SqlitePool, SqliteQueryResult},
@@ -55,9 +52,8 @@ pub async fn insert_user(pool: &SqlitePool, user: User) -> Result<(), ServiceErr
     const QUERY: &str = "INSERT INTO auth_user (mail, username, password, role_id, two_factor) VALUES($1, $2, $3, $4, $5) RETURNING id";
 
     let password_hash = task::spawn_blocking(move || {
-        let salt = SaltString::generate(&mut OsRng);
         Argon2::default()
-            .hash_password(user.password.as_bytes(), &salt)
+            .hash_password(user.password.as_bytes())
             .map(|hash| hash.to_string())
     })
     .await?
@@ -85,9 +81,8 @@ pub async fn insert_user(pool: &SqlitePool, user: User) -> Result<(), ServiceErr
 
 pub async fn insert_or_update_user(pool: &SqlitePool, user: User) -> Result<(), ServiceError> {
     let password_hash = task::spawn_blocking(move || {
-        let salt = SaltString::generate(&mut OsRng);
         Argon2::default()
-            .hash_password(user.password.as_bytes(), &salt)
+            .hash_password(user.password.as_bytes())
             .map(|hash| hash.to_string())
     })
     .await?
