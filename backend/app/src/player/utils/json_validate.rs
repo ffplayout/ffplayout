@@ -167,7 +167,7 @@ async fn check_vtt(source: &str, duration: f64, channel_id: i32) -> Result<(), P
             let last_sec = time_to_sec(&timestamp, &None);
 
             if last_sec > duration {
-                error!(channel = channel_id;
+                warn!(channel = channel_id;
                     "<span class=\"log-gray\">[Validation]</span> Webvtt <span class=\"log-addr\">{vtt_path:?}</span> is longer, <span class=\"log-number\">{timestamp}</span> versus <span class=\"log-number\">{}</span> video duration.",
                     sec_to_time(duration)
                 );
