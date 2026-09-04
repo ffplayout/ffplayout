@@ -936,7 +936,7 @@ fn open_video_stream(
     video_ctx.set_time_base(cfg.video_time_base);
     video_ctx.set_frame_rate(Some(Rational(cfg.fps as i32, 1)));
     let maxrate = variant.map_or(cfg.video_maxrate(), |variant| variant.video_bitrate);
-    if encoder_backend.uses_target_bitrate(cfg) {
+    if encoder_backend.uses_target_bitrate(cfg, video_codec) {
         video_ctx.set_bit_rate(maxrate as usize);
     }
     match &output_format {
@@ -1080,10 +1080,19 @@ impl VideoEncoderBackend {
         }
     }
 
-    fn uses_target_bitrate(self, cfg: &OutputConfig) -> bool {
+    fn uses_target_bitrate(self, cfg: &OutputConfig, codec: codec::codec::Codec) -> bool {
         cfg.video_option("rate_control") == Some("cbr")
             || self == Self::VpxVp9
             || (self == Self::Vaapi && cfg.video_option("rate_control") == Some("vbr"))
+            // Encoders that fall through to the generic Software backend and
+            // expose none of the rate-control AVOptions this pipeline sets
+            // (maxrate/bufsize/crf/qp) only understand a plain target
+            // bitrate via AVCodecContext::bit_rate. Detecting this
+            // capability at runtime - instead of matching specific codec
+            // names such as "h264_v4l2m2m" - covers every current and
+            // future encoder with the same limitation (other stateless HW
+            // wrappers included) without growing a per-codec list.
+            || (self == Self::Software && video_encoder_is_bitrate_only(codec))
     }
 
     fn configure_options(
@@ -1166,6 +1175,48 @@ impl VideoEncoderBackend {
             Self::Software => {}
         }
     }
+}
+
+/// Checks whether an encoder's private option class (`AVCodec::priv_class`)
+/// declares the given option name, without needing to open/instantiate the
+/// encoder. This mirrors what `ffmpeg -h encoder=<name>` shows under
+/// "AVOptions" and is the generic, ffmpeg-native way to introspect what an
+/// encoder actually supports at runtime.
+fn video_encoder_has_option(codec: codec::codec::Codec, name: &str) -> bool {
+    let Ok(name) = CString::new(name) else {
+        return false;
+    };
+
+    unsafe {
+        let priv_class = (*codec.as_ptr()).priv_class;
+        if priv_class.is_null() {
+            return false;
+        }
+
+        !ffmpeg::ffi::av_opt_find(
+            ptr::from_ref(&priv_class).cast_mut().cast(),
+            name.as_ptr(),
+            ptr::null(),
+            0,
+            ffmpeg::ffi::AV_OPT_SEARCH_FAKE_OBJ,
+        )
+        .is_null()
+    }
+}
+
+/// Some encoders (most notably stateless HW wrapper encoders like the V4L2
+/// M2M drivers used on Raspberry Pi / embedded SoCs) expose none of the
+/// rate-control AVOptions this pipeline normally configures (maxrate,
+/// bufsize, crf, qp). They only honor a plain target bitrate set on
+/// `AVCodecContext::bit_rate`, otherwise the underlying driver falls back
+/// to its own default (observed around 300-400kbps on a Raspberry Pi 4).
+/// Detecting this by capability instead of by codec name means any encoder
+/// with the same limitation - present today or added to ffmpeg later - is
+/// handled automatically, without maintaining a per-codec list here.
+fn video_encoder_is_bitrate_only(codec: codec::codec::Codec) -> bool {
+    ["maxrate", "bufsize", "crf", "qp"]
+        .iter()
+        .all(|option| !video_encoder_has_option(codec, option))
 }
 
 fn qsv_uses_icq(cfg: &OutputConfig) -> bool {
@@ -1325,6 +1376,37 @@ mod open_tests {
             VideoEncoderBackend::from_name("mpeg4"),
             VideoEncoderBackend::Software
         );
+    }
+
+    #[test]
+    fn bitrate_only_encoders_are_detected_without_naming_them() {
+        // h264_v4l2m2m (and other stateless V4L2 M2M wrappers on e.g.
+        // Raspberry Pi) expose no maxrate/bufsize/crf/qp AVOptions - only a
+        // plain AVCodecContext::bit_rate is honored. This must be detected
+        // by capability probing, not by matching "_v4l2m2m" or any other
+        // codec name, so any encoder with the same limitation is covered.
+        let Some(codec) = codec::encoder::find_by_name("h264_v4l2m2m") else {
+            return;
+        };
+
+        assert_eq!(
+            VideoEncoderBackend::from_name(codec.name()),
+            VideoEncoderBackend::Software
+        );
+        assert!(video_encoder_is_bitrate_only(codec));
+
+        let cfg = OutputConfig::new(320, 240, 25, 44_100);
+        assert!(VideoEncoderBackend::Software.uses_target_bitrate(&cfg, codec));
+    }
+
+    #[test]
+    fn encoders_with_rate_control_avoptions_are_not_bitrate_only() {
+        let codec = codec::encoder::find(codec::Id::H264).expect("libx264 is required for tests");
+
+        assert!(!video_encoder_is_bitrate_only(codec));
+
+        let cfg = OutputConfig::new(320, 240, 25, 44_100);
+        assert!(!VideoEncoderBackend::X264.uses_target_bitrate(&cfg, codec));
     }
 
     #[test]

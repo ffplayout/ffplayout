@@ -23,6 +23,8 @@ use crate::{
     utils::{config::PlayoutConfig, errors::ProcessError},
 };
 
+const MAX_AV_DURATION_DIFFERENCE_SECONDS: f64 = 4.0;
+
 /// Validate a single media file.
 ///
 /// - Check if file exists
@@ -61,6 +63,10 @@ async fn check_media(
         ));
     }
 
+    if let Some(error) = av_duration_error(&node) {
+        error_list.push(error);
+    }
+
     if config.logging.detect_silence
         && let Some(audio_source) = silence_check_source(&node)
     {
@@ -89,6 +95,33 @@ async fn check_media(
     }
 
     Ok(())
+}
+
+fn av_duration_error(node: &Media) -> Option<String> {
+    let probe = node.probe.as_ref()?;
+    let video_duration = probe.video.first()?.duration?;
+    let audio_duration = if node.audio.is_empty() {
+        probe.audio.first()?.duration?
+    } else {
+        node.probe_audio.as_ref()?.audio.first()?.duration?
+    };
+
+    if !video_duration.is_finite() || !audio_duration.is_finite() {
+        return None;
+    }
+
+    let difference = (video_duration - audio_duration).abs();
+    if difference <= MAX_AV_DURATION_DIFFERENCE_SECONDS {
+        return None;
+    }
+
+    Some(format!(
+        "Audio/video stream durations differ by more than {} seconds. Video: {}, audio: {}, difference: {}",
+        MAX_AV_DURATION_DIFFERENCE_SECONDS as u64,
+        sec_to_time(video_duration),
+        sec_to_time(audio_duration),
+        sec_to_time(difference),
+    ))
 }
 
 fn silence_check_source(node: &Media) -> Option<&str> {
@@ -134,7 +167,7 @@ async fn check_vtt(source: &str, duration: f64, channel_id: i32) -> Result<(), P
             let last_sec = time_to_sec(&timestamp, &None);
 
             if last_sec > duration {
-                error!(channel = channel_id;
+                warn!(channel = channel_id;
                     "<span class=\"log-gray\">[Validation]</span> Webvtt <span class=\"log-addr\">{vtt_path:?}</span> is longer, <span class=\"log-number\">{timestamp}</span> versus <span class=\"log-number\">{}</span> video duration.",
                     sec_to_time(duration)
                 );
@@ -284,4 +317,97 @@ pub async fn validate_playlist(
         timer.elapsed(),
         sec_to_time(begin - config.playlist.start_sec.unwrap())
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use ff_engine::{EngineAudioStream, EngineMediaProbe, EngineVideoStream, ProbeFormat};
+
+    use super::{Media, av_duration_error};
+
+    fn probe(video_duration: Option<f64>, audio_duration: Option<f64>) -> EngineMediaProbe {
+        EngineMediaProbe {
+            format: ProbeFormat {
+                duration: video_duration.or(audio_duration),
+                nb_streams: i64::from(video_duration.is_some())
+                    + i64::from(audio_duration.is_some()),
+                size: None,
+                bit_rate: None,
+            },
+            video: video_duration
+                .map(|duration| EngineVideoStream {
+                    aspect_ratio: None,
+                    bit_rate: None,
+                    codec_name: None,
+                    duration: Some(duration),
+                    field_order: None,
+                    frame_rate: "25/1".to_string(),
+                    height: None,
+                    nb_frames: None,
+                    width: None,
+                })
+                .into_iter()
+                .collect(),
+            audio: audio_duration
+                .map(|duration| EngineAudioStream {
+                    channels: None,
+                    codec_name: None,
+                    duration: Some(duration),
+                    sample_rate: None,
+                })
+                .into_iter()
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn accepts_audio_and_video_durations_up_to_four_seconds_apart() {
+        let node = Media {
+            probe: Some(probe(Some(20.0), Some(16.0))),
+            ..Media::default()
+        };
+
+        assert!(av_duration_error(&node).is_none());
+    }
+
+    #[test]
+    fn rejects_audio_and_video_durations_more_than_four_seconds_apart() {
+        let node = Media {
+            probe: Some(probe(Some(20.001), Some(16.0))),
+            ..Media::default()
+        };
+
+        let error = av_duration_error(&node).expect("duration mismatch must be rejected");
+        assert!(error.contains("more than 4 seconds"));
+        assert!(error.contains("difference: 00:00:04.001"));
+    }
+
+    #[test]
+    fn compares_video_with_the_selected_external_audio() {
+        let node = Media {
+            source: "video.mp4".to_string(),
+            audio: "external.wav".to_string(),
+            probe: Some(probe(Some(20.0), Some(20.0))),
+            probe_audio: Some(probe(None, Some(10.0))),
+            ..Media::default()
+        };
+
+        let error = av_duration_error(&node).expect("external audio mismatch must be rejected");
+        assert!(error.contains("difference: 00:00:10.000"));
+    }
+
+    #[test]
+    fn skips_duration_comparison_for_single_stream_media() {
+        let video_only = Media {
+            probe: Some(probe(Some(20.0), None)),
+            ..Media::default()
+        };
+        let audio_only = Media {
+            probe: Some(probe(None, Some(20.0))),
+            ..Media::default()
+        };
+
+        assert!(av_duration_error(&video_only).is_none());
+        assert!(av_duration_error(&audio_only).is_none());
+    }
 }

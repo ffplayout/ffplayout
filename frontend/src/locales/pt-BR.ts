@@ -143,6 +143,7 @@ export default {
         fontAlpha: 'Fonte Alfa',
         borderWidth: 'Largura da borda',
         send: 'Enviar',
+        persistent: 'Persistente',
         name: 'Nome',
         saveDone: 'Salvar predefinição concluída!',
         saveFailed: 'Falha ao salvar a predefinição!',
@@ -164,7 +165,15 @@ export default {
         smtpPassword: 'Senha SMTP',
         smtpPort: 'Porta SMTP',
         smtpStarttls: 'Usar STARTTLS',
+        notification: 'Notificações push HTTP',
+        notificationServer: 'Servidor push',
+        notificationToken: 'Token de acesso',
+        notificationHelp: 'Envia alertas de log limitados para um serviço push HTTP baseado em tópicos.',
+        notificationTopic: 'Tópico',
+        notificationLevel: 'Nível mínimo',
+        notificationTags: 'Tags',
         passwordConfigured: 'Senha configurada',
+        tokenConfigured: 'Token configurado',
         updateGlobalSuccess: 'Configurações globais atualizadas com sucesso!',
         updateGlobalFailed: 'Falha ao atualizar as configurações globais!',
         channelConf: 'Configuração do Canal',
@@ -209,43 +218,59 @@ export default {
         recordingMinimumFreeSpace: 'Espaço livre mínimo (GB, 0 = desativado)',
         recordingUpdated: 'Configuração de gravação atualizada',
         placeholderPass: 'Senha',
+        placeholderToken: 'Token',
         help: 'Ajuda',
-        generalHelp: 'Às vezes pode acontecer de um arquivo estar corrompido, mas ainda ser reproduzível. Isso pode causar um erro de streaming para todos os arquivos seguintes. A única solução nesse caso é parar o ffplayout e reiniciá-lo.',
-        stopThreshold: 'O limite para o ffplayout se ele estiver fora de sincronia acima deste valor. Um número abaixo de 3 pode causar erros inesperados.',
+        generalHelp:
+            'Às vezes pode acontecer de um arquivo estar corrompido, mas ainda ser reproduzível. Isso pode causar um erro de streaming para todos os arquivos seguintes. A única solução nesse caso é parar o ffplayout e reiniciá-lo.',
+        stopThreshold:
+            'O limite para o ffplayout se ele estiver fora de sincronia acima deste valor. Um número abaixo de 3 pode causar erros inesperados.',
         mailHelp: `Envie mensagens de erro para um endereço de e-mail, como clipes ausentes, formato de playlist ausente ou inválido, etc. Deixe o destinatário em branco se não precisar disso.`,
-        mailInterval: 'O intervalo se refere ao número de segundos até o envio de um novo e-mail; o valor deve ser em incrementos de 10 e não inferior a 30 segundos.',
+        mailInterval:
+            'O intervalo se refere ao número de segundos até o envio de um novo e-mail; o valor deve ser em incrementos de 10 e não inferior a 30 segundos.',
         logHelp: 'Ajuste o comportamento de log.',
-        logDetect: 'Registra uma mensagem de erro se a linha de áudio estiver em silêncio por 15 segundos durante o processo de validação.',
-        logIgnore: 'Ignorar strings que contenham linhas correspondentes; o formato é uma lista separada por ponto e vírgula.',
+        logDetect:
+            'Registra uma mensagem de erro se a linha de áudio estiver em silêncio por 15 segundos durante o processo de validação.',
+        logIgnore:
+            'Ignorar strings que contenham linhas correspondentes; o formato é uma lista separada por ponto e vírgula.',
         processingHelp: 'O processamento padrão para todos os clipes garante a exclusividade.',
-        processingLogoPath: 'O logotipo só é usado se o caminho existir; o caminho é relativo à pasta de armazenamento.',
+        processingLogoPath:
+            'O logotipo só é usado se o caminho existir; o caminho é relativo à pasta de armazenamento.',
         processingLogoScale: `Deixe a escala do logotipo em branco se não for necessário escalonamento. O formato é 'largura:altura', por exemplo: '100:-1' ou '12%:-1' para escalonamento proporcional.`,
         processingLogoPosition: `A posição é especificada no formato 'x:y'.`,
         processingAudioTracks: 'Especifique quantas faixas de áudio devem ser processadas.',
         processingAudioIndex: 'Qual linha de áudio usar, -1 para todas.',
-        processingCustomFilter: 'Adicione filtros personalizados ao processamento. As saídas de filtro devem terminar com [c_v_out] para filtros de vídeo e [c_a_out] para filtros de áudio.',
-        processingOverrideFilter: 'Attention: This option overwrites all standard filters, i.e. automatic format correction no longer takes place, the command must be structured as follows: -filter_complex [0:v]fps=25,scale=1280:-1[vout];[0:a:0]volume=0.5[aout] -map [vout] -map [aout]',
-        processingVTTEnable: 'VTT só pode ser usado no modo HLS e apenas se houver arquivos *.vtt com o mesmo nome do arquivo de vídeo.',
+        processingCustomFilter:
+            'Adicione filtros personalizados ao processamento. As saídas de filtro devem terminar com [c_v_out] para filtros de vídeo e [c_a_out] para filtros de áudio.',
+        processingOverrideFilter:
+            'Attention: This option overwrites all standard filters, i.e. automatic format correction no longer takes place, the command must be structured as follows: -filter_complex [0:v]fps=25,scale=1280:-1[vout];[0:a:0]volume=0.5[aout] -map [vout] -map [aout]',
+        processingVTTEnable:
+            'VTT só pode ser usado no modo HLS e apenas se houver arquivos *.vtt com o mesmo nome do arquivo de vídeo.',
         processingVTTDummy: 'Um espaço reservado é necessário se não houver arquivo vtt.',
         apply: 'Aplicar',
         volumeApplied: 'Volume aplicado.',
         volumeApplyFailed: 'Falha ao aplicar o volume.',
         ingestHelp: `Execute um servidor para um fluxo de ingestão. Este fluxo substituirá o streaming normal até que termine. Há apenas um mecanismo de autenticação simples que verifica se o nome do fluxo está correto.`,
-        ingestCustomFilter: 'Aplique um filtro personalizado ao fluxo de ingestão da mesma forma que na seção de Processamento.',
+        ingestCustomFilter:
+            'Aplique um filtro personalizado ao fluxo de ingestão da mesma forma que na seção de Processamento.',
         playlistHelp: 'Gerenciamento de playlist.',
-        playlistDayStart: 'A que horas a playlist deve começar; deixe em branco se a playlist sempre começar do início.',
+        playlistDayStart:
+            'A que horas a playlist deve começar; deixe em branco se a playlist sempre começar do início.',
         playlistLength: 'Duração alvo da playlist; quando estiver em branco, o comprimento real não será considerado.',
         playlistInfinit: 'Reproduza infinitamente um único arquivo de playlist.',
         storageHelp: 'Configurações de armazenamento, os locais são relativos ao armazenamento do canal.',
-        storageFiller: 'Use um preenchimento para reproduzir no lugar de um arquivo ausente ou preencher o tempo restante para alcançar um total de 24 horas. Pode ser um arquivo ou uma pasta com caminho relativo, e será repetido quando necessário.',
+        storageFiller:
+            'Use um preenchimento para reproduzir no lugar de um arquivo ausente ou preencher o tempo restante para alcançar um total de 24 horas. Pode ser um arquivo ou uma pasta com caminho relativo, e será repetido quando necessário.',
         storageExtension: 'Especifique quais arquivos procurar e usar.',
         storageShuffle: 'Escolha arquivos aleatoriamente (no modo de pasta e geração de playlist).',
-        textHelp: 'Sobreponha texto renderizado pela engine de playout. O texto pode vir dos nomes dos arquivos ou da API de controle.',
+        textHelp:
+            'Sobreponha texto renderizado pela engine de playout. O texto pode vir dos nomes dos arquivos ou da API de controle.',
         textFont: 'Caminho relativo ao armazenamento do canal.',
         textFromFile: 'Extração de texto a partir de um nome de arquivo.',
-        textStyle: 'Defina parâmetros de texto como posição, cor, caixa e tamanho. O texto enviado pela API substituirá o texto exibido.',
+        textStyle:
+            'Defina parâmetros de texto como posição, cor, caixa e tamanho. O texto enviado pela API substituirá o texto exibido.',
         textRegex: 'Formate nomes de arquivos para extrair um título deles.',
-        taskHelp: 'Execute um programa externo com um objeto de mídia fornecido. O objeto de mídia está em formato JSON e contém todas as informações sobre o clipe atual. O programa externo pode ser um script ou binário, mas deve ser executado apenas por um curto período de tempo.',
+        taskHelp:
+            'Execute um programa externo com um objeto de mídia fornecido. O objeto de mídia está em formato JSON e contém todas as informações sobre o clipe atual. O programa externo pode ser um script ou binário, mas deve ser executado apenas por um curto período de tempo.',
         taskPath: 'Caminho para o executável.',
         outputHelp: `Escolha a saída final do playout. HLS é o padrão e cria a playlist de mídia abaixo. Use 'stream' com uma URL de destino para RTMP/SRT/UDP ou 'desktop' para reprodução local.
         Em produção, sirva playlists HLS através do Nginx ou de outro servidor web.`,
@@ -266,7 +291,8 @@ export default {
         videoMaxrate: 'Taxa máxima de vídeo (kbit/s)',
         audioBitrate: 'Taxa de áudio (kbit/s)',
         hlsVariants: 'Variantes HLS',
-        hlsVariantsHelp: 'Adicione variantes de taxa de bits adaptável além da saída base. Uma playlist master com todos os streams é gerada automaticamente.',
+        hlsVariantsHelp:
+            'Adicione variantes de taxa de bits adaptável além da saída base. Uma playlist master com todos os streams é gerada automaticamente.',
         addHlsVariant: 'Adicionar Variante',
         remove: 'Remover',
         restartTile: 'Reiniciar Playout',
@@ -278,7 +304,8 @@ export default {
         publicPath: 'Public (HLS) Path',
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
-        sharedStorage: 'O ffplayout é executado dentro de um contêiner; use a mesma raiz de armazenamento para todos os canais!',
+        sharedStorage:
+            'O ffplayout é executado dentro de um contêiner; use a mesma raiz de armazenamento para todos os canais!',
         timezone: 'Timezone',
     },
     setup: {

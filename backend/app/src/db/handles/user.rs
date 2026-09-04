@@ -1,7 +1,4 @@
-use argon2::{
-    Argon2, PasswordHasher,
-    password_hash::{SaltString, rand_core::OsRng},
-};
+use argon2::{Argon2, PasswordHasher};
 use sqlx::{
     Executor, QueryBuilder, Row, Sqlite,
     sqlite::{SqliteConnection, SqlitePool, SqliteQueryResult},
@@ -14,7 +11,7 @@ use crate::{
 };
 
 pub async fn select_role(pool: &SqlitePool, id: &i32) -> Result<Role, ProcessError> {
-    const QUERY: &str = "SELECT name FROM roles WHERE id = $1";
+    const QUERY: &str = "SELECT name FROM auth_roles WHERE id = $1";
     let result: Role = sqlx::query_as(QUERY).bind(id).fetch_one(pool).await?;
 
     Ok(result)
@@ -22,8 +19,8 @@ pub async fn select_role(pool: &SqlitePool, id: &i32) -> Result<Role, ProcessErr
 
 pub async fn select_login(pool: &SqlitePool, user: &str) -> Result<User, ProcessError> {
     const QUERY: &str =
-        "SELECT u.id, u.mail, u.username, u.password, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM user u
-        left join user_channels uc on uc.user_id = u.id
+        "SELECT u.id, u.mail, u.username, u.password, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM auth_user u
+        left join auth_user_channels uc on uc.user_id = u.id
     WHERE u.username = $1
     GROUP BY u.id";
 
@@ -33,8 +30,8 @@ pub async fn select_login(pool: &SqlitePool, user: &str) -> Result<User, Process
 }
 
 pub async fn select_user(pool: &SqlitePool, id: i32) -> Result<User, ProcessError> {
-    const QUERY: &str = "SELECT u.id, u.mail, u.username, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM user u
-        left join user_channels uc on uc.user_id = u.id
+    const QUERY: &str = "SELECT u.id, u.mail, u.username, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM auth_user u
+        left join auth_user_channels uc on uc.user_id = u.id
     WHERE u.id = $1
     GROUP BY u.id";
 
@@ -44,7 +41,7 @@ pub async fn select_user(pool: &SqlitePool, id: i32) -> Result<User, ProcessErro
 }
 
 pub async fn select_users(pool: &SqlitePool) -> Result<Vec<User>, ProcessError> {
-    const QUERY: &str = "SELECT id, username FROM user";
+    const QUERY: &str = "SELECT id, username FROM auth_user";
 
     let result = sqlx::query_as(QUERY).fetch_all(pool).await?;
 
@@ -52,12 +49,11 @@ pub async fn select_users(pool: &SqlitePool) -> Result<Vec<User>, ProcessError> 
 }
 
 pub async fn insert_user(pool: &SqlitePool, user: User) -> Result<(), ServiceError> {
-    const QUERY: &str = "INSERT INTO user (mail, username, password, role_id, two_factor) VALUES($1, $2, $3, $4, $5) RETURNING id";
+    const QUERY: &str = "INSERT INTO auth_user (mail, username, password, role_id, two_factor) VALUES($1, $2, $3, $4, $5) RETURNING id";
 
     let password_hash = task::spawn_blocking(move || {
-        let salt = SaltString::generate(&mut OsRng);
         Argon2::default()
-            .hash_password(user.password.as_bytes(), &salt)
+            .hash_password(user.password.as_bytes())
             .map(|hash| hash.to_string())
     })
     .await?
@@ -85,15 +81,14 @@ pub async fn insert_user(pool: &SqlitePool, user: User) -> Result<(), ServiceErr
 
 pub async fn insert_or_update_user(pool: &SqlitePool, user: User) -> Result<(), ServiceError> {
     let password_hash = task::spawn_blocking(move || {
-        let salt = SaltString::generate(&mut OsRng);
         Argon2::default()
-            .hash_password(user.password.as_bytes(), &salt)
+            .hash_password(user.password.as_bytes())
             .map(|hash| hash.to_string())
     })
     .await?
     .map_err(|error| ServiceError::Conflict(error.to_string()))?;
 
-    const QUERY: &str = "INSERT INTO user (mail, username, password, role_id, two_factor) VALUES($1, $2, $3, $4, $5)
+    const QUERY: &str = "INSERT INTO auth_user (mail, username, password, role_id, two_factor) VALUES($1, $2, $3, $4, $5)
             ON CONFLICT(username) DO UPDATE SET
                 mail = excluded.mail, username = excluded.username, password = excluded.password, role_id = excluded.role_id, two_factor = excluded.two_factor
         RETURNING id";
@@ -110,7 +105,7 @@ pub async fn insert_or_update_user(pool: &SqlitePool, user: User) -> Result<(), 
         .get("id");
 
     if let Some(channel_ids) = user.channel_ids {
-        sqlx::query("DELETE FROM user_channels WHERE user_id = $1")
+        sqlx::query("DELETE FROM auth_user_channels WHERE user_id = $1")
             .bind(user_id)
             .execute(&mut *transaction)
             .await?;
@@ -136,7 +131,7 @@ where
         return Ok(());
     }
 
-    let mut query = QueryBuilder::<Sqlite>::new("UPDATE user SET ");
+    let mut query = QueryBuilder::<Sqlite>::new("UPDATE auth_user SET ");
     let mut has_assignment = false;
 
     if let Some(two_factor) = two_factor {
@@ -167,7 +162,7 @@ where
 }
 
 pub async fn delete_user(pool: &SqlitePool, id: i32) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "DELETE FROM user WHERE id = $1;";
+    const QUERY: &str = "DELETE FROM auth_user WHERE id = $1;";
 
     let result = sqlx::query(QUERY).bind(id).execute(pool).await?;
 
@@ -181,7 +176,7 @@ pub async fn insert_user_channel(
 ) -> Result<(), ProcessError> {
     for channel in &channel_ids {
         const QUERY: &str =
-            "INSERT OR IGNORE INTO user_channels (channel_id, user_id) VALUES ($1, $2);";
+            "INSERT OR IGNORE INTO auth_user_channels (channel_id, user_id) VALUES ($1, $2);";
 
         sqlx::query(QUERY)
             .bind(channel)
@@ -200,11 +195,11 @@ mod tests {
     #[tokio::test]
     async fn updates_only_two_factor() {
         let pool = SqlitePool::connect(":memory:").await.unwrap();
-        sqlx::query("CREATE TABLE user (id INTEGER PRIMARY KEY, two_factor INTEGER, mail TEXT, password TEXT)")
+        sqlx::query("CREATE TABLE auth_user (id INTEGER PRIMARY KEY, two_factor INTEGER, mail TEXT, password TEXT)")
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO user (id, two_factor) VALUES (1, 1)")
+        sqlx::query("INSERT INTO auth_user (id, two_factor) VALUES (1, 1)")
             .execute(&pool)
             .await
             .unwrap();
@@ -213,7 +208,7 @@ mod tests {
             .await
             .unwrap();
 
-        let two_factor: i32 = sqlx::query_scalar("SELECT two_factor FROM user WHERE id = 1")
+        let two_factor: i32 = sqlx::query_scalar("SELECT two_factor FROM auth_user WHERE id = 1")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -242,7 +237,7 @@ mod tests {
         };
 
         assert!(insert_user(&pool, user).await.is_err());
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user WHERE username = $1")
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM auth_user WHERE username = $1")
             .bind("rollback-user")
             .fetch_one(&pool)
             .await

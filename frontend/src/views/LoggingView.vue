@@ -84,7 +84,7 @@ function filterLogsBySeverity(logString: string, minSeverity: string): string {
     const logLines = logString.trim().split(/\r?\n/)
 
     const filteredLogs = logLines.filter((log) => {
-        const match = log.match(/\[ ?(DEBUG|INFO|WARN|ERROR)\]/)
+        const match = log.match(/\[ ?(DEBUG|INFO|WARN|ERROR|FATAL)\]/)
 
         if (match) {
             const logLevel = match[1]
@@ -107,13 +107,13 @@ async function getLog() {
 
     await authFetch<string>(
         `/api/log/${configStore.channels[configStore.i]?.id}?date=${date}&timezone=${encodeURIComponent(
-            configStore.timezone
+            configStore.timezone,
         )}`,
         {
             method: 'GET',
             headers: authStore.authHeader,
             responseType: 'text',
-        }
+        },
     )
         .then((data) => {
             currentLog.value = data
@@ -140,7 +140,7 @@ async function downloadLog() {
         {
             method: 'GET',
             headers: authStore.authHeader,
-        }
+        },
     )
 
     if (!response.ok) {
@@ -236,6 +236,11 @@ async function downloadLog() {
 
 .level-error {
     color: var(--color-error);
+}
+
+.level-fatal {
+    color: var(--color-error);
+    font-weight: 700;
 }
 
 .level-debug {

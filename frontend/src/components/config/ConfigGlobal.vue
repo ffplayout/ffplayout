@@ -17,6 +17,7 @@ const indexStore = useIndex()
 const settings = ref({} as GlobalSettings)
 const savedSettings = ref({} as GlobalSettings)
 const smtpPassword = ref('')
+const notificationToken = ref('')
 const loading = ref(true)
 
 onMounted(getSettings)
@@ -30,6 +31,7 @@ async function getSettings() {
         })
         savedSettings.value = cloneDeep(settings.value)
         smtpPassword.value = ''
+        notificationToken.value = ''
     } catch {
         indexStore.msgAlert('error', t('config.updateGlobalFailed'), 3)
     } finally {
@@ -38,7 +40,11 @@ async function getSettings() {
 }
 
 function isChanged() {
-    return smtpPassword.value.length > 0 || !isEqual(settings.value, savedSettings.value)
+    return (
+        smtpPassword.value.length > 0 ||
+        notificationToken.value.length > 0 ||
+        !isEqual(settings.value, savedSettings.value)
+    )
 }
 
 async function save() {
@@ -52,17 +58,20 @@ async function save() {
                 smtp_password: smtpPassword.value,
                 smtp_starttls: settings.value.smtp_starttls,
                 smtp_port: settings.value.smtp_port,
+                notification_server: settings.value.notification_server,
+                notification_token: notificationToken.value,
             }),
         })
 
         savedSettings.value = cloneDeep(settings.value)
         smtpPassword.value = ''
+        notificationToken.value = ''
+        await configStore.getPlayoutConfig()
         indexStore.msgAlert('success', t('config.updateGlobalSuccess'), 2)
     } catch {
         indexStore.msgAlert('error', t('config.updateGlobalFailed'), 3)
     }
 }
-
 </script>
 
 <template>
@@ -72,11 +81,11 @@ async function save() {
             <h3 class="text-xl">{{ t('config.smtp') }}</h3>
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">{{ t('config.smtpServer') }}</legend>
-                <input v-model="settings.smtp_server" type="text" class="input w-full" />
+                <input v-model="settings.smtp_server" type="text" class="input w-full" name="smtp_server" />
             </fieldset>
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">{{ t('config.smtpUser') }}</legend>
-                <input v-model="settings.smtp_user" type="text" class="input w-full" />
+                <input v-model="settings.smtp_user" type="text" class="input w-full" name="smtp_user" />
             </fieldset>
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">{{ t('config.smtpPassword') }}</legend>
@@ -84,7 +93,9 @@ async function save() {
                     v-model="smtpPassword"
                     type="password"
                     class="input w-full"
-                    :placeholder="settings.smtp_password_set ? t('config.passwordConfigured') : t('config.placeholderPass')"
+                    :placeholder="
+                        settings.smtp_password_set ? t('config.passwordConfigured') : t('config.placeholderPass')
+                    "
                 />
             </fieldset>
             <fieldset class="fieldset">
@@ -98,8 +109,36 @@ async function save() {
                 </label>
             </fieldset>
 
+            <h3 class="mt-6 text-xl">{{ t('config.notification') }}</h3>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('config.notificationServer') }}</legend>
+                <input
+                    v-model="settings.notification_server"
+                    type="url"
+                    name="notification_server"
+                    placeholder="https://push.example.org"
+                    class="input w-full"
+                />
+            </fieldset>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('config.notificationToken') }}</legend>
+                <input
+                    v-model="notificationToken"
+                    type="password"
+                    class="input w-full"
+                    :placeholder="
+                        settings.notification_token_set ? t('config.tokenConfigured') : t('config.placeholderToken')
+                    "
+                />
+            </fieldset>
+
             <div class="my-5 flex gap-1">
-                <button type="submit" class="btn" :class="isChanged() ? 'btn-error' : 'btn-primary'" :disabled="!isChanged()">
+                <button
+                    type="submit"
+                    class="btn"
+                    :class="isChanged() ? 'btn-error' : 'btn-primary'"
+                    :disabled="!isChanged()"
+                >
                     {{ t('config.save') }}
                 </button>
                 <button v-if="isChanged()" type="button" class="btn btn-primary text-xl" @click="getSettings">

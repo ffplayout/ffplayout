@@ -29,6 +29,7 @@ interface PresetName {
 const defaultForm = (): TextPreset => ({
     id: 0,
     channel_id: configStore.channels[configStore.i]?.id ?? 1,
+    persistent: false,
     name: '',
     text: '',
     use_filename: false,
@@ -56,7 +57,7 @@ const form = ref<TextPreset>(defaultForm())
 
 const showCreateModal = ref(false)
 const showDeleteModal = ref(false)
-const selected = ref(null)
+const selected = ref<string | null>(null)
 const newPresetName = ref('')
 const presets = ref([] as PresetName[])
 const fontFamilies = ref<string[]>([])
@@ -76,21 +77,28 @@ async function getPreset(index: number) {
     authFetch<TextPreset[]>(`/api/presets/${configStore.channels[configStore.i]?.id}`, {
         method: 'GET',
         headers: authStore.authHeader,
-    })
-        .then((data) => {
-            if (index === -1) {
-                presets.value = [{ value: -1, name: '' }]
+    }).then((data) => {
+        if (index === -1) {
+            presets.value = [{ value: -1, name: '' }]
 
-                for (let i = 0; i < data.length; i++) {
-                    const elem = data[i]
-                    presets.value.push({ value: i, name: elem.name })
-                }
-
-                form.value = defaultForm()
-            } else {
-                form.value = data[index]
+            for (let i = 0; i < data.length; i++) {
+                const elem = data[i]
+                presets.value.push({ value: i, name: elem.name })
             }
-        })
+
+            const persistentPreset = data.find((preset) => preset.persistent)
+
+            if (persistentPreset) {
+                selected.value = persistentPreset.name
+                form.value = persistentPreset
+            } else {
+                selected.value = null
+                form.value = defaultForm()
+            }
+        } else {
+            form.value = data[index]
+        }
+    })
 }
 
 async function getFontFamilies() {
@@ -101,10 +109,16 @@ async function getFontFamilies() {
     fontFamilies.value = response
 }
 
-function onChange(event: any) {
-    selected.value = event.target.value
+function onChange(event: Event) {
+    const select = event.target as HTMLSelectElement
+    selected.value = select.value || null
 
-    getPreset(event.target.selectedIndex - 1)
+    if (select.selectedIndex === 0) {
+        form.value = defaultForm()
+        return
+    }
+
+    getPreset(select.selectedIndex - 1)
 }
 
 async function savePreset() {
@@ -222,7 +236,7 @@ async function submitMessage() {
                         :placeholder="t('message.placeholder')"
                     />
 
-                    <div class="mt-2 grid md:grid-cols-[minmax(0,1fr)_160px_auto] gap-4">
+                    <div class="mt-2 grid md:grid-cols-[minmax(0,1fr)_160px_auto_auto] gap-4">
                         <fieldset class="fieldset">
                             <legend class="fieldset-legend">Font</legend>
                             <select v-model="form.font_family" class="select select-sm w-full">
@@ -249,6 +263,17 @@ async function submitMessage() {
                             <label class="fieldset-label text-base-content">
                                 <input v-model="form.use_filename" type="checkbox" class="checkbox" />
                                 Use clip filename
+                            </label>
+                        </fieldset>
+                        <fieldset class="fieldset rounded-box">
+                            <label class="fieldset-label text-base-content">
+                                <input
+                                    v-model="form.persistent"
+                                    type="checkbox"
+                                    class="checkbox"
+                                    :disabled="form.id <= 0"
+                                />
+                                {{ t('message.persistent') }}
                             </label>
                         </fieldset>
                     </div>
@@ -278,7 +303,11 @@ async function submitMessage() {
                             </fieldset>
                             <fieldset class="fieldset mt-1">
                                 <legend class="fieldset-legend">{{ t('message.boxColor') }}</legend>
-                                <input v-model="form.background_color" type="color" class="input input-sm w-full cursor-pointer" />
+                                <input
+                                    v-model="form.background_color"
+                                    type="color"
+                                    class="input input-sm w-full cursor-pointer"
+                                />
                             </fieldset>
                         </div>
                         <fieldset class="fieldset mt-1 xs:mt-17.5">
@@ -308,7 +337,11 @@ async function submitMessage() {
                             </fieldset>
                             <fieldset class="fieldset">
                                 <legend class="fieldset-legend">{{ t('message.fontColor') }}</legend>
-                                <input v-model="form.text_color" type="color" class="input input-sm w-full cursor-pointer" />
+                                <input
+                                    v-model="form.text_color"
+                                    type="color"
+                                    class="input input-sm w-full cursor-pointer"
+                                />
                             </fieldset>
                         </div>
                         <div>
@@ -383,11 +416,23 @@ async function submitMessage() {
                         <div class="grid grid-cols-2 gap-2">
                             <fieldset class="fieldset">
                                 <legend class="fieldset-legend">Fade in</legend>
-                                <input v-model="form.fade_in_seconds" type="number" min="0" step="0.1" class="input input-sm w-full" />
+                                <input
+                                    v-model="form.fade_in_seconds"
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    class="input input-sm w-full"
+                                />
                             </fieldset>
                             <fieldset class="fieldset">
                                 <legend class="fieldset-legend">Fade out</legend>
-                                <input v-model="form.fade_out_seconds" type="number" min="0" step="0.1" class="input input-sm w-full" />
+                                <input
+                                    v-model="form.fade_out_seconds"
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    class="input input-sm w-full"
+                                />
                             </fieldset>
                         </div>
                     </div>
@@ -402,7 +447,13 @@ async function submitMessage() {
         <GenericModal :show="showCreateModal" :title="t('message.newPreset')" :modal-action="createNewPreset">
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">{{ t('message.name') }}</legend>
-                <input v-model="newPresetName" type="text" name="overall_alpha" class="input input-sm w-full" required />
+                <input
+                    v-model="newPresetName"
+                    type="text"
+                    name="overall_alpha"
+                    class="input input-sm w-full"
+                    required
+                />
             </fieldset>
         </GenericModal>
 

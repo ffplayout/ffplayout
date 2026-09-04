@@ -6,7 +6,10 @@ use sqlx::{
 use crate::{db::models::Output, utils::errors::ProcessError};
 
 pub async fn select_outputs(pool: &SqlitePool, channel: i32) -> Result<Vec<Output>, ProcessError> {
-    const QUERY: &str = "SELECT * FROM outputs WHERE channel_id = $1";
+    const QUERY: &str = "SELECT output.*, config.channel_id
+        FROM config_output output
+        JOIN config ON config.id = output.config_id
+        WHERE config.channel_id = $1";
 
     let result = sqlx::query_as(QUERY).bind(channel).fetch_all(pool).await?;
 
@@ -15,16 +18,18 @@ pub async fn select_outputs(pool: &SqlitePool, channel: i32) -> Result<Vec<Outpu
 
 pub async fn insert_output<'e, E>(
     executor: E,
-    channel_id: i32,
+    config_id: i32,
     output: &Output,
+    active: bool,
 ) -> Result<i32, ProcessError>
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    const QUERY: &str = "INSERT INTO outputs (channel_id, name, hls_variants, stream_url, stream_type, stream_format, hls_playlist_name, hls_segment_duration, hls_list_size, desktop_fullscreen, width, height, fps, video_codec, video_options, audio_codec, audio_bitrate) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id";
+    const QUERY: &str = "INSERT INTO config_output (config_id, active, name, hls_variants, stream_url, stream_type, stream_format, hls_playlist_name, hls_segment_duration, hls_list_size, desktop_fullscreen, width, height, fps, video_codec, video_options, audio_codec, audio_bitrate) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id";
 
     let output_id = sqlx::query(QUERY)
-        .bind(channel_id)
+        .bind(config_id)
+        .bind(active)
         .bind(&output.name)
         .bind(&output.hls_variants)
         .bind(&output.stream_url)
@@ -114,7 +119,7 @@ pub async fn update_output_on(
     audio_codec: Option<&str>,
     audio_bitrate: Option<i64>,
 ) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "UPDATE outputs SET hls_variants = $3, stream_url = $4, stream_type = $5, stream_format = $6, hls_playlist_name = $7, hls_segment_duration = $8, hls_list_size = $9, desktop_fullscreen = $10, width = $11, height = $12, fps = $13, video_codec = $14, video_options = $15, audio_codec = $16, audio_bitrate = $17 WHERE id = $1 AND channel_id = $2";
+    const QUERY: &str = "UPDATE config_output SET hls_variants = $3, stream_url = $4, stream_type = $5, stream_format = $6, hls_playlist_name = $7, hls_segment_duration = $8, hls_list_size = $9, desktop_fullscreen = $10, width = $11, height = $12, fps = $13, video_codec = $14, video_options = $15, audio_codec = $16, audio_bitrate = $17 WHERE id = $1 AND config_id = (SELECT id FROM config WHERE channel_id = $2)";
 
     let result = sqlx::query(QUERY)
         .bind(id)
@@ -138,4 +143,87 @@ pub async fn update_output_on(
         .await?;
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::*;
+    use crate::{db::handles::db_migrate, utils::config::OutputMode};
+
+    #[tokio::test]
+    async fn output_insert_select_and_update_are_scoped_to_the_channel() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        db_migrate(&pool).await.unwrap();
+        let output = Output::new(1, OutputMode::Stream);
+        let mut connection = pool.acquire().await.unwrap();
+        let id = insert_output(&mut *connection, 1, &output, false)
+            .await
+            .unwrap();
+
+        let wrong_channel = update_output_on(
+            &mut connection,
+            id,
+            999,
+            "",
+            "srt://example.invalid:9000",
+            Some("srt"),
+            None,
+            None,
+            None,
+            None,
+            false,
+            1920,
+            1080,
+            50.0,
+            Some("libx264"),
+            "{}",
+            Some("aac"),
+            Some(192),
+        )
+        .await
+        .unwrap();
+        assert_eq!(wrong_channel.rows_affected(), 0);
+
+        let updated = update_output_on(
+            &mut connection,
+            id,
+            1,
+            "",
+            "srt://example.invalid:9000",
+            Some("srt"),
+            None,
+            None,
+            None,
+            None,
+            false,
+            1920,
+            1080,
+            50.0,
+            Some("libx264"),
+            "{}",
+            Some("aac"),
+            Some(192),
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.rows_affected(), 1);
+        drop(connection);
+
+        let selected = select_outputs(&pool, 1)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|output| output.id == id)
+            .unwrap();
+        assert_eq!(selected.channel_id, 1);
+        assert_eq!(selected.stream_url, "srt://example.invalid:9000");
+        assert_eq!((selected.width, selected.height), (1920, 1080));
+        assert_eq!(selected.fps, 50.0);
+    }
 }

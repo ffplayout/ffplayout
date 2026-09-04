@@ -165,12 +165,8 @@ async function setPreviewData(path: string) {
         previewUrl.value = path
     } else {
         try {
-            previewUrl.value = await createFilePreviewUrl(
-                configStore.channels[configStore.i]?.id,
-                fullPath,
-            )
-        }
-        catch (error) {
+            previewUrl.value = await createFilePreviewUrl(configStore.channels[configStore.i]?.id, fullPath)
+        } catch (error) {
             indexStore.msgAlert('error', error instanceof Error ? error.message : String(error), 5)
             return
         }
@@ -578,11 +574,7 @@ async function deletePlaylist(del: boolean) {
                 </fieldset>
                 <fieldset class="fieldset mt-2 rounded-box w-full">
                     <label class="fieldset-label text-base-content">
-                        <input
-                            v-model="newSource.ad"
-                            type="checkbox"
-                            class="checkbox"
-                        />
+                        <input v-model="newSource.ad" type="checkbox" class="checkbox" />
                         {{ t('player.ad') }}
                     </label>
                 </fieldset>

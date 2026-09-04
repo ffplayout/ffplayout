@@ -1,0 +1,2 @@
+frontend/src/types/*
+!frontend/src/types/index.d.ts

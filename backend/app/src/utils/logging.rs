@@ -3,7 +3,7 @@ use std::{
     env, fmt,
     io::{self, IsTerminal, Write},
     path::PathBuf,
-    sync::{Arc, Mutex as StdMutex, RwLock},
+    sync::{Arc, LazyLock, Mutex as StdMutex, RwLock},
     time::Instant,
 };
 
@@ -32,11 +32,48 @@ use crate::{
     db::GLOBAL_SETTINGS,
     utils::{
         mail::{MailQueue, mail_queue},
+        notification::LogNotifier,
         time_machine::time_now,
     },
 };
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.6f%:z";
+
+/// Log an error that identifies a fatal condition.
+#[macro_export]
+macro_rules! fatal {
+    (target: $target:expr, $($key:ident = $value:expr),+; $($arg:tt)+) => {
+        log::log!(
+            target: $target,
+            log::Level::Error,
+            $($key = $value,)+ fatal = true;
+            $($arg)+
+        )
+    };
+
+    (target: $target:expr, $($arg:tt)+) => {
+        log::log!(
+            target: $target,
+            log::Level::Error,
+            fatal = true;
+            $($arg)+
+        )
+    };
+
+    ($($key:ident = $value:expr),+; $($arg:tt)+) => {
+        log::error!(
+            $($key = $value,)+ fatal = true;
+            $($arg)+
+        )
+    };
+
+    ($($arg:tt)+) => {
+        log::error!(
+            fatal = true;
+            $($arg)+
+        )
+    };
+}
 
 #[derive(Debug)]
 pub enum Target {
@@ -64,6 +101,16 @@ impl fmt::Display for Target {
 #[derive(Default)]
 pub struct LogConsole {
     state: StdMutex<ConsoleState>,
+    notifier: Option<LogNotifier>,
+}
+
+impl LogConsole {
+    pub fn with_notifier(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> Self {
+        Self {
+            state: StdMutex::default(),
+            notifier: Some(LogNotifier::new(mail_queues)),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -98,9 +145,16 @@ impl LogWriter for LogConsole {
         } else {
             0
         };
+
+        if let Some(notifier) = &self.notifier {
+            notifier.write(now, record)?;
+        }
         Ok(())
     }
     fn flush(&self) -> std::io::Result<()> {
+        if let Some(notifier) = &self.notifier {
+            notifier.flush()?;
+        }
         Ok(())
     }
 }
@@ -271,13 +325,15 @@ impl LogWriter for LogMailer {
 pub struct LogDefault {
     file: Box<dyn LogWriter>,
     mail: LogMailer,
+    notifier: LogNotifier,
 }
 
 impl LogDefault {
     pub fn new(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> Self {
         Self {
             file: Box::new(MultiFileLogger::new(log_file_path())),
-            mail: LogMailer::new(mail_queues),
+            mail: LogMailer::new(mail_queues.clone()),
+            notifier: LogNotifier::new(mail_queues),
         }
     }
 }
@@ -285,18 +341,20 @@ impl LogDefault {
 impl LogWriter for LogDefault {
     fn write(&self, now: &mut DeferredNow, record: &Record<'_>) -> std::io::Result<()> {
         self.file.write(now, record)?;
-        self.mail.write(now, record)
+        self.mail.write(now, record)?;
+        self.notifier.write(now, record)
     }
 
     fn flush(&self) -> std::io::Result<()> {
         self.file.flush()?;
-        self.mail.flush()
+        self.mail.flush()?;
+        self.notifier.flush()
     }
 }
 
-fn strip_tags(input: &str) -> String {
-    let re = Regex::new(r"<[^>]*>").unwrap();
-    re.replace_all(input, "").to_string()
+pub(crate) fn strip_tags(input: &str) -> String {
+    static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
+    TAG.replace_all(input, "").into_owned()
 }
 
 fn format_level(record: &Record) -> String {
@@ -319,11 +377,23 @@ fn format_level(record: &Record) -> String {
             "<span class=\"level-warning\">[ WARN]</span> {}",
             record.args()
         ),
+        Level::Error if is_fatal(record) => format!(
+            "<span class=\"level-fatal\">[FATAL]</span> {}",
+            record.args()
+        ),
         Level::Error => format!(
             "<span class=\"level-error\">[ERROR]</span> {}",
             record.args()
         ),
     }
+}
+
+pub(crate) fn is_fatal(record: &Record) -> bool {
+    record
+        .key_values()
+        .get("fatal".into())
+        .and_then(|value| Value::to_bool(&value))
+        .unwrap_or(false)
 }
 
 fn html_to_ansi(input: &str) -> String {
@@ -350,6 +420,10 @@ fn html_to_ansi(input: &str) -> String {
             r#"<span class="level-error">([^<]+)</span>"#,
             "\x1b[31m$1\x1b[0m",
         ), // level red
+        (
+            r#"<span class="level-fatal">([^<]+)</span>"#,
+            "\x1b[1;91m$1\x1b[0m",
+        ), // level bold bright red
         // text and number formatting
         (
             r#"<span class="log-gray">([^<]+)</span>"#,
@@ -506,7 +580,7 @@ pub fn init_logging(
     let mut logger = Logger::with(builder.build()).write_mode(WriteMode::Async);
 
     if ARGS.log_to_console {
-        logger = logger.log_to_writer(Box::new(LogConsole::default()));
+        logger = logger.log_to_writer(Box::new(LogConsole::with_notifier(mail_queues)));
     } else {
         logger = logger
             .log_to_writer(Box::new(LogDefault::new(mail_queues)))
@@ -538,7 +612,7 @@ pub fn log_line(id: i32, line: &str, level: &str) {
     {
         error!(channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[error] ", ""));
     } else if line.contains("[fatal]") {
-        error!(channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[fatal] ", ""));
+        fatal!(channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[fatal] ", ""));
     }
 }
 
@@ -599,7 +673,9 @@ pub async fn log_middleware(real_ip: RealIp, req: Request<Body>, next: Next) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::cpu_bench_line_count;
+    use log::{Level, Record};
+
+    use super::{cpu_bench_line_count, format_level, html_to_ansi};
 
     #[test]
     fn counts_cpu_bench_lines_only() {
@@ -609,5 +685,30 @@ mod tests {
             Some(2)
         );
         assert_eq!(cpu_bench_line_count("regular log line"), None);
+    }
+
+    /// Run with `cargo test -p ffplayout displays_console_log_levels -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "prints every log level using the console formatter"]
+    fn displays_console_log_levels() {
+        for level in [
+            Level::Trace,
+            Level::Debug,
+            Level::Info,
+            Level::Warn,
+            Level::Error,
+        ] {
+            let args = format_args!("example {level} message");
+            let record = Record::builder().level(level).args(args).build();
+            eprintln!("{}", html_to_ansi(&format_level(&record)));
+        }
+
+        let fatal_values = ("fatal", true);
+        let fatal_record = Record::builder()
+            .level(Level::Error)
+            .key_values(&fatal_values)
+            .args(format_args!("example fatal message"))
+            .build();
+        eprintln!("{}", html_to_ansi(&format_level(&fatal_record)));
     }
 }

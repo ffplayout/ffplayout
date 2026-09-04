@@ -69,14 +69,18 @@ export const useMedia = defineStore('media', {
                     if (foldersOnly) {
                         this.folderCrumbs = crumbs
                         data.parent_folders = data.parent_folders?.map((i: any) => ({ uid: genUID(), name: i })) ?? []
-                        data.folders = Array.isArray(data.folders) ? data.folders.map((i: any) => ({ uid: genUID(), name: i })) : []
+                        data.folders = Array.isArray(data.folders)
+                            ? data.folders.map((i: any) => ({ uid: genUID(), name: i }))
+                            : []
                         data.files = Array.isArray(data.files) ? data.files : []
                         this.folderList = data
                     } else {
                         this.currentPath = path
                         this.crumbs = crumbs
                         data.parent_folders = data.parent_folders?.map((i: any) => ({ uid: genUID(), name: i })) ?? []
-                        data.folders = Array.isArray(data.folders) ? data.folders.map((i: any) => ({ uid: genUID(), name: i })) : []
+                        data.folders = Array.isArray(data.folders)
+                            ? data.folders.map((i: any) => ({ uid: genUID(), name: i }))
+                            : []
                         data.files = Array.isArray(data.files) ? data.files : []
                         this.folderTree = data
                     }

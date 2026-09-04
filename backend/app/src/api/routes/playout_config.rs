@@ -95,6 +95,7 @@ fn requires_playout_restart(current: &PlayoutConfig, updated: &PlayoutConfig) ->
         };
 
         config.remove("mail");
+        config.remove("notification");
         config.remove("audio");
     }
 
@@ -242,14 +243,9 @@ pub async fn update_playout_config(
     data.processing.logo = logo;
     data.storage.filler = filler;
     if let Some(preset_id) = data.text.preset_id {
-        let preset = handles::select_preset(&state.pool, id, preset_id)
+        handles::select_preset(&state.pool, id, preset_id)
             .await
             .map_err(|_| ServiceError::BadRequest("invalid text preset".to_string()))?;
-        if !preset.use_filename {
-            return Err(ServiceError::BadRequest(
-                "automatic text preset must use the clip filename".to_string(),
-            ));
-        }
     }
     data.processing
         .hls_subtitle()
@@ -364,6 +360,7 @@ pub async fn update_playout_config(
             }
 
             queue_lock.update(new_config.mail.clone());
+            queue_lock.update_notification(new_config.notification.clone());
             break;
         }
     }
@@ -461,10 +458,11 @@ mod tests {
     use crate::utils::config::PlayoutConfig;
 
     #[test]
-    fn mail_and_volume_changes_do_not_require_restart() {
+    fn notification_and_volume_changes_do_not_require_restart() {
         let current = PlayoutConfig::default();
         let mut updated = current.clone();
         updated.mail.recipient = "ops@example.org".to_string();
+        updated.notification.topic = "ffplayout-alerts".to_string();
         updated.audio.volume = 0.75;
 
         assert!(!requires_playout_restart(&current, &updated));

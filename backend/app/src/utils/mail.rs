@@ -10,7 +10,11 @@ use tokio::{
     time::{Duration, Instant, interval},
 };
 
-use crate::utils::{config::Mail, errors::ProcessError, round_to_nearest_ten};
+use crate::utils::{
+    config::{Mail, Notification},
+    errors::ProcessError,
+    round_to_nearest_ten,
+};
 
 const MAX_MAIL_LINES: usize = 1000;
 const MAX_MAIL_RETRIES: u8 = 3;
@@ -21,17 +25,19 @@ pub struct MailQueue {
     pub config: Mail,
     pub lines: Vec<String>,
     pub raw_lines: Vec<String>,
+    pub notification: Notification,
     retry_attempts: u8,
     retry_after: Option<Instant>,
 }
 
 impl MailQueue {
-    pub fn new(id: i32, config: Mail) -> Self {
+    pub fn new(id: i32, config: Mail, notification: Notification) -> Self {
         Self {
             id,
             config,
             lines: vec![],
             raw_lines: vec![],
+            notification,
             retry_attempts: 0,
             retry_after: None,
         }
@@ -43,6 +49,10 @@ impl MailQueue {
 
     pub fn update(&mut self, config: Mail) {
         self.config = config;
+    }
+
+    pub fn update_notification(&mut self, config: Notification) {
+        self.notification = config;
     }
 
     pub fn clear(&mut self) {
@@ -207,7 +217,7 @@ mod tests {
 
     #[test]
     fn queue_keeps_only_the_latest_lines() {
-        let mut queue = MailQueue::new(1, Mail::default());
+        let mut queue = MailQueue::new(1, Mail::default(), Notification::default());
         for index in 0..=MAX_MAIL_LINES {
             queue.push(format!("line-{index}"));
             queue.push_raw(format!("raw-{index}"));
@@ -222,7 +232,7 @@ mod tests {
     #[test]
     fn failed_delivery_retries_twice_then_discards_batch() {
         let now = Instant::now();
-        let mut queue = MailQueue::new(1, Mail::default());
+        let mut queue = MailQueue::new(1, Mail::default(), Notification::default());
 
         queue.delivery_failed("first".to_string(), now);
         assert_eq!(queue.retry_attempts, 1);

@@ -11,10 +11,7 @@ function fileUrl(channelId: number | undefined, path: string, access: string): s
     return `${encodedPath}?access=${encodeURIComponent(access)}`
 }
 
-export async function createFilePreviewUrl(
-    channelId: number | undefined,
-    path: string,
-): Promise<string> {
+export async function createFilePreviewUrl(channelId: number | undefined, path: string): Promise<string> {
     if (!channelId) {
         throw new Error('Missing channel id')
     }

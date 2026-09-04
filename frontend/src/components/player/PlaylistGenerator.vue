@@ -140,11 +140,14 @@ async function generatePlaylist() {
         body.shuffle = simpleShuffle.value
     }
 
-    await authFetch<any>(`/api/playlist/${configStore.channels[configStore.i]?.id}/generate/${playlistStore.listDate}`, {
-        method: 'POST',
-        headers: { ...configStore.contentType, ...authStore.authHeader },
-        body: JSON.stringify(body),
-    })
+    await authFetch<any>(
+        `/api/playlist/${configStore.channels[configStore.i]?.id}/generate/${playlistStore.listDate}`,
+        {
+            method: 'POST',
+            headers: { ...configStore.contentType, ...authStore.authHeader },
+            body: JSON.stringify(body),
+        },
+    )
         .then((response: any) => {
             playlistStore.playlist = processPlaylist(playlistStore.listDate, response.program, false)
             indexStore.msgAlert('success', t('player.generateDone'), 2)

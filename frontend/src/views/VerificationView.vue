@@ -45,7 +45,13 @@ async function verify() {
 </script>
 <template>
     <div v-if="!auth.isLogin" class="relative w-full min-h-screen xs:h-full flex justify-center items-center">
-        <RouterLink :to="{ name: 'login' }" class="btn btn-ghost absolute top-5 left-5" @click="auth.cancelVerification()"> Login </RouterLink>
+        <RouterLink
+            :to="{ name: 'login' }"
+            class="btn btn-ghost absolute top-5 left-5"
+            @click="auth.cancelVerification()"
+        >
+            Login
+        </RouterLink>
         <div class="w-full h-full flex justify-center items-center">
             <div class="w-96 min-w-full flex flex-col justify-center items-center px-4">
                 <h1 class="text-6xl xs:text-8xl">ffplayout</h1>

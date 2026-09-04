@@ -24,7 +24,6 @@ use crate::{
         config::{OutputMode, PlayoutConfig, RecordingSource},
         control::{PlayerCtl, control_state},
         errors::ServiceError,
-        text::text_config,
     },
 };
 
@@ -444,13 +443,6 @@ fn engine_output_config(
         opacity: config.processing.logo_opacity,
         position: config.processing.logo_position.clone(),
     });
-    let text = config
-        .text
-        .preset
-        .as_ref()
-        .filter(|preset| preset.use_filename)
-        .map(|preset| text_config(preset, None, true));
-
     let ffmpeg_log_level = config
         .logging
         .ffmpeg_level
@@ -474,7 +466,6 @@ fn engine_output_config(
             }
         })))
         .with_logo(logo)
-        .with_text(text)
         .with_text_overlay_state(text_overlay_state)
         .with_desktop_fullscreen(config.output.desktop_fullscreen)
         .with_desktop_control_callback(desktop_control_callback)

@@ -175,6 +175,8 @@ pub struct PlayoutConfig {
     pub channel: Channel,
     pub general: General,
     pub mail: Mail,
+    #[serde(default)]
+    pub notification: Notification,
     pub logging: Logging,
     pub processing: Processing,
     pub audio: Audio,
@@ -421,6 +423,129 @@ impl Default for Mail {
             mail_level: Level::Debug,
             interval: i64::default(),
         }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, TS, PartialEq, Eq)]
+#[ts(export, export_to = "playout_config.d.ts")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum NotificationLevel {
+    Info,
+    Warning,
+    Error,
+    #[default]
+    Fatal,
+}
+
+impl fmt::Display for NotificationLevel {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Info => "INFO",
+            Self::Warning => "WARNING",
+            Self::Error => "ERROR",
+            Self::Fatal => "FATAL",
+        })
+    }
+}
+
+impl NotificationLevel {
+    fn new(value: &str) -> Self {
+        match value {
+            "INFO" => Self::Info,
+            "WARNING" => Self::Warning,
+            "ERROR" => Self::Error,
+            "FATAL" => Self::Fatal,
+            invalid => {
+                log::warn!(
+                    target: "notification",
+                    "Unknown notification level {invalid:?}; falling back to FATAL"
+                );
+                Self::Fatal
+            }
+        }
+    }
+
+    pub fn accepts(self, level: Level, fatal: bool) -> bool {
+        match self {
+            Self::Fatal => fatal,
+            Self::Error => level <= Level::Error,
+            Self::Warning => level <= Level::Warn,
+            Self::Info => level <= Level::Info,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
+pub struct Notification {
+    #[serde(skip_deserializing)]
+    pub show: bool,
+    #[ts(skip)]
+    #[serde(skip_serializing, skip_deserializing)]
+    pub server: String,
+    #[ts(skip)]
+    #[serde(skip_serializing, skip_deserializing)]
+    pub token: String,
+    pub topic: String,
+    pub level: NotificationLevel,
+    pub tags: String,
+}
+
+impl Notification {
+    fn new(global: &models::GlobalSettings, config: &models::Configuration) -> Self {
+        Self {
+            show: !global.notification_server.is_empty(),
+            server: global.notification_server.clone(),
+            token: global.notification_token.clone(),
+            topic: config.notification_topic.clone(),
+            level: NotificationLevel::new(&config.notification_level),
+            tags: config.notification_tags.clone(),
+        }
+    }
+}
+
+impl Default for Notification {
+    fn default() -> Self {
+        Self {
+            show: false,
+            server: String::new(),
+            token: String::new(),
+            topic: String::new(),
+            level: NotificationLevel::Fatal,
+            tags: String::new(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod notification_level_tests {
+    use flexi_logger::Level;
+
+    use super::NotificationLevel;
+
+    #[test]
+    fn fatal_notifications_only_accept_fatal_records() {
+        assert!(NotificationLevel::Fatal.accepts(Level::Error, true));
+        assert!(!NotificationLevel::Fatal.accepts(Level::Error, false));
+    }
+
+    #[test]
+    fn error_notifications_include_fatal_and_regular_errors() {
+        assert!(NotificationLevel::Error.accepts(Level::Error, true));
+        assert!(NotificationLevel::Error.accepts(Level::Error, false));
+        assert!(!NotificationLevel::Error.accepts(Level::Warn, false));
+    }
+
+    #[test]
+    fn info_notifications_exclude_debug_and_trace_records() {
+        assert!(NotificationLevel::Info.accepts(Level::Info, false));
+        assert!(!NotificationLevel::Info.accepts(Level::Debug, false));
+        assert!(!NotificationLevel::Info.accepts(Level::Trace, false));
+    }
+
+    #[test]
+    fn unknown_notification_level_falls_back_to_fatal() {
+        assert_eq!(NotificationLevel::new("INVALID"), NotificationLevel::Fatal);
     }
 }
 
@@ -1006,6 +1131,7 @@ impl PlayoutConfig {
         };
         let general = General::new(&config);
         let mail = Mail::new(&global, &config);
+        let notification = Notification::new(&global, &config);
         let logging = Logging::new(&config);
         let mut processing = Processing::new(&config);
         let audio = Audio::new(&config);
@@ -1051,6 +1177,7 @@ impl PlayoutConfig {
             channel,
             general,
             mail,
+            notification,
             logging,
             processing,
             audio,

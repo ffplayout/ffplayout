@@ -12,6 +12,7 @@ export const useIndex = defineStore('index', {
             INFO: 2,
             WARN: 3,
             ERROR: 4,
+            FATAL: 5,
         } as { [key: string]: number },
     }),
 
@@ -52,16 +53,14 @@ export const useIndex = defineStore('index', {
 
                     try {
                         return JSON.stringify(maybeError)
-                    }
-                    catch {
+                    } catch {
                         return String(maybeError)
                     }
                 }
 
                 try {
                     return JSON.stringify(text)
-                }
-                catch {
+                } catch {
                     return String(text)
                 }
             }

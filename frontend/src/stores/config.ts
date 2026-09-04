@@ -48,7 +48,6 @@ export const useConfig = defineStore('config', {
                     await this.getPlayoutOutputs()
                     await this.getPlayoutCodecs()
                     await this.getUserConfig()
-
                 })
             }
         },
@@ -138,7 +137,6 @@ export const useConfig = defineStore('config', {
                 headers: authStore.authHeader,
             })
                 .then((data: PlayoutOutput[]) => {
-
                     this.outputs = data
                 })
                 .catch(() => {
@@ -198,16 +196,15 @@ export const useConfig = defineStore('config', {
             await authFetch<User>('/api/user', {
                 method: 'GET',
                 headers: authStore.authHeader,
-            })
-                .then((data) => {
-                    if (data.id === 0) {
-                        this.logout()
-                        throw new Error('User not found')
-                    }
+            }).then((data) => {
+                if (data.id === 0) {
+                    this.logout()
+                    throw new Error('User not found')
+                }
 
-                    this.currentUser = data.id
-                    this.configUser = data
-                })
+                this.currentUser = data.id
+                this.configUser = data
+            })
         },
 
         async setUserConfig(obj: any) {

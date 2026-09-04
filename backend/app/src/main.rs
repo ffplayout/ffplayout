@@ -193,7 +193,11 @@ async fn async_main() -> Result<(), ProcessError> {
             .await?;
 
             if ARGS.foreground {
-                let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));
+                let m_queue = Arc::new(Mutex::new(MailQueue::new(
+                    *channel_id,
+                    config.mail,
+                    config.notification,
+                )));
 
                 app_state.controller.write().await.add(manager.clone());
                 app_state.mail_queues.lock().await.push(m_queue);

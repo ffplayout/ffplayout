@@ -15,6 +15,7 @@ const configStore = useConfig()
 const indexStore = useIndex()
 
 const logLevels = ['INFO', 'WARNING', 'ERROR']
+const notificationLevels = ['INFO', 'WARNING', 'ERROR', 'FATAL']
 const processingMode = ['folder', 'playlist']
 function outputMode(value: string | undefined): 'desktop' | 'hls' | 'stream' {
     if (value === 'desktop' || value === 'hls' || value === 'stream') {
@@ -148,12 +149,15 @@ function codecLabel(codec: CodecOption): string {
     return `${codec.name} - ${label} (${details})`
 }
 
-const videoSettings = computed(() =>
-    codecOptions.value.video.find((codec) => codec.name === configStore.playout.output.video_codec)?.settings ?? [],
+const videoSettings = computed(
+    () =>
+        codecOptions.value.video.find((codec) => codec.name === configStore.playout.output.video_codec)?.settings ?? [],
 )
 
 const audioUsesBitrate = computed(
-    () => codecOptions.value.audio.find((codec) => codec.name === configStore.playout.output.audio_codec)?.uses_bitrate ?? true,
+    () =>
+        codecOptions.value.audio.find((codec) => codec.name === configStore.playout.output.audio_codec)?.uses_bitrate ??
+        true,
 )
 
 function settingIsVisible(setting: EncoderSetting): boolean {
@@ -181,7 +185,12 @@ function eventValue(event: Event): string {
 }
 
 watch(
-    () => [output.value, configStore.playout.output.stream_type, configStore.playout.output.video_codec, codecOptions.value],
+    () => [
+        output.value,
+        configStore.playout.output.stream_type,
+        configStore.playout.output.video_codec,
+        codecOptions.value,
+    ],
     () => {
         const video = codecOptions.value.video
         const audio = codecOptions.value.audio
@@ -322,6 +331,38 @@ async function onSubmitPlayout() {
                             class="input input-sm w-full max-w-36"
                         />
                         <p class="fieldset-label items-baseline">{{ t('config.mailInterval') }}</p>
+                    </fieldset>
+                </div>
+            </template>
+
+            <template v-if="configStore.playout.notification.show">
+                <div class="text-xl pt-3 md:text-right">{{ t('config.notification') }}:</div>
+                <div class="md:pt-4">
+                    <p class="mb-2 whitespace-pre-line">{{ t('config.notificationHelp') }}</p>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('config.notificationTopic') }}</legend>
+                        <input
+                            v-model="configStore.playout.notification.topic"
+                            type="text"
+                            class="input input-sm w-full max-w-lg"
+                        />
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('config.notificationLevel') }}</legend>
+                        <select
+                            v-model="configStore.playout.notification.level"
+                            class="select select-sm w-full max-w-xs"
+                        >
+                            <option v-for="level in notificationLevels" :key="level" :value="level">{{ level }}</option>
+                        </select>
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('config.notificationTags') }}</legend>
+                        <input
+                            v-model="configStore.playout.notification.tags"
+                            type="text"
+                            class="input input-sm w-full max-w-lg"
+                        />
                     </fieldset>
                 </div>
             </template>
@@ -631,7 +672,11 @@ async function onSubmitPlayout() {
                     </fieldset>
                     <fieldset class="fieldset">
                         <legend class="fieldset-legend">
-                            {{ configStore.playout.output.stream_type === 'custom' ? t('config.streamTarget') : t('config.streamUrl') }}
+                            {{
+                                configStore.playout.output.stream_type === 'custom'
+                                    ? t('config.streamTarget')
+                                    : t('config.streamUrl')
+                            }}
                         </legend>
                         <input
                             v-model="configStore.playout.output.stream_url"

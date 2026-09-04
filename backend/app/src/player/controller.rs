@@ -26,7 +26,10 @@ use crate::{
     db::{handles, models::Channel},
     file::{init_storage, local::LocalStorage},
     player::{output::player, utils::Media},
-    utils::{config::PlayoutConfig, errors::ServiceError, logging::Target, system::SystemStat},
+    utils::{
+        config::PlayoutConfig, errors::ServiceError, logging::Target, system::SystemStat,
+        text::text_config,
+    },
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -131,6 +134,10 @@ impl ChannelManager {
             live_loudness_config(&config.audio),
         );
         let text_overlay = TextOverlayState::default();
+        if let Some(preset) = config.text.preset.as_ref() {
+            let text = (!preset.use_filename).then(|| preset.text.clone());
+            text_overlay.set(Some(text_config(preset, text, preset.use_filename)));
+        }
 
         Ok(Self {
             id: channel.id,

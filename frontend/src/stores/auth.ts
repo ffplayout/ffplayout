@@ -8,9 +8,7 @@ type LoginResult = {
     verificationRequired: boolean
 }
 
-type AuthChannelMessage =
-    | { type: 'tokens-updated'; access: string; refresh: string }
-    | { type: 'logout' }
+type AuthChannelMessage = { type: 'tokens-updated'; access: string; refresh: string } | { type: 'logout' }
 
 const AUTH_CHANNEL_NAME = 'ffplayout-auth'
 

@@ -30,9 +30,11 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
 
     sqlx::query(
         r#"
-        UPDATE global SET public = $1, logs = $2, playlists = $3, storage = $4;
+        UPDATE config_global SET public = $1, logs = $2, playlists = $3, storage = $4;
         UPDATE channels SET public = $1, playlists = $3, storage = $4;
-        UPDATE configurations SET processing_width = 1024, processing_height = 576, storage_filler = $5, output_id = 4;
+        UPDATE config_storage SET filler = $5;
+        UPDATE config_output SET width = 1024, height = 576, active = 0;
+        UPDATE config_output SET active = 1 WHERE id = 4;
         "#,
     )
     .bind(hls.to_string_lossy())

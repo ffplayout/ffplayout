@@ -92,7 +92,11 @@ function channelLink(path: string) {
                         </li>
                     </ul>
                 </div>
-                <RouterLink :to="channelLink('/configure')" class="btn btn-primary join-item px-2" :title="t('button.configure')">
+                <RouterLink
+                    :to="channelLink('/configure')"
+                    class="btn btn-primary join-item px-2"
+                    :title="t('button.configure')"
+                >
                     <i class="bi bi-gear text-[17px]" />
                 </RouterLink>
                 <label class="join-item btn btn-primary swap swap-rotate px-2">

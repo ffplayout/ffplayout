@@ -18,12 +18,12 @@ pub async fn insert_refresh_token(
     now: i64,
 ) -> Result<(), ProcessError> {
     let mut transaction = pool.begin().await?;
-    sqlx::query("DELETE FROM refresh_tokens WHERE expires_at <= $1")
+    sqlx::query("DELETE FROM auth_refresh_tokens WHERE expires_at <= $1")
         .bind(now)
         .execute(&mut *transaction)
         .await?;
     sqlx::query(
-        "INSERT INTO refresh_tokens
+        "INSERT INTO auth_refresh_tokens
          (jti, family_id, user_id, expires_at, created_at)
          VALUES ($1, $2, $3, $4, $5)",
     )
@@ -48,13 +48,13 @@ pub async fn rotate_refresh_token(
     now: i64,
 ) -> Result<RefreshRotation, ProcessError> {
     let mut transaction = pool.begin().await?;
-    sqlx::query("DELETE FROM refresh_tokens WHERE expires_at <= $1")
+    sqlx::query("DELETE FROM auth_refresh_tokens WHERE expires_at <= $1")
         .bind(now)
         .execute(&mut *transaction)
         .await?;
     let token = sqlx::query(
         "SELECT family_id, expires_at, revoked_at
-         FROM refresh_tokens WHERE jti = $1 AND user_id = $2",
+         FROM auth_refresh_tokens WHERE jti = $1 AND user_id = $2",
     )
     .bind(old_jti)
     .bind(user_id)
@@ -69,7 +69,7 @@ pub async fn rotate_refresh_token(
 
     if revoked_at.is_some() {
         sqlx::query(
-            "UPDATE refresh_tokens SET revoked_at = $1
+            "UPDATE auth_refresh_tokens SET revoked_at = $1
              WHERE family_id = $2 AND revoked_at IS NULL",
         )
         .bind(now)
@@ -84,7 +84,7 @@ pub async fn rotate_refresh_token(
     }
 
     let result = sqlx::query(
-        "UPDATE refresh_tokens SET revoked_at = $1, replaced_by = $2
+        "UPDATE auth_refresh_tokens SET revoked_at = $1, replaced_by = $2
          WHERE jti = $3 AND user_id = $4 AND revoked_at IS NULL AND expires_at > $1",
     )
     .bind(now)
@@ -95,7 +95,7 @@ pub async fn rotate_refresh_token(
     .await?;
     if result.rows_affected() != 1 {
         sqlx::query(
-            "UPDATE refresh_tokens SET revoked_at = $1
+            "UPDATE auth_refresh_tokens SET revoked_at = $1
              WHERE family_id = $2 AND revoked_at IS NULL",
         )
         .bind(now)
@@ -107,7 +107,7 @@ pub async fn rotate_refresh_token(
     }
 
     sqlx::query(
-        "INSERT INTO refresh_tokens
+        "INSERT INTO auth_refresh_tokens
          (jti, family_id, user_id, expires_at, created_at)
          VALUES ($1, $2, $3, $4, $5)",
     )
@@ -130,9 +130,9 @@ pub async fn revoke_refresh_family(
     now: i64,
 ) -> Result<bool, ProcessError> {
     let result = sqlx::query(
-        "UPDATE refresh_tokens SET revoked_at = $1
+        "UPDATE auth_refresh_tokens SET revoked_at = $1
          WHERE family_id = (
-             SELECT family_id FROM refresh_tokens WHERE jti = $2 AND user_id = $3
+             SELECT family_id FROM auth_refresh_tokens WHERE jti = $2 AND user_id = $3
          ) AND revoked_at IS NULL",
     )
     .bind(now)
