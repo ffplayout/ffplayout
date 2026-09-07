@@ -123,6 +123,21 @@ The frontend uses TypeScript, to generate types for the rust structs run: `cargo
 
 The generated types are written next to the frontend sources that import them.
 
+## Database migrations on `main`
+
+Database migrations added on the `main` branch are considered unstable until
+the next ffplayout version containing them is released. Before that release,
+an existing migration may still be changed, reordered, or combined with
+another migration.
+
+Running a self-built development version can therefore apply an intermediate
+migration that is incompatible with a later commit. This can break the
+migration chain or cause a migration checksum mismatch, and the affected
+database may have to be reinitialized. Do not use builds from `main` with a
+production database without first creating a restorable backup. Once a
+migration has been included in a release, it must remain unchanged; subsequent
+schema changes require a new migration.
+
 ## Setup Frontend
 
 Make sure to install the dependencies:
