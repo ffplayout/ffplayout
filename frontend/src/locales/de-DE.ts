@@ -285,6 +285,12 @@ export default {
         hlsSubtitleLanguage: 'Untertitelsprache',
         hlsSubtitleDefault: 'Standard-Untertitel',
         encodingSettings: 'Encoder-Einstellungen',
+        muxerOptions: 'Muxer-Optionen',
+        muxerOptionsHelp:
+            'Zusätzliche FFmpeg-Muxer-Optionen für diese Ausgabe. Für HLS hls_flags mit program_date_time setzen, um EXT-X-PROGRAM-DATE-TIME auszugeben. Von ffplayout benötigte Optionen bleiben erzwungen.',
+        addMuxerOption: 'Muxer-Option hinzufügen',
+        muxerOptionName: 'Optionsname',
+        muxerOptionValue: 'Wert',
         videoPreset: 'Video-Preset',
         rateControl: 'Bitratensteuerung',
         videoQuality: 'CRF-Qualität',

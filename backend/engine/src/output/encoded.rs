@@ -1,4 +1,10 @@
-use std::{collections::VecDeque, ffi::CString, fs, path::Path, ptr};
+use std::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    ffi::CString,
+    fs,
+    path::Path,
+    ptr,
+};
 
 use anyhow::{Context, Result, anyhow};
 use ffmpeg::{
@@ -27,6 +33,7 @@ use crate::{
             HlsSubtitle, HlsVariant, OutputConfig, audio_codec_uses_bitrate,
             video_codec_uses_bitrate,
         },
+        ffmpeg_capabilities::validate_muxer_options,
         helper::{is_network_url, network_io_options},
     },
 };
@@ -240,6 +247,15 @@ impl EncodedOutput {
         output_format: EncodedFormat,
         hls_health: Option<HlsHealth>,
     ) -> Result<Self> {
+        match &output_format {
+            EncodedFormat::Hls { .. } => {
+                validate_muxer_options("hls", &cfg.muxer_options).map_err(anyhow::Error::msg)?;
+            }
+            EncodedFormat::Stream { muxer } => {
+                validate_muxer_options(muxer, &cfg.muxer_options).map_err(anyhow::Error::msg)?;
+            }
+            EncodedFormat::Auto | EncodedFormat::Recording { .. } => {}
+        }
         let pace_output = !matches!(&output_format, EncodedFormat::Recording { .. });
         let hls_variants = match &output_format {
             EncodedFormat::Auto
@@ -373,7 +389,7 @@ impl EncodedOutput {
 
         match output_format {
             EncodedFormat::Auto | EncodedFormat::Stream { .. } => {
-                octx.write_header()?;
+                reject_unused_options(octx.write_header_with(muxer_options(&cfg.muxer_options))?)?;
             }
             EncodedFormat::Recording {
                 segment_seconds, ..
@@ -390,15 +406,29 @@ impl EncodedOutput {
                 list_size,
                 ..
             } => {
-                let hls_flags = if hls_start_number.is_some() {
+                let default_hls_flags = if hls_start_number.is_some() {
                     "append_list+delete_segments+omit_endlist+temp_file+discont_start"
                 } else {
                     "delete_segments+omit_endlist+temp_file"
                 };
-                let mut options = ffmpeg::Dictionary::new();
+                let mut options = muxer_options_excluding(
+                    &cfg.muxer_options,
+                    [
+                        "hls_time",
+                        "hls_list_size",
+                        "hls_flags",
+                        "hls_segment_filename",
+                        "start_number",
+                        "master_pl_name",
+                        "var_stream_map",
+                    ],
+                );
                 options.set("hls_time", &segment_seconds.to_string());
                 options.set("hls_list_size", &list_size.to_string());
-                options.set("hls_flags", hls_flags);
+                options.set(
+                    "hls_flags",
+                    &merged_hls_flags(default_hls_flags, cfg.muxer_options.get("hls_flags")),
+                );
                 let segment_filename = if uses_var_stream_map {
                     hls::segment_pattern(path)
                 } else {
@@ -868,6 +898,52 @@ impl EncodedOutput {
         packet.write_interleaved(&mut self.octx)?;
         Ok(())
     }
+}
+
+fn muxer_options(options: &BTreeMap<String, String>) -> ffmpeg::Dictionary<'static> {
+    muxer_options_excluding(options, [])
+}
+
+fn muxer_options_excluding<'a>(
+    options: &BTreeMap<String, String>,
+    excluded: impl IntoIterator<Item = &'a str>,
+) -> ffmpeg::Dictionary<'static> {
+    let excluded = excluded.into_iter().collect::<BTreeSet<_>>();
+    let mut dictionary = ffmpeg::Dictionary::new();
+    for (key, value) in options {
+        if !excluded.contains(key.as_str()) {
+            dictionary.set(key, value);
+        }
+    }
+    dictionary
+}
+
+fn merged_hls_flags(default_flags: &str, configured_flags: Option<&String>) -> String {
+    let required = default_flags
+        .split('+')
+        .filter(|flag| !flag.is_empty())
+        .collect::<BTreeSet<_>>();
+    let mut flags = required.iter().copied().collect::<Vec<_>>();
+
+    for flag in configured_flags
+        .into_iter()
+        .flat_map(|value| value.split('+'))
+        .filter(|flag| !flag.is_empty())
+    {
+        // ffmpeg supports `-flag` to remove a flag. Never let a configured
+        // value turn off a flag that ffplayout needs for its HLS lifecycle.
+        if required.contains(flag)
+            || flag
+                .strip_prefix('-')
+                .is_some_and(|flag| required.contains(flag))
+        {
+            continue;
+        }
+        if !flags.contains(&flag) {
+            flags.push(flag);
+        }
+    }
+    flags.join("+")
 }
 
 fn reject_unused_options(options: ffmpeg::Dictionary<'_>) -> Result<()> {
@@ -1342,6 +1418,89 @@ mod open_tests {
         ffmpeg_capabilities::ffmpeg_capabilities,
     };
     use std::fs;
+
+    #[test]
+    fn configured_hls_flags_are_combined_with_required_flags() {
+        let flags = merged_hls_flags(
+            "delete_segments+omit_endlist+temp_file",
+            Some(&"program_date_time+temp_file".to_string()),
+        );
+
+        assert_eq!(
+            flags,
+            "delete_segments+omit_endlist+temp_file+program_date_time"
+        );
+    }
+
+    #[test]
+    fn configured_hls_flags_cannot_disable_required_flags() {
+        let flags = merged_hls_flags("delete_segments+temp_file", Some(&"-temp_file".to_string()));
+
+        assert_eq!(flags, "delete_segments+temp_file");
+    }
+
+    #[test]
+    fn hls_accepts_program_date_time_muxer_option() {
+        ffmpeg::init().ok();
+        let dir =
+            std::env::temp_dir().join(format!("hls_program_date_time_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("stream.m3u8");
+        let cfg = OutputConfig::new(320, 240, 25, 44_100).with_muxer_options(BTreeMap::from([(
+            "hls_flags".to_string(),
+            "program_date_time".to_string(),
+        )]));
+
+        let mut output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Hls {
+                variants: vec![],
+                subtitle: None,
+                segment_seconds: 1,
+                list_size: 60,
+            },
+        )
+        .expect("expected hls_flags=program_date_time to be accepted");
+
+        for index in 0..50 {
+            let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
+            video.set_pts(Some(index));
+            video.data_mut(0).fill(16);
+            video.data_mut(1).fill(128);
+            video.data_mut(2).fill(128);
+            output.encode_video(&video).unwrap();
+
+            let mut audio = frame::Audio::new(
+                Sample::F32(ffmpeg::format::sample::Type::Planar),
+                output.audio_frame_size(),
+                ChannelLayout::STEREO,
+            );
+            audio.set_rate(44_100);
+            audio.set_pts(Some(index * output.audio_frame_size() as i64));
+            for channel in 0..2 {
+                audio.plane_mut::<f32>(channel).fill(0.0);
+            }
+            output.encode_audio(&audio).unwrap();
+        }
+        output.finish().unwrap();
+
+        let playlist = fs::read_to_string(&path).unwrap();
+        assert!(playlist.contains("#EXT-X-PROGRAM-DATE-TIME:"), "{playlist}");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn required_hls_options_are_not_passed_through_as_custom_options() {
+        let options = BTreeMap::from([
+            ("hls_time".to_string(), "999".to_string()),
+            ("hls_start_number_source".to_string(), "epoch".to_string()),
+        ]);
+        let dictionary = muxer_options_excluding(&options, ["hls_time"]);
+
+        assert_eq!(dictionary.get("hls_time"), None);
+        assert_eq!(dictionary.get("hls_start_number_source"), Some("epoch"));
+    }
 
     #[test]
     fn selects_nvenc_for_cpu_backed_hardware_encoding() {

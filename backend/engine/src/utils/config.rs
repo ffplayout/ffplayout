@@ -190,6 +190,7 @@ pub struct OutputConfig {
     pub stream_format: String,
     pub video_codec: String,
     pub video_options: VideoOptions,
+    pub muxer_options: BTreeMap<String, String>,
     pub audio_codec: String,
     pub audio_bitrate: u64,
     pub ffmpeg_log_level: LogLevel,
@@ -1118,6 +1119,7 @@ impl OutputConfig {
             stream_format: String::new(),
             video_codec: "libx264".to_string(),
             video_options: video_option_defaults("libx264"),
+            muxer_options: BTreeMap::new(),
             audio_codec: "aac".to_string(),
             audio_bitrate: 128_000,
             ffmpeg_log_level: LogLevel::Warning,
@@ -1205,6 +1207,11 @@ impl OutputConfig {
         self.video_options = video_options;
         self.audio_codec = audio_codec;
         self.audio_bitrate = audio_bitrate;
+        self
+    }
+
+    pub fn with_muxer_options(mut self, muxer_options: BTreeMap<String, String>) -> Self {
+        self.muxer_options = muxer_options;
         self
     }
 

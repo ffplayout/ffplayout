@@ -285,6 +285,12 @@ export default {
         hlsSubtitleLanguage: 'Idioma da legenda',
         hlsSubtitleDefault: 'Legenda padrão',
         encodingSettings: 'Configurações do codificador',
+        muxerOptions: 'Opções do multiplexador',
+        muxerOptionsHelp:
+            'Opções adicionais do multiplexador FFmpeg para esta saída. Para HLS, defina hls_flags como program_date_time para emitir EXT-X-PROGRAM-DATE-TIME. As opções exigidas pelo ffplayout permanecem ativas.',
+        addMuxerOption: 'Adicionar opção do multiplexador',
+        muxerOptionName: 'Nome da opção',
+        muxerOptionValue: 'Valor',
         videoPreset: 'Preset de vídeo',
         rateControl: 'Controle de taxa',
         videoQuality: 'Qualidade CRF',

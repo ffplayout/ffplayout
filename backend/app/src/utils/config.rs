@@ -857,6 +857,9 @@ pub struct Output {
     pub video_codec: String,
     #[serde(default)]
     pub video_options: BTreeMap<String, String>,
+    /// FFmpeg muxer options for this output, such as HLS `hls_flags`.
+    #[serde(default)]
+    pub muxer_options: BTreeMap<String, String>,
     #[serde(default = "default_audio_codec")]
     pub audio_codec: String,
     #[serde(default = "default_audio_bitrate")]
@@ -904,6 +907,7 @@ impl Output {
         let video_codec = output.video_codec.unwrap_or_else(default_video_codec);
         let video_options = serde_json::from_str(&output.video_options)
             .unwrap_or_else(|_| ff_engine::video_option_defaults(&video_codec));
+        let muxer_options = serde_json::from_str(&output.muxer_options).unwrap_or_default();
 
         Self {
             id: output.id,
@@ -933,6 +937,7 @@ impl Output {
             fps: output.fps,
             video_codec,
             video_options,
+            muxer_options,
             audio_codec: output.audio_codec.unwrap_or_else(default_audio_codec),
             audio_bitrate: output
                 .audio_bitrate
@@ -996,6 +1001,13 @@ impl Output {
         if !self.fps.is_finite() || self.fps < 1.0 || self.fps > f64::from(u32::MAX) {
             return Err("output fps must be a positive number".to_string());
         }
+        if self
+            .muxer_options
+            .iter()
+            .any(|(key, value)| key.trim().is_empty() || value.trim().is_empty())
+        {
+            return Err("muxer option names and values must not be empty".to_string());
+        }
 
         if matches!(self.mode, OutputMode::HLS | OutputMode::Stream) {
             let target = match self.mode {
@@ -1018,6 +1030,16 @@ impl Output {
                     ));
                 }
             }
+            let muxer_name = match self.mode {
+                OutputMode::HLS => "hls",
+                OutputMode::Stream => match self.stream_type {
+                    StreamType::Rtmp => "flv",
+                    StreamType::Srt | StreamType::Udp => "mpegts",
+                    StreamType::Custom => custom_format,
+                },
+                OutputMode::Desktop => unreachable!("desktop output is not encoded"),
+            };
+            ff_engine::validate_muxer_options(muxer_name, &self.muxer_options)?;
             let video_codecs =
                 if self.mode == OutputMode::Stream && self.stream_type == StreamType::Custom {
                     capabilities.usable_codecs(ff_engine::FfmpegMediaType::Video)
@@ -1319,6 +1341,8 @@ pub async fn get_config(
 
 #[cfg(test)]
 mod output_tests {
+    use std::collections::BTreeMap;
+
     use super::{Output, OutputMode, StreamType};
 
     fn output(mode: OutputMode) -> Output {
@@ -1337,6 +1361,7 @@ mod output_tests {
             fps: 25.0,
             video_codec: "libx264".to_string(),
             video_options: ff_engine::video_option_defaults("libx264"),
+            muxer_options: BTreeMap::new(),
             audio_codec: "aac".to_string(),
             audio_bitrate: 128,
             hls_variants: Vec::new(),
@@ -1388,6 +1413,37 @@ mod output_tests {
             output.validate().unwrap_err(),
             "HLS segment duration must be greater than zero"
         );
+    }
+
+    #[test]
+    fn rejects_hls_options_that_conflict_with_segment_management() {
+        let mut config = output(OutputMode::HLS);
+        config
+            .muxer_options
+            .insert("hls_time".to_string(), "30".to_string());
+
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_muxer_options_before_saving() {
+        let mut config = output(OutputMode::HLS);
+        config
+            .muxer_options
+            .insert("hls_flgs".to_string(), "program_date_time".to_string());
+
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn accepts_compatible_hls_flags() {
+        let mut config = output(OutputMode::HLS);
+        config.muxer_options.insert(
+            "hls_flags".to_string(),
+            "program_date_time+independent_segments".to_string(),
+        );
+
+        assert!(config.validate().is_ok());
     }
 
     #[test]

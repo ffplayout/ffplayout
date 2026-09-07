@@ -311,6 +311,8 @@ pub async fn update_playout_config(
     let is_encoded = matches!(data.output.mode, OutputMode::HLS | OutputMode::Stream);
     let video_options = serde_json::to_string(&data.output.video_options)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
+    let muxer_options = serde_json::to_string(&data.output.muxer_options)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     let mut transaction = state.pool.begin().await?;
     handles::update_output_on(
         &mut transaction,
@@ -337,6 +339,11 @@ pub async fn update_playout_config(
         is_encoded.then_some(data.output.video_codec.as_str()),
         if is_encoded {
             video_options.as_str()
+        } else {
+            "{}"
+        },
+        if is_encoded {
+            muxer_options.as_str()
         } else {
             "{}"
         },

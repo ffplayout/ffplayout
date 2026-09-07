@@ -345,6 +345,12 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../../../../../migrations/00004_output_muxer_options.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         let config = select_configuration(&pool, 1).await.unwrap();
         assert_eq!(config.general_stop_threshold, 17.5);
         assert_eq!(config.mail_subject, "Migrated subject");

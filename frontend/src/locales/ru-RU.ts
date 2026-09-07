@@ -281,6 +281,12 @@ export default {
         hlsSubtitleLanguage: 'Язык субтитров',
         hlsSubtitleDefault: 'Субтитры по умолчанию',
         encodingSettings: 'Настройки кодирования',
+        muxerOptions: 'Параметры мультиплексора',
+        muxerOptionsHelp:
+            'Дополнительные параметры мультиплексора FFmpeg для этого выхода. Для HLS задайте hls_flags равным program_date_time, чтобы добавить EXT-X-PROGRAM-DATE-TIME. Обязательные для ffplayout параметры остаются включёнными.',
+        addMuxerOption: 'Добавить параметр мультиплексора',
+        muxerOptionName: 'Имя параметра',
+        muxerOptionValue: 'Значение',
         videoPreset: 'Предустановка видео',
         rateControl: 'Управление битрейтом',
         videoQuality: 'Качество CRF',

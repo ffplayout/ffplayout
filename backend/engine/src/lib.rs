@@ -51,7 +51,7 @@ pub use utils::{
     },
     ffmpeg_capabilities::{
         FfmpegCapabilities, FfmpegCodec, FfmpegFeatureSet, FfmpegMediaType, FfmpegMuxer,
-        FfmpegOutputTarget, ffmpeg_capabilities,
+        FfmpegOutputTarget, ffmpeg_capabilities, validate_muxer_options,
     },
     logging,
     media_info::{

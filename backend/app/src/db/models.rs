@@ -515,6 +515,7 @@ pub struct Output {
     pub fps: f64,
     pub video_codec: Option<String>,
     pub video_options: String,
+    pub muxer_options: String,
     pub audio_codec: Option<String>,
     pub audio_bitrate: Option<i64>,
 }
@@ -552,6 +553,7 @@ impl Output {
             } else {
                 Default::default()
             },
+            muxer_options: "{}".to_string(),
             audio_codec: encoded.then(|| "aac".to_string()),
             audio_bitrate: encoded.then_some(128),
         }

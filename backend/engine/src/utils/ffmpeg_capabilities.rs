@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     ffi::{CStr, CString, c_void},
     ptr,
     sync::OnceLock,
@@ -277,6 +278,97 @@ fn muxer_for_name(name: &str) -> Option<ffmpeg_next::format::format::Output> {
         .then(|| unsafe { ffmpeg_next::format::format::Output::wrap(muxer.cast_mut()) })
 }
 
+const HLS_COMPATIBLE_OPTIONS: &[&str] = &[
+    "hls_allow_cache",
+    "hls_base_url",
+    "hls_delete_threshold",
+    "hls_flags",
+    "hls_init_time",
+];
+const HLS_COMPATIBLE_FLAGS: &[&str] = &[
+    "independent_segments",
+    "program_date_time",
+    "round_durations",
+];
+
+/// Validates custom muxer options against the linked FFmpeg build without
+/// opening an output. HLS is restricted further because ffplayout owns its
+/// segment layout, numbering, playlist lifecycle, and cleanup.
+pub fn validate_muxer_options(
+    muxer_name: &str,
+    options: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    if options.is_empty() {
+        return Ok(());
+    }
+    if muxer_name == "hls" {
+        validate_hls_compatibility(options)?;
+    }
+
+    let format_name = CString::new(muxer_name)
+        .map_err(|_| format!("invalid FFmpeg output format {muxer_name:?}"))?;
+    let mut context = ptr::null_mut();
+    let result = unsafe {
+        ffi::avformat_alloc_output_context2(
+            &mut context,
+            ptr::null_mut(),
+            format_name.as_ptr(),
+            ptr::null(),
+        )
+    };
+    if result < 0 || context.is_null() {
+        return Err(format!(
+            "FFmpeg output format {muxer_name:?} is not available"
+        ));
+    }
+
+    let validation = (|| {
+        let private = unsafe { (*context).priv_data };
+        if private.is_null() {
+            return Err(format!(
+                "FFmpeg muxer {muxer_name:?} does not support private options"
+            ));
+        }
+        for (key, value) in options {
+            let key_c = CString::new(key.as_str())
+                .map_err(|_| format!("invalid muxer option name {key:?}"))?;
+            let value_c = CString::new(value.as_str())
+                .map_err(|_| format!("invalid value for muxer option {key:?}"))?;
+            let result = unsafe { ffi::av_opt_set(private, key_c.as_ptr(), value_c.as_ptr(), 0) };
+            if result < 0 {
+                return Err(format!(
+                    "invalid FFmpeg {muxer_name} muxer option {key}={value}: {}",
+                    ffmpeg_next::Error::from(result)
+                ));
+            }
+        }
+        Ok(())
+    })();
+
+    unsafe { ffi::avformat_free_context(context) };
+    validation
+}
+
+fn validate_hls_compatibility(options: &BTreeMap<String, String>) -> Result<(), String> {
+    for (key, value) in options {
+        if !HLS_COMPATIBLE_OPTIONS.contains(&key.as_str()) {
+            return Err(format!(
+                "HLS muxer option {key:?} is not compatible with ffplayout's segment management"
+            ));
+        }
+        if key == "hls_flags" {
+            for flag in value.split('+').filter(|flag| !flag.is_empty()) {
+                if !HLS_COMPATIBLE_FLAGS.contains(&flag) {
+                    return Err(format!(
+                        "HLS flag {flag:?} is not compatible with ffplayout's segment management"
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn codec_id_name(codec_id: ffi::AVCodecID) -> String {
     codec::Id::from(codec_id).name().to_string()
 }
@@ -341,10 +433,44 @@ fn non_empty_c_string(value: *const std::ffi::c_char) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::{
         AvVersion, FfmpegCapabilities, FfmpegMediaType, FfmpegOutputTarget, ffmpeg_capabilities,
-        supports_hls_subtitle_name,
+        supports_hls_subtitle_name, validate_muxer_options,
     };
+
+    #[test]
+    fn validates_muxer_option_names_and_values_without_opening_output() {
+        let valid = BTreeMap::from([(
+            "hls_flags".to_string(),
+            "program_date_time+independent_segments".to_string(),
+        )]);
+        assert!(validate_muxer_options("hls", &valid).is_ok());
+
+        let typo = BTreeMap::from([("hls_flgs".to_string(), "program_date_time".to_string())]);
+        assert!(validate_muxer_options("hls", &typo).is_err());
+
+        let invalid_value = BTreeMap::from([(
+            "hls_delete_threshold".to_string(),
+            "not-a-number".to_string(),
+        )]);
+        assert!(validate_muxer_options("hls", &invalid_value).is_err());
+    }
+
+    #[test]
+    fn rejects_hls_options_and_flags_that_break_segment_management() {
+        for options in [
+            BTreeMap::from([("hls_start_number_source".to_string(), "epoch".to_string())]),
+            BTreeMap::from([("hls_flags".to_string(), "single_file".to_string())]),
+            BTreeMap::from([(
+                "hls_fmp4_init_filename".to_string(),
+                "../../init.mp4".to_string(),
+            )]),
+        ] {
+            assert!(validate_muxer_options("hls", &options).is_err());
+        }
+    }
 
     #[test]
     fn detects_hls_subtitle_name_support_from_avformat_version() {

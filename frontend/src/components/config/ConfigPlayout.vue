@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import GenericModal from '@/components/utils/GenericModal.vue'
@@ -36,6 +36,8 @@ const extensions = computed({
 })
 
 const output = computed(() => configStore.playout.output.mode)
+const newMuxerOptionName = ref('')
+const newMuxerOptionValue = ref('')
 
 const ingestPort = computed<number | null>({
     get() {
@@ -75,6 +77,9 @@ const outputId = computed({
             return
         }
 
+        newMuxerOptionName.value = ''
+        newMuxerOptionValue.value = ''
+
         configStore.playout.output.id = selected.id
         configStore.playout.output.mode = outputMode(selected.name)
         configStore.playout.output.stream_url = selected.stream_url
@@ -92,6 +97,11 @@ const outputId = computed({
             configStore.playout.output.video_options = JSON.parse(selected.video_options || '{}')
         } catch {
             configStore.playout.output.video_options = {}
+        }
+        try {
+            configStore.playout.output.muxer_options = JSON.parse(selected.muxer_options || '{}')
+        } catch {
+            configStore.playout.output.muxer_options = {}
         }
         configStore.playout.output.audio_codec = selected.audio_codec ?? 'aac'
         configStore.playout.output.audio_bitrate = selected.audio_bitrate ?? 128
@@ -178,6 +188,45 @@ function setVideoOption(key: string, value: string | number) {
         ...configStore.playout.output.video_options,
         [key]: String(value),
     }
+}
+
+function addMuxerOption() {
+    const options = configStore.playout.output.muxer_options
+    const key = newMuxerOptionName.value.trim()
+    const value = newMuxerOptionValue.value.trim()
+    if (!key || !value || key in options) {
+        return
+    }
+    configStore.playout.output.muxer_options = { ...options, [key]: value }
+    newMuxerOptionName.value = ''
+    newMuxerOptionValue.value = ''
+}
+
+function renameMuxerOption(previousKey: string, event: Event) {
+    const input = event.target as HTMLInputElement
+    const key = input.value.trim()
+    const options = { ...configStore.playout.output.muxer_options }
+    if (!key || (key !== previousKey && key in options)) {
+        input.value = previousKey
+        return
+    }
+    const value = options[previousKey]
+    delete options[previousKey]
+    options[key] = value
+    configStore.playout.output.muxer_options = options
+}
+
+function setMuxerOption(key: string, value: string) {
+    configStore.playout.output.muxer_options = {
+        ...configStore.playout.output.muxer_options,
+        [key]: value,
+    }
+}
+
+function removeMuxerOption(key: string) {
+    const options = { ...configStore.playout.output.muxer_options }
+    delete options[key]
+    configStore.playout.output.muxer_options = options
 }
 
 function eventValue(event: Event): string {
@@ -785,6 +834,60 @@ async function onSubmitPlayout() {
                                 class="input input-sm w-full"
                             />
                         </label>
+                    </div>
+                </fieldset>
+
+                <fieldset v-if="output === 'hls' || output === 'stream'" class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.muxerOptions') }}</legend>
+                    <p class="fieldset-label items-baseline mb-2">{{ t('config.muxerOptionsHelp') }}</p>
+                    <div
+                        v-for="[key, value] in Object.entries(configStore.playout.output.muxer_options)"
+                        :key="key"
+                        class="flex flex-wrap items-center gap-2 mb-2"
+                    >
+                        <input
+                            :value="key"
+                            type="text"
+                            name="muxer_option_key"
+                            class="input input-sm w-48"
+                            @change="renameMuxerOption(key, $event)"
+                        />
+                        <input
+                            :value="value"
+                            type="text"
+                            name="muxer_option_value"
+                            class="input input-sm grow"
+                            @input="setMuxerOption(key, eventValue($event))"
+                        />
+                        <button class="btn btn-sm btn-ghost" type="button" @click="removeMuxerOption(key)">
+                            {{ t('config.remove') }}
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <input
+                            v-model="newMuxerOptionName"
+                            type="text"
+                            class="input input-sm w-48"
+                            :placeholder="t('config.muxerOptionName')"
+                        />
+                        <input
+                            v-model="newMuxerOptionValue"
+                            type="text"
+                            class="input input-sm grow"
+                            :placeholder="t('config.muxerOptionValue')"
+                        />
+                        <button
+                            class="btn btn-sm"
+                            type="button"
+                            :disabled="
+                                !newMuxerOptionName.trim() ||
+                                !newMuxerOptionValue.trim() ||
+                                newMuxerOptionName.trim() in configStore.playout.output.muxer_options
+                            "
+                            @click="addMuxerOption"
+                        >
+                            {{ t('config.addMuxerOption') }}
+                        </button>
                     </div>
                 </fieldset>
 

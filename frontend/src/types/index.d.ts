@@ -36,6 +36,7 @@ declare global {
         fps: number
         video_codec: string | null
         video_options: string
+        muxer_options: string
         audio_codec: string | null
         audio_bitrate: number | null
         channel_id: number

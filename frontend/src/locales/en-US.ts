@@ -283,6 +283,12 @@ export default {
         hlsSubtitleLanguage: 'Subtitle language',
         hlsSubtitleDefault: 'Default subtitle',
         encodingSettings: 'Encoding settings',
+        muxerOptions: 'Muxer options',
+        muxerOptionsHelp:
+            'Additional FFmpeg muxer options for this output. For HLS, set hls_flags to program_date_time to emit EXT-X-PROGRAM-DATE-TIME. Required ffplayout options remain enforced.',
+        addMuxerOption: 'Add Muxer Option',
+        muxerOptionName: 'Option name',
+        muxerOptionValue: 'Value',
         videoCodec: 'Video codec',
         audioCodec: 'Audio codec',
         videoPreset: 'Video preset',
