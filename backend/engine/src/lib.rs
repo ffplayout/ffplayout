@@ -53,6 +53,7 @@ pub use utils::{
         FfmpegCapabilities, FfmpegCodec, FfmpegFeatureSet, FfmpegMediaType, FfmpegMuxer,
         FfmpegOutputTarget, ffmpeg_capabilities, validate_muxer_options,
     },
+    helper::is_live_input,
     logging,
     media_info::{
         AudioStream as EngineAudioStream, MediaInfo, MediaProbe as EngineMediaProbe, ProbeFormat,

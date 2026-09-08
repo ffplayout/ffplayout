@@ -125,9 +125,12 @@ async fn create_channel_records(
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
     let mut transaction = conn.begin().await?;
-    let configured_ingest_urls = sqlx::query_scalar::<_, String>("SELECT url FROM config_ingest")
-        .fetch_all(&mut *transaction)
-        .await?;
+    let configured_ingest_urls = sqlx::query_scalar::<_, String>(
+        "SELECT identifier FROM config_live_input
+         WHERE backend = 'rtmp' AND takeover_mode = 'connection'",
+    )
+    .fetch_all(&mut *transaction)
+    .await?;
     let ingest_url = default_ingest_url(next_available_ingest_port(&configured_ingest_urls)?);
     let channel = handles::insert_channel(&mut *transaction, target_channel).await?;
     let outputs = [
@@ -138,6 +141,7 @@ async fn create_channel_records(
 
     let config_id =
         handles::insert_configuration(&mut transaction, channel.id, &ingest_url).await?;
+    handles::insert_source(&mut transaction, config_id).await?;
     handles::new_channel_presets(&mut *transaction, config_id).await?;
 
     for (index, output) in outputs.iter().enumerate() {
@@ -330,18 +334,20 @@ mod tests {
         .unwrap();
 
         let second_url: String = sqlx::query_scalar(
-            "SELECT ingest.url FROM config
-                JOIN config_ingest ingest ON ingest.config_id = config.id
-                WHERE config.channel_id = $1",
+            "SELECT ingest.identifier FROM config
+                JOIN config_live_input ingest ON ingest.config_id = config.id
+                WHERE ingest.backend = 'rtmp' AND ingest.takeover_mode = 'connection'
+                  AND config.channel_id = $1",
         )
         .bind(second.id)
         .fetch_one(&pool)
         .await
         .unwrap();
         let third_url: String = sqlx::query_scalar(
-            "SELECT ingest.url FROM config
-                JOIN config_ingest ingest ON ingest.config_id = config.id
-                WHERE config.channel_id = $1",
+            "SELECT ingest.identifier FROM config
+                JOIN config_live_input ingest ON ingest.config_id = config.id
+                WHERE ingest.backend = 'rtmp' AND ingest.takeover_mode = 'connection'
+                  AND config.channel_id = $1",
         )
         .bind(third.id)
         .fetch_one(&pool)
@@ -351,8 +357,9 @@ mod tests {
         assert_eq!(second_url, "rtmp://127.0.0.1:1937/live/stream");
         assert_eq!(third_url, "rtmp://127.0.0.1:1938/live/stream");
         sqlx::query(
-            "UPDATE config_ingest SET enable = 1 WHERE config_id IN
-            (SELECT id FROM config WHERE channel_id IN (1, $1))",
+            "UPDATE config_live_input SET enabled = 1 WHERE backend = 'rtmp'
+             AND takeover_mode = 'connection'
+             AND config_id IN (SELECT id FROM config WHERE channel_id IN (1, $1))",
         )
         .bind(second.id)
         .execute(&pool)
@@ -398,6 +405,14 @@ mod tests {
             .await
             .unwrap();
 
+        sqlx::query(
+            "INSERT INTO config_live_input (config_id, priority, backend) VALUES ($1, 50, 'ndi')",
+        )
+        .bind(config_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
         handles::delete_channel(&pool, &channel.id).await.unwrap();
 
         for table in [
@@ -408,7 +423,8 @@ mod tests {
             "config_logging",
             "config_processing",
             "config_audio",
-            "config_ingest",
+            "config_source",
+            "config_live_input",
             "config_playlist",
             "config_storage",
             "config_task",

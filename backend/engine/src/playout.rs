@@ -16,7 +16,7 @@ use crate::{
     utils::{
         config::{OutputConfig, TextOverlayState},
         ffmpeg::{make_video_frame_writable, reference_video_frame},
-        helper::{even, open_media_input},
+        helper::{even, is_live_input, open_media_input},
     },
 };
 
@@ -135,6 +135,10 @@ pub(crate) fn play_clip_with_external_audio<O: FrameOutput>(
     logo_fade: LogoFade,
     playback_control: &PlaybackControl,
 ) -> Result<()> {
+    let source_is_live = is_live_input(path);
+    // Playlist timing can carry a source offset. Live transports have no
+    // stable timeline to seek in, so always begin at their current edge.
+    let source_seek_seconds = (!source_is_live).then_some(seek_seconds).flatten();
     let logo_fade_plan = LogoFadePlan::new(timeline.video_pts, duration_seconds, cfg, logo_fade);
     let mut external_audio = external_audio_path
         .map(|audio_path| {
@@ -143,14 +147,14 @@ pub(crate) fn play_clip_with_external_audio<O: FrameOutput>(
         })
         .transpose()?;
 
-    let result = if let Some(duration_seconds) = duration_seconds.filter(|duration| *duration > 0.0)
-    {
+    let result = if should_loop_input(source_is_live, duration_seconds) {
+        let duration_seconds = duration_seconds.expect("checked by should_loop_input");
         play_looped_clip(
             path,
             cfg,
             timeline,
             output,
-            seek_seconds,
+            source_seek_seconds,
             duration_seconds,
             subtitles_media_path,
             logo_fade_plan,
@@ -166,7 +170,7 @@ pub(crate) fn play_clip_with_external_audio<O: FrameOutput>(
             timeline,
             output,
             InputPlaybackOptions {
-                seek_seconds,
+                seek_seconds: source_seek_seconds,
                 duration_seconds,
                 subtitles_media_path,
                 logo_fade_plan,
@@ -181,6 +185,10 @@ pub(crate) fn play_clip_with_external_audio<O: FrameOutput>(
     }
 
     result
+}
+
+fn should_loop_input(source_is_live: bool, duration_seconds: Option<f64>) -> bool {
+    !source_is_live && duration_seconds.is_some_and(|duration| duration > 0.0)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -452,7 +460,9 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     options: InputPlaybackOptions<'_>,
     mut external_audio: Option<&mut ExternalAudioInput>,
 ) -> Result<()> {
-    let seek_seconds = options.seek_seconds;
+    let seek_seconds = (!is_live_input(label))
+        .then_some(options.seek_seconds)
+        .flatten();
     let seek_us = seek_seconds.map(seconds_to_microseconds).unwrap_or(0);
     let (has_video, embedded_audio, video_has_invalid_time_base, audio_has_invalid_time_base) = {
         let streams = ictx.streams();
@@ -1592,6 +1602,7 @@ impl ExternalAudioInput {
     ) -> Result<Self> {
         let mut input = open_media_input(path)?;
         let container_duration_us = (input.duration() > 0).then_some(input.duration());
+        let seek_seconds = (!is_live_input(path)).then_some(seek_seconds).flatten();
         if let Some(seek_seconds) = seek_seconds {
             seek_input(&mut input, seek_seconds)
                 .with_context(|| format!("failed to seek external audio {path}"))?;
@@ -2212,9 +2223,9 @@ mod tests {
         AudioDecoder, FrameRateConverter, LogoFade, MediaFadePlan, PlaybackControl, Rational,
         Timeline, apply_audio_fade, fallback_video_time_base, fit_dimensions, has_valid_time_base,
         padding_to_sync, parse_duration_us, play_clip, play_clip_with_external_audio,
-        resample_audio_frame, should_play_loop_iteration, single_frame_repeat_frames,
-        synchronize_after_skip, synchronize_declared_stream_ends, video_frame_needs_write,
-        write_padding_video_frames,
+        resample_audio_frame, should_loop_input, should_play_loop_iteration,
+        single_frame_repeat_frames, synchronize_after_skip, synchronize_declared_stream_ends,
+        video_frame_needs_write, write_padding_video_frames,
     };
     use crate::{
         output::FrameOutput,
@@ -2230,6 +2241,12 @@ mod tests {
         events: Vec<&'static str>,
         reset_on_skip: bool,
         skip_target: Option<(i64, i64)>,
+    }
+
+    #[test]
+    fn live_transports_are_never_looped_to_fill_a_playlist_slot() {
+        assert!(!should_loop_input(true, Some(60.0)));
+        assert!(should_loop_input(false, Some(60.0)));
     }
 
     impl FrameOutput for RecordingOutput {

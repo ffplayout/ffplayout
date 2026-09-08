@@ -43,6 +43,32 @@ pub type SilenceDetection = ff_engine::SilenceDetection;
 /// Still images have no inherent media duration. Keep this aligned with the
 /// duration assigned by the playlist editor when an image is dropped into it.
 pub const DEFAULT_IMAGE_DURATION: f64 = 10.0;
+/// Fallback playlist slot for a live transport without an explicit `out`.
+/// A bounded slot lets the schedule advance and reconnect to a source that
+/// ends unexpectedly; operators can always choose a longer explicit `out`.
+pub const DEFAULT_LIVE_SOURCE_DURATION: f64 = 60.0;
+
+pub(crate) fn is_live_source(source: &str) -> bool {
+    ff_engine::is_live_input(source)
+}
+
+/// Live transports have no stable source timeline. Playlist `in` is therefore
+/// ignored and an omitted `out` becomes a finite scheduling slot. Since a
+/// live transport has no meaningful file duration, the slot is also its
+/// effective duration; this prevents a playlist `out` beyond that duration.
+pub(crate) fn normalize_live_source_timing(media: &mut Media) {
+    if !is_live_source(&media.source) {
+        return;
+    }
+
+    media.seek = 0.0;
+    if !media.out.is_finite() || media.out <= 0.0 {
+        media.out = DEFAULT_LIVE_SOURCE_DURATION;
+    }
+    if !media.duration.is_finite() || media.duration < media.out {
+        media.duration = media.out;
+    }
+}
 
 pub(crate) fn is_image_source(source: &str) -> bool {
     let source = source.split('?').next().unwrap_or(source);
@@ -241,6 +267,7 @@ pub struct Media {
 
 impl Media {
     pub async fn new(index: usize, src: &str, do_probe: bool) -> Self {
+        let source_is_live = is_live_source(src);
         let mut duration = if is_image_source(src) {
             DEFAULT_IMAGE_DURATION
         } else {
@@ -249,12 +276,17 @@ impl Media {
         let mut probe = None;
 
         if do_probe
+            && !source_is_live
             && (is_remote(src) || Path::new(src).is_file())
             && let Ok(p) = probe_media(src).await
         {
             probe = Some(p.clone());
 
             duration = p.format.duration.unwrap_or_default();
+        }
+
+        if source_is_live {
+            duration = DEFAULT_LIVE_SOURCE_DURATION;
         }
 
         Self {
@@ -281,6 +313,7 @@ impl Media {
 
     pub async fn add_probe(&mut self, check_audio: bool) -> Result<(), String> {
         let mut errors = vec![];
+        let source_is_live = is_live_source(&self.source);
 
         if self.duration <= 0.0 && is_image_source(&self.source) {
             // A scheduled image may have an explicit `out` duration in a
@@ -292,7 +325,7 @@ impl Media {
             }
         }
 
-        if self.probe.is_none() {
+        if !source_is_live && self.probe.is_none() {
             match probe_media(&self.source).await {
                 Ok(probe) => {
                     self.probe = Some(probe.clone());
@@ -316,6 +349,7 @@ impl Media {
         if check_audio
             && !self.audio.is_empty()
             && self.probe_audio.is_none()
+            && !is_live_source(&self.audio)
             && (is_remote(&self.audio) || Path::new(&self.audio).is_file())
         {
             match probe_media(&self.audio).await {
@@ -577,7 +611,7 @@ pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
 }
 
 pub fn is_remote(path: &str) -> bool {
-    Regex::new(r"^(https?|rtmps?|rts?p|udp|tcp|srt)://.*")
+    Regex::new(r"^(https?|rtmps?|rts?p|udp|tcp|srt|rist)://.*")
         .unwrap()
         .is_match(&path.to_lowercase())
 }
@@ -723,7 +757,10 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{DEFAULT_IMAGE_DURATION, Media, custom_format, probe_media};
+    use super::{
+        DEFAULT_IMAGE_DURATION, DEFAULT_LIVE_SOURCE_DURATION, Media, custom_format, is_remote,
+        normalize_live_source_timing, probe_media,
+    };
 
     #[tokio::test]
     async fn images_receive_a_default_playout_duration() {
@@ -731,6 +768,36 @@ mod tests {
 
         assert_eq!(media.duration, DEFAULT_IMAGE_DURATION);
         assert_eq!(media.out, DEFAULT_IMAGE_DURATION);
+    }
+
+    #[tokio::test]
+    async fn live_sources_receive_a_bounded_default_without_probing() {
+        let media = Media::new(0, "srt://example.invalid:9000", true).await;
+
+        assert_eq!(media.duration, DEFAULT_LIVE_SOURCE_DURATION);
+        assert_eq!(media.out, DEFAULT_LIVE_SOURCE_DURATION);
+        assert!(media.probe.is_none());
+    }
+
+    #[test]
+    fn live_sources_ignore_playlist_seek_and_keep_explicit_out() {
+        let mut media = Media {
+            source: "udp://239.0.0.1:1234".to_string(),
+            seek: 42.0,
+            out: 120.0,
+            ..Media::default()
+        };
+
+        normalize_live_source_timing(&mut media);
+
+        assert_eq!(media.seek, 0.0);
+        assert_eq!(media.out, 120.0);
+        assert_eq!(media.duration, 120.0);
+    }
+
+    #[test]
+    fn rist_sources_are_treated_as_remote_urls() {
+        assert!(is_remote("rist://example.invalid:8193"));
     }
 
     #[tokio::test]

@@ -10,7 +10,10 @@ use tokio::{fs::File, io::AsyncReadExt, sync::Mutex};
 use crate::{
     player::{
         controller::ChannelManager,
-        utils::{Media, PlayoutConfig, is_remote, modified_time, time_from_header},
+        utils::{
+            Media, PlayoutConfig, is_remote, modified_time, normalize_live_source_timing,
+            time_from_header,
+        },
     },
     utils::config::DUMMY_LEN,
 };
@@ -76,6 +79,7 @@ pub fn set_defaults(config: &PlayoutConfig, playlist: &mut JsonPlaylist) {
 
     // Add extra values to every media clip
     for (i, item) in playlist.program.iter_mut().enumerate() {
+        normalize_live_source_timing(item);
         item.begin = Some(start_sec);
         item.index = Some(i);
         item.last_ad = false;
@@ -150,6 +154,7 @@ pub async fn read_json(
                     playlist.modified = Some(time.to_string());
                 }
 
+                set_defaults(config, &mut playlist);
                 let list_clone = playlist.clone();
 
                 if !config.general.skip_validation {
@@ -157,8 +162,6 @@ pub async fn read_json(
                         .spawn_validation(config_clone, current_list, list_clone, is_alive)
                         .await;
                 }
-
-                set_defaults(config, &mut playlist);
 
                 return playlist;
             }
@@ -201,6 +204,7 @@ pub async fn read_json(
         playlist.start_sec = Some(start_sec);
         playlist.modified = modified;
 
+        set_defaults(config, &mut playlist);
         let list_clone = playlist.clone();
 
         if !config.general.skip_validation {
@@ -208,8 +212,6 @@ pub async fn read_json(
                 .spawn_validation(config_clone, current_list, list_clone, is_alive)
                 .await;
         }
-
-        set_defaults(config, &mut playlist);
 
         return playlist;
     }
