@@ -5,7 +5,6 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
     str::FromStr,
-    sync::atomic::Ordering,
 };
 
 use chrono::{TimeDelta, prelude::*};
@@ -158,7 +157,7 @@ pub async fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
         .unwrap_or_else(Media::default);
     let channel = manager.channel.lock().await.clone();
     let config = manager.config.read().await.processing.clone();
-    let ingest_is_alive = manager.ingest_is_alive.load(Ordering::SeqCst);
+    let ingest_is_alive = manager.playback_control.lock().await.live_active();
 
     let mut data_map = Map::new();
     let current_time = time_in_seconds(&channel.timezone);

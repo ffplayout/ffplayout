@@ -47,11 +47,11 @@ impl fmt::Display for PlaybackRestart {
 
 impl Error for PlaybackRestart {}
 
-fn check_playback_control(playback_control: &PlaybackControl) -> Result<()> {
-    if playback_control.take_restart() {
+pub(crate) fn check_playback_control(playback_control: &PlaybackControl) -> Result<()> {
+    if playback_control.is_shutdown() || playback_control.take_restart() {
         return Err(PlaybackRestart.into());
     }
-    if playback_control.take_skip_current() {
+    if playback_control.take_skip_current() || playback_control.take_navigation() {
         return Err(PlaybackSkipped.into());
     }
     Ok(())

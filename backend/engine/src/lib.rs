@@ -1,8 +1,5 @@
 use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -23,6 +20,7 @@ mod benchmark;
 mod compositor;
 mod input;
 mod output;
+mod playback_control;
 mod playout;
 mod utils;
 
@@ -38,16 +36,18 @@ pub use input::live::{LiveReceiver, spawn_rtmp_listener};
 pub use output::desktop::thread::run_on_main_thread as run_desktop_on_main_thread;
 pub use output::resolved_variant_playlist_path;
 use output::{FrameOutput, Output, PlaybackStopped};
+pub use playback_control::{LiveSession, NavigationBlocked, PlaybackControl, PlaylistNavigation};
 use playout::{PlaybackRestart, PlaybackSkipped, Timeline, write_fallback};
 pub use utils::{
     clock,
     config::{
-        DesktopControlCallback, DesktopControlCommand, HlsSubtitle, HlsVariant, LogLevel,
-        LogoConfig, OutputConfig, OutputSize, RecordingConfig, RecordingEncodeConfig, RgbaColor,
-        StreamType, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition, TextScroll,
-        TextWeight, VideoOptionChoice, VideoOptionKind, VideoOptionSpec, VideoOptionVisibility,
-        VideoOptions, audio_codec_uses_bitrate, validate_video_options, video_codec_uses_bitrate,
-        video_option_defaults, video_option_specs,
+        AudioOptions, DesktopControlCallback, DesktopControlCommand, HlsSubtitle, HlsVariant,
+        LogLevel, LogoConfig, OutputConfig, OutputSize, RecordingConfig, RecordingEncodeConfig,
+        RgbaColor, StreamType, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition,
+        TextScroll, TextWeight, VideoOptionChoice, VideoOptionKind, VideoOptionSpec,
+        VideoOptionVisibility, VideoOptions, audio_codec_uses_bitrate, validate_audio_options,
+        validate_video_options, video_codec_uses_bitrate, video_option_defaults,
+        video_option_specs,
     },
     ffmpeg_capabilities::{
         FfmpegCapabilities, FfmpegCodec, FfmpegFeatureSet, FfmpegMediaType, FfmpegMuxer,
@@ -95,31 +95,6 @@ pub struct Playout {
     playback_control: PlaybackControl,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct PlaybackControl {
-    skip_current: Arc<AtomicBool>,
-    restart: Arc<AtomicBool>,
-}
-
-impl PlaybackControl {
-    pub fn skip_current(&self) {
-        self.skip_current.store(true, Ordering::SeqCst);
-    }
-
-    /// Stops the current playout run so its owner can create a fresh output.
-    pub fn restart_playout(&self) {
-        self.restart.store(true, Ordering::SeqCst);
-    }
-
-    pub(crate) fn take_skip_current(&self) -> bool {
-        self.skip_current.swap(false, Ordering::SeqCst)
-    }
-
-    pub(crate) fn take_restart(&self) -> bool {
-        self.restart.swap(false, Ordering::SeqCst)
-    }
-}
-
 #[derive(Clone)]
 pub struct HlsHealth {
     last_muxed_at: Arc<std::sync::Mutex<Instant>>,
@@ -159,7 +134,7 @@ struct PlayOptions<'a> {
 #[cfg(feature = "tokio")]
 pub struct AsyncPlayout {
     commands: mpsc::Sender<AsyncCommand>,
-    completion: WorkerCompletion,
+    completion: Option<WorkerCompletion>,
     playback_control: PlaybackControl,
     hls_health: Option<HlsHealth>,
 }
@@ -244,16 +219,17 @@ impl AsyncPlayout {
             }
         });
 
+        // Own the cancellation guard before the await: opening can itself be cancelled.
+        let playout = Self {
+            commands,
+            completion: Some(WorkerCompletion::Thread(worker)),
+            playback_control,
+            hls_health: None,
+        };
         ready_rx
             .await
             .context("playout worker stopped during open")??;
-
-        Ok(Self {
-            commands,
-            completion: WorkerCompletion::Thread(worker),
-            playback_control,
-            hls_health: None,
-        })
+        Ok(playout)
     }
 
     pub fn playback_control(&self) -> PlaybackControl {
@@ -380,8 +356,8 @@ impl AsyncPlayout {
             .context("playout worker stopped while starting RTMP live")?
     }
 
-    pub async fn finish(self) -> Result<()> {
-        self.playback_control.skip_current();
+    pub async fn finish(mut self) -> Result<()> {
+        self.playback_control.request_shutdown();
         let (response, result) = oneshot::channel();
         self.commands
             .send(AsyncCommand::Finish { response })
@@ -391,15 +367,25 @@ impl AsyncPlayout {
             .await
             .context("playout worker stopped during finish")?;
 
-        match self.completion {
-            WorkerCompletion::Thread(worker) => {
-                if worker.join().is_err() && finish_result.is_ok() {
-                    return Err(anyhow!("playout worker panicked during finish"));
-                }
-            }
+        if let Some(WorkerCompletion::Thread(worker)) = self.completion.take()
+            && worker.join().is_err()
+            && finish_result.is_ok()
+        {
+            return Err(anyhow!("playout worker panicked during finish"));
         }
 
         finish_result
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl Drop for AsyncPlayout {
+    fn drop(&mut self) {
+        if self.completion.is_some() {
+            self.playback_control.request_shutdown();
+            let (response, _) = oneshot::channel();
+            let _ = self.commands.send(AsyncCommand::Finish { response });
+        }
     }
 }
 
@@ -428,8 +414,13 @@ enum AsyncCommand {
 #[cfg(feature = "tokio")]
 fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<AsyncCommand>) {
     let mut live = None;
+    let mut finish_response = None;
 
     while let Ok(command) = commands.recv() {
+        if playout.playback_control.is_shutdown() && !matches!(command, AsyncCommand::Finish { .. })
+        {
+            continue;
+        }
         match command {
             AsyncCommand::Play {
                 path,
@@ -468,10 +459,19 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 let _ = response.send(Ok(()));
             }
             AsyncCommand::Finish { response } => {
-                let _ = response.send(playout.finish());
+                finish_response = Some(response);
                 break;
             }
         }
+    }
+    // Also finalize after cancellation or channel disconnection, and abort the
+    // listener before flushing output so it cannot retain more decoded frames.
+    drop(live);
+    let result = playout.finish();
+    if let Some(response) = finish_response {
+        let _ = response.send(result);
+    } else if let Err(error) = result {
+        log::warn!("failed to finalize abandoned playout: {error:#}");
     }
 }
 
@@ -660,7 +660,7 @@ impl Playout {
             }
             let operation = self.output.run_desktop(benchmark, move |output| {
                 let result = if let Some(live) = live_for_worker.as_mut() {
-                    let mut output = LiveOverrideOutput::new(output, live);
+                    let mut output = LiveOverrideOutput::new(output, live, &playback_control);
                     play_to_output(
                         &path,
                         &config,
@@ -710,7 +710,8 @@ impl Playout {
         }
 
         if let Some(live) = live.as_mut() {
-            let mut output = LiveOverrideOutput::new(&mut self.output, live);
+            let mut output =
+                LiveOverrideOutput::new(&mut self.output, live, &self.playback_control);
             play_to_output(
                 path,
                 &self.config,
@@ -816,5 +817,68 @@ mod tests {
         assert!(control.take_restart());
         assert!(!control.take_skip_current());
         assert!(!control.take_restart());
+    }
+
+    #[cfg(feature = "tokio")]
+    #[test]
+    fn dropping_async_playout_discards_queued_work_and_finishes_worker() {
+        use super::*;
+        let directory =
+            std::env::temp_dir().join(format!("ffplayout-drop-worker-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("output.mkv");
+        let playback_control = PlaybackControl::default();
+        let worker_control = playback_control.clone();
+        let (commands, command_rx) = mpsc::channel();
+        let (release, gate) = mpsc::channel();
+        let (done, finished) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            // Wait until the caller has dropped its owner with queued work.
+            gate.recv().unwrap();
+            let mut playout = Playout::open(
+                path.to_str().unwrap(),
+                OutputConfig::new(32, 32, 25, 48_000),
+                1.0,
+            )
+            .unwrap();
+            playout.playback_control = worker_control;
+            run_async_playout_worker(playout, command_rx);
+            done.send(()).unwrap();
+        });
+        let owner = AsyncPlayout {
+            commands,
+            completion: Some(WorkerCompletion::Thread(worker)),
+            playback_control: playback_control.clone(),
+            hls_health: None,
+        };
+        let mut responses = Vec::new();
+        for _ in 0..2 {
+            let (response, result) = oneshot::channel();
+            owner
+                .commands
+                .send(AsyncCommand::Play {
+                    path: String::new(),
+                    seek_seconds: None,
+                    duration_seconds: Some(3600.0),
+                    external_audio_path: None,
+                    subtitles_media_path: None,
+                    logo_fade: LogoFade::default(),
+                    playout_rate: 1.0,
+                    response,
+                })
+                .unwrap();
+            responses.push(result);
+        }
+        drop(owner);
+        assert!(playback_control.is_shutdown());
+        release.send(()).unwrap();
+        finished.recv_timeout(Duration::from_secs(5)).unwrap();
+        for mut response in responses {
+            assert!(matches!(
+                response.try_recv(),
+                Err(oneshot::error::TryRecvError::Closed)
+            ));
+        }
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

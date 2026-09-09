@@ -22,6 +22,37 @@ use crate::{
 
 static TEXT_RENDERER: OnceLock<Mutex<TextRenderer>> = OnceLock::new();
 
+const MAX_GLYPH_CACHE_ENTRIES: usize = 4096;
+const MAX_GLYPH_CACHE_BYTES: usize = 32 * 1024 * 1024;
+
+// Bound retained raster data across changing fonts, sizes and subtitle styles.
+// A single draw may temporarily exceed the budget; release it immediately after.
+fn trim_glyph_cache(cache: &mut SwashCache) {
+    let entries = cache
+        .image_cache
+        .len()
+        .saturating_add(cache.outline_command_cache.len());
+    let image_bytes = cache
+        .image_cache
+        .values()
+        .flatten()
+        .fold(0usize, |total, image| {
+            total.saturating_add(image.data.capacity())
+        });
+    let outline_bytes = cache
+        .outline_command_cache
+        .values()
+        .flatten()
+        .fold(0usize, |total, commands| {
+            total.saturating_add(std::mem::size_of_val(commands.as_ref()))
+        });
+    if entries > MAX_GLYPH_CACHE_ENTRIES
+        || image_bytes.saturating_add(outline_bytes) > MAX_GLYPH_CACHE_BYTES
+    {
+        *cache = SwashCache::new();
+    }
+}
+
 struct TextRenderer {
     font_system: FontSystem,
     swash_cache: SwashCache,
@@ -164,6 +195,7 @@ fn render_text_bitmap(
         },
     );
 
+    trim_glyph_cache(swash_cache);
     let Some(bounds) = bounds.finish() else {
         return Err(anyhow!("text bitmap produced no visible pixels"));
     };
@@ -419,6 +451,7 @@ fn render_text_overlay(
         },
     );
 
+    trim_glyph_cache(swash_cache);
     let Some(mut bounds) = bounds.finish() else {
         return Err(anyhow!("text overlay produced no visible pixels"));
     };
@@ -660,5 +693,46 @@ impl ResolvedBounds {
         self.y = y;
         self.width = right.saturating_sub(x).max(1);
         self.height = bottom.saturating_sub(y).max(1);
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    fn key(glyph: u16) -> cosmic_text::CacheKey {
+        cosmic_text::CacheKey::new(
+            Default::default(),
+            glyph,
+            24.0,
+            (0.0, 0.0),
+            Weight::NORMAL,
+            cosmic_text::CacheKeyFlags::empty(),
+        )
+        .0
+    }
+
+    #[test]
+    fn retains_small_cache_but_releases_excess_entries() {
+        let mut cache = SwashCache::new();
+        cache.image_cache.insert(key(0), None);
+        trim_glyph_cache(&mut cache);
+        assert_eq!(cache.image_cache.len(), 1);
+        for glyph in 1..=MAX_GLYPH_CACHE_ENTRIES {
+            cache.image_cache.insert(key(glyph as u16), None);
+        }
+        trim_glyph_cache(&mut cache);
+        assert!(cache.image_cache.is_empty());
+        assert!(cache.outline_command_cache.is_empty());
+    }
+
+    #[test]
+    fn releases_large_raster_even_with_few_entries() {
+        let mut cache = SwashCache::new();
+        let mut image = cosmic_text::SwashImage::new();
+        image.data.resize(MAX_GLYPH_CACHE_BYTES + 1, 0);
+        cache.image_cache.insert(key(0), Some(image));
+        trim_glyph_cache(&mut cache);
+        assert!(cache.image_cache.is_empty());
     }
 }

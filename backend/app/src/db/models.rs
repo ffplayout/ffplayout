@@ -492,6 +492,7 @@ pub struct Recording {
     pub video_codec: String,
     pub video_options: String,
     pub audio_codec: String,
+    pub audio_options: String,
     pub audio_bitrate: i64,
 }
 
@@ -517,6 +518,7 @@ pub struct Output {
     pub video_options: String,
     pub muxer_options: String,
     pub audio_codec: Option<String>,
+    pub audio_options: String,
     pub audio_bitrate: Option<i64>,
 }
 
@@ -555,6 +557,7 @@ impl Output {
             },
             muxer_options: "{}".to_string(),
             audio_codec: encoded.then(|| "aac".to_string()),
+            audio_options: "{}".to_string(),
             audio_bitrate: encoded.then_some(128),
         }
     }

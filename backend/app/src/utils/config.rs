@@ -21,6 +21,7 @@ use crate::{
 };
 
 pub const DUMMY_LEN: f64 = 60.0;
+pub(crate) const ENGINE_AUDIO_SAMPLE_RATE: u32 = 48_000;
 
 #[derive(Debug, Clone, Default, Eq, PartialEq, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
@@ -216,6 +217,8 @@ pub struct Recording {
     pub video_codec: String,
     pub video_options: BTreeMap<String, String>,
     pub audio_codec: String,
+    #[serde(default)]
+    pub audio_options: BTreeMap<String, String>,
     pub audio_bitrate: u32,
 }
 
@@ -241,6 +244,7 @@ impl Recording {
             video_options: serde_json::from_str(&recording.video_options)
                 .unwrap_or_else(|_| ff_engine::video_option_defaults(&recording.video_codec)),
             audio_codec: recording.audio_codec.clone(),
+            audio_options: serde_json::from_str(&recording.audio_options).unwrap_or_default(),
             audio_bitrate: u32::try_from(recording.audio_bitrate).unwrap_or(128),
         }
     }
@@ -283,6 +287,12 @@ impl Recording {
                 return Err("unsupported recording audio codec".to_string());
             }
             ff_engine::validate_video_options(&self.video_codec, &self.video_options)?;
+            ff_engine::validate_audio_options(
+                &self.audio_codec,
+                &self.audio_options,
+                ENGINE_AUDIO_SAMPLE_RATE,
+                u64::from(self.audio_bitrate) * 1_000,
+            )?;
             if ff_engine::audio_codec_uses_bitrate(&self.audio_codec) && self.audio_bitrate == 0 {
                 return Err("recording audio bitrate must be greater than zero".to_string());
             }
@@ -862,6 +872,9 @@ pub struct Output {
     pub muxer_options: BTreeMap<String, String>,
     #[serde(default = "default_audio_codec")]
     pub audio_codec: String,
+    /// FFmpeg AVOptions for the selected audio encoder.
+    #[serde(default)]
+    pub audio_options: BTreeMap<String, String>,
     #[serde(default = "default_audio_bitrate")]
     pub audio_bitrate: u32,
     /// Adaptive HLS renditions, one per entry, each formatted as
@@ -908,6 +921,7 @@ impl Output {
         let video_options = serde_json::from_str(&output.video_options)
             .unwrap_or_else(|_| ff_engine::video_option_defaults(&video_codec));
         let muxer_options = serde_json::from_str(&output.muxer_options).unwrap_or_default();
+        let audio_options = serde_json::from_str(&output.audio_options).unwrap_or_default();
 
         Self {
             id: output.id,
@@ -939,6 +953,7 @@ impl Output {
             video_options,
             muxer_options,
             audio_codec: output.audio_codec.unwrap_or_else(default_audio_codec),
+            audio_options,
             audio_bitrate: output
                 .audio_bitrate
                 .and_then(|value| u32::try_from(value).ok())
@@ -992,6 +1007,19 @@ impl Output {
         streams.push(base);
         streams.extend(additional);
         Ok(streams)
+    }
+
+    fn validate_hls_audio_options(&self) -> Result<(), String> {
+        for variant in self.hls_streams()?.iter().skip(1) {
+            ff_engine::validate_audio_options(
+                &self.audio_codec,
+                &self.audio_options,
+                ENGINE_AUDIO_SAMPLE_RATE,
+                variant.audio_bitrate,
+            )
+            .map_err(|error| format!("HLS variant {:?}: {error}", variant.name))?;
+        }
+        Ok(())
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -1072,6 +1100,12 @@ impl Output {
                 ));
             }
             ff_engine::validate_video_options(&self.video_codec, &self.video_options)?;
+            ff_engine::validate_audio_options(
+                &self.audio_codec,
+                &self.audio_options,
+                ENGINE_AUDIO_SAMPLE_RATE,
+                u64::from(self.audio_bitrate) * 1_000,
+            )?;
             if ff_engine::audio_codec_uses_bitrate(&self.audio_codec) && self.audio_bitrate == 0 {
                 return Err("audio bitrate must be greater than zero".to_string());
             }
@@ -1082,7 +1116,7 @@ impl Output {
                 if self.hls_segment_duration == 0 {
                     return Err("HLS segment duration must be greater than zero".to_string());
                 }
-                self.hls_streams()?;
+                self.validate_hls_audio_options()?;
             }
             OutputMode::Stream if self.stream_url.trim().is_empty() => {
                 return Err("stream output URL must not be empty".to_string());
@@ -1363,6 +1397,7 @@ mod output_tests {
             video_options: ff_engine::video_option_defaults("libx264"),
             muxer_options: BTreeMap::new(),
             audio_codec: "aac".to_string(),
+            audio_options: BTreeMap::new(),
             audio_bitrate: 128,
             hls_variants: Vec::new(),
         }
@@ -1372,6 +1407,57 @@ mod output_tests {
     fn validates_structured_output_settings() {
         assert!(output(OutputMode::HLS).validate().is_ok());
         assert!(output(OutputMode::Stream).validate().is_ok());
+    }
+
+    #[test]
+    fn audio_validation_checks_output_and_hls_variant_bitrates() {
+        let mut output = output(OutputMode::Stream);
+        output.stream_type = StreamType::Srt;
+        output.stream_url = "srt://localhost:9000".to_string();
+        output.audio_codec = "mp2".to_string();
+        output
+            .audio_options
+            .insert("cutoff".to_string(), "0".to_string());
+        output.validate().unwrap();
+        output.audio_bitrate = 129;
+        assert!(
+            output
+                .validate()
+                .unwrap_err()
+                .contains("audio encoder options")
+        );
+        output.audio_bitrate = 128;
+        // Exercise rendition validation directly: FFmpeg builds differ in
+        // whether the HLS muxer advertises MP2 support.
+        output.mode = OutputMode::HLS;
+        output.hls_variants = vec!["low:640x360:1000k:129k".to_string()];
+        assert!(
+            output
+                .validate_hls_audio_options()
+                .unwrap_err()
+                .contains("HLS variant")
+        );
+        output.hls_variants = vec!["low:640x360:1000k:96k".to_string()];
+        assert!(output.validate_hls_audio_options().is_ok());
+    }
+
+    #[test]
+    fn validates_audio_encoder_options_before_saving() {
+        let mut output = output(OutputMode::HLS);
+        output
+            .audio_options
+            .insert("aac_coder".to_string(), "fast".to_string());
+        assert!(output.validate().is_ok());
+
+        output
+            .audio_options
+            .insert("aac_codre".to_string(), "fast".to_string());
+        assert!(
+            output
+                .validate()
+                .unwrap_err()
+                .contains("unsupported audio option")
+        );
     }
 
     #[test]
@@ -1542,6 +1628,8 @@ mod ingest_tests {
 
 #[cfg(test)]
 mod recording_tests {
+    use std::collections::BTreeMap;
+
     use super::{Recording, RecordingSource};
 
     #[test]
@@ -1588,5 +1676,57 @@ mod recording_tests {
             ..Recording::default()
         };
         assert!(recording.validate().is_err());
+    }
+
+    #[test]
+    fn recording_audio_validation_uses_recording_bitrate() {
+        let mut recording = Recording {
+            enable: true,
+            source: RecordingSource::Encode,
+            path: "/var/lib/ffplayout/recordings/1".to_string(),
+            segment_duration: 300,
+            video_codec: "libx264".to_string(),
+            video_options: ff_engine::video_option_defaults("libx264"),
+            audio_codec: "mp2".to_string(),
+            audio_bitrate: 128,
+            audio_options: BTreeMap::from([("cutoff".to_string(), "0".to_string())]),
+            ..Recording::default()
+        };
+        assert!(recording.validate().is_ok());
+        recording.audio_bitrate = 129;
+        assert!(
+            recording
+                .validate()
+                .unwrap_err()
+                .contains("audio encoder options")
+        );
+    }
+
+    #[test]
+    fn recording_rejects_invalid_audio_encoder_options() {
+        let recording = Recording {
+            enable: true,
+            source: RecordingSource::Encode,
+            source_output_id: None,
+            variant: String::new(),
+            path: "/var/lib/ffplayout/recordings/1".to_string(),
+            segment_duration: 300,
+            retention_days: 0,
+            minimum_free_space_gb: 0,
+            width: 0,
+            height: 0,
+            video_codec: "libx264".to_string(),
+            video_options: ff_engine::video_option_defaults("libx264"),
+            audio_codec: "aac".to_string(),
+            audio_options: BTreeMap::from([("aac_codre".to_string(), "fast".to_string())]),
+            audio_bitrate: 128,
+        };
+
+        assert!(
+            recording
+                .validate()
+                .unwrap_err()
+                .contains("unsupported audio option")
+        );
     }
 }

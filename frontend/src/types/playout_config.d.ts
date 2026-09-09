@@ -18,7 +18,11 @@ export type Output = { id: number, mode: OutputMode, stream_url: string, stream_
 /**
  * FFmpeg muxer options for this output, such as HLS `hls_flags`.
  */
-muxer_options: { [key in string]: string }, audio_codec: string, audio_bitrate: number,
+muxer_options: { [key in string]: string }, audio_codec: string,
+/**
+ * FFmpeg AVOptions for the selected audio encoder.
+ */
+audio_options: { [key in string]: string }, audio_bitrate: number,
 /**
  * Adaptive HLS renditions, one per entry, each formatted as
  * `NAME:WIDTHxHEIGHT:VIDEO_BITRATE[:AUDIO_BITRATE]` (e.g.
@@ -43,7 +47,7 @@ export type ProcessMode = "folder" | "playlist";
 
 export type Processing = { mode: ProcessMode, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, vtt_enable: boolean, vtt_dummy: string | null, vtt_name: string, vtt_language: string, vtt_default: boolean, };
 
-export type Recording = { enable: boolean, source: RecordingSource, source_output_id: number | null, variant: string, path: string, segment_duration: number, retention_days: number, minimum_free_space_gb: number, width: number, height: number, video_codec: string, video_options: { [key in string]: string }, audio_codec: string, audio_bitrate: number, };
+export type Recording = { enable: boolean, source: RecordingSource, source_output_id: number | null, variant: string, path: string, segment_duration: number, retention_days: number, minimum_free_space_gb: number, width: number, height: number, video_codec: string, video_options: { [key in string]: string }, audio_codec: string, audio_options: { [key in string]: string }, audio_bitrate: number, };
 
 export type RecordingSource = "hls_variant" | "stream" | "encode";
 

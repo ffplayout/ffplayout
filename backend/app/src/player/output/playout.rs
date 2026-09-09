@@ -21,7 +21,7 @@ use crate::{
         utils::{Media, get_delta, sec_to_time},
     },
     utils::{
-        config::{OutputMode, PlayoutConfig, RecordingSource},
+        config::{ENGINE_AUDIO_SAMPLE_RATE, OutputMode, PlayoutConfig, RecordingSource},
         control::{PlayerCtl, control_state},
         errors::ServiceError,
     },
@@ -456,32 +456,35 @@ fn engine_output_config(
 
     let recording = recording_config(config)?;
 
-    Ok(OutputConfig::new(width, height, fps, 48_000)
-        .with_audio_effects(audio_effects)
-        .with_live_loudness_control(live_loudness)
-        .with_loudness_meter_control(loudness_meter)
-        .with_audio_level_callback(Some(AudioLevelCallback::new(move |level| {
-            if let Ok(mut audio_level) = audio_level.lock() {
-                *audio_level = Some(level);
-            }
-        })))
-        .with_logo(logo)
-        .with_text_overlay_state(text_overlay_state)
-        .with_desktop_fullscreen(config.output.desktop_fullscreen)
-        .with_desktop_control_callback(desktop_control_callback)
-        .with_logging(ffmpeg_log_level, ingest_log_level)
-        .with_ffmpeg_ignore_lines(config.logging.ignore_lines.clone())
-        .with_channel_id(config.general.channel_id)
-        .with_stream_type(config.output.stream_type.engine_stream_type())
-        .with_stream_format(config.output.stream_format.clone())
-        .with_encoding(
-            config.output.video_codec.clone(),
-            config.output.video_options.clone(),
-            config.output.audio_codec.clone(),
-            u64::from(config.output.audio_bitrate) * 1_000,
-        )
-        .with_muxer_options(config.output.muxer_options.clone())
-        .with_recording(recording))
+    Ok(
+        OutputConfig::new(width, height, fps, ENGINE_AUDIO_SAMPLE_RATE)
+            .with_audio_effects(audio_effects)
+            .with_live_loudness_control(live_loudness)
+            .with_loudness_meter_control(loudness_meter)
+            .with_audio_level_callback(Some(AudioLevelCallback::new(move |level| {
+                if let Ok(mut audio_level) = audio_level.lock() {
+                    *audio_level = Some(level);
+                }
+            })))
+            .with_logo(logo)
+            .with_text_overlay_state(text_overlay_state)
+            .with_desktop_fullscreen(config.output.desktop_fullscreen)
+            .with_desktop_control_callback(desktop_control_callback)
+            .with_logging(ffmpeg_log_level, ingest_log_level)
+            .with_ffmpeg_ignore_lines(config.logging.ignore_lines.clone())
+            .with_channel_id(config.general.channel_id)
+            .with_stream_type(config.output.stream_type.engine_stream_type())
+            .with_stream_format(config.output.stream_format.clone())
+            .with_encoding(
+                config.output.video_codec.clone(),
+                config.output.video_options.clone(),
+                config.output.audio_codec.clone(),
+                config.output.audio_options.clone(),
+                u64::from(config.output.audio_bitrate) * 1_000,
+            )
+            .with_muxer_options(config.output.muxer_options.clone())
+            .with_recording(recording),
+    )
 }
 
 fn recording_config(config: &PlayoutConfig) -> Result<Option<RecordingConfig>, ServiceError> {
@@ -560,6 +563,7 @@ fn recording_config(config: &PlayoutConfig) -> Result<Option<RecordingConfig>, S
                     video_codec: recording.video_codec.clone(),
                     video_options: recording.video_options.clone(),
                     audio_codec: recording.audio_codec.clone(),
+                    audio_options: recording.audio_options.clone(),
                     audio_bitrate: u64::from(recording.audio_bitrate) * 1_000,
                 }),
         )),

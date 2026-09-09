@@ -25,7 +25,7 @@ pub async fn insert_output<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    const QUERY: &str = "INSERT INTO config_output (config_id, active, name, hls_variants, stream_url, stream_type, stream_format, hls_playlist_name, hls_segment_duration, hls_list_size, desktop_fullscreen, width, height, fps, video_codec, video_options, muxer_options, audio_codec, audio_bitrate) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id";
+    const QUERY: &str = "INSERT INTO config_output (config_id, active, name, hls_variants, stream_url, stream_type, stream_format, hls_playlist_name, hls_segment_duration, hls_list_size, desktop_fullscreen, width, height, fps, video_codec, video_options, muxer_options, audio_codec, audio_options, audio_bitrate) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id";
 
     let output_id = sqlx::query(QUERY)
         .bind(config_id)
@@ -46,6 +46,7 @@ where
         .bind(&output.video_options)
         .bind(&output.muxer_options)
         .bind(&output.audio_codec)
+        .bind(&output.audio_options)
         .bind(output.audio_bitrate)
         .fetch_one(executor)
         .await?
@@ -74,6 +75,7 @@ pub async fn update_output(
     video_options: &str,
     muxer_options: &str,
     audio_codec: Option<&str>,
+    audio_options: &str,
     audio_bitrate: Option<i64>,
 ) -> Result<SqliteQueryResult, ProcessError> {
     let mut connection = pool.acquire().await?;
@@ -96,6 +98,7 @@ pub async fn update_output(
         video_options,
         muxer_options,
         audio_codec,
+        audio_options,
         audio_bitrate,
     )
     .await
@@ -121,9 +124,10 @@ pub async fn update_output_on(
     video_options: &str,
     muxer_options: &str,
     audio_codec: Option<&str>,
+    audio_options: &str,
     audio_bitrate: Option<i64>,
 ) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "UPDATE config_output SET hls_variants = $3, stream_url = $4, stream_type = $5, stream_format = $6, hls_playlist_name = $7, hls_segment_duration = $8, hls_list_size = $9, desktop_fullscreen = $10, width = $11, height = $12, fps = $13, video_codec = $14, video_options = $15, muxer_options = $16, audio_codec = $17, audio_bitrate = $18 WHERE id = $1 AND config_id = (SELECT id FROM config WHERE channel_id = $2)";
+    const QUERY: &str = "UPDATE config_output SET hls_variants = $3, stream_url = $4, stream_type = $5, stream_format = $6, hls_playlist_name = $7, hls_segment_duration = $8, hls_list_size = $9, desktop_fullscreen = $10, width = $11, height = $12, fps = $13, video_codec = $14, video_options = $15, muxer_options = $16, audio_codec = $17, audio_options = $18, audio_bitrate = $19 WHERE id = $1 AND config_id = (SELECT id FROM config WHERE channel_id = $2)";
 
     let result = sqlx::query(QUERY)
         .bind(id)
@@ -143,6 +147,7 @@ pub async fn update_output_on(
         .bind(video_options)
         .bind(muxer_options)
         .bind(audio_codec)
+        .bind(audio_options)
         .bind(audio_bitrate)
         .execute(connection)
         .await?;
@@ -190,6 +195,7 @@ mod tests {
             "{}",
             "{}",
             Some("aac"),
+            "{}",
             Some(192),
         )
         .await
@@ -215,6 +221,7 @@ mod tests {
             "{}",
             "{\"flush_packets\":\"1\"}",
             Some("aac"),
+            "{\"aac_coder\":\"fast\"}",
             Some(192),
         )
         .await
@@ -233,5 +240,6 @@ mod tests {
         assert_eq!((selected.width, selected.height), (1920, 1080));
         assert_eq!(selected.fps, 50.0);
         assert_eq!(selected.muxer_options, "{\"flush_packets\":\"1\"}");
+        assert_eq!(selected.audio_options, "{\"aac_coder\":\"fast\"}");
     }
 }

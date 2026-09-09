@@ -52,6 +52,7 @@ export default {
     control: {
         noClip: 'No clip is playing',
         ingest: 'Live ingest',
+        navigationDisabledLive: 'Playlist navigation is unavailable during live ingest.',
         start: 'Start playout',
         last: 'Jump to last clip',
         stop: 'Stop playout',
@@ -165,7 +166,7 @@ export default {
         smtpPassword: 'SMTP Password',
         smtpPort: 'SMTP Port',
         smtpStarttls: 'Use STARTTLS',
-        notification: 'HTTP Push Notifications',
+        notification: 'Push Notifications',
         notificationServer: 'Push Server',
         notificationToken: 'Access Token',
         notificationHelp: 'Send rate-limited log alerts to a topic-based HTTP push service.',
@@ -283,6 +284,12 @@ export default {
         hlsSubtitleLanguage: 'Subtitle language',
         hlsSubtitleDefault: 'Default subtitle',
         encodingSettings: 'Encoding settings',
+        audioEncoderOptions: 'Advanced audio encoder options',
+        audioEncoderOptionsHelp:
+            'Additional FFmpeg options for the selected audio encoder. Settings managed by ffplayout cannot be overridden; unsupported names or values are rejected when saving.',
+        addAudioOption: 'Add audio option',
+        audioOptionName: 'Option name',
+        audioOptionValue: 'Value',
         muxerOptions: 'Muxer options',
         muxerOptionsHelp:
             'Additional FFmpeg muxer options for this output. For HLS, set hls_flags to program_date_time to emit EXT-X-PROGRAM-DATE-TIME. Required ffplayout options remain enforced.',

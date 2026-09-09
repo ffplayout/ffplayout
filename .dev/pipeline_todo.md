@@ -106,13 +106,14 @@ unsupported or unsafe settings are rejected without affecting a running output.
 
 Add the audio counterpart to the existing validated video encoder options.
 
-- [ ] Extend output and re-encode recording configuration models and update
+- [x] Extend output and re-encode recording configuration models and update
   paths.
-- [ ] Add FFmpeg encoder-option discovery/validation comparable to
-  `video_options`.
-- [ ] Apply options to the audio encoder context and fail if FFmpeg leaves an
+- [x] Add FFmpeg-native encoder-option validation comparable to
+  `video_options`; users enter option names explicitly in the advanced editor.
+- [x] Apply options to the audio encoder context and fail if FFmpeg leaves an
   option unused.
-- [ ] Provide codec-specific defaults and an advanced UI editor.
+- [x] Provide an advanced UI editor while leaving the option map empty by
+  default so FFmpeg retains control of codec defaults.
 
 **Acceptance criteria:** AAC/Opus or other supported codec options survive a
 save/reload cycle, affect the encoder, and invalid values are rejected before

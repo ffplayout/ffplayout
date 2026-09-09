@@ -30,8 +30,8 @@ use crate::{
     clock::PlayoutClock,
     utils::{
         config::{
-            HlsSubtitle, HlsVariant, OutputConfig, audio_codec_uses_bitrate,
-            video_codec_uses_bitrate,
+            HlsSubtitle, HlsVariant, OutputConfig, audio_encoder_context,
+            engine_audio_sample_format, video_codec_uses_bitrate,
         },
         ffmpeg_capabilities::validate_muxer_options,
         helper::{is_network_url, network_io_options},
@@ -213,6 +213,7 @@ impl EncodedOutput {
         recording_cfg.video_codec = encode.video_codec.clone();
         recording_cfg.video_options = encode.video_options.clone();
         recording_cfg.audio_codec = encode.audio_codec.clone();
+        recording_cfg.audio_options = encode.audio_options.clone();
         recording_cfg.audio_bitrate = encode.audio_bitrate;
         recording_cfg.audio_effects = crate::AudioEffectsControl::default();
         recording_cfg.audio_level_callback = None;
@@ -1340,23 +1341,17 @@ fn open_audio_stream(
     }
     .with_context(|| format!("audio encoder {:?} not found", cfg.audio_codec))?;
     let mut audio_stream = octx.add_stream(audio_codec)?;
-    let mut audio_ctx = codec::context::Context::new_with_codec(audio_codec)
-        .encoder()
-        .audio()?;
+    let audio_ctx = audio_encoder_context(
+        audio_codec,
+        &cfg.audio_options,
+        cfg.sample_rate,
+        variant.map_or(cfg.audio_bitrate, |variant| variant.audio_bitrate),
+        cfg.audio_time_base,
+        global_header,
+    )
+    .map_err(anyhow::Error::msg)?;
     let input_sample_format = engine_audio_sample_format();
-    let encoder_sample_format = preferred_audio_sample_format(audio_codec)?;
-    audio_ctx.set_rate(cfg.sample_rate as i32);
-    audio_ctx.set_channel_layout(ChannelLayout::STEREO);
-    audio_ctx.set_format(encoder_sample_format);
-    audio_ctx.set_time_base(cfg.audio_time_base);
-    if audio_codec_uses_bitrate(audio_codec.name()) {
-        audio_ctx.set_bit_rate(variant.map_or(cfg.audio_bitrate as usize, |variant| {
-            variant.audio_bitrate as usize
-        }));
-    }
-    if global_header {
-        audio_ctx.set_flags(codec::flag::Flags::GLOBAL_HEADER);
-    }
+    let encoder_sample_format = audio_ctx.format();
     let audio_encoder = audio_ctx.open_as(audio_codec)?;
     audio_stream.set_parameters(&audio_encoder);
     audio_stream.set_time_base(cfg.audio_time_base);
@@ -1377,25 +1372,6 @@ fn open_audio_stream(
         encoder: audio_encoder,
         resampler,
     })
-}
-
-fn engine_audio_sample_format() -> Sample {
-    Sample::F32(ffmpeg::format::sample::Type::Planar)
-}
-
-fn preferred_audio_sample_format(codec: codec::codec::Codec) -> Result<Sample> {
-    let input_format = engine_audio_sample_format();
-    let Some(formats) = codec.audio()?.formats() else {
-        return Ok(input_format);
-    };
-    let formats: Vec<_> = formats.collect();
-
-    formats
-        .iter()
-        .copied()
-        .find(|format| *format == input_format)
-        .or_else(|| formats.first().copied())
-        .with_context(|| format!("audio encoder {:?} reports no sample formats", codec.name()))
 }
 
 fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOutputStream> {
@@ -1746,6 +1722,10 @@ mod open_tests {
             .into_iter()
             .collect(),
             "aac".to_string(),
+            BTreeMap::from([
+                ("aac_coder".to_string(), "fast".to_string()),
+                ("cutoff".to_string(), "18000".to_string()),
+            ]),
             128_000,
         );
         let output = EncodedOutput::open(
@@ -1932,6 +1912,7 @@ mod open_tests {
                 video_codec: "libx264".to_string(),
                 video_options: crate::video_option_defaults("libx264"),
                 audio_codec: "aac".to_string(),
+                audio_options: BTreeMap::new(),
                 audio_bitrate: 96_000,
             });
         let cfg = OutputConfig::new(320, 240, 25, 44_100).with_recording(Some(recording));
@@ -2016,6 +1997,7 @@ mod open_tests {
             .into_iter()
             .collect(),
             "libfdk_aac".to_string(),
+            BTreeMap::new(),
             128_000,
         );
         let mut output = EncodedOutput::open(

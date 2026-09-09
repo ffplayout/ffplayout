@@ -52,6 +52,7 @@ export default {
     control: {
         noClip: 'На данный момент ни один файл не воспроизводится',
         ingest: 'Прямой эфир/Перехват эфира',
+        navigationDisabledLive: 'Навигация по плейлисту недоступна во время прямого эфира.',
         start: 'Запустить Playout',
         last: 'Переключить на предыдущий файл',
         stop: 'Остановить Playout',
@@ -166,7 +167,7 @@ export default {
         smtpPassword: 'SMTP пароль',
         smtpPort: 'SMTP порт',
         smtpStarttls: 'Использовать STARTTLS',
-        notification: 'HTTP push-уведомления',
+        notification: 'push-уведомления',
         notificationServer: 'Push-сервер',
         notificationToken: 'Токен доступа',
         notificationHelp: 'Отправляет ограниченные оповещения журнала в тематическую службу HTTP push.',
@@ -281,6 +282,12 @@ export default {
         hlsSubtitleLanguage: 'Язык субтитров',
         hlsSubtitleDefault: 'Субтитры по умолчанию',
         encodingSettings: 'Настройки кодирования',
+        audioEncoderOptions: 'Расширенные параметры аудиокодера',
+        audioEncoderOptionsHelp:
+            'Дополнительные параметры FFmpeg для выбранного аудиокодера. Настройки, управляемые ffplayout, нельзя переопределить; неподдерживаемые имена или значения отклоняются при сохранении.',
+        addAudioOption: 'Добавить параметр аудио',
+        audioOptionName: 'Имя параметра',
+        audioOptionValue: 'Значение',
         muxerOptions: 'Параметры мультиплексора',
         muxerOptionsHelp:
             'Дополнительные параметры мультиплексора FFmpeg для этого выхода. Для HLS задайте hls_flags равным program_date_time, чтобы добавить EXT-X-PROGRAM-DATE-TIME. Обязательные для ffplayout параметры остаются включёнными.',

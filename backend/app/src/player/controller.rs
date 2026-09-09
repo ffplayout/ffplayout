@@ -79,7 +79,6 @@ pub struct ChannelManager {
     pub encoder: Arc<Mutex<Option<Child>>>,
     pub ingest: Arc<Mutex<Option<Child>>>,
     pub ingest_reader: Arc<Mutex<Option<ChildStdout>>>,
-    pub ingest_is_alive: Arc<AtomicBool>,
     pub is_alive: Arc<AtomicBool>,
     pub is_processing: Arc<AtomicBool>,
     pub filter_chain: Option<Arc<Mutex<Vec<String>>>>,
@@ -155,7 +154,6 @@ impl ChannelManager {
             encoder: Arc::new(Mutex::new(None)),
             ingest: Arc::new(Mutex::new(None)),
             ingest_reader: Arc::new(Mutex::new(None)),
-            ingest_is_alive: Arc::new(AtomicBool::new(false)),
             is_processing: Arc::new(AtomicBool::new(false)),
             filter_chain: None,
             current_date: Arc::new(Mutex::new(String::new())),
@@ -532,7 +530,6 @@ impl ChannelManager {
         }
 
         self.is_alive.store(false, Ordering::SeqCst);
-        self.ingest_is_alive.store(false, Ordering::SeqCst);
         self.playback_control.lock().await.skip_current();
         self.stop_task(
             "task_runner",

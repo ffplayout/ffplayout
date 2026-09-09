@@ -52,6 +52,7 @@ export default {
     control: {
         noClip: 'Es wird kein Clip abgespielt',
         ingest: 'Live-Übertragung',
+        navigationDisabledLive: 'Während einer Live-Übertragung ist die Playlist-Navigation deaktiviert.',
         start: 'Playout starten',
         last: 'Zum letzten Clip springen',
         stop: 'Playout stoppen',
@@ -165,7 +166,7 @@ export default {
         smtpPassword: 'SMTP-Passwort',
         smtpPort: 'SMTP-Port',
         smtpStarttls: 'STARTTLS verwenden',
-        notification: 'HTTP-Push-Benachrichtigungen',
+        notification: 'Push-Benachrichtigungen',
         notificationServer: 'Push-Server',
         notificationToken: 'Zugriffstoken',
         notificationHelp: 'Sendet begrenzte Log-Warnungen an einen themenbasierten HTTP-Push-Dienst.',
@@ -285,6 +286,12 @@ export default {
         hlsSubtitleLanguage: 'Untertitelsprache',
         hlsSubtitleDefault: 'Standard-Untertitel',
         encodingSettings: 'Encoder-Einstellungen',
+        audioEncoderOptions: 'Erweiterte Audio-Encoder-Optionen',
+        audioEncoderOptionsHelp:
+            'Zusätzliche FFmpeg-Optionen für den ausgewählten Audio-Encoder. Von ffplayout verwaltete Einstellungen können nicht überschrieben werden; nicht unterstützte Namen oder Werte werden beim Speichern abgelehnt.',
+        addAudioOption: 'Audio-Option hinzufügen',
+        audioOptionName: 'Optionsname',
+        audioOptionValue: 'Wert',
         muxerOptions: 'Muxer-Optionen',
         muxerOptionsHelp:
             'Zusätzliche FFmpeg-Muxer-Optionen für diese Ausgabe. Für HLS hls_flags mit program_date_time setzen, um EXT-X-PROGRAM-DATE-TIME auszugeben. Von ffplayout benötigte Optionen bleiben erzwungen.',
