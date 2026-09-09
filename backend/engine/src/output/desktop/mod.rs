@@ -138,7 +138,6 @@ enum DesktopControlMessage {
     VideoEnd(Option<i64>),
     VideoDecoded,
     VideoFinished,
-    AudioPadding(u64),
     ClipFinished,
 }
 
@@ -147,9 +146,12 @@ struct DesktopVideoMessage {
     logo_opacity: f64,
 }
 
-struct DesktopAudioMessage {
-    samples: Vec<f32>,
-    samples_per_channel: usize,
+enum DesktopAudioMessage {
+    Samples {
+        samples: Vec<f32>,
+        samples_per_channel: usize,
+    },
+    Padding(u64),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -166,6 +168,7 @@ struct DesktopSubtitleCue {
 }
 
 pub(crate) struct DesktopFrameSender {
+    next_audio_pts: i64,
     video_sender: SyncSender<DesktopVideoMessage>,
     audio_sender: SyncSender<DesktopAudioMessage>,
     control_sender: SyncSender<DesktopControlMessage>,
@@ -198,7 +201,28 @@ enum DesktopRecordingMessage {
         logo_opacity: f64,
     },
     Audio(frame::Audio),
+    AudioPadding {
+        pts: i64,
+        samples: u64,
+    },
     Finish,
+}
+
+fn recording_silence(pts: i64, samples: u64, rate: u32) -> impl Iterator<Item = frame::Audio> {
+    (0..samples).step_by(1_024).map(move |offset| {
+        let count = (samples - offset).min(1_024) as usize;
+        let mut frame = frame::Audio::new(
+            ffmpeg_next::format::Sample::F32(ffmpeg_next::format::sample::Type::Planar),
+            count,
+            ffmpeg_next::ChannelLayout::STEREO,
+        );
+        frame.set_rate(rate);
+        frame.set_pts(Some(pts + offset as i64));
+        for channel in 0..2 {
+            frame.plane_mut::<f32>(channel).fill(0.0);
+        }
+        frame
+    })
 }
 
 impl DesktopRecording {
@@ -245,6 +269,11 @@ impl DesktopRecording {
                         DesktopRecordingMessage::Audio(frame) => {
                             worker_queue_depth.fetch_sub(1, Ordering::AcqRel);
                             output.encode_audio(&frame)
+                        }
+                        DesktopRecordingMessage::AudioPadding { pts, samples } => {
+                            worker_queue_depth.fetch_sub(1, Ordering::AcqRel);
+                            recording_silence(pts, samples, cfg.sample_rate)
+                                .try_for_each(|frame| output.encode_audio(&frame))
                         }
                         DesktopRecordingMessage::Finish => break,
                     };
@@ -313,7 +342,7 @@ struct DesktopRenderer {
     audio: DesktopAudio,
     audio_effects_control: AudioEffectsControl,
     video_queue: VecDeque<frame::Video>,
-    pending_audio: VecDeque<(Vec<f32>, usize)>,
+    pending_audio: VecDeque<DesktopAudioMessage>,
     audio_buffer_pool: Arc<Mutex<Vec<Vec<f32>>>>,
     pending_audio_samples: u64,
     pending_silence_samples: u64,
@@ -412,6 +441,11 @@ impl DesktopOutput {
         let audio_level_callback = self.audio_level_callback.clone();
         let loudness_meter_control = self.loudness_meter_control.clone();
         let audio_sample_rate = self.audio_sample_rate;
+        let next_audio_pts =
+            self.renderer
+                .submitted_audio_samples
+                .saturating_add(self.renderer.pending_audio_samples)
+                .saturating_add(self.renderer.pending_silence_samples) as i64;
         let worker_benchmark = benchmark.clone();
         let recording_sender = self
             .recording
@@ -431,6 +465,7 @@ impl DesktopOutput {
             .spawn(move || {
                 benchmark::activate(worker_benchmark);
                 let mut output = DesktopFrameSender {
+                    next_audio_pts,
                     video_sender,
                     audio_sender,
                     control_sender,
@@ -542,6 +577,31 @@ impl FrameOutput for DesktopFrameSender {
         Ok(())
     }
 
+    fn try_encode_video(&mut self, frame: &frame::Video) -> Result<bool> {
+        match self.video_sender.try_send(DesktopVideoMessage {
+            frame: reference_video_frame(frame)?,
+            logo_opacity: self.current_logo_opacity,
+        }) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => return Ok(false),
+            Err(TrySendError::Disconnected(_)) => return Err(PlaybackStopped.into()),
+        }
+        if self.reserve_recording_slot() {
+            match reference_video_frame(frame) {
+                Ok(frame) => self.send_reserved_recording(DesktopRecordingMessage::Video {
+                    frame,
+                    logo: self.recording_logo.clone(),
+                    logo_opacity: self.current_logo_opacity,
+                }),
+                Err(error) => {
+                    self.release_recording_slot();
+                    log::warn!(channel = self.channel_id; "Skipping desktop recording frame: {error}");
+                }
+            }
+        }
+        Ok(true)
+    }
+
     fn apply_logo_overlay(
         &mut self,
         _frame: &mut frame::Video,
@@ -586,12 +646,13 @@ impl FrameOutput for DesktopFrameSender {
 
         benchmark::measure(Stage::DesktopSend, || {
             self.audio_sender
-                .send(DesktopAudioMessage {
+                .send(DesktopAudioMessage::Samples {
                     samples,
                     samples_per_channel,
                 })
                 .map_err(|_| anyhow::Error::new(PlaybackStopped))
         })?;
+        self.next_audio_pts = frame.pts().unwrap_or(self.next_audio_pts) + frame.samples() as i64;
         if self.reserve_recording_slot() {
             self.send_reserved_recording(DesktopRecordingMessage::Audio(recording_frame));
         }
@@ -605,6 +666,7 @@ impl FrameOutput for DesktopFrameSender {
                 audio_pts,
             })
             .map_err(|_| PlaybackStopped)?;
+        self.next_audio_pts = audio_pts;
         Ok(true)
     }
 
@@ -654,9 +716,16 @@ impl FrameOutput for DesktopFrameSender {
 
     fn pad_audio(&mut self, samples: i64) -> Result<bool> {
         let samples = u64::try_from(samples).map_err(|_| anyhow!("negative audio padding"))?;
-        self.control_sender
-            .send(DesktopControlMessage::AudioPadding(samples))
+        self.audio_sender
+            .send(DesktopAudioMessage::Padding(samples))
             .map_err(|_| PlaybackStopped)?;
+        if self.reserve_recording_slot() {
+            self.send_reserved_recording(DesktopRecordingMessage::AudioPadding {
+                pts: self.next_audio_pts,
+                samples,
+            });
+        }
+        self.next_audio_pts += samples as i64;
         Ok(true)
     }
 }
@@ -900,10 +969,6 @@ impl DesktopRenderer {
                     self.video_finished = true;
                     self.start_audio_if_ready(false);
                 }
-                Ok(DesktopControlMessage::AudioPadding(samples)) => {
-                    received = true;
-                    self.apply_audio_padding(samples);
-                }
                 Ok(DesktopControlMessage::ClipFinished) => {
                     received = true;
                     *clip_finished = true;
@@ -921,15 +986,17 @@ impl DesktopRenderer {
         let mut received = false;
         while self.pending_audio_samples < self.max_pending_samples() {
             match receiver.try_recv() {
-                Ok(DesktopAudioMessage {
-                    samples,
-                    samples_per_channel,
-                }) => {
+                Ok(message) => {
                     received = true;
-                    self.pending_audio.push_back((samples, samples_per_channel));
-                    self.pending_audio_samples = self
-                        .pending_audio_samples
-                        .saturating_add(samples_per_channel as u64);
+                    let samples = match &message {
+                        DesktopAudioMessage::Samples {
+                            samples_per_channel,
+                            ..
+                        } => *samples_per_channel as u64,
+                        DesktopAudioMessage::Padding(samples) => *samples,
+                    };
+                    self.pending_audio.push_back(message);
+                    self.pending_audio_samples = self.pending_audio_samples.saturating_add(samples);
                 }
                 Err(TryRecvError::Empty | TryRecvError::Disconnected) => return (received, true),
             }
@@ -1015,38 +1082,49 @@ impl DesktopRenderer {
 
     fn flush_pending_audio(&mut self) -> Result<()> {
         while self.queued_audio_samples() < self.max_queue_samples() {
-            let Some((samples, samples_per_channel)) = self.pending_audio.pop_front() else {
-                break;
-            };
-            self.audio.queue(&samples)?;
-            self.recycle_audio_buffer(samples);
-            self.pending_audio_samples = self
-                .pending_audio_samples
-                .saturating_sub(samples_per_channel as u64);
-            self.submitted_audio_samples = self
-                .submitted_audio_samples
-                .saturating_add(samples_per_channel as u64);
-        }
-        while self.pending_audio.is_empty()
-            && self.pending_silence_samples > 0
-            && self.queued_audio_samples() < self.max_queue_samples()
-        {
-            let samples = self.pending_silence_samples.min(1_024) as usize;
-            let mut silence = take_audio_buffer(&self.audio_buffer_pool, samples * AUDIO_CHANNELS);
-            silence.resize(samples * AUDIO_CHANNELS, 0.0);
-            self.audio.queue(&silence)?;
-            self.recycle_audio_buffer(silence);
-            self.pending_silence_samples -= samples as u64;
-            self.submitted_audio_samples =
-                self.submitted_audio_samples.saturating_add(samples as u64);
+            // Finish the current gap before dequeuing any subsequent audio.
+            if self.pending_silence_samples > 0 {
+                let samples = self.pending_silence_samples.min(1_024) as usize;
+                let mut silence =
+                    take_audio_buffer(&self.audio_buffer_pool, samples * AUDIO_CHANNELS);
+                silence.resize(samples * AUDIO_CHANNELS, 0.0);
+                self.audio.queue(&silence)?;
+                self.recycle_audio_buffer(silence);
+                self.pending_silence_samples -= samples as u64;
+                self.submitted_audio_samples =
+                    self.submitted_audio_samples.saturating_add(samples as u64);
+                continue;
+            }
+            match self.pending_audio.pop_front() {
+                Some(DesktopAudioMessage::Samples {
+                    samples,
+                    samples_per_channel,
+                }) => {
+                    self.audio.queue(&samples)?;
+                    self.recycle_audio_buffer(samples);
+                    self.pending_audio_samples = self
+                        .pending_audio_samples
+                        .saturating_sub(samples_per_channel as u64);
+                    self.submitted_audio_samples = self
+                        .submitted_audio_samples
+                        .saturating_add(samples_per_channel as u64);
+                }
+                Some(DesktopAudioMessage::Padding(samples)) => {
+                    self.pending_audio_samples = self.pending_audio_samples.saturating_sub(samples);
+                    self.apply_audio_padding(samples);
+                }
+                None => break,
+            }
         }
         self.start_audio_if_ready(false);
         Ok(())
     }
 
     fn recycle_pending_audio(&mut self) {
-        while let Some((samples, _)) = self.pending_audio.pop_front() {
-            self.recycle_audio_buffer(samples);
+        while let Some(message) = self.pending_audio.pop_front() {
+            if let DesktopAudioMessage::Samples { samples, .. } = message {
+                self.recycle_audio_buffer(samples);
+            }
         }
     }
 
@@ -1938,6 +2016,169 @@ mod tests {
     #[test]
     fn embedded_desktop_icon_is_valid() {
         assert!(desktop_window_icon().is_ok());
+    }
+
+    fn headless_audio_renderer() -> DesktopRenderer {
+        DesktopRenderer {
+            window: None,
+            audio: DesktopAudio::for_test(),
+            audio_effects_control: AudioEffectsControl::default(),
+            video_queue: VecDeque::new(),
+            pending_audio: VecDeque::new(),
+            audio_buffer_pool: Arc::new(Mutex::new(Vec::new())),
+            pending_audio_samples: 0,
+            pending_silence_samples: 0,
+            submitted_audio_samples: 0,
+            audio_started: false,
+            sample_rate: 48_000,
+            device_buffer_samples: 1_024,
+            audio_clock: AudioMasterClock::new(48_000, 1_024),
+            video_time_base: Rational(1, 25),
+            video_end_pts: None,
+            video_decoded: false,
+            video_finished: false,
+            last_rendered_video_pts: None,
+            last_video_present: None,
+            last_starvation_report: None,
+            fps: 25,
+            subtitles_enabled: false,
+            subtitles: Vec::new(),
+            active_subtitle_text: None,
+            subtitle_bitmap: None,
+            logo: None,
+            current_logo_opacity: 0.0,
+            aspect_width: 16,
+            aspect_height: 16,
+            last_window_size: (16, 16),
+            pending_aspect_resize: None,
+            volume_overlay_until: None,
+            last_video: None,
+            frame_converter: DesktopFrameConverter::default(),
+            desktop_control_callback: None,
+            help_visible: false,
+            help_bitmap: None,
+        }
+    }
+
+    #[test]
+    fn regression_live_padding_precedes_resumed_audio() {
+        let mut renderer = headless_audio_renderer();
+        let (audio_tx, audio_rx) = sync_channel(2);
+        // No wall-clock underflow has covered this gap. Both messages arrive
+        // before one scheduler tick, as can happen when buffered live audio resumes.
+        audio_tx.send(DesktopAudioMessage::Padding(4_800)).unwrap();
+        audio_tx
+            .send(DesktopAudioMessage::Samples {
+                samples: vec![0.25; 2_048],
+                samples_per_channel: 1_024,
+            })
+            .unwrap();
+        renderer.drain_audio_messages(&audio_rx);
+        renderer.flush_pending_audio().unwrap();
+        let samples = renderer.audio.samples_for_test();
+        assert_eq!(samples.len(), (4_800 + 1_024) * 2);
+        assert!(
+            samples[..4_800 * 2].iter().all(|sample| *sample == 0.0),
+            "silence must precede resumed audio in the actual device queue"
+        );
+        assert!(samples[4_800 * 2..].iter().all(|sample| *sample == 0.25));
+    }
+
+    #[test]
+    fn regression_live_padding_reaches_recording() {
+        let (video_sender, _video_rx) = sync_channel(2);
+        let (audio_sender, audio_rx) = sync_channel(2);
+        let (control_sender, _control_rx) = sync_channel(2);
+        let (discontinuity_sender, _discontinuity_rx) = sync_channel(1);
+        let (recording_sender, recording_rx) = sync_channel(256);
+        let mut sender = DesktopFrameSender {
+            next_audio_pts: 480_000,
+            video_sender,
+            audio_sender,
+            control_sender,
+            discontinuity_sender,
+            audio_effects: Arc::new(Mutex::new(AudioEffectChain::new(
+                AudioEffectsControl::default(),
+                48_000,
+            ))),
+            audio_buffer_pool: Arc::new(Mutex::new(Vec::new())),
+            audio_level_meter: AudioLevelMeter::new(48_000, None),
+            loudness_meter: LoudnessMeter::new(48_000, Default::default()),
+            current_logo_opacity: 0.0,
+            recording_sender: Some(recording_sender),
+            recording_active: Some(Arc::new(AtomicBool::new(true))),
+            recording_queue_depth: Some(Arc::new(AtomicUsize::new(0))),
+            recording_logo: None,
+            recording_dropped_messages: 0,
+            recording_last_overload_log: None,
+            channel_id: 0,
+        };
+        assert!(sender.pad_audio(144_000).unwrap());
+        assert!(matches!(
+            audio_rx.try_recv(),
+            Ok(DesktopAudioMessage::Padding(144_000))
+        ));
+        let samples: usize = recording_rx
+            .try_iter()
+            .map(|message| match message {
+                DesktopRecordingMessage::Audio(frame) => frame.samples(),
+                DesktopRecordingMessage::AudioPadding { pts, samples } => {
+                    assert_eq!(pts, 480_000);
+                    let mut expected_pts = pts;
+                    recording_silence(pts, samples, 48_000)
+                        .map(|frame| {
+                            assert_eq!(frame.pts(), Some(expected_pts));
+                            expected_pts += frame.samples() as i64;
+                            for channel in 0..2 {
+                                assert!(
+                                    frame
+                                        .plane::<f32>(channel)
+                                        .iter()
+                                        .all(|sample| *sample == 0.0)
+                                );
+                            }
+                            frame.samples()
+                        })
+                        .sum()
+                }
+                _ => 0,
+            })
+            .sum();
+        assert_eq!(
+            samples, 144_000,
+            "recording must contain the same three seconds of silence"
+        );
+    }
+
+    #[test]
+    fn audio_padding_preserves_order_across_multiple_queue_drains() {
+        let mut renderer = headless_audio_renderer();
+        let (tx, rx) = sync_channel(3);
+        tx.send(DesktopAudioMessage::Samples {
+            samples: vec![0.125; 2_048],
+            samples_per_channel: 1_024,
+        })
+        .unwrap();
+        tx.send(DesktopAudioMessage::Padding(48_000)).unwrap();
+        tx.send(DesktopAudioMessage::Samples {
+            samples: vec![0.25; 2_048],
+            samples_per_channel: 1_024,
+        })
+        .unwrap();
+        let mut played = Vec::new();
+        for _ in 0..10 {
+            renderer.drain_audio_messages(&rx);
+            renderer.flush_pending_audio().unwrap();
+            played.extend(renderer.audio.samples_for_test());
+            // Simulate the audio device consuming its currently queued samples.
+            renderer.audio.clear();
+        }
+        assert_eq!(played.len(), (1_024 + 48_000 + 1_024) * 2);
+        assert!(played[..2_048].iter().all(|sample| *sample == 0.125));
+        assert!(played[2_048..98_048].iter().all(|sample| *sample == 0.0));
+        assert!(played[98_048..].iter().all(|sample| *sample == 0.25));
+        assert_eq!(renderer.pending_silence_samples, 0);
+        assert_eq!(renderer.pending_audio_samples, 0);
     }
 
     #[test]

@@ -1258,11 +1258,14 @@ fn receive_audio_frames<O: FrameOutput>(
         let samples = converted.samples() as i64;
         apply_audio_fade(&mut converted, timeline.audio_pts, media_fade_plan);
         converted.set_pts(Some(if timeline.source_timestamp_mode {
-            source_pts.unwrap_or(timeline.audio_pts)
+            source_pts
+                .or(audio.source_next_pts)
+                .unwrap_or(timeline.audio_pts)
         } else {
             timeline.audio_pts
         }));
         output.encode_audio(&converted)?;
+        audio.source_next_pts = converted.pts().map(|pts| pts + samples);
         timeline.audio_pts += samples;
         *decoded_samples += samples;
     }
@@ -1324,8 +1327,13 @@ fn flush_audio_resampler<O: FrameOutput>(
         }
 
         apply_audio_fade(&mut converted, timeline.audio_pts, media_fade_plan);
-        converted.set_pts(Some(timeline.audio_pts));
+        converted.set_pts(Some(if timeline.source_timestamp_mode {
+            audio.source_next_pts.unwrap_or(timeline.audio_pts)
+        } else {
+            timeline.audio_pts
+        }));
         output.encode_audio(&converted)?;
+        audio.source_next_pts = converted.pts().map(|pts| pts + samples);
         timeline.audio_pts += samples;
         *decoded_samples += samples;
 
@@ -1621,6 +1629,7 @@ impl FrameRateConverter {
 }
 
 struct AudioDecoder {
+    source_next_pts: Option<i64>,
     decoder: codec::decoder::Audio,
     resampler: resampling::Context,
     input_channel_layout: ChannelLayout,
@@ -1795,6 +1804,7 @@ impl AudioDecoder {
         Ok(Self {
             decoder,
             resampler,
+            source_next_pts: None,
             input_channel_layout: channel_layout,
             input_time_base,
             trim_start_us: timestamps_reliable.then_some(trim_start_us).flatten(),
@@ -2640,6 +2650,55 @@ mod tests {
         let cfg = OutputConfig::new(320, 240, 25, 48_000);
         let decoder = AudioDecoder::new(&stream, &cfg, "AAC test input", None).unwrap();
         assert_eq!(decoder.decoder.packet_time_base(), stream_time_base);
+    }
+
+    #[test]
+    fn regression_live_resampler_tail_keeps_source_timestamps() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let path = media_mix_asset("av_sync.mp4");
+        let input = open_media_input(&path).unwrap();
+        let stream = input.streams().best(media::Type::Audio).unwrap();
+        assert_eq!(
+            codec::context::Context::from_parameters(stream.parameters())
+                .unwrap()
+                .decoder()
+                .audio()
+                .unwrap()
+                .rate(),
+            44_100
+        );
+        drop(input);
+        let mut output = RecordingOutput::default();
+        // Decode through EOF after seeking, leaving a real 44.1 -> 48 kHz
+        // resampler tail. No synthetic frames or mock resampler are used.
+        play_opened_input(
+            &path,
+            open_media_input(&path).unwrap(),
+            &cfg,
+            &mut Timeline::new(),
+            &mut output,
+            InputPlaybackOptions {
+                seek_seconds: Some(1.0),
+                duration_seconds: None,
+                subtitles_media_path: None,
+                logo_fade_plan: LogoFadePlan::none(0, &cfg),
+                playback_control: &PlaybackControl::default(),
+                preserve_source_timestamps: true,
+            },
+            None,
+        )
+        .unwrap();
+        assert!(output.audio_pts.len() > 2);
+        let count = output.audio_pts.len();
+        assert!(
+            output.audio_frame_samples[count - 1] < 64,
+            "expected a resampler tail"
+        );
+        assert!(
+            output.audio_pts[count - 1] > output.audio_pts[count - 2],
+            "resampler tail PTS jumped backwards: {:?}",
+            &output.audio_pts[count - 2..]
+        );
     }
 
     #[test]

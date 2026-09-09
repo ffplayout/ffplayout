@@ -664,7 +664,14 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         let pts = pts.max(self.live.video_pts);
         self.fill_video_until(pts)?;
         frame.set_pts(Some(pts));
-        self.output.encode_video(&frame)?;
+        loop {
+            check_playback_control(&self.playback_control)?;
+            self.pad_missing_live_audio()?;
+            if self.output.try_encode_video(&frame)? {
+                break;
+            }
+            thread::sleep(LIVE_SEND_RETRY_INTERVAL);
+        }
         self.remember_video_frame(frame, pts);
         self.live.video_pts = pts + 1;
         if !self.live.source_has_audio {
@@ -1559,7 +1566,7 @@ mod tests {
         let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
         wrapper.start_live_session(0.0);
         wrapper.live.active = true;
-        wrapper.live.last_audio_at = Some(Instant::now() - Duration::from_secs(3));
+        wrapper.live.last_audio_at = Some(Instant::now());
         for pts in 0..25 {
             let mut frame = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
             frame.set_pts(Some(pts));
@@ -1569,6 +1576,7 @@ mod tests {
             wrapper.live.audio_pts, 0,
             "valid audio is not pre-emptively replaced"
         );
+        wrapper.live.last_audio_at = Some(Instant::now() - Duration::from_secs(3));
         wrapper.pad_missing_live_audio().unwrap();
         assert_eq!(wrapper.live.audio_pts, 48_000);
         wrapper
@@ -1661,6 +1669,75 @@ mod tests {
         assert_eq!(wrapper.output.padded_audio_samples, 144_000);
         assert_eq!(wrapper.output.audio_frames, 0);
         assert_eq!(wrapper.live.audio_pts, 144_000);
+    }
+
+    #[test]
+    fn regression_live_padding_progresses_before_audio_start() {
+        struct WaitingForAudio {
+            video: mpsc::SyncSender<()>,
+            audio: mpsc::Sender<()>,
+        }
+        impl FrameOutput for WaitingForAudio {
+            fn audio_frame_size(&self) -> usize {
+                1024
+            }
+            fn encode_video(&mut self, _: &frame::Video) -> Result<()> {
+                self.video
+                    .send(())
+                    .map_err(|_| anyhow::anyhow!("test output closed"))
+            }
+            fn try_encode_video(&mut self, _: &frame::Video) -> Result<bool> {
+                match self.video.try_send(()) {
+                    Ok(()) => Ok(true),
+                    Err(mpsc::TrySendError::Full(())) => Ok(false),
+                    Err(mpsc::TrySendError::Disconnected(())) => {
+                        anyhow::bail!("test output closed")
+                    }
+                }
+            }
+            fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
+                self.audio.send(())?;
+                Ok(())
+            }
+            fn pad_audio(&mut self, _: i64) -> Result<bool> {
+                self.audio.send(())?;
+                Ok(true)
+            }
+        }
+        let (tx, rx) = mpsc::channel();
+        for pts in 0..32 {
+            let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 4, 4);
+            video.set_pts(Some(pts));
+            tx.send(LiveEvent::Video(1, video)).unwrap();
+        }
+        let (video_tx, video_rx) = mpsc::sync_channel(8);
+        let (audio_tx, audio_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let mut live = test_live_receiver(rx);
+            live.active = true;
+            live.session_id = 1;
+            live.source_has_audio = true;
+            live.last_audio_at = Some(Instant::now());
+            let mut output = WaitingForAudio {
+                video: video_tx,
+                audio: audio_tx,
+            };
+            let control = crate::PlaybackControl::default();
+            let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+            wrapper.start_live_session(0.0);
+            wrapper.wait_for_file_playback()
+        });
+        // Model a desktop renderer whose audio prebuffer has not started:
+        // it cannot consume video until some audio or silence is supplied.
+        let received_audio = audio_rx.recv_timeout(Duration::from_secs(4)).is_ok();
+        // Always unblock and join the worker before asserting, including on failure.
+        drop(video_rx);
+        drop(tx);
+        let _ = worker.join().expect("live test worker panicked");
+        assert!(
+            received_audio,
+            "overdue silence was never supplied while video was backpressured"
+        );
     }
 
     #[test]

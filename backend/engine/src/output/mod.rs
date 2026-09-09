@@ -39,6 +39,12 @@ impl Error for PlaybackStopped {}
 pub(crate) trait FrameOutput {
     fn audio_frame_size(&self) -> usize;
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()>;
+    /// Realtime outputs can decline a full queue so live ingest can pad audio
+    /// and observe cancellation before retrying the same video frame.
+    fn try_encode_video(&mut self, frame: &frame::Video) -> Result<bool> {
+        self.encode_video(frame)?;
+        Ok(true)
+    }
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()>;
     /// Discard output buffered past a manual clip skip and re-anchor at the
     /// supplied synchronized timeline position. Encoded outputs cannot

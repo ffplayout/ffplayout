@@ -14,7 +14,10 @@ use cpal::{
 };
 
 pub(super) struct DesktopAudio {
+    #[cfg(not(test))]
     _stream: cpal::Stream,
+    #[cfg(test)]
+    _stream: Option<cpal::Stream>,
     state: Arc<AudioState>,
     device_buffer_samples: u64,
 }
@@ -26,6 +29,25 @@ struct AudioState {
 }
 
 impl DesktopAudio {
+    /// Exercise the real sample queue without opening an OS audio device.
+    #[cfg(test)]
+    pub(super) fn for_test() -> Self {
+        Self {
+            _stream: None,
+            state: Arc::new(AudioState {
+                samples: Mutex::new(VecDeque::new()),
+                queued_samples: AtomicU64::new(0),
+                playing: AtomicBool::new(false),
+            }),
+            device_buffer_samples: AUDIO_DEVICE_BUFFER_SAMPLES,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn samples_for_test(&self) -> Vec<f32> {
+        self.state.samples.lock().unwrap().iter().copied().collect()
+    }
+
     pub(super) fn open(sample_rate: u32) -> Result<Self> {
         let host = cpal::default_host();
         let device = host
@@ -112,7 +134,10 @@ impl DesktopAudio {
             .context("starting desktop audio output stream")?;
 
         Ok(Self {
+            #[cfg(not(test))]
             _stream: stream,
+            #[cfg(test)]
+            _stream: Some(stream),
             state,
             device_buffer_samples,
         })
