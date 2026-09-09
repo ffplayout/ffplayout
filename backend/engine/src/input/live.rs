@@ -40,7 +40,6 @@ use crate::{
 
 const LIVE_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_PENDING_AUDIO_FRAMES: usize = 512;
-const LIVE_AUDIO_GRACE_SECONDS: f64 = 0.25;
 
 // The live decoder supplies stereo planar f32 at the configured sample rate.
 fn trim_audio_start(input: &frame::Audio, skip: usize) -> Result<frame::Audio> {
@@ -68,6 +67,15 @@ const MAX_LIVE_GAP_SECONDS: f64 = 5.0;
 /// The live channel carries decoded raw frames (several MB each for video);
 /// it must be bounded so a stalled consumer cannot exhaust memory.
 const LIVE_CHANNEL_SECONDS: usize = 2;
+// The reader can legitimately be this far ahead while the bounded live queue
+// drains. Do not synthesize silence during that interval: doing so overlaps
+// real audio once it arrives and produces an audible pulsing effect.
+const LIVE_AUDIO_GRACE_SECONDS: f64 = LIVE_CHANNEL_SECONDS as f64 + 0.5;
+// FLV timestamps use millisecond precision. At 48 kHz that can make otherwise
+// contiguous AAC frames appear to overlap or have a gap by a few dozen
+// samples. Treat deviations below 5 ms as timestamp quantization, while
+// preserving real packet loss and discontinuities.
+const LIVE_AUDIO_PTS_JITTER_SECONDS: f64 = 0.005;
 const LIVE_SEND_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 const LIVE_BACKPRESSURE_LOG_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -168,6 +176,7 @@ pub struct LiveReceiver {
     pending_audio: VecDeque<frame::Audio>,
     pending_audio_samples: usize,
     last_media_at: Option<Instant>,
+    last_audio_at: Option<Instant>,
     last_video_frame: Option<frame::Video>,
     last_video_output_pts: Option<i64>,
     last_audio_output_end_pts: Option<i64>,
@@ -229,6 +238,7 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
         pending_audio: VecDeque::new(),
         pending_audio_samples: 0,
         last_media_at: None,
+        last_audio_at: None,
         last_video_frame: None,
         last_video_output_pts: None,
         last_audio_output_end_pts: None,
@@ -259,6 +269,10 @@ impl LiveReceiver {
 
     pub fn loudness_metrics(&self) -> Option<LiveLoudnessMetrics> {
         self.loudness.as_ref().map(LiveLoudnessProcessor::metrics)
+    }
+
+    pub(crate) fn reanchor_timeline(&self, timeline: &mut Timeline) {
+        timeline.reanchor(self.video_pts, self.audio_pts);
     }
 }
 
@@ -304,6 +318,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     self.live.session_source_start_seconds = None;
                     self.clear_pending_audio();
                     self.live.last_media_at = Some(Instant::now());
+                    self.live.last_audio_at = None;
                     self.live.active = false;
                     self.live.live_session = None;
                     self.live.connecting = true;
@@ -328,6 +343,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                             info!("first live video frame received; switching to RTMP live");
                             self.live.active = true;
                             self.live.connecting = false;
+                            self.live.last_audio_at = Some(Instant::now());
                             self.start_live_session(video_seconds(
                                 self.live.fps,
                                 frame.pts().unwrap_or(0),
@@ -381,6 +397,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                         self.live.active = false;
                         self.live.live_session = None;
                         self.live.connecting = false;
+                        self.live.last_audio_at = None;
                         self.clear_pending_audio();
                     }
                 }
@@ -395,6 +412,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     self.live.active = false;
                     self.live.live_session = None;
                     self.live.connecting = false;
+                    self.live.last_audio_at = None;
                     self.clear_pending_audio();
                     return Ok(received_event);
                 }
@@ -411,6 +429,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         while self.live.active {
             thread::sleep(Duration::from_millis(10));
             self.pump_live()?;
+            self.pad_missing_live_audio()?;
             let idle_for = self
                 .live
                 .last_media_at
@@ -425,6 +444,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 self.live.active = false;
                 self.live.live_session = None;
                 self.live.connecting = false;
+                self.live.last_audio_at = None;
                 self.clear_pending_audio();
             }
         }
@@ -438,6 +458,27 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
     fn clear_pending_audio(&mut self) {
         self.live.pending_audio = VecDeque::new();
         self.live.pending_audio_samples = 0;
+    }
+
+    /// For streams that announced an audio track, wait for actual audio
+    /// frames instead of inserting silence for every video frame. That avoids
+    /// repeatedly trimming valid audio merely because the muxer interleaves
+    /// video ahead of it. A sustained audio dropout is still padded.
+    fn pad_missing_live_audio(&mut self) -> Result<()> {
+        if !self.live.active || !self.live.source_has_audio {
+            return Ok(());
+        }
+        if self
+            .live
+            .last_audio_at
+            .is_none_or(|since| since.elapsed() < Duration::from_secs_f64(LIVE_AUDIO_GRACE_SECONDS))
+        {
+            return Ok(());
+        }
+        self.pad_audio_until(seconds_to_audio_pts(
+            self.live.sample_rate,
+            video_seconds(self.live.fps, self.live.video_pts),
+        ))
     }
 
     fn fill_live_gap_since_last_media(&mut self) -> Result<()> {
@@ -544,6 +585,22 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         Ok(())
     }
 
+    /// Account for an already elapsed audio gap without synchronously pushing
+    /// seconds of silence through a realtime desktop queue. Encoded outputs
+    /// decline this shortcut and still receive timestamped silence frames.
+    fn pad_audio_until(&mut self, next_pts: i64) -> Result<()> {
+        let fill_pts = self
+            .live
+            .last_audio_output_end_pts
+            .unwrap_or(self.live.audio_pts);
+        let samples = next_pts.saturating_sub(fill_pts);
+        if samples > 0 && self.output.pad_audio(samples)? {
+            self.remember_audio_frame_end(next_pts);
+            return Ok(());
+        }
+        self.fill_audio_until(next_pts)
+    }
+
     fn remember_video_frame(&mut self, frame: frame::Video, pts: i64) {
         self.live.last_video_frame = Some(frame);
         self.live.last_video_output_pts = Some(pts);
@@ -610,16 +667,12 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         self.output.encode_video(&frame)?;
         self.remember_video_frame(frame, pts);
         self.live.video_pts = pts + 1;
-        let video_end_seconds = video_seconds(self.live.fps, self.live.video_pts);
-        let grace = if self.live.source_has_audio {
-            LIVE_AUDIO_GRACE_SECONDS
-        } else {
-            0.0
-        };
-        self.fill_audio_until(seconds_to_audio_pts(
-            self.live.sample_rate,
-            video_end_seconds - grace,
-        ))?;
+        if !self.live.source_has_audio {
+            self.fill_audio_until(seconds_to_audio_pts(
+                self.live.sample_rate,
+                video_seconds(self.live.fps, self.live.video_pts),
+            ))?;
+        }
         Ok(())
     }
 
@@ -642,6 +695,11 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 self.live_output_seconds(source_seconds),
             );
         }
+        let jitter_tolerance =
+            seconds_to_audio_pts(self.live.sample_rate, LIVE_AUDIO_PTS_JITTER_SECONDS);
+        if pts.abs_diff(self.live.audio_pts) <= jitter_tolerance as u64 {
+            pts = self.live.audio_pts;
+        }
         // Silence already emitted (or audio preceding the first video) must
         // never shift late samples into the future and introduce A/V drift.
         let overlap = self.live.audio_pts.saturating_sub(pts).max(0) as usize;
@@ -653,7 +711,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             pts += overlap as i64;
         }
         let samples = frame.samples() as i64;
-        self.fill_audio_until(pts)?;
+        self.pad_audio_until(pts)?;
         frame.set_pts(Some(pts));
         self.sync_loudness_processor();
         if let Some(loudness) = &mut self.live.loudness {
@@ -663,6 +721,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         }
         self.output.encode_audio(&frame)?;
         self.remember_audio_frame_end(pts + samples);
+        self.live.last_audio_at = Some(Instant::now());
         Ok(())
     }
 
@@ -909,6 +968,7 @@ impl LiveFrameSender {
                 event,
                 Some(&self.abort),
                 &self.listener_abort,
+                Some(&self.last_frame_ms),
                 "live frame",
             )
         })
@@ -980,6 +1040,7 @@ fn run_rtmp_listener(
                     },
                     Some(&abort),
                     &listener_abort,
+                    None,
                     "live start",
                 )
                 .is_err()
@@ -1026,6 +1087,7 @@ fn run_rtmp_listener(
                                 subtitles_media_path: None,
                                 logo_fade_plan,
                                 playback_control: &playback_control,
+                                preserve_source_timestamps: true,
                             },
                             None,
                         )
@@ -1080,6 +1142,7 @@ fn run_rtmp_listener(
                     LiveEvent::Ended(session_id),
                     None,
                     &listener_abort,
+                    None,
                     "live end",
                 )
                 .is_err()
@@ -1108,6 +1171,7 @@ fn send_live_event(
     mut event: LiveEvent,
     abort: Option<&AtomicBool>,
     listener_abort: &AtomicBool,
+    backpressure_heartbeat: Option<&AtomicU64>,
     label: &str,
 ) -> Result<()> {
     let mut backpressure_since = None;
@@ -1119,6 +1183,12 @@ fn send_live_event(
                 return Err(anyhow::anyhow!("live event channel disconnected"));
             }
             Err(TrySendError::Full(returned_event)) => {
+                // A full internal queue means the source reader is alive but
+                // temporarily blocked by the output. Do not let the watchdog
+                // mistake this intentional backpressure for a dead publisher.
+                if let Some(heartbeat) = backpressure_heartbeat {
+                    heartbeat.store(monotonic_millis(), Ordering::Relaxed);
+                }
                 if abort.is_some_and(|abort| abort.load(Ordering::Relaxed))
                     || listener_abort.load(Ordering::Relaxed)
                 {
@@ -1309,6 +1379,8 @@ mod tests {
         last_audio: Option<(i64, usize, f32)>,
         reset_after_skip: bool,
         skip_target: Option<(i64, i64)>,
+        virtual_audio_padding: bool,
+        padded_audio_samples: i64,
         interrupt: Option<(crate::PlaybackControl, bool)>,
     }
 
@@ -1345,6 +1417,15 @@ mod tests {
             self.skip_target = Some((video_pts, audio_pts));
             Ok(self.reset_after_skip)
         }
+
+        fn pad_audio(&mut self, samples: i64) -> Result<bool> {
+            if self.virtual_audio_padding {
+                self.padded_audio_samples += samples;
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
     }
 
     fn test_live_receiver(rx: mpsc::Receiver<LiveEvent>) -> LiveReceiver {
@@ -1364,6 +1445,7 @@ mod tests {
             pending_audio: VecDeque::new(),
             pending_audio_samples: 0,
             last_media_at: None,
+            last_audio_at: None,
             last_video_frame: None,
             last_video_output_pts: None,
             last_audio_output_end_pts: None,
@@ -1476,32 +1558,42 @@ mod tests {
         let control = crate::PlaybackControl::default();
         let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
         wrapper.start_live_session(0.0);
+        wrapper.live.active = true;
+        wrapper.live.last_audio_at = Some(Instant::now() - Duration::from_secs(3));
         for pts in 0..25 {
             let mut frame = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
             frame.set_pts(Some(pts));
             wrapper.encode_live_video_frame(frame).unwrap();
         }
-        assert_eq!(wrapper.live.audio_pts, 36_000); // 1s video minus 250ms grace
+        assert_eq!(
+            wrapper.live.audio_pts, 0,
+            "valid audio is not pre-emptively replaced"
+        );
+        wrapper.pad_missing_live_audio().unwrap();
+        assert_eq!(wrapper.live.audio_pts, 48_000);
         wrapper
             .encode_live_audio_frame(audio_frame(0, 1024))
             .unwrap();
-        assert_eq!(wrapper.live.audio_pts, 36_000); // stale audio is discarded
+        assert_eq!(wrapper.live.audio_pts, 48_000); // stale audio is discarded
         wrapper
-            .encode_live_audio_frame(audio_frame(35_500, 1024))
+            .encode_live_audio_frame(audio_frame(47_500, 1024))
             .unwrap();
-        assert_eq!(wrapper.live.audio_pts, 36_524);
-        assert_eq!(wrapper.output.last_audio, Some((36_000, 524, 500.0)));
+        assert_eq!(wrapper.live.audio_pts, 48_524);
+        assert_eq!(wrapper.output.last_audio, Some((48_000, 524, 500.0)));
         // A subsequent audio dropout is padded too, not just startup.
         for pts in 25..50 {
             let mut frame = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
             frame.set_pts(Some(pts));
             wrapper.encode_live_video_frame(frame).unwrap();
         }
-        assert_eq!(wrapper.live.audio_pts, 84_000);
+        assert_eq!(wrapper.live.audio_pts, 48_524);
+        wrapper.live.last_audio_at = Some(Instant::now() - Duration::from_secs(3));
+        wrapper.pad_missing_live_audio().unwrap();
+        assert_eq!(wrapper.live.audio_pts, 96_000);
         wrapper
-            .encode_live_audio_frame(audio_frame(84_000, 1024))
+            .encode_live_audio_frame(audio_frame(96_000, 1024))
             .unwrap();
-        assert_eq!(wrapper.output.last_audio, Some((84_000, 1024, 0.0)));
+        assert_eq!(wrapper.output.last_audio, Some((96_000, 1024, 0.0)));
     }
 
     #[test]
@@ -1523,6 +1615,52 @@ mod tests {
             .encode_live_audio_frame(audio_frame(0, 9600))
             .unwrap();
         assert_eq!(wrapper.output.last_audio, Some((0, 9600, 0.0)));
+    }
+
+    #[test]
+    fn millisecond_audio_timestamp_jitter_keeps_frames_contiguous() {
+        let (_tx, rx) = mpsc::channel();
+        let mut live = test_live_receiver(rx);
+        live.source_has_audio = true;
+        let mut output = CountingOutput::default();
+        let control = crate::PlaybackControl::default();
+        let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+        wrapper.start_live_session(0.0);
+
+        // A 1024-sample AAC cadence cannot be represented exactly by FLV's
+        // millisecond time base. These are typical rescaled PTS values.
+        for pts in [0, 1008, 2064] {
+            wrapper
+                .encode_live_audio_frame(audio_frame(pts, 1024))
+                .unwrap();
+        }
+
+        assert_eq!(wrapper.output.audio_frames, 3);
+        assert_eq!(wrapper.output.last_audio, Some((2048, 1024, 0.0)));
+        assert_eq!(wrapper.live.audio_pts, 3072);
+    }
+
+    #[test]
+    fn delayed_audio_uses_output_padding_without_a_silence_burst() {
+        let (_tx, rx) = mpsc::channel();
+        let mut live = test_live_receiver(rx);
+        live.active = true;
+        live.source_has_audio = true;
+        live.last_audio_at = Some(Instant::now() - Duration::from_secs(3));
+        let mut output = CountingOutput {
+            virtual_audio_padding: true,
+            ..CountingOutput::default()
+        };
+        let control = crate::PlaybackControl::default();
+        let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+        wrapper.start_live_session(0.0);
+        wrapper.live.video_pts = 75;
+
+        wrapper.pad_missing_live_audio().unwrap();
+
+        assert_eq!(wrapper.output.padded_audio_samples, 144_000);
+        assert_eq!(wrapper.output.audio_frames, 0);
+        assert_eq!(wrapper.live.audio_pts, 144_000);
     }
 
     #[test]
@@ -1832,6 +1970,44 @@ mod tests {
             rx.try_recv(),
             Err(TryRecvError::Empty | TryRecvError::Disconnected)
         ));
+    }
+
+    #[test]
+    fn backpressure_does_not_make_the_live_watchdog_abort_the_reader() {
+        let (tx, _rx) = mpsc::sync_channel(1);
+        tx.try_send(LiveEvent::Started {
+            session_id: 1,
+            has_audio: true,
+        })
+        .unwrap();
+        let abort = Arc::new(AtomicBool::new(false));
+        let heartbeat = Arc::new(AtomicU64::new(super::monotonic_millis()));
+        let watchdog = super::spawn_live_watchdog(
+            Arc::clone(&heartbeat),
+            Arc::new(AtomicBool::new(true)),
+            Arc::clone(&abort),
+        );
+        let worker_abort = Arc::clone(&abort);
+        let worker_heartbeat = Arc::clone(&heartbeat);
+        let worker = thread::spawn(move || {
+            super::send_live_event(
+                &tx,
+                LiveEvent::Ended(1),
+                Some(&worker_abort),
+                &AtomicBool::new(false),
+                Some(&worker_heartbeat),
+                "test",
+            )
+        });
+
+        thread::sleep(super::LIVE_IDLE_TIMEOUT + Duration::from_millis(300));
+        assert!(
+            !abort.load(Ordering::Relaxed),
+            "queue backpressure must not look like an idle publisher"
+        );
+        abort.store(true, Ordering::Relaxed);
+        assert!(worker.join().unwrap().is_err());
+        watchdog.join().unwrap();
     }
 
     #[test]

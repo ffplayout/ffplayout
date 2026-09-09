@@ -63,6 +63,10 @@ pub(crate) struct Timeline {
     audio_pts: i64,
     text_pts: i64,
     logo_opacity: f64,
+    // Live ingest preserves source PTS until the receiver maps both tracks
+    // onto the continuous playout timeline. File playback always uses the
+    // normal monotonically increasing timeline values.
+    source_timestamp_mode: bool,
 }
 
 impl Timeline {
@@ -72,11 +76,22 @@ impl Timeline {
             audio_pts: 0,
             text_pts: 0,
             logo_opacity: 1.0,
+            source_timestamp_mode: false,
         }
     }
 
     pub(crate) fn video_pts(&self) -> i64 {
         self.video_pts
+    }
+
+    /// Move the persistent playout timeline to an externally produced media
+    /// position. Live ingest advances outside the suspended playlist decoder;
+    /// the next playlist clip must start from that actual output position.
+    pub(crate) fn reanchor(&mut self, video_pts: i64, audio_pts: i64) {
+        self.video_pts = video_pts;
+        self.audio_pts = audio_pts;
+        self.text_pts = video_pts;
+        self.source_timestamp_mode = false;
     }
 
     pub(crate) fn finish_logo_fade(&mut self, fade: LogoFade) {
@@ -175,6 +190,7 @@ pub(crate) fn play_clip_with_external_audio<O: FrameOutput>(
                 subtitles_media_path,
                 logo_fade_plan,
                 playback_control,
+                preserve_source_timestamps: false,
             },
             external_audio.as_mut(),
         )
@@ -230,6 +246,7 @@ fn play_looped_clip<O: FrameOutput>(
                 subtitles_media_path: first_iteration.then_some(subtitles_media_path).flatten(),
                 logo_fade_plan,
                 playback_control,
+                preserve_source_timestamps: false,
             },
             external_audio.as_deref_mut(),
         )?;
@@ -287,6 +304,7 @@ pub(crate) struct InputPlaybackOptions<'a> {
     pub(crate) subtitles_media_path: Option<&'a str>,
     pub(crate) logo_fade_plan: LogoFadePlan,
     pub(crate) playback_control: &'a PlaybackControl,
+    pub(crate) preserve_source_timestamps: bool,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -460,6 +478,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     options: InputPlaybackOptions<'_>,
     mut external_audio: Option<&mut ExternalAudioInput>,
 ) -> Result<()> {
+    timeline.source_timestamp_mode = options.preserve_source_timestamps;
     let seek_seconds = (!is_live_input(label))
         .then_some(options.seek_seconds)
         .flatten();
@@ -627,7 +646,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
                         media_fade_plan,
                         options.playback_control,
                     )?;
-                    if !has_audio {
+                    if !has_audio && !timeline.source_timestamp_mode {
                         synchronize_silence_to_video(
                             cfg,
                             timeline,
@@ -665,7 +684,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             // soon as one embedded track reaches its declared end. Waiting
             // for container EOF can otherwise enqueue minutes of old audio or
             // video timestamps after the other stream has already advanced.
-            if external_audio.is_none() {
+            if external_audio.is_none() && !timeline.source_timestamp_mode {
                 let last_video_frame = video
                     .as_ref()
                     .and_then(|video| video.last_composited_frame.as_ref());
@@ -700,10 +719,10 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             logo_fade_plan,
             media_fade_plan,
             options.playback_control,
-            !has_audio,
+            !has_audio && !timeline.source_timestamp_mode,
             external_audio.as_deref_mut(),
         )?;
-        if !has_audio {
+        if !has_audio && !timeline.source_timestamp_mode {
             synchronize_silence_to_video(cfg, timeline, output, options.playback_control)?;
         }
         if let Some(audio) = audio.as_mut() {
@@ -750,7 +769,12 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         let last_video_frame = video
             .as_ref()
             .and_then(|video| video.last_composited_frame.as_ref());
-        synchronize_timeline(cfg, timeline, output, last_video_frame)?;
+        // The live receiver aligns the two source tracks when it takes over.
+        // Applying file-style end padding here would reintroduce synthetic
+        // timeline PTS into a stream whose source PTS are intentionally kept.
+        if !timeline.source_timestamp_mode {
+            synchronize_timeline(cfg, timeline, output, last_video_frame)?;
+        }
         if !video_finished_notified {
             output.video_finished()?;
         }
@@ -894,6 +918,7 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
             logo_fade_plan,
             output,
             decoded_frames,
+            None,
         )?;
         if synthesize_silence {
             synchronize_silence_to_video(cfg, timeline, output, playback_control)?;
@@ -992,6 +1017,12 @@ fn receive_video_frames<O: FrameOutput>(
             continue;
         }
 
+        let source_pts = raw.timestamp().or_else(|| raw.pts()).map(|pts| {
+            pts.rescale(
+                video.frame_rate_converter.input_time_base,
+                Rational(1, video.output_fps as i32),
+            )
+        });
         let output_frames = video
             .frame_rate_converter
             .output_frames(raw.timestamp().or_else(|| raw.pts()));
@@ -1039,12 +1070,13 @@ fn receive_video_frames<O: FrameOutput>(
                 logo_fade_plan,
                 output,
                 decoded_frames,
+                source_pts,
             )?;
         } else {
             // Frame-rate up-conversion can share the pristine pixels. The
             // compositing helper requests a writable buffer only when an
             // active effect actually changes them.
-            for _ in 0..output_frames {
+            for index in 0..output_frames {
                 check_playback_control(playback_control)?;
                 if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
                     return Ok(());
@@ -1058,6 +1090,7 @@ fn receive_video_frames<O: FrameOutput>(
                     logo_fade_plan,
                     output,
                     decoded_frames,
+                    source_pts.map(|pts| pts - (output_frames - 1 - index)),
                 )?;
             }
         }
@@ -1074,6 +1107,7 @@ fn encode_composited_frame<O: FrameOutput>(
     logo_fade_plan: LogoFadePlan,
     output: &mut O,
     decoded_frames: &mut i64,
+    source_pts: Option<i64>,
 ) -> Result<()> {
     video.update_runtime_text(timeline.video_pts, timeline.text_pts);
     let video_opacity = media_fade_plan.video_opacity_at(timeline.video_pts);
@@ -1088,7 +1122,11 @@ fn encode_composited_frame<O: FrameOutput>(
     }
     apply_video_fade(&mut frame, video_opacity);
     apply_overlays(&mut frame, video, timeline, logo_fade_plan, output);
-    frame.set_pts(Some(timeline.video_pts));
+    frame.set_pts(Some(if timeline.source_timestamp_mode {
+        source_pts.unwrap_or(timeline.video_pts)
+    } else {
+        timeline.video_pts
+    }));
     output.encode_video(&frame)?;
     video.last_composited_frame = Some(frame);
     timeline.video_pts += 1;
@@ -1213,9 +1251,17 @@ fn receive_audio_frames<O: FrameOutput>(
         let mut converted = benchmark::measure(Stage::AudioProcess, || {
             resample_audio_frame(&mut audio.resampler, &raw)
         })?;
+        let source_pts = raw
+            .timestamp()
+            .or_else(|| raw.pts())
+            .map(|pts| pts.rescale(audio.input_time_base, Rational(1, converted.rate() as i32)));
         let samples = converted.samples() as i64;
         apply_audio_fade(&mut converted, timeline.audio_pts, media_fade_plan);
-        converted.set_pts(Some(timeline.audio_pts));
+        converted.set_pts(Some(if timeline.source_timestamp_mode {
+            source_pts.unwrap_or(timeline.audio_pts)
+        } else {
+            timeline.audio_pts
+        }));
         output.encode_audio(&converted)?;
         timeline.audio_pts += samples;
         *decoded_samples += samples;
@@ -2220,9 +2266,10 @@ mod tests {
     use ffmpeg_next::{codec, frame, media, util::format::pixel::Pixel};
 
     use super::{
-        AudioDecoder, FrameRateConverter, LogoFade, MediaFadePlan, PlaybackControl, Rational,
-        Timeline, apply_audio_fade, fallback_video_time_base, fit_dimensions, has_valid_time_base,
-        padding_to_sync, parse_duration_us, play_clip, play_clip_with_external_audio,
+        AudioDecoder, FrameRateConverter, InputPlaybackOptions, LogoFade, LogoFadePlan,
+        MediaFadePlan, PlaybackControl, Rational, Timeline, apply_audio_fade,
+        fallback_video_time_base, fit_dimensions, has_valid_time_base, padding_to_sync,
+        parse_duration_us, play_clip, play_clip_with_external_audio, play_opened_input,
         resample_audio_frame, should_loop_input, should_play_loop_iteration,
         single_frame_repeat_frames, synchronize_after_skip, synchronize_declared_stream_ends,
         video_frame_needs_write, write_padding_video_frames,
@@ -2238,6 +2285,7 @@ mod tests {
         video_data_ptrs: Vec<usize>,
         audio_samples: usize,
         audio_frame_samples: Vec<usize>,
+        audio_pts: Vec<i64>,
         events: Vec<&'static str>,
         reset_on_skip: bool,
         skip_target: Option<(i64, i64)>,
@@ -2247,6 +2295,20 @@ mod tests {
     fn live_transports_are_never_looped_to_fill_a_playlist_slot() {
         assert!(!should_loop_input(true, Some(60.0)));
         assert!(should_loop_input(false, Some(60.0)));
+    }
+
+    #[test]
+    fn reanchoring_after_live_updates_all_persistent_timeline_clocks() {
+        let mut timeline = Timeline::new();
+        timeline.text_pts = 12;
+        timeline.source_timestamp_mode = true;
+
+        timeline.reanchor(250, 480_000);
+
+        assert_eq!(timeline.video_pts, 250);
+        assert_eq!(timeline.audio_pts, 480_000);
+        assert_eq!(timeline.text_pts, 250);
+        assert!(!timeline.source_timestamp_mode);
     }
 
     impl FrameOutput for RecordingOutput {
@@ -2268,6 +2330,7 @@ mod tests {
         fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
             self.audio_samples += frame.samples();
             self.audio_frame_samples.push(frame.samples());
+            self.audio_pts.push(frame.pts().unwrap_or_default());
             self.events.push("audio");
             Ok(())
         }
@@ -2518,6 +2581,46 @@ mod tests {
             "unexpected one-second audio output: {} samples",
             output.audio_samples
         );
+    }
+
+    #[test]
+    fn source_timestamp_mode_keeps_audio_and_video_on_the_input_timebase() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let path = media_mix_asset("av_sync.mp4");
+        let mut timeline = Timeline::new();
+        let mut output = RecordingOutput::default();
+        let control = PlaybackControl::default();
+        let input = open_media_input(&path).unwrap();
+
+        play_opened_input(
+            &path,
+            input,
+            &cfg,
+            &mut timeline,
+            &mut output,
+            InputPlaybackOptions {
+                seek_seconds: Some(1.0),
+                duration_seconds: Some(0.4),
+                subtitles_media_path: None,
+                logo_fade_plan: LogoFadePlan::none(0, &cfg),
+                playback_control: &control,
+                preserve_source_timestamps: true,
+            },
+            None,
+        )
+        .unwrap();
+
+        assert!(output.video_frames.first().unwrap().2 >= 25);
+        assert!(output.audio_pts.first().copied().unwrap_or_default() >= 48_000);
+        assert!(
+            output
+                .video_frames
+                .windows(2)
+                .all(|frames| frames[1].2 > frames[0].2),
+            "video source PTS must advance: {:?}",
+            output.video_frames
+        );
+        assert!(output.audio_pts.windows(2).all(|pts| pts[1] > pts[0]));
     }
 
     #[test]

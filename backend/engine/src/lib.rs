@@ -693,6 +693,11 @@ impl Playout {
                         },
                     )
                 };
+                if matches!(&result, Ok(ClipResult::LiveEnded))
+                    && let Some(live) = live_for_worker.as_ref()
+                {
+                    live.reanchor_timeline(&mut timeline);
+                }
                 (result, timeline, live_for_worker)
             });
 
@@ -710,23 +715,29 @@ impl Playout {
         }
 
         if let Some(live) = live.as_mut() {
-            let mut output =
-                LiveOverrideOutput::new(&mut self.output, live, &self.playback_control);
-            play_to_output(
-                path,
-                &self.config,
-                &mut self.timeline,
-                &mut output,
-                self.fallback_duration,
-                &self.playback_control,
-                PlayOptions {
-                    seek_seconds,
-                    duration_seconds,
-                    external_audio_path: external_audio_path.as_deref(),
-                    subtitles_media_path: subtitles_media_path.as_deref(),
-                    logo_fade,
-                },
-            )
+            let result = {
+                let mut output =
+                    LiveOverrideOutput::new(&mut self.output, live, &self.playback_control);
+                play_to_output(
+                    path,
+                    &self.config,
+                    &mut self.timeline,
+                    &mut output,
+                    self.fallback_duration,
+                    &self.playback_control,
+                    PlayOptions {
+                        seek_seconds,
+                        duration_seconds,
+                        external_audio_path: external_audio_path.as_deref(),
+                        subtitles_media_path: subtitles_media_path.as_deref(),
+                        logo_fade,
+                    },
+                )
+            };
+            if matches!(&result, Ok(ClipResult::LiveEnded)) {
+                live.reanchor_timeline(&mut self.timeline);
+            }
+            result
         } else {
             play_to_output(
                 path,
