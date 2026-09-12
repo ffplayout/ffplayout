@@ -950,6 +950,14 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
         self.output
             .write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
     }
+
+    fn clear_vtt_subtitles(&mut self) -> Result<()> {
+        self.output.clear_vtt_subtitles()
+    }
+
+    fn advance_vtt_subtitles(&mut self, output_position_ms: i64) -> Result<()> {
+        self.output.advance_vtt_subtitles(output_position_ms)
+    }
 }
 
 struct LiveFrameSender {

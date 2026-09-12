@@ -44,6 +44,7 @@ pub(super) struct EncodedOutput {
     audio_streams: Vec<AudioOutputStream>,
     subtitle_streams: Vec<SubtitleOutputStream>,
     vtt_subtitles: bool,
+    pending_vtt_cues: VecDeque<vtt::VttCue>,
     audio_effects: AudioEffectChain,
     audio_level_meter: AudioLevelMeter,
     loudness_meter: LoudnessMeter,
@@ -502,6 +503,7 @@ impl EncodedOutput {
             audio_streams,
             subtitle_streams,
             vtt_subtitles,
+            pending_vtt_cues: VecDeque::new(),
             audio_effects: AudioEffectChain::new(cfg.audio_effects.clone(), cfg.sample_rate),
             audio_level_meter: AudioLevelMeter::new(
                 cfg.sample_rate,
@@ -631,6 +633,7 @@ impl EncodedOutput {
         output_start_ms: i64,
         source_start_ms: i64,
     ) -> Result<()> {
+        self.pending_vtt_cues.clear();
         if !self.vtt_subtitles || self.subtitle_streams.is_empty() {
             return Ok(());
         }
@@ -640,22 +643,38 @@ impl EncodedOutput {
             return Ok(());
         }
 
-        let cues = vtt::parse_file(&vtt_path)?;
-        for cue in cues {
-            if cue.end_ms <= source_start_ms {
-                continue;
-            }
+        let mut cues = vtt::parse_file(&vtt_path)?
+            .into_iter()
+            .filter(|cue| cue.end_ms > source_start_ms)
+            .map(|cue| vtt::VttCue {
+                start_ms: output_start_ms + cue.start_ms.saturating_sub(source_start_ms),
+                end_ms: output_start_ms + cue.end_ms - source_start_ms,
+                text: cue.text,
+            })
+            .collect::<Vec<_>>();
+        cues.sort_by_key(|cue| cue.start_ms);
+        self.pending_vtt_cues = cues.into();
 
+        Ok(())
+    }
+
+    pub(super) fn clear_vtt_subtitles(&mut self) {
+        self.pending_vtt_cues.clear();
+    }
+
+    pub(super) fn advance_vtt_subtitles(&mut self, output_position_ms: i64) -> Result<()> {
+        while self
+            .pending_vtt_cues
+            .front()
+            .is_some_and(|cue| cue.start_ms <= output_position_ms)
+        {
+            let cue = self.pending_vtt_cues.pop_front().expect("checked above");
             let mut packet = Packet::copy(cue.text.as_bytes());
-            let cue_start_ms = cue.start_ms.saturating_sub(source_start_ms);
-            let cue_end_ms = cue.end_ms - source_start_ms;
-            let pts = output_start_ms + cue_start_ms;
-            packet.set_pts(Some(pts));
-            packet.set_dts(Some(pts));
-            packet.set_duration(cue_end_ms - cue_start_ms);
+            packet.set_pts(Some(cue.start_ms));
+            packet.set_dts(Some(cue.start_ms));
+            packet.set_duration(cue.end_ms - cue.start_ms);
             self.write_subtitle_packet(&mut packet)?;
         }
-
         Ok(())
     }
 
@@ -1673,6 +1692,56 @@ mod open_tests {
         }
         assert!(master.contains("LANGUAGE=\"und\""), "{master}");
         assert!(master.contains("DEFAULT=NO"), "{master}");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn hls_vtt_resume_after_live_does_not_write_future_cues_twice() {
+        ffmpeg::init().ok();
+        let dir =
+            std::env::temp_dir().join(format!("hls_vtt_live_resume_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("index.m3u8");
+        let media_path = dir.join("programme.mp4");
+        fs::write(
+            media_path.with_extension("vtt"),
+            "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nFirst\n\n00:00:50.000 --> 00:00:51.000\nFuture\n",
+        )
+        .unwrap();
+        let cfg = OutputConfig::new(320, 240, 25, 44_100);
+        let mut output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Hls {
+                variants: vec![],
+                subtitle: Some(HlsSubtitle {
+                    name: "Subtitles".to_string(),
+                    language: "und".to_string(),
+                    default: false,
+                }),
+                segment_seconds: 6,
+                list_size: 60,
+            },
+        )
+        .unwrap();
+
+        // Only the first cue is reached before live takeover interrupts the
+        // clip. The cue at source second 50 must remain outside the muxer.
+        output
+            .write_vtt_subtitles(media_path.to_str().unwrap(), 1_000_000, 0)
+            .unwrap();
+        output.advance_vtt_subtitles(1_001_500).unwrap();
+        assert_eq!(output.pending_vtt_cues.len(), 1);
+
+        // Forty seconds of live output pass, then the same clip resumes at
+        // source second 40. Its remaining cue must keep increasing DTS.
+        output
+            .write_vtt_subtitles(media_path.to_str().unwrap(), 1_040_000, 40_000)
+            .unwrap();
+        assert_eq!(output.pending_vtt_cues.len(), 1);
+        output.advance_vtt_subtitles(1_050_000).unwrap();
+        assert!(output.pending_vtt_cues.is_empty());
+        output.finish().unwrap();
         fs::remove_dir_all(&dir).ok();
     }
 

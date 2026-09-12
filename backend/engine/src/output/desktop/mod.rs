@@ -708,6 +708,12 @@ impl FrameOutput for DesktopFrameSender {
             .map_err(|_| PlaybackStopped.into())
     }
 
+    fn clear_vtt_subtitles(&mut self) -> Result<()> {
+        self.control_sender
+            .send(DesktopControlMessage::Subtitles(Vec::new()))
+            .map_err(|_| PlaybackStopped.into())
+    }
+
     fn video_finished(&mut self) -> Result<()> {
         self.control_sender
             .send(DesktopControlMessage::VideoFinished)

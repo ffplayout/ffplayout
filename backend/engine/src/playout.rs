@@ -615,6 +615,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     let mut decoded_video_frames = 0_i64;
     let mut decoded_audio_samples = 0_i64;
     output.set_video_end(video_end_pts)?;
+    output.clear_vtt_subtitles()?;
     if let Some(media_path) = options.subtitles_media_path {
         benchmark::measure(Stage::Vtt, || {
             output.write_vtt_subtitles(
@@ -1128,6 +1129,12 @@ fn encode_composited_frame<O: FrameOutput>(
         timeline.video_pts
     }));
     output.encode_video(&frame)?;
+    let output_position_ms = frame
+        .pts()
+        .unwrap_or(timeline.video_pts)
+        .saturating_mul(1_000)
+        / i64::from(video.output_fps);
+    output.advance_vtt_subtitles(output_position_ms)?;
     video.last_composited_frame = Some(frame);
     timeline.video_pts += 1;
     *decoded_frames += 1;

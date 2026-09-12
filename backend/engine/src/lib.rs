@@ -808,17 +808,52 @@ fn play_to_output<O: FrameOutput>(
                 .duration_seconds
                 .filter(|duration| duration.is_finite() && *duration > 0.0)
                 .unwrap_or(fallback_duration);
-            write_fallback(path, config, timeline, output, duration, playback_control)
-                .with_context(|| format!("failed to generate fallback for {path}"))?;
-            timeline.finish_logo_fade(options.logo_fade);
-            Ok(ClipResult::Fallback { reason })
+            match write_fallback(path, config, timeline, output, duration, playback_control) {
+                Ok(()) => {
+                    timeline.finish_logo_fade(options.logo_fade);
+                    Ok(ClipResult::Fallback { reason })
+                }
+                Err(error) => classify_fallback_error(error, path),
+            }
         }
+    }
+}
+
+fn classify_fallback_error(error: anyhow::Error, path: &str) -> Result<ClipResult> {
+    if error.downcast_ref::<PlaybackRestart>().is_some() {
+        Err(error)
+    } else if error.downcast_ref::<PlaybackSkipped>().is_some() {
+        Ok(ClipResult::Skipped)
+    } else if error.downcast_ref::<LiveEnded>().is_some() {
+        Ok(ClipResult::LiveEnded)
+    } else if error.downcast_ref::<PlaybackStopped>().is_some() {
+        Ok(ClipResult::Stopped)
+    } else {
+        Err(error.context(format!("failed to generate fallback for {path}")))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::PlaybackControl;
+    use super::{
+        ClipResult, PlaybackControl, PlaybackRestart, PlaybackSkipped, classify_fallback_error,
+    };
+
+    #[test]
+    fn restart_during_fallback_remains_a_playout_restart() {
+        let result =
+            classify_fallback_error(anyhow::Error::new(PlaybackRestart), "unavailable.mp4");
+
+        assert!(result.unwrap_err().is::<PlaybackRestart>());
+    }
+
+    #[test]
+    fn playlist_reset_during_fallback_reinitializes_playout() {
+        let result =
+            classify_fallback_error(anyhow::Error::new(PlaybackSkipped), "unavailable.mp4");
+
+        assert_eq!(result.unwrap(), ClipResult::Skipped);
+    }
 
     #[test]
     fn restart_request_is_independent_from_skip_request() {
