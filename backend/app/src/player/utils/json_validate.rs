@@ -17,8 +17,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     player::utils::{
-        JsonPlaylist, Media, detect_audio_silence, is_close, is_remote, sec_to_time,
-        time_in_seconds, time_to_sec,
+        JsonPlaylist, Media, detect_audio_silence, is_close, is_live_source, is_remote,
+        sec_to_time, time_in_seconds, time_to_sec,
     },
     utils::{config::PlayoutConfig, errors::ProcessError},
 };
@@ -39,12 +39,16 @@ async fn check_media(
 ) -> Result<(), ProcessError> {
     let id = config.general.channel_id;
     let mut error_list = vec![];
+    let source_is_live = is_live_source(&node.source);
 
     if cancel_token.is_cancelled() {
         return Ok(());
     }
 
-    if let Some(probe) = &node.probe {
+    if source_is_live {
+        // Live transports have no finite duration and are intentionally not
+        // probed during playlist validation.
+    } else if let Some(probe) = &node.probe {
         if probe.format.duration.is_none() && node.duration <= 0.0 {
             error_list.push("Engine probe returned no media duration".to_string());
         }
@@ -63,11 +67,12 @@ async fn check_media(
         ));
     }
 
-    if let Some(error) = av_duration_error(&node) {
+    if !source_is_live && let Some(error) = av_duration_error(&node) {
         error_list.push(error);
     }
 
-    if config.logging.detect_silence
+    if !source_is_live
+        && config.logging.detect_silence
         && let Some(audio_source) = silence_check_source(&node)
     {
         match detect_audio_silence(audio_source, node.seek, node.out - node.seek).await {

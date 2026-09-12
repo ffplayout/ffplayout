@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import GenericModal from '@/components/utils/GenericModal.vue'
@@ -36,6 +36,10 @@ const extensions = computed({
 })
 
 const output = computed(() => configStore.playout.output.mode)
+const newMuxerOptionName = ref('')
+const newMuxerOptionValue = ref('')
+const newAudioOptionName = ref('')
+const newAudioOptionValue = ref('')
 
 const ingestPort = computed<number | null>({
     get() {
@@ -75,6 +79,11 @@ const outputId = computed({
             return
         }
 
+        newMuxerOptionName.value = ''
+        newMuxerOptionValue.value = ''
+        newAudioOptionName.value = ''
+        newAudioOptionValue.value = ''
+
         configStore.playout.output.id = selected.id
         configStore.playout.output.mode = outputMode(selected.name)
         configStore.playout.output.stream_url = selected.stream_url
@@ -93,7 +102,17 @@ const outputId = computed({
         } catch {
             configStore.playout.output.video_options = {}
         }
+        try {
+            configStore.playout.output.muxer_options = JSON.parse(selected.muxer_options || '{}')
+        } catch {
+            configStore.playout.output.muxer_options = {}
+        }
         configStore.playout.output.audio_codec = selected.audio_codec ?? 'aac'
+        try {
+            configStore.playout.output.audio_options = JSON.parse(selected.audio_options || '{}')
+        } catch {
+            configStore.playout.output.audio_options = {}
+        }
         configStore.playout.output.audio_bitrate = selected.audio_bitrate ?? 128
         configStore.playout.output.hls_variants = (selected.hls_variants ?? '')
             .split(';')
@@ -153,7 +172,6 @@ const videoSettings = computed(
     () =>
         codecOptions.value.video.find((codec) => codec.name === configStore.playout.output.video_codec)?.settings ?? [],
 )
-
 const audioUsesBitrate = computed(
     () =>
         codecOptions.value.audio.find((codec) => codec.name === configStore.playout.output.audio_codec)?.uses_bitrate ??
@@ -180,6 +198,86 @@ function setVideoOption(key: string, value: string | number) {
     }
 }
 
+function setAudioCodec() {
+    configStore.playout.output.audio_options = {}
+}
+
+function setAudioOption(key: string, value: string | number) {
+    configStore.playout.output.audio_options = {
+        ...configStore.playout.output.audio_options,
+        [key]: String(value),
+    }
+}
+
+function addAudioOption() {
+    const options = configStore.playout.output.audio_options
+    const key = newAudioOptionName.value.trim()
+    const value = newAudioOptionValue.value.trim()
+    if (!key || !value || key in options) return
+    configStore.playout.output.audio_options = { ...options, [key]: value }
+    newAudioOptionName.value = ''
+    newAudioOptionValue.value = ''
+}
+
+function renameAudioOption(previousKey: string, event: Event) {
+    const input = event.target as HTMLInputElement
+    const key = input.value.trim()
+    const options = { ...configStore.playout.output.audio_options }
+    if (!key || (key !== previousKey && key in options)) {
+        input.value = previousKey
+        return
+    }
+    const value = options[previousKey]
+    delete options[previousKey]
+    options[key] = value
+    configStore.playout.output.audio_options = options
+}
+
+function removeAudioOption(key: string) {
+    const options = { ...configStore.playout.output.audio_options }
+    delete options[key]
+    configStore.playout.output.audio_options = options
+}
+
+function addMuxerOption() {
+    const options = configStore.playout.output.muxer_options
+    const key = newMuxerOptionName.value.trim()
+    const value = newMuxerOptionValue.value.trim()
+    if (!key || !value || key in options) {
+        return
+    }
+    configStore.playout.output.muxer_options = { ...options, [key]: value }
+    newMuxerOptionName.value = ''
+    newMuxerOptionValue.value = ''
+}
+
+function renameMuxerOption(previousKey: string, event: Event) {
+    const input = event.target as HTMLInputElement
+    const key = input.value.trim()
+    const options = { ...configStore.playout.output.muxer_options }
+    if (!key || (key !== previousKey && key in options)) {
+        input.value = previousKey
+        return
+    }
+    const value = options[previousKey]
+    delete options[previousKey]
+    options[key] = value
+    configStore.playout.output.muxer_options = options
+}
+
+function setMuxerOption(key: string, value: string) {
+    configStore.playout.output.muxer_options = {
+        ...configStore.playout.output.muxer_options,
+        [key]: value,
+    }
+}
+
+function removeMuxerOption(key: string) {
+    const options = { ...configStore.playout.output.muxer_options }
+    delete options[key]
+    configStore.playout.output.muxer_options = options
+}
+
 function eventValue(event: Event): string {
     return (event.target as HTMLInputElement).value
 }
@@ -200,6 +298,7 @@ watch(
         }
         if (audio.length > 0 && !audio.some((codec) => codec.name === configStore.playout.output.audio_codec)) {
             configStore.playout.output.audio_codec = audio[0].name
+            setAudioCodec()
         }
         normalizeVideoOptions()
     },
@@ -745,7 +844,11 @@ async function onSubmitPlayout() {
                         </label>
                         <label class="fieldset">
                             <span class="fieldset-legend">{{ t('config.audioCodec') }}</span>
-                            <select v-model="configStore.playout.output.audio_codec" class="select select-sm w-full">
+                            <select
+                                v-model="configStore.playout.output.audio_codec"
+                                class="select select-sm w-full"
+                                @change="setAudioCodec"
+                            >
                                 <option v-for="codec in codecOptions.audio" :key="codec.name" :value="codec.name">
                                     {{ codecLabel(codec) }}
                                 </option>
@@ -785,6 +888,112 @@ async function onSubmitPlayout() {
                                 class="input input-sm w-full"
                             />
                         </label>
+                    </div>
+                </fieldset>
+
+                <fieldset v-if="output === 'hls' || output === 'stream'" class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.audioEncoderOptions') }}</legend>
+                    <p class="fieldset-label items-baseline mb-2">{{ t('config.audioEncoderOptionsHelp') }}</p>
+                    <div
+                        v-for="[key, value] in Object.entries(configStore.playout.output.audio_options)"
+                        :key="key"
+                        class="flex flex-wrap items-center gap-2 mb-2"
+                    >
+                        <input
+                            :value="key"
+                            type="text"
+                            class="input input-sm w-48"
+                            @change="renameAudioOption(key, $event)"
+                        />
+                        <input
+                            :value="value"
+                            type="text"
+                            class="input input-sm grow"
+                            @input="setAudioOption(key, eventValue($event))"
+                        />
+                        <button class="btn btn-sm btn-ghost" type="button" @click="removeAudioOption(key)">
+                            {{ t('config.remove') }}
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <input
+                            v-model="newAudioOptionName"
+                            type="text"
+                            class="input input-sm w-48"
+                            :placeholder="t('config.audioOptionName')"
+                        />
+                        <input
+                            v-model="newAudioOptionValue"
+                            type="text"
+                            class="input input-sm grow"
+                            :placeholder="t('config.audioOptionValue')"
+                        />
+                        <button
+                            class="btn btn-sm"
+                            type="button"
+                            :disabled="
+                                !newAudioOptionName.trim() ||
+                                !newAudioOptionValue.trim() ||
+                                newAudioOptionName.trim() in configStore.playout.output.audio_options
+                            "
+                            @click="addAudioOption"
+                        >
+                            {{ t('config.addAudioOption') }}
+                        </button>
+                    </div>
+                </fieldset>
+
+                <fieldset v-if="output === 'hls' || output === 'stream'" class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.muxerOptions') }}</legend>
+                    <p class="fieldset-label items-baseline mb-2">{{ t('config.muxerOptionsHelp') }}</p>
+                    <div
+                        v-for="[key, value] in Object.entries(configStore.playout.output.muxer_options)"
+                        :key="key"
+                        class="flex flex-wrap items-center gap-2 mb-2"
+                    >
+                        <input
+                            :value="key"
+                            type="text"
+                            name="muxer_option_key"
+                            class="input input-sm w-48"
+                            @change="renameMuxerOption(key, $event)"
+                        />
+                        <input
+                            :value="value"
+                            type="text"
+                            name="muxer_option_value"
+                            class="input input-sm grow"
+                            @input="setMuxerOption(key, eventValue($event))"
+                        />
+                        <button class="btn btn-sm btn-ghost" type="button" @click="removeMuxerOption(key)">
+                            {{ t('config.remove') }}
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <input
+                            v-model="newMuxerOptionName"
+                            type="text"
+                            class="input input-sm w-48"
+                            :placeholder="t('config.muxerOptionName')"
+                        />
+                        <input
+                            v-model="newMuxerOptionValue"
+                            type="text"
+                            class="input input-sm grow"
+                            :placeholder="t('config.muxerOptionValue')"
+                        />
+                        <button
+                            class="btn btn-sm"
+                            type="button"
+                            :disabled="
+                                !newMuxerOptionName.trim() ||
+                                !newMuxerOptionValue.trim() ||
+                                newMuxerOptionName.trim() in configStore.playout.output.muxer_options
+                            "
+                            @click="addMuxerOption"
+                        >
+                            {{ t('config.addMuxerOption') }}
+                        </button>
                     </div>
                 </fieldset>
 

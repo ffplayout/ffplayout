@@ -1,4 +1,10 @@
-use std::{collections::VecDeque, ffi::CString, fs, path::Path, ptr};
+use std::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    ffi::CString,
+    fs,
+    path::Path,
+    ptr,
+};
 
 use anyhow::{Context, Result, anyhow};
 use ffmpeg::{
@@ -24,9 +30,10 @@ use crate::{
     clock::PlayoutClock,
     utils::{
         config::{
-            HlsSubtitle, HlsVariant, OutputConfig, audio_codec_uses_bitrate,
-            video_codec_uses_bitrate,
+            HlsSubtitle, HlsVariant, OutputConfig, audio_encoder_context,
+            engine_audio_sample_format, video_codec_uses_bitrate,
         },
+        ffmpeg_capabilities::validate_muxer_options,
         helper::{is_network_url, network_io_options},
     },
 };
@@ -37,6 +44,7 @@ pub(super) struct EncodedOutput {
     audio_streams: Vec<AudioOutputStream>,
     subtitle_streams: Vec<SubtitleOutputStream>,
     vtt_subtitles: bool,
+    pending_vtt_cues: VecDeque<vtt::VttCue>,
     audio_effects: AudioEffectChain,
     audio_level_meter: AudioLevelMeter,
     loudness_meter: LoudnessMeter,
@@ -206,9 +214,11 @@ impl EncodedOutput {
         recording_cfg.video_codec = encode.video_codec.clone();
         recording_cfg.video_options = encode.video_options.clone();
         recording_cfg.audio_codec = encode.audio_codec.clone();
+        recording_cfg.audio_options = encode.audio_options.clone();
         recording_cfg.audio_bitrate = encode.audio_bitrate;
         recording_cfg.audio_effects = crate::AudioEffectsControl::default();
         recording_cfg.audio_level_callback = None;
+        recording_cfg.audio_frame_callback = None;
         recording_cfg.recording = None;
         let (pattern, monitor) = recording::prepare_recording(recording_config)?;
         let mut output = Self::open(
@@ -240,6 +250,15 @@ impl EncodedOutput {
         output_format: EncodedFormat,
         hls_health: Option<HlsHealth>,
     ) -> Result<Self> {
+        match &output_format {
+            EncodedFormat::Hls { .. } => {
+                validate_muxer_options("hls", &cfg.muxer_options).map_err(anyhow::Error::msg)?;
+            }
+            EncodedFormat::Stream { muxer } => {
+                validate_muxer_options(muxer, &cfg.muxer_options).map_err(anyhow::Error::msg)?;
+            }
+            EncodedFormat::Auto | EncodedFormat::Recording { .. } => {}
+        }
         let pace_output = !matches!(&output_format, EncodedFormat::Recording { .. });
         let hls_variants = match &output_format {
             EncodedFormat::Auto
@@ -373,7 +392,7 @@ impl EncodedOutput {
 
         match output_format {
             EncodedFormat::Auto | EncodedFormat::Stream { .. } => {
-                octx.write_header()?;
+                reject_unused_options(octx.write_header_with(muxer_options(&cfg.muxer_options))?)?;
             }
             EncodedFormat::Recording {
                 segment_seconds, ..
@@ -390,15 +409,29 @@ impl EncodedOutput {
                 list_size,
                 ..
             } => {
-                let hls_flags = if hls_start_number.is_some() {
+                let default_hls_flags = if hls_start_number.is_some() {
                     "append_list+delete_segments+omit_endlist+temp_file+discont_start"
                 } else {
                     "delete_segments+omit_endlist+temp_file"
                 };
-                let mut options = ffmpeg::Dictionary::new();
+                let mut options = muxer_options_excluding(
+                    &cfg.muxer_options,
+                    [
+                        "hls_time",
+                        "hls_list_size",
+                        "hls_flags",
+                        "hls_segment_filename",
+                        "start_number",
+                        "master_pl_name",
+                        "var_stream_map",
+                    ],
+                );
                 options.set("hls_time", &segment_seconds.to_string());
                 options.set("hls_list_size", &list_size.to_string());
-                options.set("hls_flags", hls_flags);
+                options.set(
+                    "hls_flags",
+                    &merged_hls_flags(default_hls_flags, cfg.muxer_options.get("hls_flags")),
+                );
                 let segment_filename = if uses_var_stream_map {
                     hls::segment_pattern(path)
                 } else {
@@ -471,6 +504,7 @@ impl EncodedOutput {
             audio_streams,
             subtitle_streams,
             vtt_subtitles,
+            pending_vtt_cues: VecDeque::new(),
             audio_effects: AudioEffectChain::new(cfg.audio_effects.clone(), cfg.sample_rate),
             audio_level_meter: AudioLevelMeter::new(
                 cfg.sample_rate,
@@ -600,6 +634,7 @@ impl EncodedOutput {
         output_start_ms: i64,
         source_start_ms: i64,
     ) -> Result<()> {
+        self.pending_vtt_cues.clear();
         if !self.vtt_subtitles || self.subtitle_streams.is_empty() {
             return Ok(());
         }
@@ -609,22 +644,38 @@ impl EncodedOutput {
             return Ok(());
         }
 
-        let cues = vtt::parse_file(&vtt_path)?;
-        for cue in cues {
-            if cue.end_ms <= source_start_ms {
-                continue;
-            }
+        let mut cues = vtt::parse_file(&vtt_path)?
+            .into_iter()
+            .filter(|cue| cue.end_ms > source_start_ms)
+            .map(|cue| vtt::VttCue {
+                start_ms: output_start_ms + cue.start_ms.saturating_sub(source_start_ms),
+                end_ms: output_start_ms + cue.end_ms - source_start_ms,
+                text: cue.text,
+            })
+            .collect::<Vec<_>>();
+        cues.sort_by_key(|cue| cue.start_ms);
+        self.pending_vtt_cues = cues.into();
 
+        Ok(())
+    }
+
+    pub(super) fn clear_vtt_subtitles(&mut self) {
+        self.pending_vtt_cues.clear();
+    }
+
+    pub(super) fn advance_vtt_subtitles(&mut self, output_position_ms: i64) -> Result<()> {
+        while self
+            .pending_vtt_cues
+            .front()
+            .is_some_and(|cue| cue.start_ms <= output_position_ms)
+        {
+            let cue = self.pending_vtt_cues.pop_front().expect("checked above");
             let mut packet = Packet::copy(cue.text.as_bytes());
-            let cue_start_ms = cue.start_ms.saturating_sub(source_start_ms);
-            let cue_end_ms = cue.end_ms - source_start_ms;
-            let pts = output_start_ms + cue_start_ms;
-            packet.set_pts(Some(pts));
-            packet.set_dts(Some(pts));
-            packet.set_duration(cue_end_ms - cue_start_ms);
+            packet.set_pts(Some(cue.start_ms));
+            packet.set_dts(Some(cue.start_ms));
+            packet.set_duration(cue.end_ms - cue.start_ms);
             self.write_subtitle_packet(&mut packet)?;
         }
-
         Ok(())
     }
 
@@ -868,6 +919,52 @@ impl EncodedOutput {
         packet.write_interleaved(&mut self.octx)?;
         Ok(())
     }
+}
+
+fn muxer_options(options: &BTreeMap<String, String>) -> ffmpeg::Dictionary<'static> {
+    muxer_options_excluding(options, [])
+}
+
+fn muxer_options_excluding<'a>(
+    options: &BTreeMap<String, String>,
+    excluded: impl IntoIterator<Item = &'a str>,
+) -> ffmpeg::Dictionary<'static> {
+    let excluded = excluded.into_iter().collect::<BTreeSet<_>>();
+    let mut dictionary = ffmpeg::Dictionary::new();
+    for (key, value) in options {
+        if !excluded.contains(key.as_str()) {
+            dictionary.set(key, value);
+        }
+    }
+    dictionary
+}
+
+fn merged_hls_flags(default_flags: &str, configured_flags: Option<&String>) -> String {
+    let required = default_flags
+        .split('+')
+        .filter(|flag| !flag.is_empty())
+        .collect::<BTreeSet<_>>();
+    let mut flags = required.iter().copied().collect::<Vec<_>>();
+
+    for flag in configured_flags
+        .into_iter()
+        .flat_map(|value| value.split('+'))
+        .filter(|flag| !flag.is_empty())
+    {
+        // ffmpeg supports `-flag` to remove a flag. Never let a configured
+        // value turn off a flag that ffplayout needs for its HLS lifecycle.
+        if required.contains(flag)
+            || flag
+                .strip_prefix('-')
+                .is_some_and(|flag| required.contains(flag))
+        {
+            continue;
+        }
+        if !flags.contains(&flag) {
+            flags.push(flag);
+        }
+    }
+    flags.join("+")
 }
 
 fn reject_unused_options(options: ffmpeg::Dictionary<'_>) -> Result<()> {
@@ -1264,23 +1361,17 @@ fn open_audio_stream(
     }
     .with_context(|| format!("audio encoder {:?} not found", cfg.audio_codec))?;
     let mut audio_stream = octx.add_stream(audio_codec)?;
-    let mut audio_ctx = codec::context::Context::new_with_codec(audio_codec)
-        .encoder()
-        .audio()?;
+    let audio_ctx = audio_encoder_context(
+        audio_codec,
+        &cfg.audio_options,
+        cfg.sample_rate,
+        variant.map_or(cfg.audio_bitrate, |variant| variant.audio_bitrate),
+        cfg.audio_time_base,
+        global_header,
+    )
+    .map_err(anyhow::Error::msg)?;
     let input_sample_format = engine_audio_sample_format();
-    let encoder_sample_format = preferred_audio_sample_format(audio_codec)?;
-    audio_ctx.set_rate(cfg.sample_rate as i32);
-    audio_ctx.set_channel_layout(ChannelLayout::STEREO);
-    audio_ctx.set_format(encoder_sample_format);
-    audio_ctx.set_time_base(cfg.audio_time_base);
-    if audio_codec_uses_bitrate(audio_codec.name()) {
-        audio_ctx.set_bit_rate(variant.map_or(cfg.audio_bitrate as usize, |variant| {
-            variant.audio_bitrate as usize
-        }));
-    }
-    if global_header {
-        audio_ctx.set_flags(codec::flag::Flags::GLOBAL_HEADER);
-    }
+    let encoder_sample_format = audio_ctx.format();
     let audio_encoder = audio_ctx.open_as(audio_codec)?;
     audio_stream.set_parameters(&audio_encoder);
     audio_stream.set_time_base(cfg.audio_time_base);
@@ -1303,25 +1394,6 @@ fn open_audio_stream(
     })
 }
 
-fn engine_audio_sample_format() -> Sample {
-    Sample::F32(ffmpeg::format::sample::Type::Planar)
-}
-
-fn preferred_audio_sample_format(codec: codec::codec::Codec) -> Result<Sample> {
-    let input_format = engine_audio_sample_format();
-    let Some(formats) = codec.audio()?.formats() else {
-        return Ok(input_format);
-    };
-    let formats: Vec<_> = formats.collect();
-
-    formats
-        .iter()
-        .copied()
-        .find(|format| *format == input_format)
-        .or_else(|| formats.first().copied())
-        .with_context(|| format!("audio encoder {:?} reports no sample formats", codec.name()))
-}
-
 fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOutputStream> {
     let mut stream = octx.add_stream(codec::Id::WEBVTT)?;
     stream.set_time_base(Rational(1, 1_000));
@@ -1342,6 +1414,89 @@ mod open_tests {
         ffmpeg_capabilities::ffmpeg_capabilities,
     };
     use std::fs;
+
+    #[test]
+    fn configured_hls_flags_are_combined_with_required_flags() {
+        let flags = merged_hls_flags(
+            "delete_segments+omit_endlist+temp_file",
+            Some(&"program_date_time+temp_file".to_string()),
+        );
+
+        assert_eq!(
+            flags,
+            "delete_segments+omit_endlist+temp_file+program_date_time"
+        );
+    }
+
+    #[test]
+    fn configured_hls_flags_cannot_disable_required_flags() {
+        let flags = merged_hls_flags("delete_segments+temp_file", Some(&"-temp_file".to_string()));
+
+        assert_eq!(flags, "delete_segments+temp_file");
+    }
+
+    #[test]
+    fn hls_accepts_program_date_time_muxer_option() {
+        ffmpeg::init().ok();
+        let dir =
+            std::env::temp_dir().join(format!("hls_program_date_time_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("stream.m3u8");
+        let cfg = OutputConfig::new(320, 240, 25, 44_100).with_muxer_options(BTreeMap::from([(
+            "hls_flags".to_string(),
+            "program_date_time".to_string(),
+        )]));
+
+        let mut output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Hls {
+                variants: vec![],
+                subtitle: None,
+                segment_seconds: 1,
+                list_size: 60,
+            },
+        )
+        .expect("expected hls_flags=program_date_time to be accepted");
+
+        for index in 0..50 {
+            let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
+            video.set_pts(Some(index));
+            video.data_mut(0).fill(16);
+            video.data_mut(1).fill(128);
+            video.data_mut(2).fill(128);
+            output.encode_video(&video).unwrap();
+
+            let mut audio = frame::Audio::new(
+                Sample::F32(ffmpeg::format::sample::Type::Planar),
+                output.audio_frame_size(),
+                ChannelLayout::STEREO,
+            );
+            audio.set_rate(44_100);
+            audio.set_pts(Some(index * output.audio_frame_size() as i64));
+            for channel in 0..2 {
+                audio.plane_mut::<f32>(channel).fill(0.0);
+            }
+            output.encode_audio(&audio).unwrap();
+        }
+        output.finish().unwrap();
+
+        let playlist = fs::read_to_string(&path).unwrap();
+        assert!(playlist.contains("#EXT-X-PROGRAM-DATE-TIME:"), "{playlist}");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn required_hls_options_are_not_passed_through_as_custom_options() {
+        let options = BTreeMap::from([
+            ("hls_time".to_string(), "999".to_string()),
+            ("hls_start_number_source".to_string(), "epoch".to_string()),
+        ]);
+        let dictionary = muxer_options_excluding(&options, ["hls_time"]);
+
+        assert_eq!(dictionary.get("hls_time"), None);
+        assert_eq!(dictionary.get("hls_start_number_source"), Some("epoch"));
+    }
 
     #[test]
     fn selects_nvenc_for_cpu_backed_hardware_encoding() {
@@ -1542,6 +1697,56 @@ mod open_tests {
     }
 
     #[test]
+    fn hls_vtt_resume_after_live_does_not_write_future_cues_twice() {
+        ffmpeg::init().ok();
+        let dir =
+            std::env::temp_dir().join(format!("hls_vtt_live_resume_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("index.m3u8");
+        let media_path = dir.join("programme.mp4");
+        fs::write(
+            media_path.with_extension("vtt"),
+            "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nFirst\n\n00:00:50.000 --> 00:00:51.000\nFuture\n",
+        )
+        .unwrap();
+        let cfg = OutputConfig::new(320, 240, 25, 44_100);
+        let mut output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Hls {
+                variants: vec![],
+                subtitle: Some(HlsSubtitle {
+                    name: "Subtitles".to_string(),
+                    language: "und".to_string(),
+                    default: false,
+                }),
+                segment_seconds: 6,
+                list_size: 60,
+            },
+        )
+        .unwrap();
+
+        // Only the first cue is reached before live takeover interrupts the
+        // clip. The cue at source second 50 must remain outside the muxer.
+        output
+            .write_vtt_subtitles(media_path.to_str().unwrap(), 1_000_000, 0)
+            .unwrap();
+        output.advance_vtt_subtitles(1_001_500).unwrap();
+        assert_eq!(output.pending_vtt_cues.len(), 1);
+
+        // Forty seconds of live output pass, then the same clip resumes at
+        // source second 40. Its remaining cue must keep increasing DTS.
+        output
+            .write_vtt_subtitles(media_path.to_str().unwrap(), 1_040_000, 40_000)
+            .unwrap();
+        assert_eq!(output.pending_vtt_cues.len(), 1);
+        output.advance_vtt_subtitles(1_050_000).unwrap();
+        assert!(output.pending_vtt_cues.is_empty());
+        output.finish().unwrap();
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn standalone_hls_output_does_not_create_master_playlist() {
         ffmpeg::init().ok();
         let dir = std::env::temp_dir().join(format!("hls_standalone_test_{}", std::process::id()));
@@ -1587,6 +1792,10 @@ mod open_tests {
             .into_iter()
             .collect(),
             "aac".to_string(),
+            BTreeMap::from([
+                ("aac_coder".to_string(), "fast".to_string()),
+                ("cutoff".to_string(), "18000".to_string()),
+            ]),
             128_000,
         );
         let output = EncodedOutput::open(
@@ -1773,6 +1982,7 @@ mod open_tests {
                 video_codec: "libx264".to_string(),
                 video_options: crate::video_option_defaults("libx264"),
                 audio_codec: "aac".to_string(),
+                audio_options: BTreeMap::new(),
                 audio_bitrate: 96_000,
             });
         let cfg = OutputConfig::new(320, 240, 25, 44_100).with_recording(Some(recording));
@@ -1857,6 +2067,7 @@ mod open_tests {
             .into_iter()
             .collect(),
             "libfdk_aac".to_string(),
+            BTreeMap::new(),
             128_000,
         );
         let mut output = EncodedOutput::open(

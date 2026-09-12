@@ -133,7 +133,11 @@ impl RecordingMonitor {
         self.next_check = Instant::now() + self.check_interval;
 
         if self.retention_days > 0
-            && let Err(error) = remove_expired_segments(&self.directory, self.retention_days)
+            && let Err(error) = remove_expired_segments(
+                &self.directory,
+                self.retention_days,
+                self.channel_id.unwrap_or_default(),
+            )
         {
             log::error!(channel = self.channel_id.unwrap_or_default(); "Failed to remove expired recording segments in {}: {error}", self.directory.display());
         }
@@ -153,7 +157,11 @@ pub(super) fn prepare_recording(config: &RecordingConfig) -> Result<(PathBuf, Re
             directory.display()
         )
     })?;
-    remove_expired_segments(directory, config.retention_days)?;
+    remove_expired_segments(
+        directory,
+        config.retention_days,
+        config.channel_id.unwrap_or_default(),
+    )?;
     ensure_minimum_free_space(directory, config.minimum_free_space_gb)?;
     let channel_id = config.channel_id.unwrap_or_default();
     let sequence = RECORDING_SEQUENCE.fetch_add(1, Ordering::Relaxed);
@@ -229,17 +237,23 @@ fn ensure_minimum_free_space(directory: &Path, minimum_free_space_gb: u32) -> Re
     Ok(())
 }
 
-fn remove_expired_segments(directory: &Path, retention_days: u32) -> Result<()> {
+fn remove_expired_segments(directory: &Path, retention_days: u32, channel_id: i32) -> Result<()> {
     if retention_days == 0 {
         return Ok(());
     }
     let cutoff = SystemTime::now()
         .checked_sub(Duration::from_secs(u64::from(retention_days) * 86_400))
         .unwrap_or(UNIX_EPOCH);
+    let channel_prefix = format!("recording-ch{channel_id}-");
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
         let path = entry.path();
-        if !is_managed_segment(&path) {
+        if !is_managed_segment(&path)
+            || !path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(&channel_prefix))
+        {
             continue;
         }
         // Prefer the timestamp encoded in the filename over the filesystem
@@ -417,7 +431,7 @@ mod tests {
         let unmanaged = directory.join("archive.mkv");
         fs::write(&unmanaged, []).unwrap();
 
-        remove_expired_segments(&directory, u32::MAX).unwrap();
+        remove_expired_segments(&directory, u32::MAX, 1).unwrap();
 
         assert!(unmanaged.exists());
         fs::remove_dir_all(directory).unwrap();
@@ -440,7 +454,7 @@ mod tests {
         let expired = directory.join("recording-ch1-2000-01-01_00-00-00-1-0.mkv");
         fs::write(&expired, []).unwrap();
 
-        remove_expired_segments(&directory, 1).unwrap();
+        remove_expired_segments(&directory, 1, 1).unwrap();
 
         assert!(!expired.exists());
         fs::remove_dir_all(directory).unwrap();
@@ -464,7 +478,7 @@ mod tests {
         let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 86_400);
         file.set_modified(old).unwrap();
 
-        remove_expired_segments(&directory, 1).unwrap();
+        remove_expired_segments(&directory, 1, 2).unwrap();
 
         assert!(!legacy.exists());
         fs::remove_dir_all(directory).unwrap();
@@ -496,6 +510,56 @@ mod tests {
         assert!(monitor.check().is_ok());
         assert!(!expired.exists());
 
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn retention_is_scoped_to_the_channel_at_startup_and_periodically() {
+        let directory = std::env::temp_dir().join(format!(
+            "ffplayout-recording-channel-retention-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let old = SystemTime::now() - std::time::Duration::from_secs(2 * 86_400);
+        let mut paths = Vec::new();
+        for channel in [0, 1, 10, 2] {
+            for suffix in ["2000-01-01_00-00-00-1-0", "1786617288287263738-42-000001"] {
+                let path = directory.join(format!("recording-ch{channel}-{suffix}.mkv"));
+                fs::File::create(&path).unwrap().set_modified(old).unwrap();
+                paths.push((channel, path));
+            }
+        }
+        let mut config = RecordingConfig::new(directory.to_string_lossy().into_owned(), 60);
+        config.channel_id = Some(1);
+        config.retention_days = 1;
+        config.minimum_free_space_gb = 0;
+        let (_, mut monitor) = prepare_recording(&config).unwrap();
+        for (channel, path) in &paths {
+            assert_eq!(path.exists(), *channel != 1, "{}", path.display());
+            if *channel == 1 {
+                fs::File::create(path).unwrap().set_modified(old).unwrap();
+            }
+        }
+        monitor.next_check = std::time::Instant::now();
+        monitor.check().unwrap();
+        for (channel, path) in &paths {
+            assert_eq!(path.exists(), *channel != 1, "{}", path.display());
+        }
+        // No configured channel uses ch0 in both filenames and retention.
+        config.channel_id = None;
+        prepare_recording(&config).unwrap();
+        for (channel, path) in &paths {
+            assert_eq!(
+                path.exists(),
+                ![0, 1].contains(channel),
+                "{}",
+                path.display()
+            );
+        }
         fs::remove_dir_all(directory).unwrap();
     }
 

@@ -113,34 +113,38 @@ fn codec_option(codec: &ff_engine::FfmpegCodec) -> CodecOption {
             ff_engine::FfmpegMediaType::Audio => ff_engine::audio_codec_uses_bitrate(&codec.name),
             ff_engine::FfmpegMediaType::Subtitle => false,
         },
-        settings: ff_engine::video_option_specs(&codec.name)
-            .iter()
-            .map(|setting| EncoderSetting {
-                key: setting.key.to_string(),
-                label: setting.label.to_string(),
-                kind: match setting.kind {
-                    ff_engine::VideoOptionKind::Select => "select",
-                    ff_engine::VideoOptionKind::Number => "number",
-                },
-                default: setting.default.to_string(),
-                choices: setting
-                    .choices
-                    .iter()
-                    .map(|choice| EncoderSettingChoice {
-                        value: choice.value.to_string(),
-                        label: choice.label.to_string(),
-                    })
-                    .collect(),
-                minimum: setting.minimum,
-                maximum: setting.maximum,
-                visible_when: setting
-                    .visible_when
-                    .map(|condition| EncoderSettingVisibility {
-                        key: condition.key.to_string(),
-                        value: condition.value.to_string(),
-                    }),
-            })
-            .collect(),
+        settings: match codec.media_type {
+            ff_engine::FfmpegMediaType::Video => ff_engine::video_option_specs(&codec.name),
+            ff_engine::FfmpegMediaType::Audio => &[],
+            ff_engine::FfmpegMediaType::Subtitle => &[],
+        }
+        .iter()
+        .map(|setting| EncoderSetting {
+            key: setting.key.to_string(),
+            label: setting.label.to_string(),
+            kind: match setting.kind {
+                ff_engine::VideoOptionKind::Select => "select",
+                ff_engine::VideoOptionKind::Number => "number",
+            },
+            default: setting.default.to_string(),
+            choices: setting
+                .choices
+                .iter()
+                .map(|choice| EncoderSettingChoice {
+                    value: choice.value.to_string(),
+                    label: choice.label.to_string(),
+                })
+                .collect(),
+            minimum: setting.minimum,
+            maximum: setting.maximum,
+            visible_when: setting
+                .visible_when
+                .map(|condition| EncoderSettingVisibility {
+                    key: condition.key.to_string(),
+                    value: condition.value.to_string(),
+                }),
+        })
+        .collect(),
     }
 }
 
@@ -311,6 +315,10 @@ pub async fn update_playout_config(
     let is_encoded = matches!(data.output.mode, OutputMode::HLS | OutputMode::Stream);
     let video_options = serde_json::to_string(&data.output.video_options)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
+    let muxer_options = serde_json::to_string(&data.output.muxer_options)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
+    let audio_options = serde_json::to_string(&data.output.audio_options)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     let mut transaction = state.pool.begin().await?;
     handles::update_output_on(
         &mut transaction,
@@ -340,7 +348,17 @@ pub async fn update_playout_config(
         } else {
             "{}"
         },
+        if is_encoded {
+            muxer_options.as_str()
+        } else {
+            "{}"
+        },
         is_encoded.then_some(data.output.audio_codec.as_str()),
+        if is_encoded {
+            audio_options.as_str()
+        } else {
+            "{}"
+        },
         (is_encoded && ff_engine::audio_codec_uses_bitrate(&data.output.audio_codec))
             .then_some(i64::from(data.output.audio_bitrate)),
     )

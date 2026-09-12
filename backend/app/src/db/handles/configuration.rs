@@ -48,7 +48,8 @@ pub async fn select_configuration(
         processing.vtt_name AS processing_vtt_name,
         processing.vtt_language AS processing_vtt_language,
         processing.vtt_default AS processing_vtt_default,
-        ingest.enable AS ingest_enable, ingest.url AS ingest_url,
+        COALESCE(ingest.enabled, 0) AS ingest_enable,
+        COALESCE(ingest.identifier, '') AS ingest_url,
         playlist.day_start AS playlist_day_start,
         playlist.length AS playlist_length,
         playlist.infinit AS playlist_infinit,
@@ -65,7 +66,8 @@ pub async fn select_configuration(
     JOIN config_logging logging ON logging.config_id = c.id
     JOIN config_processing processing ON processing.config_id = c.id
     JOIN config_audio audio ON audio.config_id = c.id
-    JOIN config_ingest ingest ON ingest.config_id = c.id
+    LEFT JOIN config_live_input ingest ON ingest.config_id = c.id
+        AND ingest.backend = 'rtmp' AND ingest.takeover_mode = 'connection'
     JOIN config_playlist playlist ON playlist.config_id = c.id
     JOIN config_storage storage ON storage.config_id = c.id
     LEFT JOIN config_text_presets text ON text.config_id = c.id AND text.persistent = 1
@@ -104,11 +106,15 @@ pub async fn insert_configuration(
             .await?;
     }
 
-    sqlx::query("INSERT INTO config_ingest (config_id, url) VALUES ($1, $2)")
-        .bind(config_id)
-        .bind(ingest_url)
-        .execute(&mut *connection)
-        .await?;
+    sqlx::query(
+        "INSERT INTO config_live_input
+         (config_id, backend, identifier, takeover_mode)
+         VALUES ($1, 'rtmp', $2, 'connection')",
+    )
+    .bind(config_id)
+    .bind(ingest_url)
+    .execute(&mut *connection)
+    .await?;
 
     Ok(config_id)
 }
@@ -118,9 +124,10 @@ pub async fn ingest_port_in_use(
     channel_id: i32,
     port: u16,
 ) -> Result<bool, ProcessError> {
-    const QUERY: &str = "SELECT ingest.url FROM config
-        JOIN config_ingest ingest ON ingest.config_id = config.id
-        WHERE config.channel_id != $1 AND ingest.enable = 1";
+    const QUERY: &str = "SELECT ingest.identifier FROM config
+        JOIN config_live_input ingest ON ingest.config_id = config.id
+        WHERE config.channel_id != $1 AND ingest.backend = 'rtmp'
+            AND ingest.takeover_mode = 'connection' AND ingest.enabled = 1";
 
     let urls = sqlx::query_scalar::<_, String>(QUERY)
         .bind(channel_id)
@@ -185,12 +192,18 @@ pub async fn update_configuration_on(
         .bind(config.audio.live_loudness_gain_up_db_per_second).bind(config.audio.live_loudness_gain_down_db_per_second)
         .bind(config.audio.live_loudness_silence_gate_lufs).bind(config.audio.live_loudness_true_peak_ceiling_dbtp)
         .execute(&mut *connection).await?;
-    sqlx::query("UPDATE config_ingest SET enable = $2, url = $3 WHERE config_id = $1")
-        .bind(id)
-        .bind(config.ingest.enable)
-        .bind(config.ingest.ingest_url)
-        .execute(&mut *connection)
-        .await?;
+    sqlx::query(
+        "INSERT INTO config_live_input
+             (config_id, enabled, backend, identifier, takeover_mode)
+         VALUES ($1, $2, 'rtmp', $3, 'connection')
+         ON CONFLICT(config_id) WHERE backend = 'rtmp' AND takeover_mode = 'connection'
+         DO UPDATE SET enabled = excluded.enabled, identifier = excluded.identifier",
+    )
+    .bind(id)
+    .bind(config.ingest.enable)
+    .bind(config.ingest.ingest_url)
+    .execute(&mut *connection)
+    .await?;
     sqlx::query(
         "UPDATE config_playlist SET day_start = $2, length = $3, infinit = $4 WHERE config_id = $1",
     )
@@ -345,6 +358,12 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../../../../../migrations/00004_pipeline_options.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         let config = select_configuration(&pool, 1).await.unwrap();
         assert_eq!(config.general_stop_threshold, 17.5);
         assert_eq!(config.mail_subject, "Migrated subject");
@@ -377,7 +396,8 @@ mod tests {
         let old_tables: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN
              ('global', 'roles', 'user', 'user_channels', 'refresh_tokens',
-              'outputs', 'configurations', 'audio_config', 'recordings', 'text_presets')",
+              'outputs', 'configurations', 'audio_config', 'recordings', 'text_presets',
+              'config_ingest')",
         )
         .fetch_one(&pool)
         .await
@@ -400,6 +420,133 @@ mod tests {
                 .execute(&pool)
                 .await
                 .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn future_pipeline_configuration_has_safe_defaults_and_audio_tracks_are_ordered() {
+        let pool = pool().await;
+        let output_id: i32 =
+            sqlx::query_scalar("SELECT id FROM config_output WHERE config_id = 1 AND active = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        let output_options: (String, String, String, String, String) = sqlx::query_as(
+            "SELECT audio_options, protocol_options, device_backend, device_identifier, device_options
+             FROM config_output WHERE id = $1",
+        )
+        .bind(output_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            output_options,
+            (
+                "{}".to_string(),
+                "{}".to_string(),
+                String::new(),
+                String::new(),
+                "{}".to_string(),
+            )
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, String>(
+                "SELECT program_layout FROM config_audio WHERE config_id = 1",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+            "stereo"
+        );
+        assert_eq!(
+            sqlx::query_as::<_, (String, String)>(
+                "SELECT demuxer_options, protocol_options FROM config_source WHERE config_id = 1",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+            ("{}".to_string(), "{}".to_string())
+        );
+
+        let rtmp_input: (i64, String, String, String) = sqlx::query_as(
+            "SELECT enabled, backend, identifier, takeover_mode
+             FROM config_live_input
+             WHERE config_id = 1 AND backend = 'rtmp' AND takeover_mode = 'connection'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            rtmp_input,
+            (
+                0,
+                "rtmp".to_string(),
+                "rtmp://127.0.0.1:1936/live/stream".to_string(),
+                "connection".to_string(),
+            )
+        );
+
+        let live_input: (i64, String, f64, f64) = sqlx::query_as(
+            "INSERT INTO config_live_input (config_id, priority, backend)
+             VALUES (1, 50, 'ndi')
+             RETURNING enabled, takeover_mode, signal_loss_grace_seconds, max_duration_seconds",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(live_input, (0, "manual".to_string(), 5.0, 0.0));
+        assert!(
+            sqlx::query(
+                "INSERT INTO config_live_input (config_id, backend, takeover_mode)
+                 VALUES (1, 'rtmp', 'connection')",
+            )
+            .execute(&pool)
+            .await
+            .is_err()
+        );
+
+        sqlx::query(
+            "INSERT INTO config_output_audio (output_id, position, language, channel_layout)
+             VALUES ($1, 0, 'deu', '5.1')",
+        )
+        .bind(output_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert!(
+            sqlx::query("INSERT INTO config_output_audio (output_id, position) VALUES ($1, 0)")
+                .bind(output_id)
+                .execute(&pool)
+                .await
+                .is_err()
+        );
+
+        let transient_output_id: i32 = sqlx::query_scalar(
+            "INSERT INTO config_output (config_id, name) VALUES (1, 'test') RETURNING id",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO config_output_audio (output_id, position) VALUES ($1, 0)")
+            .bind(transient_output_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM config_output WHERE id = $1")
+            .bind(transient_output_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM config_output_audio WHERE output_id = $1",
+            )
+            .bind(transient_output_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+            0
         );
     }
 
@@ -485,5 +632,38 @@ mod tests {
         assert_eq!(unchanged.notification_topic, original.notification_topic);
         assert_eq!(unchanged.processing_volume, original.processing_volume);
         assert_eq!(unchanged.output_id, original.output_id);
+    }
+
+    #[tokio::test]
+    async fn legacy_rtmp_configuration_recovers_a_missing_listener_row() {
+        let pool = pool().await;
+        sqlx::raw_sql(
+            "UPDATE config_global SET logs = 'assets', playlists = 'assets',
+                public = 'assets', storage = 'assets';
+             UPDATE channels SET public = 'assets', playlists = 'assets', storage = 'assets';",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut config = PlayoutConfig::new(&pool, 1, None).await.unwrap();
+
+        sqlx::query(
+            "DELETE FROM config_live_input
+             WHERE config_id = 1 AND backend = 'rtmp' AND takeover_mode = 'connection'",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let without_listener = select_configuration(&pool, 1).await.unwrap();
+        assert!(!without_listener.ingest_enable);
+        assert!(without_listener.ingest_url.is_empty());
+
+        config.ingest.enable = true;
+        config.ingest.ingest_url = "rtmp://127.0.0.1:1940/live/recreated".to_string();
+        update_configuration(&pool, 1, config).await.unwrap();
+
+        let restored = select_configuration(&pool, 1).await.unwrap();
+        assert!(restored.ingest_enable);
+        assert_eq!(restored.ingest_url, "rtmp://127.0.0.1:1940/live/recreated");
     }
 }

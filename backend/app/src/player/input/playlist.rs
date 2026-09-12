@@ -13,7 +13,8 @@ use crate::{
     player::{
         controller::ChannelManager,
         utils::{
-            JsonPlaylist, Media, get_date, get_delta, is_close, is_image_source, is_remote,
+            JsonPlaylist, Media, get_date, get_delta, is_close, is_image_source, is_live_source,
+            is_remote,
             json_serializer::{read_json, set_defaults},
             modified_time, probe_media, time_in_seconds,
         },
@@ -605,7 +606,7 @@ impl CurrentProgram {
         };
 
         // separate if condition, because of node.add_probe() in last condition
-        if node.probe.is_none() {
+        if node.probe.is_none() && !is_live_source(&node.source) {
             trace!("clip index: {node_index} | last index: {last_index}");
 
             if node_index < last_index {
@@ -833,11 +834,11 @@ impl CurrentProgram {
     }
 }
 
-/// A still image has a single non-seekable frame. When playout starts in the
-/// middle of its scheduled slot, show that frame for the remaining slot rather
-/// than passing a source seek to FFmpeg.
+/// Sources without a seekable timeline need special handling when playout
+/// starts in the middle of their scheduled slot. Still images keep their first
+/// frame for the remaining slot; live transports start at their current edge.
 fn apply_init_seek(node: &mut Media, elapsed: f64) {
-    if is_image_source(&node.source) {
+    if is_live_source(&node.source) || is_image_source(&node.source) {
         node.out = (node.out - node.seek - elapsed).max(0.0);
         node.seek = 0.0;
     } else {
@@ -887,6 +888,17 @@ mod tests {
 
         assert_eq!(node.seek, 0.0);
         assert_eq!(node.out, 7.0);
+    }
+
+    #[test]
+    fn starting_midway_through_live_source_does_not_seek_it() {
+        let mut node = media(12.0, 60.0, 0.0);
+        node.source = "rtmp://example.invalid/live/stream".to_string();
+
+        apply_init_seek(&mut node, 30.0);
+
+        assert_eq!(node.seek, 0.0);
+        assert_eq!(node.out, 18.0);
     }
 
     #[test]

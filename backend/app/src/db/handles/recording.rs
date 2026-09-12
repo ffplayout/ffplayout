@@ -63,10 +63,11 @@ pub async fn update_recording_on(
         RecordingSource::Encode => "encode",
     };
     let video_options = serde_json::to_string(&recording.video_options)?;
-    Ok(sqlx::query("UPDATE config_recording SET enabled = $2, source = $3, source_output_id = $4, hls_variant = $5, path = $6, segment_duration = $7, retention_days = $8, minimum_free_space_gb = $9, width = $10, height = $11, video_codec = $12, video_options = $13, audio_codec = $14, audio_bitrate = $15 WHERE config_id = (SELECT id FROM config WHERE channel_id = $1)")
+    let audio_options = serde_json::to_string(&recording.audio_options)?;
+    Ok(sqlx::query("UPDATE config_recording SET enabled = $2, source = $3, source_output_id = $4, hls_variant = $5, path = $6, segment_duration = $7, retention_days = $8, minimum_free_space_gb = $9, width = $10, height = $11, video_codec = $12, video_options = $13, audio_codec = $14, audio_options = $15, audio_bitrate = $16 WHERE config_id = (SELECT id FROM config WHERE channel_id = $1)")
         .bind(channel_id).bind(recording.enable).bind(source).bind(recording.source_output_id).bind(&recording.variant).bind(&recording.path)
         .bind(i64::from(recording.segment_duration)).bind(i64::from(recording.retention_days)).bind(i64::from(recording.minimum_free_space_gb))
-        .bind(i64::from(recording.width)).bind(i64::from(recording.height)).bind(&recording.video_codec).bind(video_options).bind(&recording.audio_codec).bind(i64::from(recording.audio_bitrate))
+        .bind(i64::from(recording.width)).bind(i64::from(recording.height)).bind(&recording.video_codec).bind(video_options).bind(&recording.audio_codec).bind(audio_options).bind(i64::from(recording.audio_bitrate))
         .execute(connection).await?)
 }
 
@@ -101,6 +102,7 @@ mod tests {
             video_codec: "libx264".to_string(),
             video_options: BTreeMap::from([("preset".to_string(), "fast".to_string())]),
             audio_codec: "aac".to_string(),
+            audio_options: BTreeMap::from([("aac_coder".to_string(), "fast".to_string())]),
             audio_bitrate: 192,
         };
 
@@ -127,5 +129,6 @@ mod tests {
         assert_eq!(selected.segment_duration, 120);
         assert_eq!((selected.width, selected.height), (640, 360));
         assert_eq!(selected.audio_bitrate, 192);
+        assert_eq!(selected.audio_options, "{\"aac_coder\":\"fast\"}");
     }
 }

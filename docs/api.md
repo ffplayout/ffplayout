@@ -100,6 +100,14 @@ settings, text preset references, and volume before persisting the change.
 Video settings are submitted as `output.video_options`: a string map whose
 allowed keys, values, numeric bounds, defaults, and visibility conditions are
 provided with the selected video codec by `GET /api/playout/codecs/{id}`.
+Audio encoder settings use `output.audio_options` and, for dedicated recording
+encoding, `recording.audio_options`. Both are string maps and remain empty by
+default so FFmpeg retains its codec defaults. FFmpeg audio-encoding AVOptions
+can be submitted through the advanced editor. Options managed by ffplayout,
+including bitrate, sample rate, channel layout and time base, cannot be
+overridden. FFmpeg validates every remaining name and value
+before the configuration is stored, so unsupported options cannot cause a
+delayed failure during the next output restart.
 
 For `output.mode: "stream"`, `output.stream_type` also accepts `"custom"`.
 Set `output.stream_format` to an FFmpeg output format such as `"decklink"` and
@@ -118,6 +126,13 @@ Uncompressed video codecs such as `rawvideo` and lossless audio codecs such as
 | `PUT` | `/api/control/{id}/audio` | `GA, CA` | `{ "volume": 0.0 }`, from `0.0` through `1.5`. |
 | `GET` | `/api/control/{id}/media/current` | `GA, CA, U` | Read the current media and playout state. |
 | `POST` | `/api/control/{id}/process` | `GA, CA, U` | `{ "command": "status" \| "start" \| "stop" \| "restart" }` |
+
+During an active live ingest, `back`, `next`, and `reset` return HTTP 200 with
+`{ "operation": "ignored", "reason": "live_ingest_active" }`. They do not change
+the playlist position or time shift and are not queued for later execution.
+Process stop and restart remain available. The `ingest` field in current-media
+responses and playout events indicates an actual live takeover, not merely a
+listener waiting for a connection.
 
 ```bash
 curl -X POST http://127.0.0.1:8787/api/control/1/process \

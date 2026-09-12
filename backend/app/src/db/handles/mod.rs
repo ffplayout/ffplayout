@@ -6,6 +6,7 @@ pub mod output;
 pub mod preset;
 pub mod recording;
 pub mod refresh_token;
+pub mod source;
 pub mod user;
 
 pub use channel::*;
@@ -16,4 +17,5 @@ pub use output::*;
 pub use preset::*;
 pub use recording::*;
 pub use refresh_token::*;
+pub use source::*;
 pub use user::*;

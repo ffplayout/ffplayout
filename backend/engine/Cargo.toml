@@ -21,6 +21,7 @@ processing-bench = []
 tokio = ["dep:tokio"]
 ffmpeg-filter = ["ffmpeg-next/filter"]
 ffmpeg-device = ["ffmpeg-next/device"]
+transcription-example = ["dep:transcribe-rs"]
 
 [dependencies]
 anyhow = "1"
@@ -50,6 +51,7 @@ softbuffer = { version = "0.4", optional = true, default-features = false, featu
 ] }
 tokio = { version = "1.44", optional = true, features = ["rt", "sync"] }
 winit = { version = "0.30", optional = true }
+transcribe-rs = { version = "0.3", optional = true, features = ["whisper-cpp"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 wgpu = { version = "30.0", optional = true, default-features = false, features = ["std", "parking_lot", "vulkan", "gles", "wgsl"] }
@@ -72,6 +74,10 @@ naga = { version = "30.0", features = ["wgsl-in"] }
 [[example]]
 name = "wav_cpal"
 required-features = ["desktop-base"]
+
+[[example]]
+name = "live_transcription"
+required-features = ["desktop-base", "transcription-example"]
 
 [[bench]]
 name = "overlay_blend"

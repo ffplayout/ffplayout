@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import GenericModal from '@/components/utils/GenericModal.vue'
@@ -33,6 +33,8 @@ const copyOutputs = computed(() => {
 
 const videoCodecs = computed(() => configStore.outputCodecs.recording.video)
 const audioCodecs = computed(() => configStore.outputCodecs.recording.audio)
+const newAudioOptionName = ref('')
+const newAudioOptionValue = ref('')
 const videoSettings = computed(
     () => videoCodecs.value.find((codec) => codec.name === configStore.playout.recording.video_codec)?.settings ?? [],
 )
@@ -41,13 +43,16 @@ const audioUsesBitrate = computed(
         audioCodecs.value.find((codec) => codec.name === configStore.playout.recording.audio_codec)?.uses_bitrate ??
         true,
 )
-
 function setRecordingVideoCodec() {
     const codec = videoCodecs.value.find((codec) => codec.name === configStore.playout.recording.video_codec)
     if (!codec) return
     configStore.playout.recording.video_options = Object.fromEntries(
         codec.settings.map((setting) => [setting.key, setting.default]),
     )
+}
+
+function setRecordingAudioCodec() {
+    configStore.playout.recording.audio_options = {}
 }
 
 function setRecordingSource() {
@@ -70,6 +75,43 @@ function setVideoOption(key: string, value: string | number) {
         ...configStore.playout.recording.video_options,
         [key]: String(value),
     }
+}
+
+function setAudioOption(key: string, value: string | number) {
+    configStore.playout.recording.audio_options = {
+        ...configStore.playout.recording.audio_options,
+        [key]: String(value),
+    }
+}
+
+function addAudioOption() {
+    const options = configStore.playout.recording.audio_options
+    const key = newAudioOptionName.value.trim()
+    const value = newAudioOptionValue.value.trim()
+    if (!key || !value || key in options) return
+    configStore.playout.recording.audio_options = { ...options, [key]: value }
+    newAudioOptionName.value = ''
+    newAudioOptionValue.value = ''
+}
+
+function renameAudioOption(previousKey: string, event: Event) {
+    const input = event.target as HTMLInputElement
+    const key = input.value.trim()
+    const options = { ...configStore.playout.recording.audio_options }
+    if (!key || (key !== previousKey && key in options)) {
+        input.value = previousKey
+        return
+    }
+    const value = options[previousKey]
+    delete options[previousKey]
+    options[key] = value
+    configStore.playout.recording.audio_options = options
+}
+
+function removeAudioOption(key: string) {
+    const options = { ...configStore.playout.recording.audio_options }
+    delete options[key]
+    configStore.playout.recording.audio_options = options
 }
 
 function eventValue(event: Event) {
@@ -145,7 +187,7 @@ async function saveRecording() {
                     </select>
                 </label>
                 <template v-if="configStore.playout.recording.source === 'encode'">
-                    <label v-if="audioUsesBitrate" class="fieldset">
+                    <label class="fieldset">
                         <span class="fieldset-legend">{{ t('config.videoCodec') }}</span>
                         <select
                             v-model="configStore.playout.recording.video_codec"
@@ -159,7 +201,11 @@ async function saveRecording() {
                     </label>
                     <label class="fieldset">
                         <span class="fieldset-legend">{{ t('config.audioCodec') }}</span>
-                        <select v-model="configStore.playout.recording.audio_codec" class="select select-sm w-full">
+                        <select
+                            v-model="configStore.playout.recording.audio_codec"
+                            class="select select-sm w-full"
+                            @change="setRecordingAudioCodec"
+                        >
                             <option v-for="codec in audioCodecs" :key="codec.name" :value="codec.name">
                                 {{ codec.display_name }}
                             </option>
@@ -210,7 +256,7 @@ async function saveRecording() {
                             class="input input-sm w-full"
                         />
                     </label>
-                    <label class="fieldset">
+                    <label v-if="audioUsesBitrate" class="fieldset">
                         <span class="fieldset-legend">{{ t('config.audioBitrate') }}</span>
                         <input
                             v-model.number="configStore.playout.recording.audio_bitrate"
@@ -220,6 +266,57 @@ async function saveRecording() {
                             class="input input-sm w-full"
                         />
                     </label>
+                    <fieldset class="fieldset sm:col-span-2">
+                        <legend class="fieldset-legend">{{ t('config.audioEncoderOptions') }}</legend>
+                        <p class="fieldset-label items-baseline mb-2">{{ t('config.audioEncoderOptionsHelp') }}</p>
+                        <div
+                            v-for="[key, value] in Object.entries(configStore.playout.recording.audio_options)"
+                            :key="key"
+                            class="flex flex-wrap items-center gap-2 mb-2"
+                        >
+                            <input
+                                :value="key"
+                                type="text"
+                                class="input input-sm w-48"
+                                @change="renameAudioOption(key, $event)"
+                            />
+                            <input
+                                :value="value"
+                                type="text"
+                                class="input input-sm grow"
+                                @input="setAudioOption(key, eventValue($event))"
+                            />
+                            <button class="btn btn-sm btn-ghost" type="button" @click="removeAudioOption(key)">
+                                {{ t('config.remove') }}
+                            </button>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <input
+                                v-model="newAudioOptionName"
+                                type="text"
+                                class="input input-sm w-48"
+                                :placeholder="t('config.audioOptionName')"
+                            />
+                            <input
+                                v-model="newAudioOptionValue"
+                                type="text"
+                                class="input input-sm grow"
+                                :placeholder="t('config.audioOptionValue')"
+                            />
+                            <button
+                                class="btn btn-sm"
+                                type="button"
+                                :disabled="
+                                    !newAudioOptionName.trim() ||
+                                    !newAudioOptionValue.trim() ||
+                                    newAudioOptionName.trim() in configStore.playout.recording.audio_options
+                                "
+                                @click="addAudioOption"
+                            >
+                                {{ t('config.addAudioOption') }}
+                            </button>
+                        </div>
+                    </fieldset>
                 </template>
                 <label class="fieldset sm:col-span-2">
                     <span class="fieldset-legend">{{ t('config.recordingPath') }}</span>

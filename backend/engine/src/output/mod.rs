@@ -39,6 +39,12 @@ impl Error for PlaybackStopped {}
 pub(crate) trait FrameOutput {
     fn audio_frame_size(&self) -> usize;
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()>;
+    /// Realtime outputs can decline a full queue so live ingest can pad audio
+    /// and observe cancellation before retrying the same video frame.
+    fn try_encode_video(&mut self, frame: &frame::Video) -> Result<bool> {
+        self.encode_video(frame)?;
+        Ok(true)
+    }
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()>;
     /// Discard output buffered past a manual clip skip and re-anchor at the
     /// supplied synchronized timeline position. Encoded outputs cannot
@@ -79,6 +85,16 @@ pub(crate) trait FrameOutput {
         _output_start_ms: i64,
         _source_start_ms: i64,
     ) -> Result<()> {
+        Ok(())
+    }
+    /// Discard subtitles queued for the previous clip. Encoded outputs keep
+    /// cues pending until file playback reaches their timestamp.
+    fn clear_vtt_subtitles(&mut self) -> Result<()> {
+        Ok(())
+    }
+    /// Release subtitle cues whose output timestamp has been reached by an
+    /// actually emitted file video frame.
+    fn advance_vtt_subtitles(&mut self, _output_position_ms: i64) -> Result<()> {
         Ok(())
     }
 }
@@ -249,6 +265,25 @@ impl FrameOutput for Output {
             OutputKind::Encoded(output) => {
                 output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
             }
+            #[cfg(feature = "desktop-base")]
+            OutputKind::Desktop(_) => Ok(()),
+        }
+    }
+
+    fn clear_vtt_subtitles(&mut self) -> Result<()> {
+        match &mut self.kind {
+            OutputKind::Encoded(output) => {
+                output.clear_vtt_subtitles();
+                Ok(())
+            }
+            #[cfg(feature = "desktop-base")]
+            OutputKind::Desktop(_) => Ok(()),
+        }
+    }
+
+    fn advance_vtt_subtitles(&mut self, output_position_ms: i64) -> Result<()> {
+        match &mut self.kind {
+            OutputKind::Encoded(output) => output.advance_vtt_subtitles(output_position_ms),
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => Ok(()),
         }

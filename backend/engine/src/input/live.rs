@@ -1,9 +1,10 @@
 use std::{
+    collections::{HashMap, VecDeque},
     error::Error,
     ffi::{CStr, CString},
     fmt,
     sync::{
-        Arc, Mutex, OnceLock,
+        Arc, LazyLock, Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError},
     },
@@ -27,7 +28,9 @@ use crate::{
     benchmark::{self, BenchHandle, Stage},
     compositor::logo::LogoOverlay,
     output::FrameOutput,
-    playout::{InputPlaybackOptions, LogoFadePlan, Timeline, play_opened_input},
+    playout::{
+        InputPlaybackOptions, LogoFadePlan, Timeline, check_playback_control, play_opened_input,
+    },
     utils::{
         config::OutputConfig,
         ffmpeg::{make_audio_frame_writable, reference_audio_frame, reference_video_frame},
@@ -36,6 +39,25 @@ use crate::{
 };
 
 const LIVE_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_PENDING_AUDIO_FRAMES: usize = 512;
+
+// The live decoder supplies stereo planar f32 at the configured sample rate.
+fn trim_audio_start(input: &frame::Audio, skip: usize) -> Result<frame::Audio> {
+    anyhow::ensure!(skip < input.samples(), "cannot trim an entire audio frame");
+    let mut result = frame::Audio::new(
+        input.format(),
+        input.samples() - skip,
+        input.channel_layout(),
+    );
+    result.set_rate(input.rate());
+    result.set_pts(input.pts().map(|pts| pts + skip as i64));
+    for channel in 0..input.channels() as usize {
+        result
+            .plane_mut::<f32>(channel)
+            .copy_from_slice(&input.plane::<f32>(channel)[skip..]);
+    }
+    Ok(result)
+}
 const LIVE_IDLE_TIMEOUT: Duration = Duration::from_millis(1500);
 const LIVE_WATCHDOG_INTERVAL: Duration = Duration::from_millis(100);
 /// Maximum PTS discontinuity in the live source that is bridged with filler
@@ -45,6 +67,15 @@ const MAX_LIVE_GAP_SECONDS: f64 = 5.0;
 /// The live channel carries decoded raw frames (several MB each for video);
 /// it must be bounded so a stalled consumer cannot exhaust memory.
 const LIVE_CHANNEL_SECONDS: usize = 2;
+// The reader can legitimately be this far ahead while the bounded live queue
+// drains. Do not synthesize silence during that interval: doing so overlaps
+// real audio once it arrives and produces an audible pulsing effect.
+const LIVE_AUDIO_GRACE_SECONDS: f64 = LIVE_CHANNEL_SECONDS as f64 + 0.5;
+// FLV timestamps use millisecond precision. At 48 kHz that can make otherwise
+// contiguous AAC frames appear to overlap or have a gap by a few dozen
+// samples. Treat deviations below 5 ms as timestamp quantization, while
+// preserving real packet loss and discontinuities.
+const LIVE_AUDIO_PTS_JITTER_SECONDS: f64 = 0.005;
 const LIVE_SEND_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 const LIVE_BACKPRESSURE_LOG_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -53,20 +84,99 @@ const LIVE_BACKPRESSURE_LOG_INTERVAL: Duration = Duration::from_secs(1);
 /// see the usage in `run_rtmp_listener` for context.
 static STUCK_LIVE_WORKERS: AtomicU64 = AtomicU64::new(0);
 
+const MAX_LIVE_READERS_PER_INPUT: usize = 2;
+type ReaderKey = (Option<i32>, String);
+#[derive(Default)]
+struct ReaderState {
+    count: usize,
+    last_warning: Option<Instant>,
+}
+static LIVE_READERS: LazyLock<Mutex<HashMap<ReaderKey, ReaderState>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+struct LiveReaderPermit(ReaderKey);
+
+impl LiveReaderPermit {
+    fn acquire(key: ReaderKey, abort: &AtomicBool) -> Option<Self> {
+        while !abort.load(Ordering::Relaxed) {
+            if let Some(permit) = Self::try_acquire(&key) {
+                return Some(permit);
+            }
+            let warn = {
+                let mut readers = LIVE_READERS
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                readers.get_mut(&key).is_some_and(|state| {
+                    if state.count >= MAX_LIVE_READERS_PER_INPUT
+                        && state
+                            .last_warning
+                            .is_none_or(|time| time.elapsed() >= Duration::from_secs(300))
+                    {
+                        state.last_warning = Some(Instant::now());
+                        true
+                    } else {
+                        false
+                    }
+                })
+            };
+            if warn {
+                error!(channel = key.0.unwrap_or_default(); "live input blocked: both reader slots are occupied; waiting for a previous reader to exit (a process restart may be required)");
+            }
+            thread::sleep(LIVE_WATCHDOG_INTERVAL);
+        }
+        None
+    }
+
+    fn try_acquire(key: &ReaderKey) -> Option<Self> {
+        let mut readers = LIVE_READERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let state = readers.entry(key.clone()).or_default();
+        if state.count >= MAX_LIVE_READERS_PER_INPUT {
+            return None;
+        }
+        state.count += 1;
+        Some(Self(key.clone()))
+    }
+}
+
+impl Drop for LiveReaderPermit {
+    fn drop(&mut self) {
+        let mut readers = LIVE_READERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut recovered = false;
+        if let Some(state) = readers.get_mut(&self.0) {
+            state.count -= 1;
+            recovered = state.last_warning.take().is_some();
+            if state.count == 0 {
+                readers.remove(&self.0);
+            }
+        }
+        drop(readers);
+        if recovered {
+            info!(channel = self.0.0.unwrap_or_default(); "live reader capacity recovered; connections can resume");
+        }
+    }
+}
+
 pub struct LiveReceiver {
     rx: Receiver<LiveEvent>,
+    pending_event: Option<LiveEvent>,
+    live_session: Option<crate::LiveSession>,
     abort: Arc<AtomicBool>,
     fps: u32,
     sample_rate: u32,
     loudness_control: LiveLoudnessControl,
     active: bool,
     connecting: bool,
-    connecting_since: Option<Instant>,
     session_id: u64,
     session_output_start_seconds: Option<f64>,
     session_source_start_seconds: Option<f64>,
-    pending_audio: Vec<frame::Audio>,
+    pending_audio: VecDeque<frame::Audio>,
+    pending_audio_samples: usize,
     last_media_at: Option<Instant>,
+    last_audio_at: Option<Instant>,
     last_video_frame: Option<frame::Video>,
     last_video_output_pts: Option<i64>,
     last_audio_output_end_pts: Option<i64>,
@@ -114,18 +224,21 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
 
     LiveReceiver {
         rx,
+        pending_event: None,
+        live_session: None,
         abort,
         fps,
         sample_rate,
         loudness_control,
         active: false,
         connecting: false,
-        connecting_since: None,
         session_id: 0,
         session_output_start_seconds: None,
         session_source_start_seconds: None,
-        pending_audio: Vec::new(),
+        pending_audio: VecDeque::new(),
+        pending_audio_samples: 0,
         last_media_at: None,
+        last_audio_at: None,
         last_video_frame: None,
         last_video_output_pts: None,
         last_audio_output_end_pts: None,
@@ -157,22 +270,45 @@ impl LiveReceiver {
     pub fn loudness_metrics(&self) -> Option<LiveLoudnessMetrics> {
         self.loudness.as_ref().map(LiveLoudnessProcessor::metrics)
     }
+
+    pub(crate) fn reanchor_timeline(&self, timeline: &mut Timeline) {
+        timeline.reanchor(self.video_pts, self.audio_pts);
+    }
 }
 
 pub(crate) struct LiveOverrideOutput<'a, O: FrameOutput> {
     output: &'a mut O,
     live: &'a mut LiveReceiver,
+    playback_control: PlaybackControl,
+    allow_live_activation: bool,
 }
 
 impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
-    pub(crate) fn new(output: &'a mut O, live: &'a mut LiveReceiver) -> Self {
-        Self { output, live }
+    pub(crate) fn new(
+        output: &'a mut O,
+        live: &'a mut LiveReceiver,
+        playback_control: &PlaybackControl,
+    ) -> Self {
+        Self {
+            output,
+            live,
+            playback_control: playback_control.clone(),
+            allow_live_activation: true,
+        }
     }
 
     fn pump_live(&mut self) -> Result<bool> {
         let mut received_event = false;
         loop {
-            match self.live.rx.try_recv() {
+            // Check every event too: a busy live queue may never become empty.
+            check_playback_control(&self.playback_control)?;
+            match self
+                .live
+                .pending_event
+                .take()
+                .map(Ok)
+                .unwrap_or_else(|| self.live.rx.try_recv())
+            {
                 Ok(LiveEvent::Started {
                     session_id,
                     has_audio,
@@ -180,11 +316,12 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     self.live.session_id = session_id;
                     self.live.session_output_start_seconds = None;
                     self.live.session_source_start_seconds = None;
-                    self.live.pending_audio.clear();
+                    self.clear_pending_audio();
                     self.live.last_media_at = Some(Instant::now());
+                    self.live.last_audio_at = None;
                     self.live.active = false;
+                    self.live.live_session = None;
                     self.live.connecting = true;
-                    self.live.connecting_since = Some(Instant::now());
                     self.live.source_has_audio = has_audio;
                     self.live.loudness = None;
                     info!("live input connected; waiting for first video frame");
@@ -192,10 +329,21 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 Ok(LiveEvent::Video(session_id, frame)) => {
                     if session_id == self.live.session_id {
                         if !self.live.active {
+                            let Some(session) = self
+                                .allow_live_activation
+                                .then(|| self.playback_control.try_activate_live())
+                                .flatten()
+                            else {
+                                // Preserve the first frame while a previously accepted
+                                // navigation command finishes updating playlist state.
+                                self.live.pending_event = Some(LiveEvent::Video(session_id, frame));
+                                return Ok(received_event);
+                            };
+                            self.live.live_session = Some(session);
                             info!("first live video frame received; switching to RTMP live");
                             self.live.active = true;
                             self.live.connecting = false;
-                            self.live.connecting_since = None;
+                            self.live.last_audio_at = Some(Instant::now());
                             self.start_live_session(video_seconds(
                                 self.live.fps,
                                 frame.pts().unwrap_or(0),
@@ -213,8 +361,27 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                         self.live.last_media_at = Some(Instant::now());
                         if self.live.active {
                             self.encode_live_audio_frame(frame)?;
-                        } else {
-                            self.live.pending_audio.push(frame);
+                        } else if self.live.connecting {
+                            let limit = (self.live.sample_rate as usize)
+                                .saturating_mul(LIVE_STARTUP_TIMEOUT.as_secs() as usize);
+                            let frame = if frame.samples() > limit {
+                                trim_audio_start(&frame, frame.samples() - limit)?
+                            } else {
+                                frame
+                            };
+                            while !self.live.pending_audio.is_empty()
+                                && (self
+                                    .live
+                                    .pending_audio_samples
+                                    .saturating_add(frame.samples())
+                                    > limit
+                                    || self.live.pending_audio.len() >= MAX_PENDING_AUDIO_FRAMES)
+                            {
+                                let old = self.live.pending_audio.pop_front().unwrap();
+                                self.live.pending_audio_samples -= old.samples();
+                            }
+                            self.live.pending_audio_samples += frame.samples();
+                            self.live.pending_audio.push_back(frame);
                         }
                     }
                 }
@@ -228,9 +395,10 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                             self.live.returned_to_file = true;
                         }
                         self.live.active = false;
+                        self.live.live_session = None;
                         self.live.connecting = false;
-                        self.live.connecting_since = None;
-                        self.live.pending_audio.clear();
+                        self.live.last_audio_at = None;
+                        self.clear_pending_audio();
                     }
                 }
                 Err(TryRecvError::Empty) => return Ok(received_event),
@@ -242,9 +410,10 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                         self.live.returned_to_file = true;
                     }
                     self.live.active = false;
+                    self.live.live_session = None;
                     self.live.connecting = false;
-                    self.live.connecting_since = None;
-                    self.live.pending_audio.clear();
+                    self.live.last_audio_at = None;
+                    self.clear_pending_audio();
                     return Ok(received_event);
                 }
             }
@@ -257,10 +426,10 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
     /// as soon as the first live video frame arrives.
     fn wait_for_file_playback(&mut self) -> Result<()> {
         self.pump_live()?;
-        self.expire_stalled_connect();
         while self.live.active {
             thread::sleep(Duration::from_millis(10));
             self.pump_live()?;
+            self.pad_missing_live_audio()?;
             let idle_for = self
                 .live
                 .last_media_at
@@ -273,9 +442,10 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 self.prepare_file_resume();
                 self.live.returned_to_file = true;
                 self.live.active = false;
+                self.live.live_session = None;
                 self.live.connecting = false;
-                self.live.connecting_since = None;
-                self.live.pending_audio.clear();
+                self.live.last_audio_at = None;
+                self.clear_pending_audio();
             }
         }
         if self.live.returned_to_file {
@@ -285,21 +455,30 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         Ok(())
     }
 
-    /// Gives up on a connect attempt that never produced a video frame
-    /// (e.g. an audio-only publisher), so buffered audio cannot pile up
-    /// indefinitely while file playback continues.
-    fn expire_stalled_connect(&mut self) {
-        if self.live.connecting
-            && self
-                .live
-                .connecting_since
-                .is_some_and(|since| since.elapsed() >= LIVE_STARTUP_TIMEOUT)
-        {
-            info!("live input produced no video frame; staying on file playback");
-            self.live.connecting = false;
-            self.live.connecting_since = None;
-            self.live.pending_audio.clear();
+    fn clear_pending_audio(&mut self) {
+        self.live.pending_audio = VecDeque::new();
+        self.live.pending_audio_samples = 0;
+    }
+
+    /// For streams that announced an audio track, wait for actual audio
+    /// frames instead of inserting silence for every video frame. That avoids
+    /// repeatedly trimming valid audio merely because the muxer interleaves
+    /// video ahead of it. A sustained audio dropout is still padded.
+    fn pad_missing_live_audio(&mut self) -> Result<()> {
+        if !self.live.active || !self.live.source_has_audio {
+            return Ok(());
         }
+        if self
+            .live
+            .last_audio_at
+            .is_none_or(|since| since.elapsed() < Duration::from_secs_f64(LIVE_AUDIO_GRACE_SECONDS))
+        {
+            return Ok(());
+        }
+        self.pad_audio_until(seconds_to_audio_pts(
+            self.live.sample_rate,
+            video_seconds(self.live.fps, self.live.video_pts),
+        ))
     }
 
     fn fill_live_gap_since_last_media(&mut self) -> Result<()> {
@@ -406,6 +585,22 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         Ok(())
     }
 
+    /// Account for an already elapsed audio gap without synchronously pushing
+    /// seconds of silence through a realtime desktop queue. Encoded outputs
+    /// decline this shortcut and still receive timestamped silence frames.
+    fn pad_audio_until(&mut self, next_pts: i64) -> Result<()> {
+        let fill_pts = self
+            .live
+            .last_audio_output_end_pts
+            .unwrap_or(self.live.audio_pts);
+        let samples = next_pts.saturating_sub(fill_pts);
+        if samples > 0 && self.output.pad_audio(samples)? {
+            self.remember_audio_frame_end(next_pts);
+            return Ok(());
+        }
+        self.fill_audio_until(next_pts)
+    }
+
     fn remember_video_frame(&mut self, frame: frame::Video, pts: i64) {
         self.live.last_video_frame = Some(frame);
         self.live.last_video_output_pts = Some(pts);
@@ -469,21 +664,26 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         let pts = pts.max(self.live.video_pts);
         self.fill_video_until(pts)?;
         frame.set_pts(Some(pts));
-        self.output.encode_video(&frame)?;
+        loop {
+            check_playback_control(&self.playback_control)?;
+            self.pad_missing_live_audio()?;
+            if self.output.try_encode_video(&frame)? {
+                break;
+            }
+            thread::sleep(LIVE_SEND_RETRY_INTERVAL);
+        }
         self.remember_video_frame(frame, pts);
         self.live.video_pts = pts + 1;
         if !self.live.source_has_audio {
-            let video_end_seconds = video_seconds(self.live.fps, self.live.video_pts);
             self.fill_audio_until(seconds_to_audio_pts(
                 self.live.sample_rate,
-                video_end_seconds,
+                video_seconds(self.live.fps, self.live.video_pts),
             ))?;
         }
         Ok(())
     }
 
     fn encode_live_audio_frame(&mut self, mut frame: frame::Audio) -> Result<()> {
-        let samples = frame.samples() as i64;
         let source_pts = frame.pts().unwrap_or(0);
         let source_seconds = audio_seconds(self.live.sample_rate, source_pts);
         let mut pts = seconds_to_audio_pts(
@@ -502,8 +702,23 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 self.live_output_seconds(source_seconds),
             );
         }
-        let pts = pts.max(self.live.audio_pts);
-        self.fill_audio_until(pts)?;
+        let jitter_tolerance =
+            seconds_to_audio_pts(self.live.sample_rate, LIVE_AUDIO_PTS_JITTER_SECONDS);
+        if pts.abs_diff(self.live.audio_pts) <= jitter_tolerance as u64 {
+            pts = self.live.audio_pts;
+        }
+        // Silence already emitted (or audio preceding the first video) must
+        // never shift late samples into the future and introduce A/V drift.
+        let overlap = self.live.audio_pts.saturating_sub(pts).max(0) as usize;
+        if overlap >= frame.samples() {
+            return Ok(());
+        }
+        if overlap > 0 {
+            frame = trim_audio_start(&frame, overlap)?;
+            pts += overlap as i64;
+        }
+        let samples = frame.samples() as i64;
+        self.pad_audio_until(pts)?;
         frame.set_pts(Some(pts));
         self.sync_loudness_processor();
         if let Some(loudness) = &mut self.live.loudness {
@@ -513,11 +728,13 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         }
         self.output.encode_audio(&frame)?;
         self.remember_audio_frame_end(pts + samples);
+        self.live.last_audio_at = Some(Instant::now());
         Ok(())
     }
 
     fn flush_pending_audio(&mut self) -> Result<()> {
         let pending = std::mem::take(&mut self.live.pending_audio);
+        self.live.pending_audio_samples = 0;
         for frame in pending {
             self.encode_live_audio_frame(frame)?;
         }
@@ -617,11 +834,23 @@ fn audio_seconds(sample_rate: u32, pts: i64) -> f64 {
 }
 
 fn seconds_to_video_pts(fps: u32, seconds: f64) -> i64 {
-    (seconds * f64::from(fps)).ceil() as i64
+    seconds_to_pts(fps, seconds)
 }
 
 fn seconds_to_audio_pts(sample_rate: u32, seconds: f64) -> i64 {
-    (seconds * f64::from(sample_rate)).ceil() as i64
+    seconds_to_pts(sample_rate, seconds)
+}
+
+fn seconds_to_pts(rate: u32, seconds: f64) -> i64 {
+    let ticks = seconds * f64::from(rate);
+    let nearest = ticks.round();
+    // Preserve exact ticks after a floating-point seconds round trip. Plain
+    // ceil can turn e.g. frame 7 into frame 8 and permanently advance video.
+    if (ticks - nearest).abs() <= f64::EPSILON * ticks.abs().max(1.0) * 4.0 {
+        nearest as i64
+    } else {
+        ticks.ceil() as i64
+    }
 }
 
 impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
@@ -666,6 +895,15 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
     }
 
     fn reset_after_skip(&mut self, _video_pts: i64, _audio_pts: i64) -> Result<bool> {
+        // Finish skip cleanup before allowing a new live takeover. Otherwise
+        // cleanup padding itself could enter the live wait loop.
+        self.allow_live_activation = false;
+        // The suspended playlist timeline is not being sent to the output.
+        // Padding it would enter wait_for_file_playback again after the skip
+        // flag was consumed, preventing shutdown until the live source ends.
+        if self.live.active {
+            return Ok(true);
+        }
         let common_seconds = self.common_live_seconds();
         let video_pts = seconds_to_video_pts(self.live.fps, common_seconds);
         let audio_pts = seconds_to_audio_pts(self.live.sample_rate, common_seconds);
@@ -712,6 +950,14 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
         self.output
             .write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
     }
+
+    fn clear_vtt_subtitles(&mut self) -> Result<()> {
+        self.output.clear_vtt_subtitles()
+    }
+
+    fn advance_vtt_subtitles(&mut self, output_position_ms: i64) -> Result<()> {
+        self.output.advance_vtt_subtitles(output_position_ms)
+    }
 }
 
 struct LiveFrameSender {
@@ -737,6 +983,7 @@ impl LiveFrameSender {
                 event,
                 Some(&self.abort),
                 &self.listener_abort,
+                Some(&self.last_frame_ms),
                 "live frame",
             )
         })
@@ -775,6 +1022,13 @@ fn run_rtmp_listener(
     let mut session_id = 0;
 
     while !listener_abort.load(Ordering::Relaxed) {
+        // The reader owns this permit until it really exits, even after a
+        // listener restart. Never accumulate unlimited detached FFmpeg contexts.
+        let Some(reader_permit) =
+            LiveReaderPermit::acquire((cfg.channel_id, url.clone()), &listener_abort)
+        else {
+            return;
+        };
         let abort = Arc::new(AtomicBool::new(false));
         match logging::with_ingest_logs(cfg.channel_id, || {
             open_rtmp_listener(&url, Arc::clone(&abort), Arc::clone(&listener_abort))
@@ -801,6 +1055,7 @@ fn run_rtmp_listener(
                     },
                     Some(&abort),
                     &listener_abort,
+                    None,
                     "live start",
                 )
                 .is_err()
@@ -827,6 +1082,7 @@ fn run_rtmp_listener(
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .clone();
                 let worker = thread::spawn(move || {
+                    let _reader_permit = reader_permit;
                     if let Some(benchmark) = worker_benchmark {
                         benchmark::activate(benchmark);
                     }
@@ -846,6 +1102,7 @@ fn run_rtmp_listener(
                                 subtitles_media_path: None,
                                 logo_fade_plan,
                                 playback_control: &playback_control,
+                                preserve_source_timestamps: true,
                             },
                             None,
                         )
@@ -900,6 +1157,7 @@ fn run_rtmp_listener(
                     LiveEvent::Ended(session_id),
                     None,
                     &listener_abort,
+                    None,
                     "live end",
                 )
                 .is_err()
@@ -928,6 +1186,7 @@ fn send_live_event(
     mut event: LiveEvent,
     abort: Option<&AtomicBool>,
     listener_abort: &AtomicBool,
+    backpressure_heartbeat: Option<&AtomicU64>,
     label: &str,
 ) -> Result<()> {
     let mut backpressure_since = None;
@@ -939,6 +1198,12 @@ fn send_live_event(
                 return Err(anyhow::anyhow!("live event channel disconnected"));
             }
             Err(TrySendError::Full(returned_event)) => {
+                // A full internal queue means the source reader is alive but
+                // temporarily blocked by the output. Do not let the watchdog
+                // mistake this intentional backpressure for a dead publisher.
+                if let Some(heartbeat) = backpressure_heartbeat {
+                    heartbeat.store(monotonic_millis(), Ordering::Relaxed);
+                }
                 if abort.is_some_and(|abort| abort.load(Ordering::Relaxed))
                     || listener_abort.load(Ordering::Relaxed)
                 {
@@ -1100,6 +1365,7 @@ fn monotonic_millis() -> u64 {
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::VecDeque,
         sync::{
             Arc, Mutex,
             atomic::{AtomicBool, AtomicU64, Ordering},
@@ -1125,8 +1391,12 @@ mod tests {
     struct CountingOutput {
         video_frames: usize,
         audio_frames: usize,
+        last_audio: Option<(i64, usize, f32)>,
         reset_after_skip: bool,
         skip_target: Option<(i64, i64)>,
+        virtual_audio_padding: bool,
+        padded_audio_samples: i64,
+        interrupt: Option<(crate::PlaybackControl, bool)>,
     }
 
     impl FrameOutput for CountingOutput {
@@ -1136,11 +1406,25 @@ mod tests {
 
         fn encode_video(&mut self, _frame: &frame::Video) -> Result<()> {
             self.video_frames += 1;
+            if let Some((control, restart)) = self.interrupt.take() {
+                if restart {
+                    control.restart_playout();
+                } else {
+                    control.skip_current();
+                }
+            }
             Ok(())
         }
 
-        fn encode_audio(&mut self, _frame: &frame::Audio) -> Result<()> {
+        fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
             self.audio_frames += 1;
+            if frame.samples() > 0 {
+                self.last_audio = Some((
+                    frame.pts().unwrap_or(0),
+                    frame.samples(),
+                    frame.plane::<f32>(0)[0],
+                ));
+            }
             Ok(())
         }
 
@@ -1148,23 +1432,35 @@ mod tests {
             self.skip_target = Some((video_pts, audio_pts));
             Ok(self.reset_after_skip)
         }
+
+        fn pad_audio(&mut self, samples: i64) -> Result<bool> {
+            if self.virtual_audio_padding {
+                self.padded_audio_samples += samples;
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
     }
 
     fn test_live_receiver(rx: mpsc::Receiver<LiveEvent>) -> LiveReceiver {
         LiveReceiver {
             rx,
+            pending_event: None,
+            live_session: None,
             abort: Arc::new(AtomicBool::new(false)),
             fps: 25,
             sample_rate: 48_000,
             loudness_control: LiveLoudnessControl::new(false, LiveLoudnessConfig::default()),
             active: false,
             connecting: false,
-            connecting_since: None,
             session_id: 0,
             session_output_start_seconds: None,
             session_source_start_seconds: None,
-            pending_audio: Vec::new(),
+            pending_audio: VecDeque::new(),
+            pending_audio_samples: 0,
             last_media_at: None,
+            last_audio_at: None,
             last_video_frame: None,
             last_video_output_pts: None,
             last_audio_output_end_pts: None,
@@ -1176,6 +1472,483 @@ mod tests {
             source_has_audio: false,
             loudness: LiveLoudnessProcessor::new(48_000, LiveLoudnessConfig::default()).ok(),
             benchmark: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    #[test]
+    fn startup_ring_buffer_accepts_late_video_without_reconnect() {
+        let (tx, rx) = mpsc::channel();
+        let mut live = test_live_receiver(rx);
+        live.session_id = 1;
+        live.connecting = true;
+        for n in 0..600 {
+            let mut audio = frame::Audio::new(
+                ffmpeg_next::format::Sample::F32(ffmpeg_next::format::sample::Type::Planar),
+                1024,
+                ffmpeg_next::ChannelLayout::STEREO,
+            );
+            audio.set_pts(Some(n * 1024));
+            tx.send(LiveEvent::Audio(1, audio)).unwrap();
+        }
+        let mut output = CountingOutput::default();
+        let control = crate::PlaybackControl::default();
+        LiveOverrideOutput::new(&mut output, &mut live, &control)
+            .pump_live()
+            .unwrap();
+        assert!(live.pending_audio_samples <= 480_000);
+        assert!(live.pending_audio.len() <= super::MAX_PENDING_AUDIO_FRAMES);
+        assert!(live.pending_audio.front().unwrap().pts().unwrap() > 0);
+        assert!(!control.live_active());
+        let mut video = frame::Video::empty();
+        video.set_pts(Some(320));
+        tx.send(LiveEvent::Video(1, video)).unwrap();
+        LiveOverrideOutput::new(&mut output, &mut live, &control)
+            .pump_live()
+            .unwrap();
+        assert!(control.live_active());
+        assert!(live.pending_audio.is_empty());
+    }
+
+    #[test]
+    fn reader_limit_survives_listener_restarts_and_releases_slots() {
+        let key = (Some(-101), "reader-limit-test".to_string());
+        let first = super::LiveReaderPermit::try_acquire(&key).unwrap();
+        let second = super::LiveReaderPermit::try_acquire(&key).unwrap();
+        assert!(super::LiveReaderPermit::try_acquire(&key).is_none());
+        assert!(super::LiveReaderPermit::try_acquire(&(Some(-102), key.1.clone())).is_some());
+        let abort = Arc::new(AtomicBool::new(false));
+        let worker_abort = abort.clone();
+        let worker_key = key.clone();
+        let worker =
+            thread::spawn(move || super::LiveReaderPermit::acquire(worker_key, &worker_abort));
+        abort.store(true, Ordering::Relaxed);
+        assert!(worker.join().unwrap().is_none());
+        drop(first);
+        assert!(super::LiveReaderPermit::try_acquire(&key).is_some());
+        drop(second);
+        assert!(!super::LIVE_READERS.lock().unwrap().contains_key(&key));
+    }
+
+    #[test]
+    fn waiting_reader_recovers_when_a_slot_is_released() {
+        let key = (Some(-103), "reader-recovery-test".to_string());
+        let first = super::LiveReaderPermit::try_acquire(&key).unwrap();
+        let second = super::LiveReaderPermit::try_acquire(&key).unwrap();
+        let (tx, rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let permit = super::LiveReaderPermit::acquire(key, &AtomicBool::new(false));
+            tx.send(permit).unwrap();
+        });
+        assert!(rx.recv_timeout(Duration::from_millis(30)).is_err());
+        drop(first);
+        let recovered = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(recovered.is_some());
+        worker.join().unwrap();
+        drop(recovered);
+        drop(second);
+    }
+
+    fn audio_frame(pts: i64, samples: usize) -> frame::Audio {
+        let mut frame = frame::Audio::new(
+            ffmpeg_next::format::Sample::F32(ffmpeg_next::format::sample::Type::Planar),
+            samples,
+            ffmpeg_next::ChannelLayout::STEREO,
+        );
+        frame.set_rate(48_000);
+        frame.set_pts(Some(pts));
+        for channel in 0..2 {
+            for (index, sample) in frame.plane_mut::<f32>(channel).iter_mut().enumerate() {
+                *sample = index as f32;
+            }
+        }
+        frame
+    }
+
+    #[test]
+    fn missing_audio_is_padded_and_late_audio_is_trimmed_without_shifting() {
+        let (_tx, rx) = mpsc::channel();
+        let mut live = test_live_receiver(rx);
+        live.source_has_audio = true;
+        let mut output = CountingOutput::default();
+        let control = crate::PlaybackControl::default();
+        let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+        wrapper.start_live_session(0.0);
+        wrapper.live.active = true;
+        wrapper.live.last_audio_at = Some(Instant::now());
+        for pts in 0..25 {
+            let mut frame = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+            frame.set_pts(Some(pts));
+            wrapper.encode_live_video_frame(frame).unwrap();
+        }
+        assert_eq!(
+            wrapper.live.audio_pts, 0,
+            "valid audio is not pre-emptively replaced"
+        );
+        wrapper.live.last_audio_at = Some(Instant::now() - Duration::from_secs(3));
+        wrapper.pad_missing_live_audio().unwrap();
+        assert_eq!(wrapper.live.audio_pts, 48_000);
+        wrapper
+            .encode_live_audio_frame(audio_frame(0, 1024))
+            .unwrap();
+        assert_eq!(wrapper.live.audio_pts, 48_000); // stale audio is discarded
+        wrapper
+            .encode_live_audio_frame(audio_frame(47_500, 1024))
+            .unwrap();
+        assert_eq!(wrapper.live.audio_pts, 48_524);
+        assert_eq!(wrapper.output.last_audio, Some((48_000, 524, 500.0)));
+        // A subsequent audio dropout is padded too, not just startup.
+        for pts in 25..50 {
+            let mut frame = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+            frame.set_pts(Some(pts));
+            wrapper.encode_live_video_frame(frame).unwrap();
+        }
+        assert_eq!(wrapper.live.audio_pts, 48_524);
+        wrapper.live.last_audio_at = Some(Instant::now() - Duration::from_secs(3));
+        wrapper.pad_missing_live_audio().unwrap();
+        assert_eq!(wrapper.live.audio_pts, 96_000);
+        wrapper
+            .encode_live_audio_frame(audio_frame(96_000, 1024))
+            .unwrap();
+        assert_eq!(wrapper.output.last_audio, Some((96_000, 1024, 0.0)));
+    }
+
+    #[test]
+    fn timely_audio_is_not_replaced_by_silence() {
+        let (_tx, rx) = mpsc::channel();
+        let mut live = test_live_receiver(rx);
+        live.source_has_audio = true;
+        let mut output = CountingOutput::default();
+        let control = crate::PlaybackControl::default();
+        let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+        wrapper.start_live_session(0.0);
+        for pts in 0..5 {
+            let mut frame = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+            frame.set_pts(Some(pts));
+            wrapper.encode_live_video_frame(frame).unwrap();
+        }
+        assert_eq!(wrapper.output.audio_frames, 0);
+        wrapper
+            .encode_live_audio_frame(audio_frame(0, 9600))
+            .unwrap();
+        assert_eq!(wrapper.output.last_audio, Some((0, 9600, 0.0)));
+    }
+
+    #[test]
+    fn millisecond_audio_timestamp_jitter_keeps_frames_contiguous() {
+        let (_tx, rx) = mpsc::channel();
+        let mut live = test_live_receiver(rx);
+        live.source_has_audio = true;
+        let mut output = CountingOutput::default();
+        let control = crate::PlaybackControl::default();
+        let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+        wrapper.start_live_session(0.0);
+
+        // A 1024-sample AAC cadence cannot be represented exactly by FLV's
+        // millisecond time base. These are typical rescaled PTS values.
+        for pts in [0, 1008, 2064] {
+            wrapper
+                .encode_live_audio_frame(audio_frame(pts, 1024))
+                .unwrap();
+        }
+
+        assert_eq!(wrapper.output.audio_frames, 3);
+        assert_eq!(wrapper.output.last_audio, Some((2048, 1024, 0.0)));
+        assert_eq!(wrapper.live.audio_pts, 3072);
+    }
+
+    #[test]
+    fn delayed_audio_uses_output_padding_without_a_silence_burst() {
+        let (_tx, rx) = mpsc::channel();
+        let mut live = test_live_receiver(rx);
+        live.active = true;
+        live.source_has_audio = true;
+        live.last_audio_at = Some(Instant::now() - Duration::from_secs(3));
+        let mut output = CountingOutput {
+            virtual_audio_padding: true,
+            ..CountingOutput::default()
+        };
+        let control = crate::PlaybackControl::default();
+        let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+        wrapper.start_live_session(0.0);
+        wrapper.live.video_pts = 75;
+
+        wrapper.pad_missing_live_audio().unwrap();
+
+        assert_eq!(wrapper.output.padded_audio_samples, 144_000);
+        assert_eq!(wrapper.output.audio_frames, 0);
+        assert_eq!(wrapper.live.audio_pts, 144_000);
+    }
+
+    #[test]
+    fn regression_live_padding_progresses_before_audio_start() {
+        struct WaitingForAudio {
+            video: mpsc::SyncSender<()>,
+            audio: mpsc::Sender<()>,
+        }
+        impl FrameOutput for WaitingForAudio {
+            fn audio_frame_size(&self) -> usize {
+                1024
+            }
+            fn encode_video(&mut self, _: &frame::Video) -> Result<()> {
+                self.video
+                    .send(())
+                    .map_err(|_| anyhow::anyhow!("test output closed"))
+            }
+            fn try_encode_video(&mut self, _: &frame::Video) -> Result<bool> {
+                match self.video.try_send(()) {
+                    Ok(()) => Ok(true),
+                    Err(mpsc::TrySendError::Full(())) => Ok(false),
+                    Err(mpsc::TrySendError::Disconnected(())) => {
+                        anyhow::bail!("test output closed")
+                    }
+                }
+            }
+            fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
+                self.audio.send(())?;
+                Ok(())
+            }
+            fn pad_audio(&mut self, _: i64) -> Result<bool> {
+                self.audio.send(())?;
+                Ok(true)
+            }
+        }
+        let (tx, rx) = mpsc::channel();
+        for pts in 0..32 {
+            let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 4, 4);
+            video.set_pts(Some(pts));
+            tx.send(LiveEvent::Video(1, video)).unwrap();
+        }
+        let (video_tx, video_rx) = mpsc::sync_channel(8);
+        let (audio_tx, audio_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let mut live = test_live_receiver(rx);
+            live.active = true;
+            live.session_id = 1;
+            live.source_has_audio = true;
+            live.last_audio_at = Some(Instant::now());
+            let mut output = WaitingForAudio {
+                video: video_tx,
+                audio: audio_tx,
+            };
+            let control = crate::PlaybackControl::default();
+            let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+            wrapper.start_live_session(0.0);
+            wrapper.wait_for_file_playback()
+        });
+        // Model a desktop renderer whose audio prebuffer has not started:
+        // it cannot consume video until some audio or silence is supplied.
+        let received_audio = audio_rx.recv_timeout(Duration::from_secs(4)).is_ok();
+        // Always unblock and join the worker before asserting, including on failure.
+        drop(video_rx);
+        drop(tx);
+        let _ = worker.join().expect("live test worker panicked");
+        assert!(
+            received_audio,
+            "overdue silence was never supplied while video was backpressured"
+        );
+    }
+
+    #[test]
+    fn timestamp_roundtrips_do_not_add_frames_or_samples() {
+        for rate in [25, 30, 44_100, 48_000] {
+            for pts in [7, 29, 103, 9999, 3_456_789_123] {
+                assert_eq!(
+                    super::seconds_to_pts(rate, pts as f64 / f64::from(rate)),
+                    pts
+                );
+            }
+            assert_eq!(super::seconds_to_pts(rate, 7.25 / f64::from(rate)), 8);
+        }
+    }
+
+    #[test]
+    fn startup_buffer_bounds_tiny_and_oversized_audio_frames() {
+        for large in [false, true] {
+            let (tx, rx) = mpsc::channel();
+            let mut live = test_live_receiver(rx);
+            live.session_id = 1;
+            live.connecting = true;
+            if large {
+                tx.send(LiveEvent::Audio(1, audio_frame(0, 528_000)))
+                    .unwrap();
+            } else {
+                for pts in 0..600 {
+                    tx.send(LiveEvent::Audio(1, audio_frame(pts, 1))).unwrap();
+                }
+            }
+            let mut output = CountingOutput::default();
+            LiveOverrideOutput::new(&mut output, &mut live, &crate::PlaybackControl::default())
+                .pump_live()
+                .unwrap();
+            assert!(live.pending_audio.len() <= super::MAX_PENDING_AUDIO_FRAMES);
+            assert!(live.pending_audio_samples <= 480_000);
+            assert!(live.pending_audio.front().unwrap().pts().unwrap() > 0);
+            assert!(live.connecting);
+        }
+    }
+
+    #[test]
+    fn live_status_tracks_takeover_end_and_receiver_drop() {
+        let (tx, rx) = mpsc::sync_channel(3);
+        let mut live = test_live_receiver(rx);
+        let control = crate::PlaybackControl::default();
+        let mut output = CountingOutput::default();
+        tx.send(LiveEvent::Started {
+            session_id: 1,
+            has_audio: true,
+        })
+        .unwrap();
+        LiveOverrideOutput::new(&mut output, &mut live, &control)
+            .pump_live()
+            .unwrap();
+        assert!(
+            !control.live_active(),
+            "connecting alone must not block navigation"
+        );
+        tx.send(LiveEvent::Video(
+            1,
+            frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 4, 4),
+        ))
+        .unwrap();
+        LiveOverrideOutput::new(&mut output, &mut live, &control)
+            .pump_live()
+            .unwrap();
+        assert!(control.live_active());
+        live.last_media_at = None;
+        tx.send(LiveEvent::Ended(1)).unwrap();
+        LiveOverrideOutput::new(&mut output, &mut live, &control)
+            .pump_live()
+            .unwrap();
+        assert!(!control.live_active());
+        tx.send(LiveEvent::Started {
+            session_id: 2,
+            has_audio: true,
+        })
+        .unwrap();
+        tx.send(LiveEvent::Video(
+            2,
+            frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 4, 4),
+        ))
+        .unwrap();
+        LiveOverrideOutput::new(&mut output, &mut live, &control)
+            .pump_live()
+            .unwrap();
+        assert!(control.live_active());
+        drop(live);
+        assert!(!control.live_active());
+    }
+
+    #[test]
+    fn navigation_reservation_preserves_first_live_frame_until_next_clip() {
+        let (tx, rx) = mpsc::sync_channel(1);
+        let mut live = test_live_receiver(rx);
+        live.session_id = 1;
+        live.source_has_audio = true;
+        let control = crate::PlaybackControl::default();
+        let navigation = control.begin_navigation().unwrap();
+        let mut output = CountingOutput::default();
+        tx.send(LiveEvent::Video(1, frame::Video::empty())).unwrap();
+        let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+        wrapper.pump_live().unwrap();
+        assert!(!control.live_active());
+        navigation.commit();
+        assert!(
+            wrapper
+                .pump_live()
+                .unwrap_err()
+                .is::<crate::playout::PlaybackSkipped>()
+        );
+        wrapper.reset_after_skip(0, 0).unwrap();
+        wrapper.pump_live().unwrap();
+        assert!(
+            !control.live_active(),
+            "skip cleanup must not activate live"
+        );
+        drop(wrapper);
+        assert_eq!(output.video_frames, 0);
+        LiveOverrideOutput::new(&mut output, &mut live, &control)
+            .pump_live()
+            .unwrap();
+        assert!(control.live_active());
+        assert_eq!(output.video_frames, 1);
+    }
+
+    #[test]
+    fn skip_cleanup_does_not_reenter_active_live_playback() {
+        let (_tx, rx) = mpsc::sync_channel(1);
+        let mut live = test_live_receiver(rx);
+        live.active = true;
+        live.video_pts = 250;
+        live.audio_pts = 480_000;
+        let mut output = CountingOutput::default();
+        let control = crate::PlaybackControl::default();
+        assert!(
+            LiveOverrideOutput::new(&mut output, &mut live, &control)
+                .reset_after_skip(25, 48_000)
+                .unwrap()
+        );
+        assert_eq!(output.skip_target, None);
+        assert_eq!(output.video_frames, 0);
+        assert_eq!(output.audio_frames, 0);
+        assert_eq!(live.video_pts, 250);
+        assert_eq!(live.audio_pts, 480_000);
+    }
+
+    #[test]
+    fn active_live_wait_observes_skip_and_restart() {
+        for restart in [false, true] {
+            let (_tx, rx) = mpsc::sync_channel(1);
+            let mut live = test_live_receiver(rx);
+            live.active = true;
+            live.last_media_at = Some(Instant::now());
+            let control = crate::PlaybackControl::default();
+            let worker_control = control.clone();
+            let worker = thread::spawn(move || {
+                thread::sleep(Duration::from_millis(30));
+                if restart {
+                    worker_control.restart_playout();
+                } else {
+                    worker_control.skip_current();
+                }
+            });
+            let mut output = CountingOutput::default();
+            let result =
+                LiveOverrideOutput::new(&mut output, &mut live, &control).wait_for_file_playback();
+            worker.join().unwrap();
+            let error = result.expect_err("active live playback must be interrupted");
+            if restart {
+                assert!(error.is::<crate::playout::PlaybackRestart>());
+            } else {
+                assert!(error.is::<crate::playout::PlaybackSkipped>());
+            }
+            assert!(live.active, "must interrupt before the live idle timeout");
+        }
+    }
+
+    #[test]
+    fn busy_live_queue_observes_skip_and_restart_between_frames() {
+        for restart in [false, true] {
+            let (tx, rx) = mpsc::sync_channel(2);
+            tx.send(LiveEvent::Video(1, frame::Video::empty())).unwrap();
+            tx.send(LiveEvent::Video(1, frame::Video::empty())).unwrap();
+            let mut live = test_live_receiver(rx);
+            live.session_id = 1;
+            live.active = true;
+            live.source_has_audio = true;
+            let control = crate::PlaybackControl::default();
+            let mut output = CountingOutput {
+                interrupt: Some((control.clone(), restart)),
+                ..CountingOutput::default()
+            };
+            let error = LiveOverrideOutput::new(&mut output, &mut live, &control)
+                .pump_live()
+                .expect_err("must stop draining live frames on interruption");
+            if restart {
+                assert!(error.is::<crate::playout::PlaybackRestart>());
+            } else {
+                assert!(error.is::<crate::playout::PlaybackSkipped>());
+            }
+            assert_eq!(output.video_frames, 1);
         }
     }
 
@@ -1223,7 +1996,7 @@ mod tests {
         let mut frame = frame::Video::empty();
         frame.set_pts(Some(0));
 
-        LiveOverrideOutput::new(&mut output, &mut live)
+        LiveOverrideOutput::new(&mut output, &mut live, &crate::PlaybackControl::default())
             .encode_live_video_frame(frame)
             .unwrap();
 
@@ -1285,6 +2058,44 @@ mod tests {
     }
 
     #[test]
+    fn backpressure_does_not_make_the_live_watchdog_abort_the_reader() {
+        let (tx, _rx) = mpsc::sync_channel(1);
+        tx.try_send(LiveEvent::Started {
+            session_id: 1,
+            has_audio: true,
+        })
+        .unwrap();
+        let abort = Arc::new(AtomicBool::new(false));
+        let heartbeat = Arc::new(AtomicU64::new(super::monotonic_millis()));
+        let watchdog = super::spawn_live_watchdog(
+            Arc::clone(&heartbeat),
+            Arc::new(AtomicBool::new(true)),
+            Arc::clone(&abort),
+        );
+        let worker_abort = Arc::clone(&abort);
+        let worker_heartbeat = Arc::clone(&heartbeat);
+        let worker = thread::spawn(move || {
+            super::send_live_event(
+                &tx,
+                LiveEvent::Ended(1),
+                Some(&worker_abort),
+                &AtomicBool::new(false),
+                Some(&worker_heartbeat),
+                "test",
+            )
+        });
+
+        thread::sleep(super::LIVE_IDLE_TIMEOUT + Duration::from_millis(300));
+        assert!(
+            !abort.load(Ordering::Relaxed),
+            "queue backpressure must not look like an idle publisher"
+        );
+        abort.store(true, Ordering::Relaxed);
+        assert!(worker.join().unwrap().is_err());
+        watchdog.join().unwrap();
+    }
+
+    #[test]
     fn skip_reset_uses_the_actual_output_timeline() {
         let (_tx, rx) = mpsc::sync_channel(1);
         let mut live = test_live_receiver(rx);
@@ -1297,9 +2108,10 @@ mod tests {
             ..CountingOutput::default()
         };
 
-        let reset = LiveOverrideOutput::new(&mut output, &mut live)
-            .reset_after_skip(1_000, 2_000)
-            .unwrap();
+        let reset =
+            LiveOverrideOutput::new(&mut output, &mut live, &crate::PlaybackControl::default())
+                .reset_after_skip(1_000, 2_000)
+                .unwrap();
 
         assert!(reset);
         assert_eq!(output.skip_target, Some((50, 96_000)));
@@ -1366,9 +2178,13 @@ mod tests {
         live.last_media_at = Some(Instant::now());
         let mut output = CountingOutput::default();
 
-        let received_event = super::LiveOverrideOutput::new(&mut output, &mut live)
-            .pump_live()
-            .unwrap();
+        let received_event = super::LiveOverrideOutput::new(
+            &mut output,
+            &mut live,
+            &crate::PlaybackControl::default(),
+        )
+        .pump_live()
+        .unwrap();
 
         assert!(!received_event);
         assert!(live.active);

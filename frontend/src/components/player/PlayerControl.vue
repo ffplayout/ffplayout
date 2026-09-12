@@ -278,6 +278,7 @@ async function clock() {
 }
 
 function resetStatus() {
+    playlistStore.ingestRuns = false
     playlistStore.elapsedSec = 0
     playlistStore.shift = 0
     playlistStore.audioLevel = null
@@ -311,15 +312,22 @@ const controlPlayout = throttle(async (state: string) => {
         - jump to last clip
         - reset playout state
     */
+    if (playlistStore.ingestRuns) return
     const id = configStore.channels[configStore.i]?.id
 
-    await authFetch(`/api/control/${id}/playout`, {
+    await authFetch<{ operation?: string; reason?: string }>(`/api/control/${id}/playout`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ control: state }),
-    }).catch((e) => {
-        indexStore.msgAlert('error', e.data, 3)
     })
+        .then((result) => {
+            if (result.reason === 'live_ingest_active') {
+                indexStore.msgAlert('warning', t('control.navigationDisabledLive'), 3)
+            }
+        })
+        .catch((e) => {
+            indexStore.msgAlert('error', e.data, 3)
+        })
 }, 1000)
 
 function runControl(button: PlayerControlButton) {
@@ -465,9 +473,19 @@ function runControl(button: PlayerControlButton) {
                             :key="columnIndex"
                             class="text-center h-full"
                         >
-                            <div v-for="button in column" :key="button.command" class="w-full h-1/2 p-2">
+                            <div
+                                v-for="button in column"
+                                :key="button.command"
+                                class="w-full h-1/2 p-2"
+                                :title="
+                                    button.target === 'playout' && playlistStore.ingestRuns
+                                        ? t('control.navigationDisabledLive')
+                                        : t(button.label)
+                                "
+                            >
                                 <button
-                                    :title="t(button.label)"
+                                    :aria-label="t(button.label)"
+                                    :disabled="button.target === 'playout' && playlistStore.ingestRuns"
                                     class="btn btn-primary h-full w-full"
                                     :class="[
                                         button.class,
