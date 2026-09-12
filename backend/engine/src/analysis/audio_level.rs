@@ -5,6 +5,31 @@ use ffmpeg_next::frame;
 const AUDIO_LEVEL_INTERVAL_MILLIS: u64 = 500;
 const MIN_DBFS: f32 = -100.0;
 
+/// Lightweight access to decoded, normalized audio frames. The callback runs
+/// synchronously on the decoder thread and must return quickly.
+#[derive(Clone)]
+pub struct AudioFrameCallback {
+    callback: Arc<dyn Fn(&frame::Audio) + Send + Sync>,
+}
+
+impl AudioFrameCallback {
+    pub fn new(callback: impl Fn(&frame::Audio) + Send + Sync + 'static) -> Self {
+        Self {
+            callback: Arc::new(callback),
+        }
+    }
+
+    pub(crate) fn emit(&self, frame: &frame::Audio) {
+        (self.callback)(frame);
+    }
+}
+
+impl fmt::Debug for AudioFrameCallback {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("AudioFrameCallback")
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct AudioLevel {
     pub rms_db: f32,

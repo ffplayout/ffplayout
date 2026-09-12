@@ -1271,6 +1271,9 @@ fn receive_audio_frames<O: FrameOutput>(
         } else {
             timeline.audio_pts
         }));
+        if let Some(callback) = &audio.audio_frame_callback {
+            callback.emit(&converted);
+        }
         output.encode_audio(&converted)?;
         audio.source_next_pts = converted.pts().map(|pts| pts + samples);
         timeline.audio_pts += samples;
@@ -1636,6 +1639,7 @@ impl FrameRateConverter {
 }
 
 struct AudioDecoder {
+    audio_frame_callback: Option<crate::AudioFrameCallback>,
     source_next_pts: Option<i64>,
     decoder: codec::decoder::Audio,
     resampler: resampling::Context,
@@ -1809,6 +1813,7 @@ impl AudioDecoder {
             cfg.sample_rate,
         )?;
         Ok(Self {
+            audio_frame_callback: cfg.audio_frame_callback.clone(),
             decoder,
             resampler,
             source_next_pts: None,
@@ -2279,6 +2284,11 @@ fn write_silence<O: FrameOutput>(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
     use anyhow::Result;
     use ffmpeg_next::{codec, frame, media, util::format::pixel::Pixel};
 
@@ -2292,9 +2302,39 @@ mod tests {
         video_frame_needs_write, write_padding_video_frames,
     };
     use crate::{
+        AudioFrameCallback,
         output::FrameOutput,
         utils::{config::OutputConfig, helper::open_media_input},
     };
+
+    #[test]
+    fn decoded_audio_callback_receives_normalized_frames() {
+        let received_samples = Arc::new(AtomicUsize::new(0));
+        let callback_samples = Arc::clone(&received_samples);
+        let mut cfg = OutputConfig::new(320, 240, 25, 48_000);
+        cfg.audio_frame_callback = Some(AudioFrameCallback::new(move |frame| {
+            assert_eq!(frame.rate(), 48_000);
+            assert_eq!(frame.channels(), 2);
+            callback_samples.fetch_add(frame.samples(), Ordering::Relaxed);
+        }));
+        let mut timeline = Timeline::new();
+        let mut output = RecordingOutput::default();
+
+        play_clip(
+            &media_mix_asset("av_sync.mp4"),
+            &cfg,
+            &mut timeline,
+            &mut output,
+            None,
+            Some(0.25),
+            None,
+            LogoFade::default(),
+            &PlaybackControl::default(),
+        )
+        .unwrap();
+
+        assert!(received_samples.load(Ordering::Relaxed) > 0);
+    }
 
     #[derive(Default)]
     struct RecordingOutput {

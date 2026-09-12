@@ -24,6 +24,7 @@ ffplayout.1.gz
 /dist/
 data/
 tmp/
+models/
 assets/playlist_template.json
 ffplayout*.toml
 template.json

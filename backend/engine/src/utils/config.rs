@@ -16,8 +16,8 @@ use ffmpeg_next::{
 };
 
 use crate::{
-    AudioEffectsControl, AudioLevelCallback, LiveLoudnessConfig, LiveLoudnessControl,
-    LoudnessMeterControl,
+    AudioEffectsControl, AudioFrameCallback, AudioLevelCallback, LiveLoudnessConfig,
+    LiveLoudnessControl, LoudnessMeterControl,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -190,6 +190,7 @@ pub struct OutputConfig {
     pub live_loudness: LiveLoudnessConfig,
     pub live_loudness_control: LiveLoudnessControl,
     pub audio_level_callback: Option<AudioLevelCallback>,
+    pub audio_frame_callback: Option<AudioFrameCallback>,
     pub loudness_meter_control: LoudnessMeterControl,
     pub logo: Option<LogoConfig>,
     pub text: Option<TextConfig>,
@@ -1272,6 +1273,7 @@ impl OutputConfig {
             live_loudness: LiveLoudnessConfig::default(),
             live_loudness_control: LiveLoudnessControl::new(false, LiveLoudnessConfig::default()),
             audio_level_callback: None,
+            audio_frame_callback: None,
             loudness_meter_control: LoudnessMeterControl::default(),
             logo: None,
             text: None,
@@ -1315,6 +1317,11 @@ impl OutputConfig {
 
     pub fn with_audio_level_callback(mut self, callback: Option<AudioLevelCallback>) -> Self {
         self.audio_level_callback = callback;
+        self
+    }
+
+    pub fn with_audio_frame_callback(mut self, callback: Option<AudioFrameCallback>) -> Self {
+        self.audio_frame_callback = callback;
         self
     }
 

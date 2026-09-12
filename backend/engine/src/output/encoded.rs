@@ -218,6 +218,7 @@ impl EncodedOutput {
         recording_cfg.audio_bitrate = encode.audio_bitrate;
         recording_cfg.audio_effects = crate::AudioEffectsControl::default();
         recording_cfg.audio_level_callback = None;
+        recording_cfg.audio_frame_callback = None;
         recording_cfg.recording = None;
         let (pattern, monitor) = recording::prepare_recording(recording_config)?;
         let mut output = Self::open(
