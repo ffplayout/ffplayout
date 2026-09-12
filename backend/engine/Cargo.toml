@@ -51,7 +51,7 @@ softbuffer = { version = "0.4", optional = true, default-features = false, featu
 ] }
 tokio = { version = "1.44", optional = true, features = ["rt", "sync"] }
 winit = { version = "0.30", optional = true }
-transcribe-rs = { version = "0.3", optional = true, features = ["whisper-cpp"] }
+transcribe-rs = { version = "0.3", optional = true, features = ["onnx", "whisper-cpp"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 wgpu = { version = "30.0", optional = true, default-features = false, features = ["std", "parking_lot", "vulkan", "gles", "wgsl"] }
