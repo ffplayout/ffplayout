@@ -482,6 +482,7 @@ fn engine_output_config(
                 config.output.audio_options.clone(),
                 u64::from(config.output.audio_bitrate) * 1_000,
             )
+            .with_protocol_options(config.output.protocol_options.clone())
             .with_muxer_options(config.output.muxer_options.clone())
             .with_recording(recording),
     )

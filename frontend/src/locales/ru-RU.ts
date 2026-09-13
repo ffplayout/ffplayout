@@ -288,6 +288,12 @@ export default {
         addAudioOption: 'Добавить параметр аудио',
         audioOptionName: 'Имя параметра',
         audioOptionValue: 'Значение',
+        protocolOptions: 'Параметры протокола вывода',
+        protocolOptionsHelp:
+            'Транспортные параметры для открытия RTMP-, SRT-, UDP- или поддерживаемого пользовательского сетевого выхода. Примеры: SRT latency=2000000 или UDP pkt_size=1316. Значения, включая парольные фразы, сохраняются и возвращаются без изменений. Тайм-ауты ffplayout переопределить нельзя.',
+        addProtocolOption: 'Добавить параметр протокола',
+        protocolOptionName: 'Имя параметра',
+        protocolOptionValue: 'Значение',
         muxerOptions: 'Параметры мультиплексора',
         muxerOptionsHelp:
             'Дополнительные параметры мультиплексора FFmpeg для этого выхода. Для HLS задайте hls_flags равным program_date_time, чтобы добавить EXT-X-PROGRAM-DATE-TIME. Обязательные для ffplayout параметры остаются включёнными.',

@@ -616,6 +616,38 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
         .await
         .unwrap();
     assert_eq!(invalid_output_response.status(), StatusCode::BAD_REQUEST);
+
+    // Invalid transport options must fail before any topic is persisted.
+    for (key, value) in [
+        ("rtmp_app", "abc\0def"),
+        ("tcp_nodelay", "true"),
+        ("rtmp_buffer ", "3000"),
+    ] {
+        let mut invalid = config.clone();
+        invalid.mail.subject = "Must not be saved".to_string();
+        invalid.output.mode = ffplayout::utils::config::OutputMode::Stream;
+        invalid.output.stream_type = ffplayout::utils::config::StreamType::Rtmp;
+        invalid.output.stream_url = "rtmp://127.0.0.1/live/test".to_string();
+        invalid.output.protocol_options =
+            [(key.to_string(), value.to_string())].into_iter().collect();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/playout/config/1")
+                    .header("authorization", format!("Bearer {admin_token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&invalid).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8_lossy(&body);
+        assert!(body.contains("option"), "{body}");
+    }
     assert_eq!(
         handles::select_configuration(&pool, 1)
             .await

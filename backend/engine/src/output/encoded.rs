@@ -31,10 +31,10 @@ use crate::{
     utils::{
         config::{
             HlsSubtitle, HlsVariant, OutputConfig, audio_encoder_context,
-            engine_audio_sample_format, video_codec_uses_bitrate,
+            engine_audio_sample_format, validate_output_protocol_options, video_codec_uses_bitrate,
         },
         ffmpeg_capabilities::validate_muxer_options,
-        helper::{is_network_url, network_io_options},
+        helper::{is_network_url, open_network_output},
     },
 };
 
@@ -209,6 +209,7 @@ impl EncodedOutput {
         let input_width = cfg.width;
         let input_height = cfg.height;
         let mut recording_cfg = cfg.clone();
+        recording_cfg.protocol_options.clear();
         recording_cfg.width = encode.width.max(1);
         recording_cfg.height = encode.height.max(1);
         recording_cfg.video_codec = encode.video_codec.clone();
@@ -258,6 +259,26 @@ impl EncodedOutput {
                 validate_muxer_options(muxer, &cfg.muxer_options).map_err(anyhow::Error::msg)?;
             }
             EncodedFormat::Auto | EncodedFormat::Recording { .. } => {}
+        }
+        match &output_format {
+            EncodedFormat::Stream { .. } if is_network_url(path) => {
+                validate_output_protocol_options(cfg.stream_type, path, &cfg.protocol_options)
+                    .map_err(anyhow::Error::msg)?;
+            }
+            EncodedFormat::Auto if is_network_url(path) => {
+                validate_output_protocol_options(
+                    crate::StreamType::Custom,
+                    path,
+                    &cfg.protocol_options,
+                )
+                .map_err(anyhow::Error::msg)?;
+            }
+            _ if !cfg.protocol_options.is_empty() => {
+                return Err(anyhow!(
+                    "protocol options can only be used with network stream outputs"
+                ));
+            }
+            _ => {}
         }
         let pace_output = !matches!(&output_format, EncodedFormat::Recording { .. });
         let hls_variants = match &output_format {
@@ -344,15 +365,15 @@ impl EncodedOutput {
             // playlist before `append_list` can resume it.
             EncodedFormat::Hls { .. } => hls::output_context(&hls_output_path)?,
             EncodedFormat::Stream { ref muxer } if is_network_url(path) => {
-                format::output_as_with(path, muxer, network_io_options())?
+                open_network_output(path, Some(muxer), &cfg.protocol_options)?
             }
             EncodedFormat::Stream { ref muxer } => format::output_as(path, muxer)?,
             EncodedFormat::Recording { .. } => recording::segment_output_context(Path::new(path))?,
             EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
-                format::output_as_with(path, "flv", network_io_options())?
+                open_network_output(path, Some("flv"), &cfg.protocol_options)?
             }
             EncodedFormat::Auto if is_network_url(path) => {
-                format::output_with(path, network_io_options())?
+                open_network_output(path, None, &cfg.protocol_options)?
             }
             EncodedFormat::Auto => format::output(path)?,
         };
@@ -1985,6 +2006,14 @@ mod open_tests {
                 audio_options: BTreeMap::new(),
                 audio_bitrate: 96_000,
             });
+        // A dedicated recording must not inherit the network output's AVIO options.
+        let network_cfg = OutputConfig::new(320, 240, 25, 44_100).with_protocol_options(
+            BTreeMap::from([("latency".to_string(), "2000000".to_string())]),
+        );
+        EncodedOutput::open_recording(&network_cfg, &recording)
+            .expect("network options must not disable the recording")
+            .finish()
+            .unwrap();
         let cfg = OutputConfig::new(320, 240, 25, 44_100).with_recording(Some(recording));
         let mut output = EncodedOutput::open(
             dir.join("stream.ts").to_str().unwrap(),

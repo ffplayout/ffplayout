@@ -46,8 +46,8 @@ pub use utils::{
         RgbaColor, StreamType, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition,
         TextScroll, TextWeight, VideoOptionChoice, VideoOptionKind, VideoOptionSpec,
         VideoOptionVisibility, VideoOptions, audio_codec_uses_bitrate, validate_audio_options,
-        validate_video_options, video_codec_uses_bitrate, video_option_defaults,
-        video_option_specs,
+        validate_output_protocol_options, validate_video_options, video_codec_uses_bitrate,
+        video_option_defaults, video_option_specs,
     },
     ffmpeg_capabilities::{
         FfmpegCapabilities, FfmpegCodec, FfmpegFeatureSet, FfmpegMediaType, FfmpegMuxer,

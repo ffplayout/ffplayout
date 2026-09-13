@@ -88,13 +88,19 @@ duration; ordinary RTMP ingest remains backwards compatible.
 Implement transport-level output settings separately from existing
 `muxer_options`.
 
-- [ ] Define supported options per output transport: RTMP, SRT, UDP, and
+- [x] Define supported options per output transport: RTMP, SRT, UDP, and
   custom network outputs.
-- [ ] Merge validated user settings with enforced output timeout settings when
+- [x] Merge validated user settings with enforced output timeout settings when
   the FFmpeg output context is opened.
-- [ ] Explicitly decide how secrets such as SRT passphrases are stored and
+- [x] Explicitly decide how secrets such as SRT passphrases are stored and
   redacted from logs and API responses before exposing them in the UI.
-- [ ] Reject irrelevant options for file, HLS, and desktop outputs.
+- [x] Reject irrelevant options for file, HLS, and desktop outputs.
+
+SRT passphrases and other protocol values intentionally use the same storage
+and authenticated configuration API representation as the existing advanced
+option maps: they are stored and returned unchanged. Output URLs and option
+dictionaries must not be written to logs. A future masked-secret API can be
+added as a separate hardening measure without changing the FFmpeg pipeline.
 
 **Acceptance criteria:** examples such as SRT latency and UDP packet size work;
 unsupported or unsafe settings are rejected without affecting a running output.
