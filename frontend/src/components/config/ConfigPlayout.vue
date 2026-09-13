@@ -941,7 +941,7 @@ async function onSubmitPlayout() {
 
                 <div
                     class=""
-                    :class="{ 'collapse collapse-plus bg-base-100 border border-base-300 my-4': output !== 'desktop' }"
+                    :class="{ 'collapse collapse-plus bg-base-100/40 border-2 border-base-100 my-4': output !== 'desktop' }"
                 >
                     <input
                         v-if="output !== 'desktop'"
