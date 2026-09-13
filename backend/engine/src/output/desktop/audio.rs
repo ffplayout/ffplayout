@@ -48,7 +48,7 @@ impl DesktopAudio {
         self.state.samples.lock().unwrap().iter().copied().collect()
     }
 
-    pub(super) fn open(sample_rate: u32) -> Result<Self> {
+    pub(super) fn open(sample_rate: u32, channel_id: i32) -> Result<Self> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
@@ -80,7 +80,9 @@ impl DesktopAudio {
             playing: AtomicBool::new(false),
         });
         let callback_state = Arc::clone(&state);
-        let error_callback = |error| log::warn!("desktop audio stream error: {error}");
+        let error_callback = move |error| {
+            log::warn!(channel = channel_id; "desktop audio stream error: {error}");
+        };
         let stream = match sample_format {
             SampleFormat::I8 => {
                 build_audio_stream::<i8>(&device, &config, callback_state, error_callback)?

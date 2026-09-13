@@ -98,17 +98,17 @@ impl fmt::Display for Target {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct LogConsole {
-    state: StdMutex<ConsoleState>,
-    notifier: Option<LogNotifier>,
+    state: Arc<StdMutex<ConsoleState>>,
+    notifier: Option<Arc<LogNotifier>>,
 }
 
 impl LogConsole {
     pub fn with_notifier(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> Self {
         Self {
-            state: StdMutex::default(),
-            notifier: Some(LogNotifier::new(mail_queues)),
+            state: Arc::default(),
+            notifier: Some(Arc::new(LogNotifier::new(mail_queues))),
         }
     }
 }
@@ -120,10 +120,38 @@ struct ConsoleState {
 
 impl LogWriter for LogConsole {
     fn write(&self, now: &mut DeferredNow, record: &Record<'_>) -> std::io::Result<()> {
+        let stderr = io::stderr();
+        let is_terminal = stderr.is_terminal();
+        {
+            let mut stderr = stderr.lock();
+            self.write_to(&mut stderr, is_terminal, now, record, console_formatter)?;
+        }
+        if let Some(notifier) = &self.notifier {
+            notifier.write(now, record)?;
+        }
+        Ok(())
+    }
+
+    fn flush(&self) -> std::io::Result<()> {
+        io::stderr().flush()?;
+        if let Some(notifier) = &self.notifier {
+            notifier.flush()?;
+        }
+        Ok(())
+    }
+}
+
+impl LogConsole {
+    fn write_to(
+        &self,
+        output: &mut dyn Write,
+        is_terminal: bool,
+        now: &mut DeferredNow,
+        record: &Record<'_>,
+        format: flexi_logger::FormatFunction,
+    ) -> io::Result<()> {
         let message = record.args().to_string();
         let bench_lines = cpu_bench_line_count(&message);
-        let mut stderr = io::stderr();
-        let is_terminal = stderr.is_terminal();
         let mut state = self
             .state
             .lock()
@@ -132,12 +160,12 @@ impl LogWriter for LogConsole {
         if is_terminal && bench_lines.is_some() && state.previous_bench_lines > 0 {
             // The previous table is still the last terminal output, so it is
             // safe to move back to its first line and redraw it in place.
-            write!(stderr, "\x1b[{}A\r\x1b[J", state.previous_bench_lines)?;
+            write!(output, "\x1b[{}A\r\x1b[J", state.previous_bench_lines)?;
         }
 
-        console_formatter(&mut stderr, now, record)?;
+        format(output, now, record)?;
         if !message.ends_with('\n') {
-            writeln!(stderr)?;
+            writeln!(output)?;
         }
 
         state.previous_bench_lines = if is_terminal {
@@ -146,15 +174,6 @@ impl LogWriter for LogConsole {
             0
         };
 
-        if let Some(notifier) = &self.notifier {
-            notifier.write(now, record)?;
-        }
-        Ok(())
-    }
-    fn flush(&self) -> std::io::Result<()> {
-        if let Some(notifier) = &self.notifier {
-            notifier.flush()?;
-        }
         Ok(())
     }
 }
@@ -215,14 +234,9 @@ impl MultiFileLogger {
 
 impl LogWriter for MultiFileLogger {
     fn write(&self, now: &mut DeferredNow, record: &Record) -> io::Result<()> {
-        let channel = i32::try_from(
-            record
-                .key_values()
-                .get("channel".into())
-                .and_then(|v| Value::to_i64(&v))
-                .unwrap_or(0),
-        )
-        .unwrap_or(0);
+        let Some(channel) = record_channel(record) else {
+            return Ok(());
+        };
 
         let writer = self.get_writer(channel)?;
         writer.write(now, record)
@@ -324,14 +338,16 @@ impl LogWriter for LogMailer {
 
 pub struct LogDefault {
     file: Box<dyn LogWriter>,
+    console: LogConsole,
     mail: LogMailer,
     notifier: LogNotifier,
 }
 
 impl LogDefault {
-    pub fn new(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> Self {
+    pub fn new(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>, console: LogConsole) -> Self {
         Self {
             file: Box::new(MultiFileLogger::new(log_file_path())),
+            console,
             mail: LogMailer::new(mail_queues.clone()),
             notifier: LogNotifier::new(mail_queues),
         }
@@ -340,6 +356,19 @@ impl LogDefault {
 
 impl LogWriter for LogDefault {
     fn write(&self, now: &mut DeferredNow, record: &Record<'_>) -> std::io::Result<()> {
+        if record_channel(record).is_none() {
+            // The default writer normally targets a channel-specific file. A
+            // record without a valid channel is process-wide and belongs on
+            // the console instead; LogConsole also converts embedded HTML
+            // styling to ANSI terminal sequences.
+            return if explicitly_targets_console(record) {
+                // An explicitly addressed console writer already receives it.
+                Ok(())
+            } else {
+                self.console.write(now, record)
+            };
+        }
+
         self.file.write(now, record)?;
         self.mail.write(now, record)?;
         self.notifier.write(now, record)
@@ -347,9 +376,27 @@ impl LogWriter for LogDefault {
 
     fn flush(&self) -> std::io::Result<()> {
         self.file.flush()?;
+        self.console.flush()?;
         self.mail.flush()?;
         self.notifier.flush()
     }
+}
+
+fn record_channel(record: &Record<'_>) -> Option<i32> {
+    record
+        .key_values()
+        .get("channel".into())
+        .and_then(|value| Value::to_i64(&value))
+        .and_then(|channel| i32::try_from(channel).ok())
+        .filter(|channel| *channel > 0)
+}
+
+fn explicitly_targets_console(record: &Record<'_>) -> bool {
+    record
+        .target()
+        .strip_prefix('{')
+        .and_then(|target| target.strip_suffix('}'))
+        .is_some_and(|writers| writers.split(',').any(|writer| writer.trim() == "console"))
 }
 
 pub(crate) fn strip_tags(input: &str) -> String {
@@ -582,9 +629,10 @@ pub fn init_logging(
     if ARGS.log_to_console {
         logger = logger.log_to_writer(Box::new(LogConsole::with_notifier(mail_queues)));
     } else {
+        let console = LogConsole::default();
         logger = logger
-            .log_to_writer(Box::new(LogDefault::new(mail_queues)))
-            .add_writer("console", Box::new(LogConsole::default()));
+            .log_to_writer(Box::new(LogDefault::new(mail_queues, console.clone())))
+            .add_writer("console", Box::new(console));
     }
 
     let logger = logger
@@ -675,7 +723,105 @@ pub async fn log_middleware(real_ip: RealIp, req: Request<Body>, next: Next) -> 
 mod tests {
     use log::{Level, Record};
 
-    use super::{cpu_bench_line_count, format_level, html_to_ansi};
+    use super::{
+        LogConsole, cpu_bench_line_count, explicitly_targets_console, format_level, html_to_ansi,
+        record_channel,
+    };
+
+    #[test]
+    fn shared_console_preserves_messages_between_benchmark_updates() {
+        let format: flexi_logger::FormatFunction =
+            |output, _, record| write!(output, "{}", html_to_ansi(&format_level(record)));
+        let console = LogConsole::default();
+        let fallback = console.clone();
+        let mut output = Vec::new();
+        let mut now = flexi_logger::DeferredNow::new();
+        let bench = Record::builder()
+            .args(format_args!("[CPU Bench]\n    decode"))
+            .level(Level::Info)
+            .build();
+        let warning = Record::builder()
+            .args(format_args!(
+                "<span class=\"log-addr\">connection lost</span>"
+            ))
+            .level(Level::Warn)
+            .build();
+
+        for (table_writer, message_writer) in [(&console, &fallback), (&fallback, &console)] {
+            table_writer
+                .write_to(&mut output, true, &mut now, &bench, format)
+                .unwrap();
+            message_writer
+                .write_to(&mut output, true, &mut now, &warning, format)
+                .unwrap();
+            output.clear();
+            table_writer
+                .write_to(&mut output, true, &mut now, &bench, format)
+                .unwrap();
+            assert!(!String::from_utf8_lossy(&output).contains("\x1b[J"));
+
+            output.clear();
+            message_writer
+                .write_to(&mut output, true, &mut now, &bench, format)
+                .unwrap();
+            assert!(String::from_utf8_lossy(&output).starts_with("\x1b[2A\r\x1b[J"));
+        }
+        output.clear();
+        fallback
+            .write_to(&mut output, true, &mut now, &warning, format)
+            .unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("\x1b[1;35mconnection lost\x1b[0m"));
+        assert!(output.ends_with('\n'));
+    }
+
+    #[test]
+    fn only_positive_channel_ids_select_a_file_log() {
+        let missing = Record::builder()
+            .level(Level::Info)
+            .args(format_args!("missing channel"))
+            .build();
+        assert_eq!(record_channel(&missing), None);
+
+        for (value, expected) in [(0_i64, None), (-1, None), (7, Some(7))] {
+            let key_values = ("channel", value);
+            let record = Record::builder()
+                .level(Level::Info)
+                .key_values(&key_values)
+                .args(format_args!("channel test"))
+                .build();
+            assert_eq!(record_channel(&record), expected);
+        }
+    }
+
+    #[test]
+    fn console_output_converts_html_formatting_to_ansi() {
+        let output = html_to_ansi(
+            "<span class=\"level-info\">[ INFO]</span> \
+             <span class=\"log-addr\">example</span>",
+        );
+
+        assert!(output.contains("\x1b[92m[ INFO]\x1b[0m"));
+        assert!(output.contains("\x1b[1;35mexample\x1b[0m"));
+        assert!(!output.contains("<span"));
+    }
+
+    #[test]
+    fn detects_only_explicit_console_writer_targets() {
+        let routed = Record::builder()
+            .target("{console,_Default}")
+            .level(Level::Info)
+            .args(format_args!("routed"))
+            .build();
+        let module = Record::builder()
+            .target("ffplayout::console")
+            .level(Level::Info)
+            .args(format_args!("module"))
+            .build();
+
+        assert!(explicitly_targets_console(&routed));
+        assert!(!explicitly_targets_console(&module));
+    }
 
     #[test]
     fn counts_cpu_bench_lines_only() {

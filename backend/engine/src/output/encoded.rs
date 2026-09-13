@@ -1057,7 +1057,7 @@ fn open_video_stream(
         // through the encoder option dictionary does not reliably update the
         // context before rate control is selected.
         let global_quality = qsv_global_quality(cfg);
-        log::debug!("QSV encoder rate control: ICQ, global quality: {global_quality}");
+        log::debug!(channel = cfg.channel_id.unwrap_or_default(); "QSV encoder rate control: ICQ, global quality: {global_quality}");
         video_ctx.set_global_quality(global_quality);
     }
     if !video_flags.is_empty() {

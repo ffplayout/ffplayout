@@ -32,6 +32,7 @@ impl SoftbufferRenderer {
         _display_handle: OwnedDisplayHandle,
         _width: u32,
         _height: u32,
+        _channel_id: i32,
     ) -> Result<Self> {
         let context =
             SoftbufferContext::new(Arc::clone(&window)).map_err(|error| anyhow!("{error}"))?;
@@ -62,6 +63,8 @@ impl SoftbufferRenderer {
     }
 
     pub(super) fn reset_frame_cache(&mut self) {}
+
+    pub(super) fn set_channel_id(&self, _channel_id: i32) {}
 
     pub(super) fn release_frame_resources(&mut self) {}
 
