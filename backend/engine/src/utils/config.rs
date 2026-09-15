@@ -199,6 +199,8 @@ pub struct OutputConfig {
     pub stream_format: String,
     pub video_codec: String,
     pub video_options: VideoOptions,
+    /// Validated AVIO/protocol options used only while opening network output.
+    pub protocol_options: BTreeMap<String, String>,
     pub muxer_options: BTreeMap<String, String>,
     pub audio_codec: String,
     pub audio_options: AudioOptions,
@@ -318,6 +320,7 @@ impl StreamType {
         }
     }
 }
+pub use super::protocol::validate_output_protocol_options;
 
 pub type VideoOptions = BTreeMap<String, String>;
 pub type AudioOptions = BTreeMap<String, String>;
@@ -1282,6 +1285,7 @@ impl OutputConfig {
             stream_format: String::new(),
             video_codec: "libx264".to_string(),
             video_options: video_option_defaults("libx264"),
+            protocol_options: BTreeMap::new(),
             muxer_options: BTreeMap::new(),
             audio_codec: "aac".to_string(),
             audio_options: AudioOptions::new(),
@@ -1386,6 +1390,11 @@ impl OutputConfig {
         self
     }
 
+    pub fn with_protocol_options(mut self, protocol_options: BTreeMap<String, String>) -> Self {
+        self.protocol_options = protocol_options;
+        self
+    }
+
     pub fn with_recording(mut self, recording: Option<RecordingConfig>) -> Self {
         self.recording = recording;
         self
@@ -1458,10 +1467,106 @@ impl FromStr for OutputSize {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::{
-        OutputSize, audio_codec_uses_bitrate, validate_audio_options, validate_video_options,
-        video_codec_uses_bitrate, video_option_defaults,
+        OutputSize, StreamType, audio_codec_uses_bitrate, validate_audio_options,
+        validate_output_protocol_options, validate_video_options, video_codec_uses_bitrate,
+        video_option_defaults,
     };
+
+    #[test]
+    fn validates_srt_latency_and_udp_packet_size() {
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Srt,
+                "srt://example.invalid:9000",
+                &BTreeMap::from([("latency".to_string(), "2000000".to_string())]),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Udp,
+                "udp://239.0.0.1:1234",
+                &BTreeMap::from([("pkt_size".to_string(), "1316".to_string())]),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn validates_srt_passphrase_without_logging_or_transforming_it() {
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Srt,
+                "srt://example.invalid:9000",
+                &BTreeMap::from([(
+                    "passphrase".to_string(),
+                    "a sufficiently long secret".to_string(),
+                )]),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_mismatched_and_managed_protocol_options() {
+        let option =
+            |name: &str, value: &str| BTreeMap::from([(name.to_string(), value.to_string())]);
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Srt,
+                "srt://example.invalid:9000",
+                &option("latnecy", "2000000"),
+            )
+            .is_err()
+        );
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Udp,
+                "srt://example.invalid:9000",
+                &option("pkt_size", "1316"),
+            )
+            .is_err()
+        );
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Rtmp,
+                "rtmp://example.invalid/live",
+                &option("rw_timeout", "0"),
+            )
+            .is_err()
+        );
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Srt,
+                "srt://example.invalid:9000",
+                &option("mode", "listener"),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn custom_outputs_use_the_transport_from_the_url() {
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Custom,
+                "udp://239.0.0.1:1234",
+                &BTreeMap::from([("pkt_size".to_string(), "1316".to_string())]),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Custom,
+                "rist://example.invalid:9000",
+                &BTreeMap::from([("buffer_size".to_string(), "65536".to_string())]),
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn parses_output_size_with_colon() {

@@ -21,6 +21,44 @@ For example, you can use:
 
 Of course, you can also use media platforms that support streaming input.
 
+### Protocol options
+
+Advanced stream settings include a protocol-option map. These values are
+applied while FFmpeg opens the network transport and are separate from muxer
+options such as MPEG-TS or FLV settings. Common examples are an SRT latency of
+`2000000` microseconds and a UDP packet size of `1316` bytes.
+
+Supported transports are RTMP/RTMPS, SRT, UDP, and custom TCP or HTTP(S)
+outputs. Available scalar output options are taken directly from the selected
+protocol's metadata in the linked FFmpeg build, without a separate option-name
+allowlist. Options belonging only to a child protocol are not accepted implicitly.
+
+Custom TLS URLs do not currently support the additional protocol-options field;
+existing URLs without these options remain usable.
+
+Unknown options, values outside FFmpeg's supported ranges, protocol mismatches,
+and ffplayout-managed timeout options are rejected before the output is
+restarted. Protocol options cannot be used for HLS, desktop, or local-file
+outputs. SRT passphrases and other values are stored and returned unchanged by
+the authenticated configuration API; protect access to ffplayout and its
+database accordingly.
+
+Option types, numeric ranges, and symbolic values are validated using the
+linked FFmpeg libraries without connecting to the destination. ffplayout also
+protects the output lifecycle: listener mode is not allowed in protocol options,
+timeouts remain managed, and SRT connection and close waits are limited to ten
+seconds. Transport-specific constraints not represented in FFmpeg's metadata
+(such as passphrase requirements) are checked only when the transport opens,
+not when saving. Unused user options also cause an error on open.
+Do not add whitespace to option names. String values,
+including leading or trailing spaces in passphrases, are preserved.
+
+For SRT, UDP, and TCP, conflicting values in the URL query and protocol options
+are rejected, including supported option aliases. Configure each setting in
+only one place, or use identical values in both. HTTP(S) and RTMP(S) queries
+remain application parameters and are not compared with protocol options.
+Existing URLs without additional protocol options remain unchanged.
+
 ## Desktop
 
 In desktop mode, ffplayout renders directly through the engine's native

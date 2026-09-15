@@ -16,6 +16,10 @@ export type NotificationLevel = "INFO" | "WARNING" | "ERROR" | "FATAL";
 
 export type Output = { id: number, mode: OutputMode, stream_url: string, stream_type: StreamType, stream_format: string, hls_playlist_name: string, hls_segment_duration: number, hls_list_size: number, desktop_fullscreen: boolean, width: number, height: number, fps: number, video_codec: string, video_options: { [key in string]: string }, 
 /**
+ * FFmpeg AVIO/protocol options used while opening a network stream.
+ */
+protocol_options: { [key in string]: string },
+/**
  * FFmpeg muxer options for this output, such as HLS `hls_flags`.
  */
 muxer_options: { [key in string]: string }, audio_codec: string, 

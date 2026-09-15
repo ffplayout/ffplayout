@@ -109,6 +109,13 @@ overridden. FFmpeg validates every remaining name and value
 before the configuration is stored, so unsupported options cannot cause a
 delayed failure during the next output restart.
 
+Network stream transports use the separate `output.protocol_options` string
+map. ffplayout validates its names and values for the RTMP, SRT, UDP, or custom
+URL transport and merges accepted values with its enforced I/O timeout when the
+output is opened. The map is rejected for HLS, desktop, and local-file outputs.
+Values such as SRT passphrases are stored and returned unchanged by these
+authenticated endpoints.
+
 For `output.mode: "stream"`, `output.stream_type` also accepts `"custom"`.
 Set `output.stream_format` to an FFmpeg output format such as `"decklink"` and
 `output.stream_url` to its target, for example a DeckLink device name. The

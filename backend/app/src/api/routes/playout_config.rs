@@ -315,6 +315,8 @@ pub async fn update_playout_config(
     let is_encoded = matches!(data.output.mode, OutputMode::HLS | OutputMode::Stream);
     let video_options = serde_json::to_string(&data.output.video_options)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
+    let protocol_options = serde_json::to_string(&data.output.protocol_options)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     let muxer_options = serde_json::to_string(&data.output.muxer_options)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     let audio_options = serde_json::to_string(&data.output.audio_options)
@@ -345,6 +347,11 @@ pub async fn update_playout_config(
         is_encoded.then_some(data.output.video_codec.as_str()),
         if is_encoded {
             video_options.as_str()
+        } else {
+            "{}"
+        },
+        if data.output.mode == OutputMode::Stream {
+            protocol_options.as_str()
         } else {
             "{}"
         },
@@ -503,5 +510,12 @@ mod tests {
         updated.output.width = 1920;
 
         assert!(requires_playout_restart(&current, &updated));
+
+        let mut protocol_update = current.clone();
+        protocol_update
+            .output
+            .protocol_options
+            .insert("latency".to_string(), "2000000".to_string());
+        assert!(requires_playout_restart(&current, &protocol_update));
     }
 }

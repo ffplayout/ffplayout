@@ -1,18 +1,22 @@
 //! Play one media file in the desktop output and render speech recognized by
 //! `transcribe-rs` as a live text overlay.
 //!
-//! The example uses a whisper.cpp GGML model and intentionally keeps the
-//! integration small. It is a prototype, not a broadcast subtitle generator:
-//! captions appear after the VAD closes an utterance or the eight-second chunk
-//! limit is reached.
+//! The example supports whisper.cpp GGML and Moonshine ONNX models and
+//! intentionally keeps the integration small. It is a prototype, not a
+//! broadcast subtitle generator: captions appear after the VAD closes an
+//! utterance or the eight-second chunk limit is reached.
 //!
 //! ```text
 //! cargo run -p ff-engine --example live_transcription \
 //!   --features transcription-example -- video.mp4 models/ggml-base.bin --language en
+//!
+//! cargo run -p ff-engine --example live_transcription \
+//!   --features transcription-example -- video.mp4 models/moonshine-base \
+//!   --engine moonshine
 //! ```
 
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Mutex,
         atomic::{AtomicBool, Ordering},
@@ -22,14 +26,18 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use ff_engine::{
     AudioFrameCallback, ClipResult, OutputConfig, Playout, RgbaColor, TextBackgroundConfig,
     TextConfig, TextOverlayState, TextPosition,
 };
 use ffmpeg_next::frame;
 use transcribe_rs::{
-    TranscribeOptions,
+    SpeechModel, TranscribeOptions,
+    onnx::{
+        Quantization,
+        moonshine::{MoonshineModel, MoonshineVariant},
+    },
     transcriber::{Transcriber, VadChunked, VadChunkedConfig},
     vad::{EnergyVad, SmoothedVad},
     whisper_cpp::WhisperEngine,
@@ -40,13 +48,24 @@ const TRANSCRIPTION_SAMPLE_RATE: u32 = 16_000;
 const DOWNSAMPLE_FACTOR: u8 = (PLAYOUT_SAMPLE_RATE / TRANSCRIPTION_SAMPLE_RATE) as u8;
 const AUDIO_QUEUE_FRAMES: usize = 512;
 
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+enum TranscriptionEngine {
+    #[default]
+    Whisper,
+    Moonshine,
+}
+
 #[derive(Debug, Parser)]
 struct Args {
     /// Video or audio file to play
     input: PathBuf,
 
-    /// whisper.cpp GGML model, for example ggml-base.bin
+    /// GGML model file for Whisper or ONNX model directory for Moonshine
     model: PathBuf,
+
+    /// Speech recognition engine
+    #[arg(long, value_enum, default_value_t)]
+    engine: TranscriptionEngine,
 
     /// Optional BCP-47 language hint such as en or de
     #[arg(long)]
@@ -139,7 +158,7 @@ fn caption(text: String) -> TextConfig {
 fn run_transcriber(
     receiver: Receiver<Vec<f32>>,
     overlay: TextOverlayState,
-    mut model: WhisperEngine,
+    mut model: Box<dyn SpeechModel>,
     language: Option<String>,
     speech_threshold: f32,
 ) -> Result<()> {
@@ -161,7 +180,7 @@ fn run_transcriber(
 
     let mut emitted_text = String::new();
     while let Ok(samples) = receiver.recv() {
-        for result in transcriber.feed(&mut model, &samples)? {
+        for result in transcriber.feed(model.as_mut(), &samples)? {
             let text = result.text.trim();
             if !text.is_empty() {
                 println!("{text}");
@@ -176,7 +195,7 @@ fn run_transcriber(
 
     // Flush an utterance that was still open when playback reached EOF. The
     // returned result contains the complete session, so print only its suffix.
-    let final_result = transcriber.finish(&mut model)?;
+    let final_result = transcriber.finish(model.as_mut())?;
     let remaining = final_result
         .text
         .strip_prefix(&emitted_text)
@@ -189,15 +208,42 @@ fn run_transcriber(
     Ok(())
 }
 
+fn load_model(engine: TranscriptionEngine, path: &Path) -> Result<Box<dyn SpeechModel>> {
+    match engine {
+        TranscriptionEngine::Whisper => WhisperEngine::load(path)
+            .map(|model| Box::new(model) as Box<dyn SpeechModel>)
+            .context("failed to load whisper.cpp model"),
+        TranscriptionEngine::Moonshine => {
+            MoonshineModel::load(path, MoonshineVariant::Base, &Quantization::default())
+                .map(|model| Box::new(model) as Box<dyn SpeechModel>)
+                .context("failed to load Moonshine Base model")
+        }
+    }
+}
+
 fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
     if !args.speech_threshold.is_finite() || args.speech_threshold < 0.0 {
         return Err(anyhow!("--speech-threshold must be a non-negative number"));
     }
+    if matches!(args.engine, TranscriptionEngine::Moonshine)
+        && args
+            .language
+            .as_deref()
+            .is_some_and(|language| language != "en")
+    {
+        return Err(anyhow!(
+            "the Moonshine Base model used by this example only supports English"
+        ));
+    }
 
-    println!("Loading transcription model {}", args.model.display());
-    let model = WhisperEngine::load(&args.model).context("failed to load whisper model")?;
+    println!(
+        "Loading {:?} transcription model {}",
+        args.engine,
+        args.model.display()
+    );
+    let model = load_model(args.engine, &args.model)?;
     let overlay = TextOverlayState::default();
     let (audio_sender, audio_receiver) = sync_channel(AUDIO_QUEUE_FRAMES);
     let callback = audio_callback(audio_sender);

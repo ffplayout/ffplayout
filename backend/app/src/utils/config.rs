@@ -867,6 +867,9 @@ pub struct Output {
     pub video_codec: String,
     #[serde(default)]
     pub video_options: BTreeMap<String, String>,
+    /// FFmpeg AVIO/protocol options used while opening a network stream.
+    #[serde(default)]
+    pub protocol_options: BTreeMap<String, String>,
     /// FFmpeg muxer options for this output, such as HLS `hls_flags`.
     #[serde(default)]
     pub muxer_options: BTreeMap<String, String>,
@@ -920,6 +923,7 @@ impl Output {
         let video_codec = output.video_codec.unwrap_or_else(default_video_codec);
         let video_options = serde_json::from_str(&output.video_options)
             .unwrap_or_else(|_| ff_engine::video_option_defaults(&video_codec));
+        let protocol_options = serde_json::from_str(&output.protocol_options).unwrap_or_default();
         let muxer_options = serde_json::from_str(&output.muxer_options).unwrap_or_default();
         let audio_options = serde_json::from_str(&output.audio_options).unwrap_or_default();
 
@@ -951,6 +955,7 @@ impl Output {
             fps: output.fps,
             video_codec,
             video_options,
+            protocol_options,
             muxer_options,
             audio_codec: output.audio_codec.unwrap_or_else(default_audio_codec),
             audio_options,
@@ -1036,6 +1041,11 @@ impl Output {
         {
             return Err("muxer option names and values must not be empty".to_string());
         }
+        if self.mode != OutputMode::Stream && !self.protocol_options.is_empty() {
+            return Err(
+                "protocol options can only be used with network stream outputs".to_string(),
+            );
+        }
 
         if matches!(self.mode, OutputMode::HLS | OutputMode::Stream) {
             let target = match self.mode {
@@ -1068,6 +1078,13 @@ impl Output {
                 OutputMode::Desktop => unreachable!("desktop output is not encoded"),
             };
             ff_engine::validate_muxer_options(muxer_name, &self.muxer_options)?;
+            if self.mode == OutputMode::Stream {
+                ff_engine::validate_output_protocol_options(
+                    self.stream_type.engine_stream_type(),
+                    &self.stream_url,
+                    &self.protocol_options,
+                )?;
+            }
             let video_codecs =
                 if self.mode == OutputMode::Stream && self.stream_type == StreamType::Custom {
                     capabilities.usable_codecs(ff_engine::FfmpegMediaType::Video)
@@ -1395,6 +1412,7 @@ mod output_tests {
             fps: 25.0,
             video_codec: "libx264".to_string(),
             video_options: ff_engine::video_option_defaults("libx264"),
+            protocol_options: BTreeMap::new(),
             muxer_options: BTreeMap::new(),
             audio_codec: "aac".to_string(),
             audio_options: BTreeMap::new(),
@@ -1407,6 +1425,72 @@ mod output_tests {
     fn validates_structured_output_settings() {
         assert!(output(OutputMode::HLS).validate().is_ok());
         assert!(output(OutputMode::Stream).validate().is_ok());
+    }
+
+    #[test]
+    fn validates_output_protocol_options_before_saving() {
+        let mut output = output(OutputMode::Stream);
+        output.stream_type = StreamType::Srt;
+        output.stream_url = "srt://localhost:9000".to_string();
+        output
+            .protocol_options
+            .insert("latency".to_string(), "2000000".to_string());
+        assert!(output.validate().is_ok());
+
+        output
+            .protocol_options
+            .insert("rw_timeout".to_string(), "0".to_string());
+        assert!(
+            output
+                .validate()
+                .unwrap_err()
+                .contains("managed by ffplayout")
+        );
+        output.protocol_options.remove("rw_timeout");
+        output.stream_url = "srt://localhost:9000?latency=20000".to_string();
+        assert!(
+            output
+                .validate()
+                .unwrap_err()
+                .contains("conflicts with the output URL")
+        );
+        output.stream_url = "srt://localhost:9000?latency=2000000".to_string();
+        assert!(output.validate().is_ok());
+    }
+
+    #[test]
+    fn protocol_options_roundtrip_through_the_configuration_api_shape() {
+        let mut output = output(OutputMode::Stream);
+        output.stream_type = StreamType::Srt;
+        output.stream_url = "srt://localhost:9000".to_string();
+        output.protocol_options = BTreeMap::from([
+            ("latency".to_string(), "2000000".to_string()),
+            (
+                "passphrase".to_string(),
+                "a sufficiently long secret".to_string(),
+            ),
+        ]);
+
+        let json = serde_json::to_value(&output).unwrap();
+        let decoded: Output = serde_json::from_value(json).unwrap();
+
+        assert_eq!(decoded.protocol_options, output.protocol_options);
+    }
+
+    #[test]
+    fn rejects_protocol_options_for_non_stream_outputs() {
+        for mode in [OutputMode::HLS, OutputMode::Desktop] {
+            let mut output = output(mode);
+            output
+                .protocol_options
+                .insert("pkt_size".to_string(), "1316".to_string());
+            assert!(
+                output
+                    .validate()
+                    .unwrap_err()
+                    .contains("only be used with network stream outputs")
+            );
+        }
     }
 
     #[test]

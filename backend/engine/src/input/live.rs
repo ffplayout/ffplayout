@@ -20,7 +20,7 @@ use ffmpeg_next::{
         format::sample::{Sample, Type as SampleType},
     },
 };
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 
 use crate::{
     PlaybackControl,
@@ -78,6 +78,10 @@ const LIVE_AUDIO_GRACE_SECONDS: f64 = LIVE_CHANNEL_SECONDS as f64 + 0.5;
 const LIVE_AUDIO_PTS_JITTER_SECONDS: f64 = 0.005;
 const LIVE_SEND_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 const LIVE_BACKPRESSURE_LOG_INTERVAL: Duration = Duration::from_secs(1);
+// FFmpeg may need one network polling cycle to observe the interrupt callback
+// after an idle timeout. Give the reader a bounded chance to close its input
+// and socket before detaching it and starting the next listener.
+const LIVE_READER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 
 /// Number of RTMP reader threads that outlived their `abort` signal and are
 /// being reaped in the background. Exposed only via log messages for now;
@@ -165,6 +169,7 @@ pub struct LiveReceiver {
     pending_event: Option<LiveEvent>,
     live_session: Option<crate::LiveSession>,
     abort: Arc<AtomicBool>,
+    channel_id: i32,
     fps: u32,
     sample_rate: u32,
     loudness_control: LiveLoudnessControl,
@@ -212,6 +217,7 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
     let fps = cfg.fps;
     let sample_rate = cfg.sample_rate;
     let loudness_control = cfg.live_loudness_control.clone();
+    let channel_id = cfg.channel_id.unwrap_or_default();
     let capacity = live_channel_capacity(cfg.fps);
     let (tx, rx) = mpsc::sync_channel(capacity);
     let abort = Arc::new(AtomicBool::new(false));
@@ -227,6 +233,7 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
         pending_event: None,
         live_session: None,
         abort,
+        channel_id,
         fps,
         sample_rate,
         loudness_control,
@@ -324,7 +331,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     self.live.connecting = true;
                     self.live.source_has_audio = has_audio;
                     self.live.loudness = None;
-                    info!("live input connected; waiting for first video frame");
+                    debug!(channel = self.live.channel_id; "live input connected; waiting for first video frame");
                 }
                 Ok(LiveEvent::Video(session_id, frame)) => {
                     if session_id == self.live.session_id {
@@ -340,7 +347,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                                 return Ok(received_event);
                             };
                             self.live.live_session = Some(session);
-                            info!("first live video frame received; switching to RTMP live");
+                            info!(channel = self.live.channel_id; "First live video frame received; switching to RTMP live");
                             self.live.active = true;
                             self.live.connecting = false;
                             self.live.last_audio_at = Some(Instant::now());
@@ -387,7 +394,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 }
                 Ok(LiveEvent::Ended(session_id)) => {
                     if session_id == self.live.session_id {
-                        info!("live input ended; switching back to file playback");
+                        debug!(channel = self.live.channel_id; "live input ended; switching back to file playback");
                         if self.live.active {
                             self.fill_live_gap_since_last_media()?;
                             self.align_live_pts_to_common_time();
@@ -436,7 +443,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 .map(|last_media_at| last_media_at.elapsed())
                 .unwrap_or_default();
             if self.live.active && idle_for >= LIVE_IDLE_TIMEOUT {
-                info!("live input idle; switching back to file playback");
+                info!(channel = self.live.channel_id; "live input idle; switching back to file playback");
                 self.fill_live_gap(idle_for)?;
                 self.align_live_pts_to_common_time();
                 self.prepare_file_resume();
@@ -655,6 +662,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         let max_gap = seconds_to_video_pts(self.live.fps, MAX_LIVE_GAP_SECONDS);
         if pts - self.live.video_pts > max_gap {
             warn!(
+                channel = self.live.channel_id;
                 "live video pts jumped by {:.3} s; re-anchoring live session",
                 video_seconds(self.live.fps, pts - self.live.video_pts)
             );
@@ -693,6 +701,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         let max_gap = seconds_to_audio_pts(self.live.sample_rate, MAX_LIVE_GAP_SECONDS);
         if pts - self.live.audio_pts > max_gap {
             warn!(
+                channel = self.live.channel_id;
                 "live audio pts jumped by {:.3} s; re-anchoring live session",
                 audio_seconds(self.live.sample_rate, pts - self.live.audio_pts)
             );
@@ -753,9 +762,10 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             .as_ref()
             .is_none_or(|processor| processor.config() != settings.config);
         if recreate {
+            let channel_id = self.live.channel_id;
             self.live.loudness = LiveLoudnessProcessor::new(self.live.sample_rate, settings.config)
                 .map_err(|error| {
-                    warn!("live loudness normalization disabled: {error}");
+                    warn!(channel = channel_id; "live loudness normalization disabled: {error}");
                     error
                 })
                 .ok();
@@ -967,6 +977,7 @@ struct LiveFrameSender {
     frame_seen: Arc<AtomicBool>,
     abort: Arc<AtomicBool>,
     listener_abort: Arc<AtomicBool>,
+    channel_id: i32,
 }
 
 impl LiveFrameSender {
@@ -985,6 +996,7 @@ impl LiveFrameSender {
                 &self.listener_abort,
                 Some(&self.last_frame_ms),
                 "live frame",
+                self.channel_id,
             )
         })
     }
@@ -1020,6 +1032,7 @@ fn run_rtmp_listener(
     benchmark: Arc<Mutex<Option<BenchHandle>>>,
 ) {
     let mut session_id = 0;
+    let channel_id = cfg.channel_id.unwrap_or_default();
 
     while !listener_abort.load(Ordering::Relaxed) {
         // The reader owns this permit until it really exits, even after a
@@ -1045,6 +1058,7 @@ fn run_rtmp_listener(
                     Arc::clone(&last_frame_ms),
                     Arc::clone(&frame_seen),
                     Arc::clone(&abort),
+                    channel_id,
                 );
 
                 if send_live_event(
@@ -1057,6 +1071,7 @@ fn run_rtmp_listener(
                     &listener_abort,
                     None,
                     "live start",
+                    channel_id,
                 )
                 .is_err()
                 {
@@ -1073,6 +1088,7 @@ fn run_rtmp_listener(
                     frame_seen,
                     abort: Arc::clone(&abort),
                     listener_abort: Arc::clone(&listener_abort),
+                    channel_id,
                 };
 
                 let worker_url = url.clone();
@@ -1116,7 +1132,7 @@ fn run_rtmp_listener(
                         Ok(result) => {
                             worker_finished = true;
                             if let Err(error) = result {
-                                error!("live input failed: {error}");
+                                error!(channel = channel_id; "live input failed: {error}");
                             }
                             break;
                         }
@@ -1130,6 +1146,10 @@ fn run_rtmp_listener(
 
                 abort.store(true, Ordering::Relaxed);
                 let _ = watchdog.join();
+                if !worker_finished {
+                    worker_finished =
+                        wait_for_live_reader_exit(&done_rx, LIVE_READER_SHUTDOWN_GRACE);
+                }
                 if worker_finished {
                     let _ = worker.join();
                 } else {
@@ -1140,18 +1160,21 @@ fn run_rtmp_listener(
                     // its thread reclaimed) once it eventually unblocks or errors out.
                     let stuck_count = STUCK_LIVE_WORKERS.fetch_add(1, Ordering::Relaxed) + 1;
                     warn!(
-                        "live input reader is still blocked; restarting ingest server without waiting ({stuck_count} stuck reader(s) pending cleanup)"
+                        channel = channel_id;
+                        "Live input reader did not stop within {} ms; restarting ingest server without waiting ({stuck_count} stuck reader(s) pending cleanup)",
+                        LIVE_READER_SHUTDOWN_GRACE.as_millis()
                     );
                     thread::spawn(move || {
                         let _ = worker.join();
                         let remaining = STUCK_LIVE_WORKERS.fetch_sub(1, Ordering::Relaxed) - 1;
                         info!(
-                            "previously stuck live input reader exited ({remaining} stuck reader(s) still pending)"
+                            channel = channel_id;
+                            "Previously stuck live input reader exited ({remaining} stuck reader(s) still pending)"
                         );
                     });
                 }
 
-                info!("Restart ingest server after live input ended");
+                debug!(channel = channel_id; "Restart ingest server after live input ended");
                 if send_live_event(
                     &tx,
                     LiveEvent::Ended(session_id),
@@ -1159,6 +1182,7 @@ fn run_rtmp_listener(
                     &listener_abort,
                     None,
                     "live end",
+                    channel_id,
                 )
                 .is_err()
                 {
@@ -1170,11 +1194,21 @@ fn run_rtmp_listener(
                 if listener_abort.load(Ordering::Relaxed) {
                     return;
                 }
-                error!("RTMP listener failed: {error:#}; retrying");
+                error!(channel = channel_id; "RTMP listener failed: {error:#}; retrying");
                 thread::sleep(Duration::from_secs(1));
             }
         }
     }
+}
+
+fn wait_for_live_reader_exit(
+    done_rx: &Receiver<std::result::Result<(), String>>,
+    timeout: Duration,
+) -> bool {
+    matches!(
+        done_rx.recv_timeout(timeout),
+        Ok(_) | Err(RecvTimeoutError::Disconnected)
+    )
 }
 
 fn live_channel_capacity(fps: u32) -> usize {
@@ -1188,6 +1222,7 @@ fn send_live_event(
     listener_abort: &AtomicBool,
     backpressure_heartbeat: Option<&AtomicU64>,
     label: &str,
+    channel_id: i32,
 ) -> Result<()> {
     let mut backpressure_since = None;
     let mut next_log_at = Instant::now() + LIVE_BACKPRESSURE_LOG_INTERVAL;
@@ -1217,6 +1252,7 @@ fn send_live_event(
                 let since = *backpressure_since.get_or_insert(now);
                 if now >= next_log_at {
                     warn!(
+                        channel = channel_id;
                         "live event channel is full; applying backpressure to {label} sender for {:.3} s",
                         since.elapsed().as_secs_f64()
                     );
@@ -1232,6 +1268,7 @@ fn spawn_live_watchdog(
     last_frame_ms: Arc<AtomicU64>,
     frame_seen: Arc<AtomicBool>,
     abort: Arc<AtomicBool>,
+    channel_id: i32,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         while !abort.load(Ordering::Relaxed) {
@@ -1246,9 +1283,9 @@ fn spawn_live_watchdog(
 
             if monotonic_millis().saturating_sub(last_frame_ms) >= timeout.as_millis() as u64 {
                 if frame_seen.load(Ordering::Relaxed) {
-                    info!("live input disconnected or idle; restarting ingest server");
+                    info!(channel = channel_id; "live input disconnected or idle; restarting ingest server");
                 } else {
-                    info!("live input produced no decodable frames; restarting ingest server");
+                    info!(channel = channel_id; "live input produced no decodable frames; restarting ingest server");
                 }
                 abort.store(true, Ordering::Relaxed);
                 return;
@@ -1449,6 +1486,7 @@ mod tests {
             pending_event: None,
             live_session: None,
             abort: Arc::new(AtomicBool::new(false)),
+            channel_id: 0,
             fps: 25,
             sample_rate: 48_000,
             loudness_control: LiveLoudnessControl::new(false, LiveLoudnessConfig::default()),
@@ -2031,6 +2069,7 @@ mod tests {
                     frame_seen,
                     abort,
                     listener_abort,
+                    channel_id: 0,
                 };
                 sender
                     .send_frame(LiveEvent::Video(1, frame::Video::empty()))
@@ -2071,6 +2110,7 @@ mod tests {
             Arc::clone(&heartbeat),
             Arc::new(AtomicBool::new(true)),
             Arc::clone(&abort),
+            0,
         );
         let worker_abort = Arc::clone(&abort);
         let worker_heartbeat = Arc::clone(&heartbeat);
@@ -2082,6 +2122,7 @@ mod tests {
                 &AtomicBool::new(false),
                 Some(&worker_heartbeat),
                 "test",
+                0,
             )
         });
 
@@ -2093,6 +2134,33 @@ mod tests {
         abort.store(true, Ordering::Relaxed);
         assert!(worker.join().unwrap().is_err());
         watchdog.join().unwrap();
+    }
+
+    #[test]
+    fn reader_shutdown_grace_accepts_a_delayed_exit() {
+        let (done_tx, done_rx) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            done_tx.send(Ok(())).unwrap();
+        });
+
+        assert!(super::wait_for_live_reader_exit(
+            &done_rx,
+            Duration::from_secs(1)
+        ));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn reader_shutdown_grace_remains_bounded() {
+        let (_done_tx, done_rx) = mpsc::sync_channel(1);
+        let start = Instant::now();
+
+        assert!(!super::wait_for_live_reader_exit(
+            &done_rx,
+            Duration::from_millis(20)
+        ));
+        assert!(start.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
@@ -2137,6 +2205,7 @@ mod tests {
             frame_seen: Arc::new(AtomicBool::new(false)),
             abort,
             listener_abort: Arc::new(AtomicBool::new(false)),
+            channel_id: 0,
         };
 
         assert!(
@@ -2157,6 +2226,7 @@ mod tests {
             frame_seen: Arc::new(AtomicBool::new(false)),
             abort: Arc::new(AtomicBool::new(false)),
             listener_abort: Arc::new(AtomicBool::new(false)),
+            channel_id: 0,
         };
 
         assert!(

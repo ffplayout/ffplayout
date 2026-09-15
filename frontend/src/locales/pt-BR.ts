@@ -292,6 +292,12 @@ export default {
         addAudioOption: 'Adicionar opção de áudio',
         audioOptionName: 'Nome da opção',
         audioOptionValue: 'Valor',
+        protocolOptions: 'Opções do protocolo de saída',
+        protocolOptionsHelp:
+            'Opções de transporte usadas ao abrir uma saída de rede RTMP, SRT, UDP ou personalizada compatível. Exemplos: SRT latency=2000000 ou UDP pkt_size=1316. Os valores, incluindo frases secretas, são armazenados e retornados sem alterações. Os timeouts gerenciados pelo ffplayout não podem ser substituídos.',
+        addProtocolOption: 'Adicionar opção de protocolo',
+        protocolOptionName: 'Nome da opção',
+        protocolOptionValue: 'Valor',
         muxerOptions: 'Opções do multiplexador',
         muxerOptionsHelp:
             'Opções adicionais do multiplexador FFmpeg para esta saída. Para HLS, defina hls_flags como program_date_time para emitir EXT-X-PROGRAM-DATE-TIME. As opções exigidas pelo ffplayout permanecem ativas.',

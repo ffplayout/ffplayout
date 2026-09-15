@@ -264,6 +264,7 @@ fn play_looped_clip<O: FrameOutput>(
 
         if remaining >= MIN_LOOP_REMAINING_SECONDS {
             debug!(
+                channel = cfg.channel_id.unwrap_or_default();
                 "looping {path} to fill requested duration; iteration {iterations}, remaining {:.6} s",
                 remaining
             );
@@ -904,6 +905,7 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
     let pristine = reference_video_frame(frame)?;
 
     debug!(
+        channel = cfg.channel_id.unwrap_or_default();
         "holding single decoded video frame for {repeat_frames} frame(s) ({:.6} s)",
         repeat_frames as f64 / f64::from(video.output_fps)
     );
@@ -1412,6 +1414,7 @@ struct VideoDecoder {
     trim_start_us: Option<i64>,
     last_output_frame: Option<frame::Video>,
     last_composited_frame: Option<frame::Video>,
+    channel_id: i32,
 }
 
 impl VideoDecoder {
@@ -1437,6 +1440,7 @@ impl VideoDecoder {
             let fallback =
                 fallback_video_time_base(stream.avg_frame_rate(), stream.rate(), cfg.fps)?;
             warn!(
+                channel = cfg.channel_id.unwrap_or_default();
                 "{label}: video stream has invalid time base {stream_time_base}; using {fallback} derived from frame rate"
             );
             fallback
@@ -1508,6 +1512,7 @@ impl VideoDecoder {
             trim_start_us: timestamps_reliable.then_some(trim_start_us).flatten(),
             last_output_frame: None,
             last_composited_frame: None,
+            channel_id: cfg.channel_id.unwrap_or_default(),
         })
     }
 
@@ -1537,7 +1542,7 @@ impl VideoDecoder {
                 None,
             )
             .map_err(|error| {
-                debug!("failed to render runtime text overlay: {error:#}");
+                debug!(channel = self.channel_id; "failed to render runtime text overlay: {error:#}");
                 error
             })
             .ok()
@@ -1798,6 +1803,7 @@ impl AudioDecoder {
             }
             let fallback = Rational(1, sample_rate);
             warn!(
+                channel = cfg.channel_id.unwrap_or_default();
                 "{label}: audio stream has invalid time base {stream_time_base}; using {fallback} derived from sample rate"
             );
             fallback
@@ -1885,6 +1891,7 @@ fn synchronize_timeline<O: FrameOutput>(
 
     if video_frames > 0 {
         trace!(
+            channel = cfg.channel_id.unwrap_or_default();
             "padding video with {video_frames} frame(s) ({:.6} s) to synchronize the timeline",
             video_frames as f64 / f64::from(cfg.fps)
         );
@@ -1893,6 +1900,7 @@ fn synchronize_timeline<O: FrameOutput>(
 
     if audio_samples > 0 {
         trace!(
+            channel = cfg.channel_id.unwrap_or_default();
             "padding audio with {audio_samples} silent sample(s) ({:.6} s) to synchronize the timeline",
             audio_samples as f64 / f64::from(cfg.sample_rate)
         );
@@ -2063,6 +2071,7 @@ struct FallbackOverlays {
     output_width: u32,
     output_height: u32,
     output_fps: u32,
+    channel_id: i32,
 }
 
 impl FallbackOverlays {
@@ -2118,6 +2127,7 @@ impl FallbackOverlays {
             output_width: cfg.width,
             output_height: cfg.height,
             output_fps: cfg.fps,
+            channel_id: cfg.channel_id.unwrap_or_default(),
         })
     }
 
@@ -2151,7 +2161,7 @@ impl FallbackOverlays {
                 None,
             )
             .map_err(|error| {
-                debug!("failed to render fallback runtime text overlay: {error:#}");
+                debug!(channel = self.channel_id; "failed to render fallback runtime text overlay: {error:#}");
                 error
             })
             .ok()

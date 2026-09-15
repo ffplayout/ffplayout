@@ -46,8 +46,8 @@ pub use utils::{
         RgbaColor, StreamType, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition,
         TextScroll, TextWeight, VideoOptionChoice, VideoOptionKind, VideoOptionSpec,
         VideoOptionVisibility, VideoOptions, audio_codec_uses_bitrate, validate_audio_options,
-        validate_video_options, video_codec_uses_bitrate, video_option_defaults,
-        video_option_specs,
+        validate_output_protocol_options, validate_video_options, video_codec_uses_bitrate,
+        video_option_defaults, video_option_specs,
     },
     ffmpeg_capabilities::{
         FfmpegCapabilities, FfmpegCodec, FfmpegFeatureSet, FfmpegMediaType, FfmpegMuxer,
@@ -467,11 +467,12 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
     // Also finalize after cancellation or channel disconnection, and abort the
     // listener before flushing output so it cannot retain more decoded frames.
     drop(live);
+    let channel_id = playout.config.channel_id.unwrap_or_default();
     let result = playout.finish();
     if let Some(response) = finish_response {
         let _ = response.send(result);
     } else if let Err(error) = result {
-        log::warn!("failed to finalize abandoned playout: {error:#}");
+        log::warn!(channel = channel_id; "failed to finalize abandoned playout: {error:#}");
     }
 }
 

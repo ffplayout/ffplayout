@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Web UI for ffplayout",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "@unhead/vue": "^3.4.0",
+    "@unhead/vue": "^3.4.1",
     "@vueform/multiselect": "^2.6.11",
     "@vuepic/vue-datepicker": "^14.0.0",
     "@vueuse/core": "^14.4.0",
@@ -35,19 +35,19 @@
   },
   "devDependencies": {
     "@tsconfig/node22": "^22.0.6",
-    "@types/node": "^26.5.0",
-    "@vitejs/plugin-vue": "^6.0.8",
+    "@types/node": "^26.5.1",
+    "@vitejs/plugin-vue": "^6.0.9",
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/tsconfig": "^0.9.1",
-    "daisyui": "^5.7.32",
+    "daisyui": "^5.7.38",
     "eslint": "^10.10.0",
     "eslint-plugin-vue": "~10.11.0",
     "jiti": "^2.7.0",
     "npm-run-all2": "^9.0.3",
     "prettier": "3.9.6",
     "typescript": "~6.0.3",
-    "vite": "^8.2.2",
+    "vite": "^8.3.0",
     "vite-plugin-vue-devtools": "^8.2.1",
     "vue-tsc": "^3.3.11"
   }

@@ -1,7 +1,7 @@
 #[cfg(feature = "desktop-gpu")]
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicI32, Ordering},
 };
 
 use anyhow::{Result, anyhow};
@@ -22,6 +22,7 @@ pub(super) struct WgpuRenderer {
     window: Arc<Window>,
     instance: wgpu::Instance,
     state: WgpuState,
+    channel_id: Arc<AtomicI32>,
 }
 
 #[cfg(feature = "desktop-gpu")]
@@ -43,22 +44,35 @@ impl WgpuRenderer {
         display_handle: OwnedDisplayHandle,
         _width: u32,
         _height: u32,
+        channel_id: i32,
     ) -> Result<Self> {
         let instance = wgpu::Instance::new(
             wgpu::InstanceDescriptor::new_with_display_handle(Box::new(display_handle)).with_env(),
         );
         let size = window.inner_size();
-        let state = WgpuState::new(&instance, &window, (size.width, size.height))?;
+        let channel_id = Arc::new(AtomicI32::new(channel_id));
+        let state = WgpuState::new(
+            &instance,
+            &window,
+            (size.width, size.height),
+            Arc::clone(&channel_id),
+        )?;
         Ok(Self {
             window,
             instance,
             state,
+            channel_id,
         })
     }
 
     fn rebuild_state(&mut self) -> Result<()> {
         let size = self.window.inner_size();
-        self.state = WgpuState::new(&self.instance, &self.window, (size.width, size.height))?;
+        self.state = WgpuState::new(
+            &self.instance,
+            &self.window,
+            (size.width, size.height),
+            Arc::clone(&self.channel_id),
+        )?;
         Ok(())
     }
 
@@ -81,7 +95,7 @@ impl WgpuRenderer {
                     self.state.configure_surface();
                 }
                 wgpu::CurrentSurfaceTexture::Lost => {
-                    log::warn!("WGPU desktop surface lost; rebuilding renderer state");
+                    log::warn!(channel = self.channel_id.load(Ordering::Relaxed); "WGPU desktop surface lost; rebuilding renderer state");
                     self.rebuild_state()?;
                 }
                 wgpu::CurrentSurfaceTexture::Validation => {
@@ -114,6 +128,10 @@ impl WgpuRenderer {
 
     pub(super) fn reset_frame_cache(&mut self) {
         self.state.yuv.reset_frame_cache();
+    }
+
+    pub(super) fn set_channel_id(&self, channel_id: i32) {
+        self.channel_id.store(channel_id, Ordering::Relaxed);
     }
 
     pub(super) fn release_frame_resources(&mut self) {
@@ -157,7 +175,12 @@ impl WgpuRenderer {
 
 #[cfg(feature = "desktop-gpu")]
 impl WgpuState {
-    fn new(instance: &wgpu::Instance, window: &Arc<Window>, size: (u32, u32)) -> Result<Self> {
+    fn new(
+        instance: &wgpu::Instance,
+        window: &Arc<Window>,
+        size: (u32, u32),
+        channel_id: Arc<AtomicI32>,
+    ) -> Result<Self> {
         let surface = instance
             .create_surface(Arc::clone(window))
             .map_err(|error| anyhow!("creating WGPU surface: {error}"))?;
@@ -175,12 +198,13 @@ impl WgpuState {
         .map_err(|error| anyhow!("requesting WGPU device: {error}"))?;
         let device_lost = Arc::new(AtomicBool::new(false));
         let device_lost_callback = Arc::clone(&device_lost);
+        let device_channel_id = Arc::clone(&channel_id);
         device.set_device_lost_callback(move |reason, message| {
-            log::error!("WGPU desktop device lost ({reason:?}): {message}");
+            log::error!(channel = device_channel_id.load(Ordering::Relaxed); "WGPU desktop device lost ({reason:?}): {message}");
             device_lost_callback.store(true, Ordering::Release);
         });
-        device.on_uncaptured_error(Arc::new(|error| {
-            log::error!("uncaptured WGPU desktop error: {error}");
+        device.on_uncaptured_error(Arc::new(move |error| {
+            log::error!(channel = channel_id.load(Ordering::Relaxed); "uncaptured WGPU desktop error: {error}");
         }));
         let config = surface_config(&surface, &adapter, size.0, size.1)?;
         surface.configure(&device, &config);

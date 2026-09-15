@@ -36,6 +36,8 @@ const extensions = computed({
 })
 
 const output = computed(() => configStore.playout.output.mode)
+const newProtocolOptionName = ref('')
+const newProtocolOptionValue = ref('')
 const newMuxerOptionName = ref('')
 const newMuxerOptionValue = ref('')
 const newAudioOptionName = ref('')
@@ -81,6 +83,8 @@ const outputId = computed({
 
         newMuxerOptionName.value = ''
         newMuxerOptionValue.value = ''
+        newProtocolOptionName.value = ''
+        newProtocolOptionValue.value = ''
         newAudioOptionName.value = ''
         newAudioOptionValue.value = ''
 
@@ -101,6 +105,11 @@ const outputId = computed({
             configStore.playout.output.video_options = JSON.parse(selected.video_options || '{}')
         } catch {
             configStore.playout.output.video_options = {}
+        }
+        try {
+            configStore.playout.output.protocol_options = JSON.parse(selected.protocol_options || '{}')
+        } catch {
+            configStore.playout.output.protocol_options = {}
         }
         try {
             configStore.playout.output.muxer_options = JSON.parse(selected.muxer_options || '{}')
@@ -249,6 +258,45 @@ function addMuxerOption() {
     configStore.playout.output.muxer_options = { ...options, [key]: value }
     newMuxerOptionName.value = ''
     newMuxerOptionValue.value = ''
+}
+
+function addProtocolOption() {
+    const options = configStore.playout.output.protocol_options
+    const key = newProtocolOptionName.value.trim()
+    const value = newProtocolOptionValue.value
+    if (!key || !value.trim() || key in options) {
+        return
+    }
+    configStore.playout.output.protocol_options = { ...options, [key]: value }
+    newProtocolOptionName.value = ''
+    newProtocolOptionValue.value = ''
+}
+
+function renameProtocolOption(previousKey: string, event: Event) {
+    const input = event.target as HTMLInputElement
+    const key = input.value.trim()
+    const options = { ...configStore.playout.output.protocol_options }
+    if (!key || (key !== previousKey && key in options)) {
+        input.value = previousKey
+        return
+    }
+    const value = options[previousKey]
+    delete options[previousKey]
+    options[key] = value
+    configStore.playout.output.protocol_options = options
+}
+
+function setProtocolOption(key: string, value: string) {
+    configStore.playout.output.protocol_options = {
+        ...configStore.playout.output.protocol_options,
+        [key]: value,
+    }
+}
+
+function removeProtocolOption(key: string) {
+    const options = { ...configStore.playout.output.protocol_options }
+    delete options[key]
+    configStore.playout.output.protocol_options = options
 }
 
 function renameMuxerOption(previousKey: string, event: Event) {
@@ -891,111 +939,184 @@ async function onSubmitPlayout() {
                     </div>
                 </fieldset>
 
-                <fieldset v-if="output === 'hls' || output === 'stream'" class="fieldset">
-                    <legend class="fieldset-legend">{{ t('config.audioEncoderOptions') }}</legend>
-                    <p class="fieldset-label items-baseline mb-2">{{ t('config.audioEncoderOptionsHelp') }}</p>
-                    <div
-                        v-for="[key, value] in Object.entries(configStore.playout.output.audio_options)"
-                        :key="key"
-                        class="flex flex-wrap items-center gap-2 mb-2"
-                    >
-                        <input
-                            :value="key"
-                            type="text"
-                            class="input input-sm w-48"
-                            @change="renameAudioOption(key, $event)"
-                        />
-                        <input
-                            :value="value"
-                            type="text"
-                            class="input input-sm grow"
-                            @input="setAudioOption(key, eventValue($event))"
-                        />
-                        <button class="btn btn-sm btn-ghost" type="button" @click="removeAudioOption(key)">
-                            {{ t('config.remove') }}
-                        </button>
+                <div
+                    class=""
+                    :class="{ 'collapse collapse-plus bg-base-100/40 border-2 border-base-100 my-4': output !== 'desktop' }"
+                >
+                    <input
+                        v-if="output !== 'desktop'"
+                        type="checkbox"
+                        :checked="
+                            Object.keys(configStore.playout.output.audio_options).length !== 0 ||
+                            Object.keys(configStore.playout.output.muxer_options).length !== 0 ||
+                            Object.keys(configStore.playout.output.protocol_options).length !== 0
+                        "
+                    />
+                    <div v-if="output !== 'desktop'" class="collapse-title font-semibold">
+                        {{ t('player.advanced') }}
                     </div>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <input
-                            v-model="newAudioOptionName"
-                            type="text"
-                            class="input input-sm w-48"
-                            :placeholder="t('config.audioOptionName')"
-                        />
-                        <input
-                            v-model="newAudioOptionValue"
-                            type="text"
-                            class="input input-sm grow"
-                            :placeholder="t('config.audioOptionValue')"
-                        />
-                        <button
-                            class="btn btn-sm"
-                            type="button"
-                            :disabled="
-                                !newAudioOptionName.trim() ||
-                                !newAudioOptionValue.trim() ||
-                                newAudioOptionName.trim() in configStore.playout.output.audio_options
-                            "
-                            @click="addAudioOption"
-                        >
-                            {{ t('config.addAudioOption') }}
-                        </button>
-                    </div>
-                </fieldset>
+                    <div class="collapse-content">
+                        <fieldset v-if="output === 'hls' || output === 'stream'" class="fieldset">
+                            <legend class="fieldset-legend">{{ t('config.audioEncoderOptions') }}</legend>
+                            <p class="fieldset-label items-baseline mb-2">{{ t('config.audioEncoderOptionsHelp') }}</p>
+                            <div
+                                v-for="[key, value] in Object.entries(configStore.playout.output.audio_options)"
+                                :key="key"
+                                class="flex flex-wrap items-center gap-2 mb-2"
+                            >
+                                <input
+                                    :value="key"
+                                    type="text"
+                                    class="input input-sm w-48"
+                                    @change="renameAudioOption(key, $event)"
+                                />
+                                <input
+                                    :value="value"
+                                    type="text"
+                                    class="input input-sm grow"
+                                    @input="setAudioOption(key, eventValue($event))"
+                                />
+                                <button class="btn btn-sm btn-ghost" type="button" @click="removeAudioOption(key)">
+                                    {{ t('config.remove') }}
+                                </button>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input
+                                    v-model="newAudioOptionName"
+                                    type="text"
+                                    class="input input-sm w-48"
+                                    :placeholder="t('config.audioOptionName')"
+                                />
+                                <input
+                                    v-model="newAudioOptionValue"
+                                    type="text"
+                                    class="input input-sm grow"
+                                    :placeholder="t('config.audioOptionValue')"
+                                />
+                                <button
+                                    class="btn btn-sm"
+                                    type="button"
+                                    :disabled="
+                                        !newAudioOptionName.trim() ||
+                                        !newAudioOptionValue.trim() ||
+                                        newAudioOptionName.trim() in configStore.playout.output.audio_options
+                                    "
+                                    @click="addAudioOption"
+                                >
+                                    {{ t('config.addAudioOption') }}
+                                </button>
+                            </div>
+                        </fieldset>
 
-                <fieldset v-if="output === 'hls' || output === 'stream'" class="fieldset">
-                    <legend class="fieldset-legend">{{ t('config.muxerOptions') }}</legend>
-                    <p class="fieldset-label items-baseline mb-2">{{ t('config.muxerOptionsHelp') }}</p>
-                    <div
-                        v-for="[key, value] in Object.entries(configStore.playout.output.muxer_options)"
-                        :key="key"
-                        class="flex flex-wrap items-center gap-2 mb-2"
-                    >
-                        <input
-                            :value="key"
-                            type="text"
-                            name="muxer_option_key"
-                            class="input input-sm w-48"
-                            @change="renameMuxerOption(key, $event)"
-                        />
-                        <input
-                            :value="value"
-                            type="text"
-                            name="muxer_option_value"
-                            class="input input-sm grow"
-                            @input="setMuxerOption(key, eventValue($event))"
-                        />
-                        <button class="btn btn-sm btn-ghost" type="button" @click="removeMuxerOption(key)">
-                            {{ t('config.remove') }}
-                        </button>
+                        <fieldset v-if="output === 'hls' || output === 'stream'" class="fieldset">
+                            <legend class="fieldset-legend">{{ t('config.muxerOptions') }}</legend>
+                            <p class="fieldset-label items-baseline mb-2">{{ t('config.muxerOptionsHelp') }}</p>
+                            <div
+                                v-for="[key, value] in Object.entries(configStore.playout.output.muxer_options)"
+                                :key="key"
+                                class="flex flex-wrap items-center gap-2 mb-2"
+                            >
+                                <input
+                                    :value="key"
+                                    type="text"
+                                    name="muxer_option_key"
+                                    class="input input-sm w-48"
+                                    @change="renameMuxerOption(key, $event)"
+                                />
+                                <input
+                                    :value="value"
+                                    type="text"
+                                    name="muxer_option_value"
+                                    class="input input-sm grow"
+                                    @input="setMuxerOption(key, eventValue($event))"
+                                />
+                                <button class="btn btn-sm btn-ghost" type="button" @click="removeMuxerOption(key)">
+                                    {{ t('config.remove') }}
+                                </button>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input
+                                    v-model="newMuxerOptionName"
+                                    type="text"
+                                    class="input input-sm w-48"
+                                    :placeholder="t('config.muxerOptionName')"
+                                />
+                                <input
+                                    v-model="newMuxerOptionValue"
+                                    type="text"
+                                    class="input input-sm grow"
+                                    :placeholder="t('config.muxerOptionValue')"
+                                />
+                                <button
+                                    class="btn btn-sm"
+                                    type="button"
+                                    :disabled="
+                                        !newMuxerOptionName.trim() ||
+                                        !newMuxerOptionValue.trim() ||
+                                        newMuxerOptionName.trim() in configStore.playout.output.muxer_options
+                                    "
+                                    @click="addMuxerOption"
+                                >
+                                    {{ t('config.addMuxerOption') }}
+                                </button>
+                            </div>
+                        </fieldset>
+
+                        <fieldset v-if="output === 'stream'" class="fieldset">
+                            <legend class="fieldset-legend">{{ t('config.protocolOptions') }}</legend>
+                            <p class="fieldset-label items-baseline mb-2">{{ t('config.protocolOptionsHelp') }}</p>
+                            <div
+                                v-for="[key, value] in Object.entries(configStore.playout.output.protocol_options)"
+                                :key="key"
+                                class="flex flex-wrap items-center gap-2 mb-2"
+                            >
+                                <input
+                                    :value="key"
+                                    type="text"
+                                    name="protocol_option_key"
+                                    class="input input-sm w-48"
+                                    @change="renameProtocolOption(key, $event)"
+                                />
+                                <input
+                                    :value="value"
+                                    type="text"
+                                    name="protocol_option_value"
+                                    class="input input-sm grow"
+                                    @input="setProtocolOption(key, eventValue($event))"
+                                />
+                                <button class="btn btn-sm btn-ghost" type="button" @click="removeProtocolOption(key)">
+                                    {{ t('config.remove') }}
+                                </button>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input
+                                    v-model="newProtocolOptionName"
+                                    type="text"
+                                    class="input input-sm w-48"
+                                    :placeholder="t('config.protocolOptionName')"
+                                />
+                                <input
+                                    v-model="newProtocolOptionValue"
+                                    type="text"
+                                    class="input input-sm grow"
+                                    :placeholder="t('config.protocolOptionValue')"
+                                />
+                                <button
+                                    class="btn btn-sm"
+                                    type="button"
+                                    :disabled="
+                                        !newProtocolOptionName.trim() ||
+                                        !newProtocolOptionValue.trim() ||
+                                        newProtocolOptionName.trim() in configStore.playout.output.protocol_options
+                                    "
+                                    @click="addProtocolOption"
+                                >
+                                    {{ t('config.addProtocolOption') }}
+                                </button>
+                            </div>
+                        </fieldset>
                     </div>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <input
-                            v-model="newMuxerOptionName"
-                            type="text"
-                            class="input input-sm w-48"
-                            :placeholder="t('config.muxerOptionName')"
-                        />
-                        <input
-                            v-model="newMuxerOptionValue"
-                            type="text"
-                            class="input input-sm grow"
-                            :placeholder="t('config.muxerOptionValue')"
-                        />
-                        <button
-                            class="btn btn-sm"
-                            type="button"
-                            :disabled="
-                                !newMuxerOptionName.trim() ||
-                                !newMuxerOptionValue.trim() ||
-                                newMuxerOptionName.trim() in configStore.playout.output.muxer_options
-                            "
-                            @click="addMuxerOption"
-                        >
-                            {{ t('config.addMuxerOption') }}
-                        </button>
-                    </div>
-                </fieldset>
+                </div>
 
                 <fieldset v-if="output === 'hls'" class="fieldset">
                     <legend class="fieldset-legend">{{ t('config.hlsSettings') }}</legend>

@@ -192,6 +192,7 @@ struct DesktopRecording {
     worker: std_thread::JoinHandle<()>,
     active: Arc<AtomicBool>,
     queue_depth: Arc<AtomicUsize>,
+    channel_id: i32,
 }
 
 enum DesktopRecordingMessage {
@@ -298,6 +299,7 @@ impl DesktopRecording {
                 worker,
                 active,
                 queue_depth,
+                channel_id,
             }),
             Ok(Err(error)) => {
                 let _ = worker.join();
@@ -318,6 +320,7 @@ impl DesktopRecording {
             worker,
             active,
             queue_depth: _,
+            channel_id,
         } = self;
         // Do not make an output switch wait for decoded frames which have not
         // reached the recording encoder yet. The worker finishes its current
@@ -332,7 +335,7 @@ impl DesktopRecording {
         }
         drop(sender);
         if worker.join().is_err() {
-            log::warn!("desktop recording worker panicked");
+            log::warn!(channel = channel_id; "desktop recording worker panicked");
         }
     }
 }
@@ -375,6 +378,7 @@ struct DesktopRenderer {
     desktop_control_callback: Option<DesktopControlCallback>,
     help_visible: bool,
     help_bitmap: Option<RgbaBitmap>,
+    channel_id: i32,
 }
 
 thread_local! {
@@ -509,7 +513,7 @@ impl DesktopOutput {
                 benchmark::detach();
                 std_thread::spawn(move || {
                     if worker.join().is_err() {
-                        log::warn!("decode worker panicked after desktop playback stopped");
+                        log::warn!(channel = channel_id; "decode worker panicked after desktop playback stopped");
                     }
                     benchmark::activate(benchmark);
                     benchmark::finish();
@@ -843,8 +847,10 @@ impl DesktopRenderer {
     }
 
     fn open(cfg: &OutputConfig) -> Result<Self> {
-        let window = prepare_desktop_window(cfg.width, cfg.height, cfg.desktop_fullscreen)?;
-        let audio = DesktopAudio::open(cfg.sample_rate)?;
+        let channel_id = cfg.channel_id.unwrap_or_default();
+        let window =
+            prepare_desktop_window(cfg.width, cfg.height, cfg.desktop_fullscreen, channel_id)?;
+        let audio = DesktopAudio::open(cfg.sample_rate, channel_id)?;
         let device_buffer_samples = audio.device_buffer_samples();
         let logo = cfg
             .logo
@@ -890,6 +896,7 @@ impl DesktopRenderer {
             desktop_control_callback: cfg.desktop_control_callback.clone(),
             help_visible: false,
             help_bitmap: None,
+            channel_id,
         })
     }
 
@@ -1069,7 +1076,7 @@ impl DesktopRenderer {
                 || self.queued_audio_samples() > 0
             {
                 if Instant::now() >= deadline {
-                    log::warn!("desktop audio did not drain in time; finishing playback anyway");
+                    log::warn!(channel = self.channel_id; "desktop audio did not drain in time; finishing playback anyway");
                     break;
                 }
                 self.handle_events()?;
@@ -1198,6 +1205,7 @@ impl DesktopRenderer {
 
         if dropped_frames > 0 {
             log::trace!(
+                channel = self.channel_id;
                 "dropped {dropped_frames} late desktop video frame(s) at audio sample {audio_pts}"
             );
         }
@@ -1234,6 +1242,7 @@ impl DesktopRenderer {
             let starvation_started = self.last_starvation_report.get_or_insert(now);
             if now.duration_since(*starvation_started) >= Duration::from_secs(1) {
                 log::debug!(
+                    channel = self.channel_id;
                     "desktop video queue starved: expected pts {expected_video_pts}, last rendered \
                      pts {last_video_pts}, queued frames {}",
                     self.video_queue.len()
@@ -1268,6 +1277,7 @@ impl DesktopRenderer {
             let frame_duration = Duration::from_secs_f64(f64::from(self.video_time_base));
             if interval < frame_duration.mul_f64(0.5) || interval > frame_duration.mul_f64(1.5) {
                 log::trace!(
+                    channel = self.channel_id;
                     "desktop video presentation interval: {:.3} ms at pts {}",
                     interval.as_secs_f64() * 1_000.0,
                     frame.pts().unwrap_or_default()
@@ -1442,7 +1452,7 @@ impl DesktopRenderer {
         if self.help_bitmap.is_none() {
             let (size, large) = self.window().size_and_large_subtitles();
             self.help_bitmap = create_help_bitmap(size.0, large)
-                .map_err(|error| log::warn!("failed to render desktop help: {error}"))
+                .map_err(|error| log::warn!(channel = self.channel_id; "failed to render desktop help: {error}"))
                 .ok()
                 .flatten();
         }
@@ -1457,7 +1467,7 @@ impl DesktopRenderer {
             self.subtitle_bitmap = text.and_then(|text| {
                 let (size, large) = self.window().size_and_large_subtitles();
                 create_subtitle_bitmap(&text, size.0, large)
-                    .map_err(|error| log::warn!("failed to render desktop subtitle: {error}"))
+                    .map_err(|error| log::warn!(channel = self.channel_id; "failed to render desktop subtitle: {error}"))
                     .ok()
                     .flatten()
             });
@@ -1494,6 +1504,7 @@ struct DesktopWindow {
 struct DesktopWindowHandle {
     window: Arc<Window>,
     shared: Arc<Mutex<DesktopWindowShared>>,
+    channel_id: i32,
 }
 
 struct DesktopWindowShared {
@@ -1519,12 +1530,14 @@ struct DesktopWindowApp {
     size: (u32, u32),
     occluded: bool,
     last_primary_click: Option<Instant>,
+    channel_id: i32,
 }
 
 struct DesktopWindowCreator {
     width: u32,
     height: u32,
     fullscreen: bool,
+    channel_id: i32,
     result: Option<Result<DesktopWindowApp>>,
 }
 
@@ -1534,11 +1547,14 @@ fn prepare_desktop_window(
     width: u32,
     height: u32,
     fullscreen: bool,
+    channel_id: i32,
 ) -> Result<DesktopWindowHandle> {
     if thread::is_running() {
-        thread::call(move || prepare_desktop_window_on_current_thread(width, height, fullscreen))?
+        thread::call(move || {
+            prepare_desktop_window_on_current_thread(width, height, fullscreen, channel_id)
+        })?
     } else {
-        prepare_desktop_window_on_current_thread(width, height, fullscreen)
+        prepare_desktop_window_on_current_thread(width, height, fullscreen, channel_id)
     }
 }
 
@@ -1546,14 +1562,15 @@ fn prepare_desktop_window_on_current_thread(
     width: u32,
     height: u32,
     fullscreen: bool,
+    channel_id: i32,
 ) -> Result<DesktopWindowHandle> {
     DESKTOP_WINDOW.with(|window| {
         let mut window = window.borrow_mut();
         if let Some(window) = window.as_mut() {
-            window.reconfigure(width, height, fullscreen)?;
+            window.reconfigure(width, height, fullscreen, channel_id)?;
             Ok(window.handle())
         } else {
-            *window = Some(DesktopWindow::open(width, height, fullscreen)?);
+            *window = Some(DesktopWindow::open(width, height, fullscreen, channel_id)?);
             Ok(window
                 .as_ref()
                 .expect("desktop window was just initialized")
@@ -1581,6 +1598,7 @@ pub(super) fn release_desktop_window() {
 }
 
 fn close_desktop_window(handle: DesktopWindowHandle) {
+    let channel_id = handle.channel_id;
     let close = move || {
         DESKTOP_WINDOW.with(|window| {
             if let Some(window) = window.borrow_mut().as_mut() {
@@ -1597,7 +1615,7 @@ fn close_desktop_window(handle: DesktopWindowHandle) {
         // host thread is still dispatching window events. Queue the teardown,
         // but do not make the playout worker wait for the host thread.
         if let Err(error) = thread::spawn(close) {
-            log::warn!("failed to schedule desktop window close: {error}");
+            log::warn!(channel = channel_id; "failed to schedule desktop window close: {error}");
         }
     } else {
         close();
@@ -1619,6 +1637,7 @@ fn create_desktop_window_app(
     width: u32,
     height: u32,
     fullscreen: bool,
+    channel_id: i32,
 ) -> Result<DesktopWindowApp> {
     let attributes = Window::default_attributes()
         .with_title(DESKTOP_WINDOW_TITLE)
@@ -1660,6 +1679,7 @@ fn create_desktop_window_app(
         event_loop.owned_display_handle(),
         width,
         height,
+        channel_id,
     )?;
     renderer.resize_surface(size.width, size.height)?;
 
@@ -1670,13 +1690,14 @@ fn create_desktop_window_app(
         size: (size.width, size.height),
         occluded: false,
         last_primary_click: None,
+        channel_id,
     };
     app.window.set_visible(true);
     Ok(app)
 }
 
 impl DesktopWindow {
-    fn open(width: u32, height: u32, fullscreen: bool) -> Result<Self> {
+    fn open(width: u32, height: u32, fullscreen: bool, channel_id: i32) -> Result<Self> {
         let mut event_loop_builder = EventLoop::<()>::builder();
         let event_loop = event_loop_builder
             .build()
@@ -1685,15 +1706,22 @@ impl DesktopWindow {
             event_loop,
             app: None,
         };
-        window.create_app(width, height, fullscreen)?;
+        window.create_app(width, height, fullscreen, channel_id)?;
         Ok(window)
     }
 
-    fn create_app(&mut self, width: u32, height: u32, fullscreen: bool) -> Result<()> {
+    fn create_app(
+        &mut self,
+        width: u32,
+        height: u32,
+        fullscreen: bool,
+        channel_id: i32,
+    ) -> Result<()> {
         let mut creator = DesktopWindowCreator {
             width,
             height,
             fullscreen,
+            channel_id,
             result: None,
         };
         for _ in 0..3 {
@@ -1712,9 +1740,15 @@ impl DesktopWindow {
         Ok(())
     }
 
-    fn reconfigure(&mut self, width: u32, height: u32, fullscreen: bool) -> Result<()> {
+    fn reconfigure(
+        &mut self,
+        width: u32,
+        height: u32,
+        fullscreen: bool,
+        channel_id: i32,
+    ) -> Result<()> {
         if self.app.is_none() {
-            return self.create_app(width, height, fullscreen);
+            return self.create_app(width, height, fullscreen, channel_id);
         }
         let app = self
             .app
@@ -1729,6 +1763,8 @@ impl DesktopWindow {
             shared.requested_size = None;
         }
         app.occluded = false;
+        app.channel_id = channel_id;
+        app.renderer.set_channel_id(channel_id);
         app.renderer.reset_frame_cache();
         app.window.set_fullscreen(
             fullscreen.then(|| Fullscreen::Borderless(app.window.current_monitor())),
@@ -1789,6 +1825,7 @@ impl DesktopWindow {
         DesktopWindowHandle {
             window: Arc::clone(&app.window),
             shared: Arc::clone(&app.shared),
+            channel_id: app.channel_id,
         }
     }
 }
@@ -1872,6 +1909,7 @@ impl DesktopWindowCreator {
                 self.width,
                 self.height,
                 self.fullscreen,
+                self.channel_id,
             ));
         }
     }
@@ -1931,7 +1969,7 @@ impl ApplicationHandler for DesktopWindowApp {
                     .unwrap_or_else(PoisonError::into_inner)
                     .update_window_state(self.size, self.window.is_maximized());
                 if let Err(error) = self.renderer.resize_surface(size.width, size.height) {
-                    log::warn!("desktop renderer resize failed: {error}");
+                    log::warn!(channel = self.channel_id; "desktop renderer resize failed: {error}");
                 }
                 self.push_action(WindowAction::Resize(size.width, size.height));
                 self.window.request_redraw();
@@ -1955,7 +1993,7 @@ impl ApplicationHandler for DesktopWindowApp {
                         self.renderer.render(frame, self.size)
                     })
                 {
-                    log::warn!("desktop renderer failed: {error}");
+                    log::warn!(channel = self.channel_id; "desktop renderer failed: {error}");
                 }
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
@@ -2063,6 +2101,7 @@ mod tests {
             desktop_control_callback: None,
             help_visible: false,
             help_bitmap: None,
+            channel_id: 0,
         }
     }
 
