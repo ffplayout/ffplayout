@@ -78,6 +78,10 @@ const LIVE_AUDIO_GRACE_SECONDS: f64 = LIVE_CHANNEL_SECONDS as f64 + 0.5;
 const LIVE_AUDIO_PTS_JITTER_SECONDS: f64 = 0.005;
 const LIVE_SEND_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 const LIVE_BACKPRESSURE_LOG_INTERVAL: Duration = Duration::from_secs(1);
+// FFmpeg may need one network polling cycle to observe the interrupt callback
+// after an idle timeout. Give the reader a bounded chance to close its input
+// and socket before detaching it and starting the next listener.
+const LIVE_READER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 
 /// Number of RTMP reader threads that outlived their `abort` signal and are
 /// being reaped in the background. Exposed only via log messages for now;
@@ -1142,6 +1146,10 @@ fn run_rtmp_listener(
 
                 abort.store(true, Ordering::Relaxed);
                 let _ = watchdog.join();
+                if !worker_finished {
+                    worker_finished =
+                        wait_for_live_reader_exit(&done_rx, LIVE_READER_SHUTDOWN_GRACE);
+                }
                 if worker_finished {
                     let _ = worker.join();
                 } else {
@@ -1153,7 +1161,8 @@ fn run_rtmp_listener(
                     let stuck_count = STUCK_LIVE_WORKERS.fetch_add(1, Ordering::Relaxed) + 1;
                     warn!(
                         channel = channel_id;
-                        "Live input reader is still blocked; restarting ingest server without waiting ({stuck_count} stuck reader(s) pending cleanup)"
+                        "Live input reader did not stop within {} ms; restarting ingest server without waiting ({stuck_count} stuck reader(s) pending cleanup)",
+                        LIVE_READER_SHUTDOWN_GRACE.as_millis()
                     );
                     thread::spawn(move || {
                         let _ = worker.join();
@@ -1190,6 +1199,16 @@ fn run_rtmp_listener(
             }
         }
     }
+}
+
+fn wait_for_live_reader_exit(
+    done_rx: &Receiver<std::result::Result<(), String>>,
+    timeout: Duration,
+) -> bool {
+    matches!(
+        done_rx.recv_timeout(timeout),
+        Ok(_) | Err(RecvTimeoutError::Disconnected)
+    )
 }
 
 fn live_channel_capacity(fps: u32) -> usize {
@@ -2115,6 +2134,33 @@ mod tests {
         abort.store(true, Ordering::Relaxed);
         assert!(worker.join().unwrap().is_err());
         watchdog.join().unwrap();
+    }
+
+    #[test]
+    fn reader_shutdown_grace_accepts_a_delayed_exit() {
+        let (done_tx, done_rx) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            done_tx.send(Ok(())).unwrap();
+        });
+
+        assert!(super::wait_for_live_reader_exit(
+            &done_rx,
+            Duration::from_secs(1)
+        ));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn reader_shutdown_grace_remains_bounded() {
+        let (_done_tx, done_rx) = mpsc::sync_channel(1);
+        let start = Instant::now();
+
+        assert!(!super::wait_for_live_reader_exit(
+            &done_rx,
+            Duration::from_millis(20)
+        ));
+        assert!(start.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
