@@ -201,6 +201,15 @@ pub enum LiveInputBackend {
     Srt,
 }
 
+impl fmt::Display for LiveInputBackend {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Rtmp => "RTMP",
+            Self::Srt => "SRT",
+        })
+    }
+}
+
 pub fn live_protocol_available(backend: LiveInputBackend) -> bool {
     let name = match backend {
         LiveInputBackend::Rtmp => b"rtmp".as_slice(),
@@ -726,7 +735,7 @@ fn run_live_listener(
                 }
 
                 session_id += 1;
-                info!(channel = channel_id; "Live listener #{id} ({backend:?}) accepted input");
+                info!(channel = channel_id; "Live listener #{id} ({backend}) accepted input");
                 let last_frame_ms = Arc::new(AtomicU64::new(monotonic_millis()));
                 let frame_seen = Arc::new(AtomicBool::new(false));
                 let watchdog = spawn_live_watchdog(
@@ -814,7 +823,7 @@ fn run_live_listener(
                             worker_finished = true;
 
                             if let Err(error) = result {
-                                error!(channel = channel_id; "Live listener #{id} ({backend:?}) input failed: {error}");
+                                error!(channel = channel_id; "Live listener #{id} ({backend}) input failed: {error}");
                             }
                             break;
                         }
@@ -858,7 +867,7 @@ fn run_live_listener(
                     });
                 }
 
-                debug!(channel = channel_id; "Live listener #{id} ({backend:?}) input ended; listening again");
+                debug!(channel = channel_id; "Live listener #{id} ({backend}) input ended; listening again");
 
                 if send_live_event(
                     &tx,
@@ -880,7 +889,7 @@ fn run_live_listener(
                 if listener_abort.load(Ordering::Relaxed) {
                     return;
                 }
-                error!(channel = channel_id; "Live listener #{id} ({backend:?}) failed: {error:#}; retrying");
+                error!(channel = channel_id; "Live listener #{id} ({backend}) failed: {error:#}; retrying");
                 thread::sleep(Duration::from_secs(1));
             }
         }
@@ -1041,7 +1050,7 @@ pub(super) fn open_live_listener(
         options,
         demuxer_options,
     )
-    .with_context(|| format!("failed to listen for {backend:?} input at {url}"))?;
+    .with_context(|| format!("failed to listen for {backend} input at {url}"))?;
 
     if backend != LiveInputBackend::Rtmp {
         return Ok(input);
