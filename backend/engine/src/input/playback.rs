@@ -553,12 +553,11 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             return;
         }
 
-        let recreate = self
-            .live
-            .loudness
-            .as_ref()
-            .is_none_or(|processor| processor.config() != settings.config);
-        if recreate {
+        if let Some(processor) = &mut self.live.loudness {
+            if processor.config() != settings.config {
+                processor.update_config(settings.config);
+            }
+        } else {
             let channel_id = self.live.channel_id;
             self.live.loudness = LiveLoudnessProcessor::new(self.live.sample_rate, settings.config)
                 .map_err(|error| {

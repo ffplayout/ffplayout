@@ -521,6 +521,54 @@ fn audio_frame(pts: i64, samples: usize) -> frame::Audio {
 }
 
 #[test]
+fn live_config_update_preserves_loudness_history_and_audio_timeline() {
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    let config = LiveLoudnessConfig::default();
+    live.loudness_control.update(true, config);
+    let loudness_control = live.loudness_control.clone();
+    let mut output = CountingOutput::default();
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+
+    for (pts, samples) in [(0, 48_000 * 4), (48_000 * 4, 1_024)] {
+        if pts > 0 {
+            let before = loudness_control.metrics();
+            assert!(before.short_term_lufs.is_some());
+            assert!(before.rider_gain_db > 0.0);
+            loudness_control.update(
+                true,
+                LiveLoudnessConfig {
+                    target_lufs: -20.0,
+                    ..config
+                },
+            );
+            assert_eq!(loudness_control.metrics(), before);
+        }
+
+        let mut frame = audio_frame(pts, samples);
+
+        for channel in 0..2 {
+            for (index, sample) in frame.plane_mut::<f32>(channel).iter_mut().enumerate() {
+                *sample = (std::f64::consts::TAU * 997.0 * (pts as usize + index) as f64 / 48_000.0)
+                    .sin() as f32
+                    * 0.01;
+            }
+        }
+
+        wrapper.encode_live_audio_frame(frame).unwrap();
+        assert_eq!(wrapper.live.audio_pts, pts + samples as i64);
+        assert_eq!(wrapper.output.last_audio.unwrap().0, pts);
+        assert!(loudness_control.metrics().short_term_lufs.is_some());
+        assert!(loudness_control.metrics().rider_gain_db > 0.0);
+    }
+
+    assert_eq!(wrapper.output.audio_frames, 2);
+    assert_eq!(wrapper.output.video_frames, 0);
+}
+
+#[test]
 fn missing_audio_is_padded_and_late_audio_is_trimmed_without_shifting() {
     let (_tx, rx) = mpsc::channel();
     let mut live = test_live_receiver(rx);

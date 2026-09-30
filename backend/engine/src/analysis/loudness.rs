@@ -48,8 +48,13 @@ impl LoudnessAnalyzer {
             return self.metrics;
         }
 
-        let left = frame.plane::<f32>(0);
-        let right = frame.plane::<f32>(1);
+        self.process_samples(frame.plane::<f32>(0), frame.plane::<f32>(1))
+    }
+
+    pub(crate) fn process_samples(&mut self, left: &[f32], right: &[f32]) -> LoudnessMetrics {
+        if left.is_empty() || left.len() != right.len() {
+            return self.metrics;
+        }
 
         // Reject the entire frame before pushing chunks: otherwise an invalid
         // sample could leave our block cadence out of sync with the analyzer.
