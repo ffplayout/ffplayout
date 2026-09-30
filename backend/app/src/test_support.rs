@@ -15,8 +15,24 @@ pub(crate) async fn channel_manager() -> (ChannelManager, SqlitePool) {
         .unwrap();
     handles::db_migrate(&pool).await.unwrap();
     let storage = std::env::temp_dir().join(format!("ffplayout-manager-{}", uuid::Uuid::new_v4()));
-    sqlx::query("UPDATE channels SET storage = $1; UPDATE config_global SET storage = $1")
+    let playlists = storage.join("playlists");
+    let logs = storage.join("logs");
+    let public = storage.join("public");
+
+    // Configuration loading creates playlists and logs too. Keep every path
+    // inside the fixture root so tests need no system directory permissions.
+    sqlx::query("UPDATE channels SET storage = $1, playlists = $2, public = $3")
         .bind(storage.to_string_lossy())
+        .bind(playlists.to_string_lossy())
+        .bind(public.to_string_lossy())
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE config_global SET storage = $1, playlists = $2, logs = $3, public = $4")
+        .bind(storage.to_string_lossy())
+        .bind(playlists.to_string_lossy())
+        .bind(logs.to_string_lossy())
+        .bind(public.to_string_lossy())
         .execute(&pool)
         .await
         .unwrap();
