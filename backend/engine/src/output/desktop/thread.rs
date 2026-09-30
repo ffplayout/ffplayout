@@ -11,6 +11,8 @@ use std::sync::{OnceLock, mpsc};
 #[cfg(feature = "tokio")]
 use std::{thread, time::Duration};
 
+#[cfg(feature = "tokio")]
+use anyhow::Context;
 use anyhow::{Result, anyhow};
 
 type Job = Box<dyn FnOnce() + Send>;
@@ -19,14 +21,17 @@ static DESKTOP_MAIN_THREAD: OnceLock<mpsc::SyncSender<Job>> = OnceLock::new();
 
 /// Runs the application work on a background thread while this (calling)
 /// thread owns all desktop window jobs. Must be called from `main` before a
-/// desktop `AsyncPlayout` is opened.
+/// desktop `AsyncPlayout` is opened. Returns an error if the host has already
+/// been initialized, the runtime thread cannot start, or it exits without a result.
 #[cfg(feature = "tokio")]
-pub fn run_on_main_thread<R: Send + 'static>(background: impl FnOnce() -> R + Send + 'static) -> R {
+pub fn run_on_main_thread<R: Send + 'static>(
+    background: impl FnOnce() -> R + Send + 'static,
+) -> Result<R> {
     let (jobs_tx, jobs_rx) = mpsc::sync_channel::<Job>(64);
 
-    if DESKTOP_MAIN_THREAD.set(jobs_tx).is_err() {
-        panic!("desktop main-thread host was initialized more than once");
-    }
+    DESKTOP_MAIN_THREAD
+        .set(jobs_tx)
+        .map_err(|_| anyhow!("desktop main-thread host was initialized more than once"))?;
 
     let (done_tx, done_rx) = mpsc::sync_channel(1);
     thread::Builder::new()
@@ -34,7 +39,7 @@ pub fn run_on_main_thread<R: Send + 'static>(background: impl FnOnce() -> R + Se
         .spawn(move || {
             let _ = done_tx.send(background());
         })
-        .expect("failed to start ffplayout runtime thread");
+        .context("failed to start ffplayout runtime thread")?;
 
     loop {
         match jobs_rx.recv_timeout(Duration::from_millis(10)) {
@@ -43,7 +48,7 @@ pub fn run_on_main_thread<R: Send + 'static>(background: impl FnOnce() -> R + Se
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 let result = done_rx
                     .recv()
-                    .expect("ffplayout runtime stopped without a result");
+                    .context("ffplayout runtime stopped without a result");
                 super::release_desktop_window();
 
                 return result;
@@ -52,10 +57,18 @@ pub fn run_on_main_thread<R: Send + 'static>(background: impl FnOnce() -> R + Se
 
         super::pump_desktop_window_events();
 
-        if let Ok(result) = done_rx.try_recv() {
-            super::release_desktop_window();
+        match done_rx.try_recv() {
+            Ok(result) => {
+                super::release_desktop_window();
 
-            return result;
+                return Ok(result);
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                super::release_desktop_window();
+
+                return Err(anyhow!("ffplayout runtime stopped without a result"));
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
         }
     }
 }

@@ -764,12 +764,48 @@ pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
 mod tests {
     use std::path::PathBuf;
 
+    use chrono_tz::Tz;
     use serde_json::json;
 
+    use crate::utils::time_machine::with_mock_time;
+
     use super::{
-        DEFAULT_IMAGE_DURATION, DEFAULT_LIVE_SOURCE_DURATION, Media, custom_format, is_remote,
-        normalize_live_source_timing, probe_media,
+        DEFAULT_IMAGE_DURATION, DEFAULT_LIVE_SOURCE_DURATION, Media, PlayoutConfig, custom_format,
+        get_date, get_delta, is_remote, normalize_live_source_timing, probe_media,
     };
+
+    #[test]
+    fn get_date_yesterday_before_the_playlist_start() {
+        with_mock_time("2022-05-20T05:59:24+02:00", || {
+            assert_eq!(
+                get_date(true, 21600.0, false, &Some(Tz::Europe__Berlin)),
+                "2022-05-19"
+            );
+        });
+    }
+
+    #[test]
+    fn get_date_tomorrow_near_midnight() {
+        with_mock_time("2022-05-20T23:59:58+02:00", || {
+            assert_eq!(
+                get_date(false, 0.0, true, &Some(Tz::Europe__Berlin)),
+                "2022-05-21"
+            );
+        });
+    }
+
+    #[test]
+    fn delta_tracks_a_clip_across_midnight() {
+        let mut config = PlayoutConfig::default();
+        config.channel.timezone = Some(Tz::Europe__Berlin);
+        config.playlist.start_sec = Some(0.0);
+        config.playlist.length_sec = Some(86400.0);
+        with_mock_time("2022-05-09T23:59:59+02:00", || {
+            let (delta, _) = get_delta(&config, &86401.0);
+
+            assert!((delta - 2.0).abs() < 0.1, "delta is {delta}");
+        });
+    }
 
     #[tokio::test]
     async fn images_receive_a_default_playout_duration() {
@@ -812,7 +848,7 @@ mod tests {
     #[tokio::test]
     async fn add_probe_checks_external_audio_when_main_probe_is_cached() {
         let audio_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/assets/storage/media_mix/audio.mp3");
+            .join("../../tests_assets/storage/media_mix/audio.mp3");
         let mut media = Media::new(0, "cached-main.mp4", false).await;
         media.probe = Some(probe_media(&audio_path).await.unwrap());
         media.audio = audio_path.to_string_lossy().into_owned();

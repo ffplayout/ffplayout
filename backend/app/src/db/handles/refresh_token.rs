@@ -143,3 +143,150 @@ pub async fn revoke_refresh_family(
 
     Ok(result.rows_affected() > 0)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, time::Duration};
+
+    use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+    use tokio::sync::Barrier;
+
+    use crate::db::handles;
+
+    use super::*;
+
+    async fn populate(pool: &SqlitePool) {
+        handles::db_migrate(pool).await.unwrap();
+        sqlx::query("INSERT INTO auth_user (id, mail, username, password, role_id) VALUES (1, 'refresh@example.org', 'refresh-user', 'unused', 3)")
+            .execute(pool)
+            .await
+            .unwrap();
+        insert_refresh_token(pool, "original", "family", 1, 1000, 100)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn concurrent_rotation_has_one_winner_and_revokes_its_successor_on_reuse() {
+        let path =
+            std::env::temp_dir().join(format!("ffplayout-refresh-{}.db", uuid::Uuid::new_v4()));
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&path)
+                    .create_if_missing(true)
+                    .journal_mode(SqliteJournalMode::Wal)
+                    .busy_timeout(Duration::from_secs(5)),
+            )
+            .await
+            .unwrap();
+        populate(&pool).await;
+        let barrier = Arc::new(Barrier::new(2));
+        let rotate = |new_jti: &'static str| {
+            let pool = pool.clone();
+            let barrier = barrier.clone();
+
+            tokio::spawn(async move {
+                barrier.wait().await;
+
+                rotate_refresh_token(&pool, "original", new_jti, 1, 1000, 200)
+                    .await
+                    .unwrap()
+            })
+        };
+        let first = rotate("first");
+        let second = rotate("second");
+        let outcomes = [first.await.unwrap(), second.await.unwrap()];
+
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|result| **result == RefreshRotation::Rotated)
+                .count(),
+            1
+        );
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|result| **result == RefreshRotation::Reused)
+                .count(),
+            1
+        );
+        let live: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM auth_refresh_tokens WHERE family_id = 'family' AND revoked_at IS NULL")
+            .fetch_one(&pool).await.unwrap();
+
+        assert_eq!(live, 0);
+        pool.close().await;
+        tokio::fs::remove_file(path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_successor_insert_rolls_back_rotation_and_allows_retry() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        populate(&pool).await;
+        insert_refresh_token(&pool, "existing", "other-family", 1, 1000, 100)
+            .await
+            .unwrap();
+
+        assert!(
+            rotate_refresh_token(&pool, "original", "existing", 1, 1000, 200)
+                .await
+                .is_err()
+        );
+        let original: (Option<i64>, Option<String>) = sqlx::query_as(
+            "SELECT revoked_at, replaced_by FROM auth_refresh_tokens WHERE jti = 'original'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(original, (None, None));
+        assert_eq!(
+            rotate_refresh_token(&pool, "original", "retry", 1, 1000, 200)
+                .await
+                .unwrap(),
+            RefreshRotation::Rotated
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_expired_and_wrong_user_tokens_cannot_rotate() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        populate(&pool).await;
+
+        assert_eq!(
+            rotate_refresh_token(&pool, "missing", "new", 1, 1000, 200)
+                .await
+                .unwrap(),
+            RefreshRotation::Invalid
+        );
+        assert_eq!(
+            rotate_refresh_token(&pool, "original", "new", 2, 1000, 200)
+                .await
+                .unwrap(),
+            RefreshRotation::Invalid
+        );
+        assert_eq!(
+            rotate_refresh_token(&pool, "original", "new", 1, 2000, 1000)
+                .await
+                .unwrap(),
+            RefreshRotation::Invalid
+        );
+        let successors: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM auth_refresh_tokens WHERE jti = 'new'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        assert_eq!(successors, 0);
+    }
+}

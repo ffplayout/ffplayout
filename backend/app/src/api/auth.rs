@@ -48,6 +48,14 @@ pub struct VerificationCode {
     pub created_at: DateTime<Utc>,
 }
 
+impl VerificationCode {
+    fn is_valid_at(&self, now: DateTime<Utc>) -> bool {
+        let age = now.signed_duration_since(self.created_at);
+
+        age >= TimeDelta::zero() && age < TimeDelta::minutes(5)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct VerifyRequest {
     pub username: String,
@@ -122,10 +130,22 @@ pub struct TokenRefreshRequest {
     pub refresh: String,
 }
 
+fn jwt_secret() -> Result<&'static str, ServiceError> {
+    let config = GLOBAL_SETTINGS.get().ok_or_else(|| {
+        error!("JWT configuration has not been initialized");
+        ServiceError::InternalServerError
+    })?;
+
+    config.secret.as_deref().ok_or_else(|| {
+        error!("JWT secret has not been initialized");
+        ServiceError::InternalServerError
+    })
+}
+
 /// Create a json web token (JWT)
 pub async fn encode_jwt(claims: Claims) -> Result<String, ServiceError> {
-    let config = GLOBAL_SETTINGS.get().unwrap();
-    let encoding_key = EncodingKey::from_secret(config.secret.clone().unwrap().as_bytes());
+    let encoding_key = EncodingKey::from_secret(jwt_secret()?.as_bytes());
+
     Ok(jsonwebtoken::encode(
         &Header::default(),
         &claims,
@@ -134,8 +154,7 @@ pub async fn encode_jwt(claims: Claims) -> Result<String, ServiceError> {
 }
 
 fn decode_jwt_with_type(token: &str, expected: TokenType) -> Result<Claims, ServiceError> {
-    let config = GLOBAL_SETTINGS.get().unwrap();
-    let decoding_key = DecodingKey::from_secret(config.secret.clone().unwrap().as_bytes());
+    let decoding_key = DecodingKey::from_secret(jwt_secret()?.as_bytes());
     let claims = jsonwebtoken::decode::<Claims>(token, &decoding_key, &Validation::default())
         .map(|data| data.claims)
         .map_err(|e| ServiceError::Unauthorized(e.to_string()))?;
@@ -331,9 +350,7 @@ pub async fn login(
                         // accumulating sleeping tasks under login floods and the
                         // race where a stale timer removes a freshly issued code.
                         let now = Utc::now();
-                        codes.retain(|_, entry| {
-                            now.signed_duration_since(entry.created_at).num_minutes() <= 5
-                        });
+                        codes.retain(|_, entry| entry.is_valid_at(now));
                         codes.insert(username.clone(), verification_entry);
                     }
 
@@ -430,8 +447,7 @@ pub async fn verify(
 
         if let Some(verification) = codes.get(&username) {
             // Check if code is still valid (max 5 minutes)
-            let elapsed = Utc::now().signed_duration_since(verification.created_at);
-            if elapsed.num_minutes() > 5 {
+            if !verification.is_valid_at(Utc::now()) {
                 codes.remove(&username);
                 return Ok((
                     StatusCode::BAD_REQUEST,
@@ -464,8 +480,28 @@ pub async fn verify(
 
     match verification_data {
         Some(verification) => {
-            let user = verification.user;
-            let role = verification.role;
+            let user = handles::select_user(&state.pool, verification.user.id)
+                .await
+                .map_err(|_| {
+                    ServiceError::Forbidden("Verification user is unavailable".to_string())
+                })?;
+
+            if user.username != username {
+                return Err(ServiceError::Forbidden(
+                    "Verification user has changed".to_string(),
+                ));
+            }
+
+            let role_id = user.role_id.ok_or_else(|| {
+                ServiceError::Forbidden("Verification user has no role".to_string())
+            })?;
+            let role = handles::select_role(&state.pool, &role_id).await?;
+
+            if role == Role::Guest {
+                return Err(ServiceError::Forbidden(
+                    "Verification user has no login permission".to_string(),
+                ));
+            }
 
             let tokens = issue_token_pair(&state.pool, user, role.clone()).await?;
 
@@ -605,6 +641,23 @@ mod tests {
             token: None,
             two_factor: false,
         }
+    }
+
+    #[test]
+    fn verification_expiration_uses_the_exact_five_minute_boundary() {
+        let now = Utc::now();
+        let verification = VerificationCode {
+            code: "123456".to_string(),
+            user: user(),
+            role: Role::User,
+            created_at: now,
+        };
+
+        assert!(verification.is_valid_at(now));
+        assert!(verification.is_valid_at(now + TimeDelta::seconds(299)));
+        assert!(!verification.is_valid_at(now + TimeDelta::minutes(5)));
+        assert!(!verification.is_valid_at(now + TimeDelta::seconds(301)));
+        assert!(!verification.is_valid_at(now - TimeDelta::seconds(1)));
     }
 
     #[test]

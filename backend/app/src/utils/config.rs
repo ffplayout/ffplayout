@@ -9,7 +9,7 @@ use chrono::NaiveTime;
 use chrono_tz::Tz;
 use flexi_logger::Level;
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Row, Sqlite};
+use sqlx::{Pool, Sqlite};
 use tokio::{fs, io::AsyncReadExt};
 use ts_rs::TS;
 
@@ -1252,30 +1252,7 @@ impl PlayoutConfig {
         let logging = Logging::new(&config);
         let mut processing = Processing::new(&config);
         let audio = Audio::new(&config);
-        let listeners = sqlx::query(
-            "SELECT id, priority, enabled, name, backend, identifier, options, demuxer_options FROM config_live_input
-             WHERE config_id = $1 AND backend IN ('rtmp', 'srt') AND takeover_mode = 'connection'
-             ORDER BY priority DESC, id",
-        )
-        .bind(config.id)
-        .fetch_all(pool)
-        .await?
-        .into_iter()
-        .map(|row| {
-            let options: String = row.get("options");
-
-            Ok(LiveInput {
-                id: row.get("id"),
-                priority: row.get("priority"),
-                enabled: row.get("enabled"),
-                name: row.get("name"),
-                backend: row.get("backend"),
-                identifier: row.get("identifier"),
-                options: serde_json::from_str(&options)?,
-                demuxer_options: serde_json::from_str(&row.get::<String, _>("demuxer_options"))?,
-            })
-        })
-        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+        let listeners = handles::select_live_inputs(pool, config.id).await?;
         let ingest = Ingest { listeners };
         let mut playlist = Playlist::new(&config);
         let text = Text::new(&config, text_preset);

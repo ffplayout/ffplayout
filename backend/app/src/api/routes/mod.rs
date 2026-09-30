@@ -6,7 +6,7 @@ use axum::{
     body::Body,
     extract::FromRequestParts,
     http::{
-        HeaderMap, StatusCode,
+        HeaderMap, HeaderValue, StatusCode,
         header::{
             ACCEPT_RANGES, AUTHORIZATION, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE,
             CONTENT_TYPE, RANGE,
@@ -15,7 +15,6 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
-use chrono::NaiveDateTime;
 use chrono_tz::Tz;
 use protect_axum::authorities::{AuthDetails, AuthoritiesCheck};
 use serde::{Deserialize, Serialize};
@@ -25,11 +24,6 @@ use tokio::{
     sync::Mutex,
 };
 use tokio_util::io::ReaderStream;
-
-use super::auth::decode_jwt;
-use crate::db::models::Role;
-use crate::utils::mail::MailQueue;
-use crate::utils::{config::Template, errors::ServiceError, optional_naive_date_time_from_str};
 
 mod channel;
 mod control;
@@ -59,6 +53,13 @@ pub use setup::*;
 pub use system::*;
 pub use user::*;
 
+use crate::{
+    db::models::Role,
+    utils::{config::Template, errors::ServiceError, mail::MailQueue},
+};
+
+use super::auth::decode_jwt;
+
 pub type MailQueues = Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>;
 
 /// Streams a file to the client instead of loading it fully into memory, and
@@ -72,69 +73,116 @@ pub async fn stream_file(path: &Path, headers: &HeaderMap) -> Result<Response, S
     let range = headers
         .get(RANGE)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| parse_range(value, total_size));
+        .map(|value| parse_range(value, total_size))
+        .unwrap_or(RangeSelection::Full);
 
     let mut file = File::open(path).await?;
 
     let mut response_headers = HeaderMap::new();
-    response_headers.insert(CONTENT_TYPE, "application/octet-stream".parse().unwrap());
-    response_headers.insert(CONTENT_DISPOSITION, "attachment".parse().unwrap());
-    response_headers.insert(ACCEPT_RANGES, "bytes".parse().unwrap());
+    response_headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+    response_headers.insert(CONTENT_DISPOSITION, HeaderValue::from_static("attachment"));
+    response_headers.insert(ACCEPT_RANGES, HeaderValue::from_static("bytes"));
 
-    let (status, start, length) = match range {
-        Some((start, end)) => {
+    let (status, length) = match range {
+        RangeSelection::Partial { start, end } => {
             file.seek(std::io::SeekFrom::Start(start)).await?;
             response_headers.insert(
                 CONTENT_RANGE,
-                format!("bytes {start}-{end}/{total_size}").parse().unwrap(),
+                HeaderValue::from_str(&format!("bytes {start}-{end}/{total_size}"))
+                    .map_err(|_| ServiceError::InternalServerError)?,
             );
-            (StatusCode::PARTIAL_CONTENT, start, end - start + 1)
+
+            (StatusCode::PARTIAL_CONTENT, end - start + 1)
         }
-        None => (StatusCode::OK, 0, total_size),
+        RangeSelection::Full => (StatusCode::OK, total_size),
+        RangeSelection::Unsatisfiable => {
+            response_headers.insert(
+                CONTENT_RANGE,
+                HeaderValue::from_str(&format!("bytes */{total_size}"))
+                    .map_err(|_| ServiceError::InternalServerError)?,
+            );
+            response_headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
+
+            return Ok((
+                StatusCode::RANGE_NOT_SATISFIABLE,
+                response_headers,
+                Body::empty(),
+            )
+                .into_response());
+        }
     };
 
     response_headers.insert(CONTENT_LENGTH, length.into());
-    let _ = start;
 
     let stream = ReaderStream::new(file.take(length));
+
     Ok((status, response_headers, Body::from_stream(stream)).into_response())
 }
 
-/// Parses a single `bytes=start-end` range against the known file size.
-/// Returns the inclusive `(start, end)` byte offsets, or `None` when the range
-/// is unsatisfiable or uses an unsupported (multi-range) form.
-fn parse_range(value: &str, total_size: u64) -> Option<(u64, u64)> {
-    if total_size == 0 {
-        return None;
-    }
+#[derive(Debug, PartialEq, Eq)]
+enum RangeSelection {
+    Full,
+    Partial { start: u64, end: u64 },
+    Unsatisfiable,
+}
 
-    let spec = value.strip_prefix("bytes=")?;
-    if spec.contains(',') {
-        return None;
-    }
-
-    let (start, end) = spec.split_once('-')?;
-    let last = total_size - 1;
-
-    let (start, end) = match (start.trim(), end.trim()) {
-        ("", "") => return None,
-        // Suffix range: last N bytes.
-        ("", suffix) => {
-            let suffix: u64 = suffix.parse().ok()?;
-            if suffix == 0 {
-                return None;
-            }
-            (total_size.saturating_sub(suffix), last)
-        }
-        (start, "") => (start.parse().ok()?, last),
-        (start, end) => (start.parse().ok()?, end.parse::<u64>().ok()?.min(last)),
+/// Unsupported or malformed ranges are ignored; valid ranges that cannot
+/// select any bytes produce a 416 response.
+fn parse_range(value: &str, total_size: u64) -> RangeSelection {
+    let Some(spec) = value.strip_prefix("bytes=") else {
+        return RangeSelection::Full;
     };
 
-    if start > end || start > last {
-        return None;
+    if spec.contains(',') {
+        return RangeSelection::Full;
     }
 
-    Some((start, end))
+    let Some((start, end)) = spec.split_once('-') else {
+        return RangeSelection::Full;
+    };
+    let (start, end) = (start.trim(), end.trim());
+    let bounds = match (start, end) {
+        ("", "") => return RangeSelection::Full,
+        ("", suffix) => {
+            let Ok(suffix) = suffix.parse::<u64>() else {
+                return RangeSelection::Full;
+            };
+
+            if suffix == 0 || total_size == 0 {
+                return RangeSelection::Unsatisfiable;
+            }
+
+            (total_size.saturating_sub(suffix), total_size - 1)
+        }
+        (start, end) => {
+            let Ok(start) = start.parse::<u64>() else {
+                return RangeSelection::Full;
+            };
+            let end = if end.is_empty() {
+                total_size.saturating_sub(1)
+            } else {
+                let Ok(end) = end.parse::<u64>() else {
+                    return RangeSelection::Full;
+                };
+
+                end
+            };
+
+            if total_size == 0 || start >= total_size || start > end {
+                return RangeSelection::Unsatisfiable;
+            }
+
+            (start, end.min(total_size - 1))
+        }
+    };
+
+    RangeSelection::Partial {
+        start: bounds.0,
+        end: bounds.1,
+    }
 }
 
 pub fn ensure_any_authority(
@@ -162,29 +210,19 @@ impl AuthUser {
         self.role == Role::GlobalAdmin
     }
 
-    pub fn ensure_channel_or_admin(
-        &self,
-        channel_id: i32,
-    ) -> Result<(), crate::utils::errors::ServiceError> {
+    pub fn ensure_channel_or_admin(&self, channel_id: i32) -> Result<(), ServiceError> {
         if self.is_global_admin() || self.channels.contains(&channel_id) {
             Ok(())
         } else {
-            Err(crate::utils::errors::ServiceError::Forbidden(
-                "Forbidden for channel".to_string(),
-            ))
+            Err(ServiceError::Forbidden("Forbidden for channel".to_string()))
         }
     }
 
-    pub fn ensure_self_or_admin(
-        &self,
-        user_id: i32,
-    ) -> Result<(), crate::utils::errors::ServiceError> {
+    pub fn ensure_self_or_admin(&self, user_id: i32) -> Result<(), ServiceError> {
         if self.is_global_admin() || self.id == user_id {
             Ok(())
         } else {
-            Err(crate::utils::errors::ServiceError::Forbidden(
-                "Forbidden for user".to_string(),
-            ))
+            Err(ServiceError::Forbidden("Forbidden for user".to_string()))
         }
     }
 }
@@ -271,21 +309,113 @@ pub struct ImportObj {
     date: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct ProgramObj {
-    #[serde(default, deserialize_with = "optional_naive_date_time_from_str")]
-    start_after: Option<NaiveDateTime>,
-    #[serde(default, deserialize_with = "optional_naive_date_time_from_str")]
-    start_before: Option<NaiveDateTime>,
-}
+#[cfg(test)]
+mod tests {
+    use axum::body::to_bytes;
 
-#[derive(Debug, Serialize)]
-pub struct ProgramItem {
-    source: String,
-    start: String,
-    title: Option<String>,
-    r#in: f64,
-    out: f64,
-    duration: f64,
-    ad: bool,
+    use super::*;
+
+    #[test]
+    fn parses_closed_open_and_suffix_ranges_and_ignores_unsupported_headers() {
+        for (header, expected) in [
+            ("bytes=2-4", RangeSelection::Partial { start: 2, end: 4 }),
+            ("bytes=2-", RangeSelection::Partial { start: 2, end: 9 }),
+            ("bytes=-3", RangeSelection::Partial { start: 7, end: 9 }),
+            ("bytes=-99", RangeSelection::Partial { start: 0, end: 9 }),
+            ("bytes=2-99", RangeSelection::Partial { start: 2, end: 9 }),
+            ("bytes=10-", RangeSelection::Unsatisfiable),
+            ("bytes=4-2", RangeSelection::Unsatisfiable),
+            ("bytes=-0", RangeSelection::Unsatisfiable),
+            ("bytes=-", RangeSelection::Full),
+            ("bytes=abc-def", RangeSelection::Full),
+            ("bytes=0-1,4-5", RangeSelection::Full),
+            ("other=0-1", RangeSelection::Full),
+        ] {
+            assert_eq!(parse_range(header, 10), expected, "{header}");
+        }
+
+        assert_eq!(parse_range("bytes=0-", 0), RangeSelection::Unsatisfiable);
+        assert_eq!(parse_range("bytes=-1", 0), RangeSelection::Unsatisfiable);
+    }
+
+    #[tokio::test]
+    async fn streams_exact_range_bytes_headers_and_empty_responses() {
+        let path = std::env::temp_dir().join(format!("ffplayout-range-{}", uuid::Uuid::new_v4()));
+        tokio::fs::write(&path, b"0123456789").await.unwrap();
+
+        for (range, status, expected, content_range) in [
+            (None, StatusCode::OK, "0123456789", None),
+            (
+                Some("bytes=2-4"),
+                StatusCode::PARTIAL_CONTENT,
+                "234",
+                Some("bytes 2-4/10"),
+            ),
+            (
+                Some("bytes=7-"),
+                StatusCode::PARTIAL_CONTENT,
+                "789",
+                Some("bytes 7-9/10"),
+            ),
+            (
+                Some("bytes=-2"),
+                StatusCode::PARTIAL_CONTENT,
+                "89",
+                Some("bytes 8-9/10"),
+            ),
+            (
+                Some("bytes=10-"),
+                StatusCode::RANGE_NOT_SATISFIABLE,
+                "",
+                Some("bytes */10"),
+            ),
+            (Some("bytes=bad"), StatusCode::OK, "0123456789", None),
+            (Some("bytes=0-1,4-5"), StatusCode::OK, "0123456789", None),
+        ] {
+            let mut headers = HeaderMap::new();
+
+            if let Some(range) = range {
+                headers.insert(RANGE, HeaderValue::from_static(range));
+            }
+
+            let response = stream_file(&path, &headers).await.unwrap();
+
+            assert_eq!(response.status(), status);
+            assert_eq!(
+                response.headers()[CONTENT_LENGTH],
+                expected.len().to_string()
+            );
+            assert_eq!(response.headers()[ACCEPT_RANGES], "bytes");
+            assert_eq!(
+                response
+                    .headers()
+                    .get(CONTENT_RANGE)
+                    .map(|value| value.to_str().unwrap()),
+                content_range
+            );
+            assert_eq!(
+                to_bytes(response.into_body(), 100).await.unwrap().as_ref(),
+                expected.as_bytes()
+            );
+        }
+
+        tokio::fs::write(&path, b"").await.unwrap();
+        let response = stream_file(&path, &HeaderMap::new()).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[CONTENT_LENGTH], "0");
+        let mut headers = HeaderMap::new();
+        headers.insert(RANGE, HeaderValue::from_static("bytes=0-"));
+        let response = stream_file(&path, &headers).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        assert_eq!(response.headers()[CONTENT_RANGE], "bytes */0");
+        assert!(
+            to_bytes(response.into_body(), 100)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        tokio::fs::remove_file(path).await.unwrap();
+    }
 }

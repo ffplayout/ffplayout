@@ -2,6 +2,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
+use log::error;
 use protect_axum::authorities::AuthDetails;
 
 use crate::{
@@ -51,11 +52,14 @@ pub async fn get_channel(
     )?;
     user.ensure_channel_or_admin(id)?;
 
-    if let Ok(channel) = handles::select_channel(&state.pool, &id).await {
-        return Ok(Json(channel));
-    }
+    let channel = handles::select_channel(&state.pool, &id)
+        .await
+        .map_err(|error| {
+            error!("Cannot load channel {id}: {error}");
+            ServiceError::InternalServerError
+        })?;
 
-    Err(ServiceError::InternalServerError)
+    Ok(Json(channel))
 }
 
 /// **Get settings from all Channels**
@@ -73,11 +77,14 @@ pub async fn get_all_channels(
         &[&Role::GlobalAdmin, &Role::ChannelAdmin, &Role::User],
     )?;
 
-    if let Ok(channel) = handles::select_related_channels(&state.pool, Some(user.id)).await {
-        return Ok(Json(channel));
-    }
+    let channels = handles::select_related_channels(&state.pool, Some(user.id))
+        .await
+        .map_err(|error| {
+            error!("Cannot load channels for user {}: {error}", user.id);
+            ServiceError::InternalServerError
+        })?;
 
-    Err(ServiceError::InternalServerError)
+    Ok(Json(channels))
 }
 
 /// **Update Channel**

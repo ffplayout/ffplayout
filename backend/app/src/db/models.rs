@@ -569,3 +569,66 @@ fn default_vtt_name() -> String {
 fn default_vtt_language() -> String {
     "und".to_string()
 }
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct LiveInputRecord {
+    pub id: i32,
+    pub priority: i32,
+    pub enabled: bool,
+    pub name: String,
+    pub backend: String,
+    pub identifier: String,
+    pub options: String,
+    pub demuxer_options: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SetupSettings {
+    pub logs: String,
+    pub playlists: String,
+    pub public: String,
+    pub storage: String,
+    pub shared: bool,
+    pub smtp_server: String,
+    pub smtp_user: String,
+    pub smtp_password: String,
+    pub smtp_starttls: bool,
+    pub smtp_port: u16,
+}
+
+impl From<GlobalSettings> for SetupSettings {
+    fn from(settings: GlobalSettings) -> Self {
+        Self {
+            logs: settings.logs,
+            playlists: settings.playlists,
+            public: settings.public,
+            storage: settings.storage,
+            shared: settings.shared,
+            smtp_server: settings.smtp_server,
+            smtp_user: settings.smtp_user,
+            smtp_password: String::new(),
+            smtp_starttls: settings.smtp_starttls,
+            smtp_port: settings.smtp_port,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct InitialSetup {
+    pub settings: SetupSettings,
+    pub channel_public: String,
+    pub channel_playlists: String,
+    pub channel_storage: String,
+    pub username: String,
+    pub mail: String,
+    pub password_hash: String,
+    pub two_factor: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct SetupRollback {
+    pub global: GlobalSettings,
+    pub channel: Channel,
+    pub active_outputs: Vec<i32>,
+    pub user_id: i32,
+}

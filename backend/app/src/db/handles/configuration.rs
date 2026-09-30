@@ -1,15 +1,59 @@
 use sqlx::{
-    Row, SqliteConnection,
+    Executor, Row, Sqlite, SqliteConnection,
     sqlite::{SqlitePool, SqliteQueryResult},
 };
 
 use crate::{
-    db::models::Configuration,
+    db::models::{Configuration, LiveInputRecord},
     utils::{
-        config::{PlayoutConfig, parse_rtmp_ingest_port},
+        config::{LiveInput, PlayoutConfig, parse_rtmp_ingest_port},
         errors::ProcessError,
     },
 };
+
+pub async fn select_rtmp_ingest_urls<'e, E>(executor: E) -> Result<Vec<String>, ProcessError>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    let urls = sqlx::query_scalar(
+        "SELECT identifier FROM config_live_input
+         WHERE backend = 'rtmp' AND takeover_mode = 'connection'",
+    )
+    .fetch_all(executor)
+    .await?;
+
+    Ok(urls)
+}
+
+pub async fn select_live_inputs(
+    pool: &SqlitePool,
+    config_id: i32,
+) -> Result<Vec<LiveInput>, ProcessError> {
+    let records = sqlx::query_as::<_, LiveInputRecord>(
+        "SELECT id, priority, enabled, name, backend, identifier, options, demuxer_options FROM config_live_input
+         WHERE config_id = $1 AND backend IN ('rtmp', 'srt') AND takeover_mode = 'connection'
+         ORDER BY priority DESC, id",
+    )
+    .bind(config_id)
+    .fetch_all(pool)
+    .await?;
+
+    records
+        .into_iter()
+        .map(|record| {
+            Ok(LiveInput {
+                id: record.id,
+                priority: record.priority,
+                enabled: record.enabled,
+                name: record.name,
+                backend: record.backend,
+                identifier: record.identifier,
+                options: serde_json::from_str(&record.options)?,
+                demuxer_options: serde_json::from_str(&record.demuxer_options)?,
+            })
+        })
+        .collect()
+}
 
 pub async fn select_configuration(
     pool: &SqlitePool,

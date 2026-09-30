@@ -323,3 +323,51 @@ pub async fn playlist_generator(
 
     Ok(playlists)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn clips() -> Vec<Media> {
+        [
+            ("first", 30.0),
+            ("second", 30.0),
+            ("third", 30.0),
+            ("advertisement", 25.0),
+        ]
+        .into_iter()
+        .map(|(source, duration)| Media {
+            source: source.to_string(),
+            duration,
+            out: duration,
+            ..Media::default()
+        })
+        .collect()
+    }
+
+    #[test]
+    fn random_list_stays_within_the_requested_duration() {
+        let list = random_list(clips(), 200.0);
+        let duration = sum_durations(&list);
+
+        assert!(
+            (170.0..=200.0).contains(&duration),
+            "duration is {duration}"
+        );
+        assert!(list.windows(2).all(|pair| pair[0] != pair[1]));
+    }
+
+    #[test]
+    fn ordered_list_fills_the_duration_in_source_order() {
+        let list = ordered_list(clips(), 85.0);
+
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[2].duration, 25.0);
+        assert_eq!(sum_durations(&list), 85.0);
+        let list = ordered_list(clips(), 120.0);
+
+        assert_eq!(list.len(), 4);
+        assert_eq!(list[2].duration, 30.0);
+        assert_eq!(sum_durations(&list), 115.0);
+    }
+}

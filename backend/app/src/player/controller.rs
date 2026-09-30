@@ -781,3 +781,23 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
     // 4. Player starten
     player(manager).await
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::test_support::channel_manager;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn failed_start_restores_not_running_state() {
+        let (manager, pool) = channel_manager().await;
+        pool.close().await;
+
+        assert!(manager.start().await.is_err());
+        assert!(!manager.is_alive.load(Ordering::SeqCst));
+        assert!(manager.supervisor_handle.lock().await.is_none());
+        tokio::fs::remove_dir_all(manager.storage.root.read().await.clone())
+            .await
+            .unwrap();
+    }
+}

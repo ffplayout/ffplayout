@@ -1,8 +1,53 @@
-# Engine code guidelines
+# Backend code guidelines
 
 These instructions apply to `backend/`. Prefer clear, maintainable Rust
-over clever or overly compact code. Follow the existing architecture and run
-`cargo fmt` after editing Rust files.
+over clever or overly compact code. Follow the existing architecture.
+
+## Required checks after code changes
+
+After adding, modifying, or removing Rust code, run the following commands
+from the repository root and resolve any formatting issues, warnings, or errors
+before considering the work complete:
+
+```sh
+cargo fmt --all --
+cargo clippy --all-features --all-targets -- --deny warnings
+```
+
+## Architecture and responsibilities
+
+- Put all production database queries and data operations in
+  `backend/app/src/db/handles/`, grouped by domain. API handlers, player code,
+  and utilities must call these functions instead of executing SQL directly.
+  Use bound parameters for query values. Test modules may execute SQL to build
+  fixtures and verify persisted data.
+- Keep database models in `backend/app/src/db/models.rs` and connection pool
+  setup in `backend/app/src/db/mod.rs`.
+- Keep REST API handlers in `backend/app/src/api/`, grouped by domain under
+  `backend/app/src/api/routes/`. Authentication routes belong to `api/auth.rs`.
+- Keep SSE HTTP handlers and broadcasting in `backend/app/src/sse/`, and
+  frontend and static-asset serving in `backend/app/src/serve/`. Organize by
+  responsibility rather than requiring every HTTP handler to live in `api/`;
+  SSE-specific helper routes may use an `/api/` URL.
+- Keep API handlers focused on request validation, authorization, calling
+  domain operations, and constructing responses. Put reusable application
+  logic in the responsible domain module so other callers can use it.
+- Reuse the existing authentication, role, channel-access, and file-access
+  helpers. Check permissions before reading or modifying protected resources.
+- Keep media processing in `backend/engine/` and application concerns such as
+  HTTP, authentication, and database access in `backend/app/`. The engine must
+  not depend on the application crate.
+
+## Test placement
+
+- Put unit tests in a `#[cfg(test)]` module beside the implementation they test.
+  Build data directly when a test does not need real media files or a database.
+- Put application integration tests in `backend/app/tests/`, grouped by domain.
+  HTTP tests should exercise the application's routes and authorization together.
+- Keep shared media fixtures in `tests_assets/`. Resolve fixture paths from
+  `CARGO_MANIFEST_DIR` rather than relying on the current working directory.
+- Use explicit timezones and scoped clocks in time-dependent unit tests. Avoid
+  changing a shared clock that can affect concurrently running tests.
 
 ## Readability
 

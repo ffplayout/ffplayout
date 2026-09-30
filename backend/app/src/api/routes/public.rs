@@ -7,6 +7,7 @@ use path_clean::PathClean;
 
 use crate::{
     api::{routes::stream_file, state::AppState},
+    file::ensure_path_within_root,
     utils::{errors::ServiceError, public_path},
 };
 
@@ -33,7 +34,10 @@ pub async fn get_public(
         .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
         let config = manager.config.read().await;
-        config.channel.public.join(public)
+        let base = config.channel.public.join(public).clean();
+        ensure_path_within_root(&config.channel.public, &base)?;
+
+        base
     } else {
         public_path()
     }
@@ -44,9 +48,7 @@ pub async fn get_public(
     // escape with `..` segments (e.g. percent-encoded) and read arbitrary
     // files, since `PathBuf::join` does not resolve `..` on its own.
     let path = base_path.join(file_stem.as_str()).clean();
-    if !path.starts_with(&base_path) {
-        return Err(ServiceError::Forbidden("Access denied".to_string()));
-    }
+    ensure_path_within_root(&base_path, &path)?;
 
     stream_file(&path, &headers).await
 }

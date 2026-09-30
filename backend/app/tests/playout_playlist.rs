@@ -1,4 +1,4 @@
-use std::{env, sync::atomic::Ordering};
+use std::{path::PathBuf, sync::atomic::Ordering};
 
 use serial_test::serial;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -24,12 +24,15 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
         .unwrap();
     handles::db_migrate(&pool).await.unwrap();
 
-    let current_path = env::current_dir().unwrap();
-    let hls = current_path.join("assets/hls");
-    let log = current_path.join("assets/log");
-    let playlists = current_path.join("assets/playlists");
-    let storage = current_path.join("assets/storage");
-    let filler = current_path.join("assets/storage/media_filler/filler_0.mp4");
+    let current_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests_assets")
+        .canonicalize()
+        .unwrap();
+    let hls = current_path.join("hls");
+    let log = current_path.join("log");
+    let playlists = current_path.join("playlists");
+    let storage = current_path.join("storage");
+    let filler = current_path.join("storage/media_filler/filler_0.mp4");
 
     sqlx::query(
         r#"

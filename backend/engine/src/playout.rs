@@ -566,7 +566,8 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             audio_end_pts
         }
         _ => None,
-    };
+    }
+    .filter(|_| !timeline.source_timestamp_mode);
     let video_padding_end_pts = if !has_video && embedded_audio {
         Some(timeline.video_pts)
     } else {
@@ -646,6 +647,8 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
                 if !video_finished && let Some(video) = video.as_mut() {
                     benchmark::measure(Stage::VideoDecode, || video.decoder.send_packet(&packet))?;
                     receive_video_frames(
+                        cfg,
+                        audio_padding_end_pts,
                         video,
                         timeline,
                         output,
@@ -719,6 +722,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
 
         finish_video(
             cfg,
+            audio_padding_end_pts,
             &mut video,
             timeline,
             output,
@@ -825,6 +829,7 @@ fn seconds_to_microseconds(seconds: f64) -> i64 {
 #[allow(clippy::too_many_arguments)]
 fn finish_video<O: FrameOutput>(
     cfg: &OutputConfig,
+    audio_padding_end_pts: Option<i64>,
     video: &mut Option<VideoDecoder>,
     timeline: &mut Timeline,
     output: &mut O,
@@ -845,6 +850,8 @@ fn finish_video<O: FrameOutput>(
     if let Some(video) = video.as_mut() {
         benchmark::measure(Stage::VideoDecode, || video.decoder.send_eof())?;
         receive_video_frames(
+            cfg,
+            audio_padding_end_pts,
             video,
             timeline,
             output,
@@ -870,6 +877,7 @@ fn finish_video<O: FrameOutput>(
     }
     repeat_single_video_frame_to_limit(
         cfg,
+        audio_padding_end_pts,
         video,
         timeline,
         output,
@@ -890,6 +898,7 @@ fn finish_video<O: FrameOutput>(
 #[allow(clippy::too_many_arguments)]
 fn repeat_single_video_frame_to_limit<O: FrameOutput>(
     cfg: &OutputConfig,
+    audio_padding_end_pts: Option<i64>,
     video: &mut Option<VideoDecoder>,
     timeline: &mut Timeline,
     output: &mut O,
@@ -937,6 +946,14 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
             output,
             decoded_frames,
             None,
+        )?;
+
+        synchronize_finished_audio(
+            cfg,
+            timeline,
+            output,
+            audio_padding_end_pts,
+            playback_control,
         )?;
 
         if synthesize_silence {
@@ -1011,6 +1028,8 @@ fn parse_duration_us(duration: &str) -> Option<i64> {
 
 #[allow(clippy::too_many_arguments)]
 fn receive_video_frames<O: FrameOutput>(
+    cfg: &OutputConfig,
+    audio_padding_end_pts: Option<i64>,
     video: &mut VideoDecoder,
     timeline: &mut Timeline,
     output: &mut O,
@@ -1096,6 +1115,13 @@ fn receive_video_frames<O: FrameOutput>(
                 decoded_frames,
                 source_pts,
             )?;
+            synchronize_finished_audio(
+                cfg,
+                timeline,
+                output,
+                audio_padding_end_pts,
+                playback_control,
+            )?;
         } else {
             // Frame-rate up-conversion can share the pristine pixels. The
             // compositing helper requests a writable buffer only when an
@@ -1117,6 +1143,13 @@ fn receive_video_frames<O: FrameOutput>(
                     output,
                     decoded_frames,
                     source_pts.map(|pts| pts - (output_frames - 1 - index)),
+                )?;
+                synchronize_finished_audio(
+                    cfg,
+                    timeline,
+                    output,
+                    audio_padding_end_pts,
+                    playback_control,
                 )?;
             }
         }
@@ -2002,6 +2035,34 @@ fn synchronize_silence_to_video<O: FrameOutput>(
     check_playback_control(playback_control)
 }
 
+/// The decoder may release several buffered video frames at EOF or during
+/// frame-rate conversion. Fill the ended audio track between those frames,
+/// rather than waiting until the entire decoded batch has been emitted.
+fn synchronize_finished_audio<O: FrameOutput>(
+    cfg: &OutputConfig,
+    timeline: &mut Timeline,
+    output: &mut O,
+    audio_end_pts: Option<i64>,
+    playback_control: &PlaybackControl,
+) -> Result<()> {
+    // Decoder priming and end padding can make the decoded sample count end
+    // slightly before the container duration. Two codec frames cover AAC's
+    // usual priming plus the final partial frame without masking a real gap.
+    let audio_end_tolerance = (output.audio_frame_size().max(1) as i64).saturating_mul(2);
+    let audio_end_reached = audio_end_pts.is_some_and(|end_pts| {
+        timeline.audio_pts >= end_pts
+            || (timeline.audio_pts >= end_pts.saturating_sub(audio_end_tolerance)
+                && i128::from(timeline.video_pts) * i128::from(cfg.sample_rate)
+                    >= i128::from(end_pts) * i128::from(cfg.fps))
+    });
+
+    if audio_end_reached {
+        synchronize_silence_to_video(cfg, timeline, output, playback_control)?;
+    }
+
+    Ok(())
+}
+
 /// Keep streams interleaved once one embedded track reaches its declared end.
 /// FFmpeg only reports container EOF, so without this guard a short track is
 /// padded all at once after packets from the longer track have already been
@@ -2017,20 +2078,7 @@ fn synchronize_declared_stream_ends<O: FrameOutput>(
 ) -> Result<()> {
     check_playback_control(playback_control)?;
 
-    // Decoder priming and end padding can make the decoded sample count end
-    // slightly before the container duration. Two codec frames cover AAC's
-    // usual priming plus the final partial frame without masking a real gap.
-    let audio_end_tolerance = (output.audio_frame_size().max(1) as i64).saturating_mul(2);
-    let audio_end_reached = audio_end_pts.is_some_and(|end_pts| {
-        timeline.audio_pts >= end_pts
-            || (timeline.audio_pts >= end_pts.saturating_sub(audio_end_tolerance)
-                && i128::from(timeline.video_pts) * i128::from(cfg.sample_rate)
-                    >= i128::from(end_pts) * i128::from(cfg.fps))
-    });
-
-    if audio_end_reached {
-        synchronize_silence_to_video(cfg, timeline, output, playback_control)?;
-    }
+    synchronize_finished_audio(cfg, timeline, output, audio_end_pts, playback_control)?;
 
     let video_end_reached = video_end_pts.is_some_and(|end_pts| {
         timeline.video_pts >= end_pts
@@ -2467,7 +2515,7 @@ mod tests {
 
     fn media_mix_asset(name: &str) -> String {
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/assets/storage/media_mix")
+            .join("../../tests_assets/storage/media_mix")
             .join(name)
             .to_string_lossy()
             .into_owned()
@@ -2948,15 +2996,31 @@ mod tests {
 
         assert_eq!(timeline.video_pts, 250);
         assert_eq!(timeline.audio_pts, 480_000);
-        let longest_video_run = output
-            .events
-            .split(|event| *event == "audio")
-            .map(|events| events.iter().filter(|event| **event == "video").count())
-            .max()
-            .unwrap_or_default();
+        // Decoder delay can leave real audio ahead of video before its end.
+        // Only the final second (after this fixture's nine-second audio track)
+        // must receive silence interleaved with each remaining video frame.
+        let mut video_frames = 0;
+        let mut unaccompanied_frames = 0;
+        let mut longest_video_run = 0;
+
+        for event in &output.events {
+            match *event {
+                "video" => {
+                    video_frames += 1;
+
+                    if video_frames > 225 {
+                        unaccompanied_frames += 1;
+                        longest_video_run = longest_video_run.max(unaccompanied_frames);
+                    }
+                }
+                "audio" => unaccompanied_frames = 0,
+                _ => {}
+            }
+        }
+
         assert!(
-            longest_video_run <= 10,
-            "short embedded audio must be followed by interleaved silence; longest video run was {longest_video_run}"
+            longest_video_run <= 1,
+            "ended audio must be padded between video frames; longest video run was {longest_video_run}"
         );
         assert_eq!(output.events.last(), Some(&"video_finished"));
     }

@@ -22,6 +22,8 @@ pub mod mail;
 pub mod notification;
 pub mod paths;
 pub mod playlist;
+pub mod program;
+pub mod setup;
 pub mod system;
 pub mod task_runner;
 pub mod text;

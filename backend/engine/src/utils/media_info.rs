@@ -391,7 +391,7 @@ mod tests {
 
     fn media_mix_asset(name: &str) -> String {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/assets/storage/media_mix")
+            .join("../../tests_assets/storage/media_mix")
             .join(name)
             .to_string_lossy()
             .into_owned()
