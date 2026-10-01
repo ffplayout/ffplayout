@@ -120,6 +120,12 @@ pub struct LiveLoudnessMetrics {
     pub limiter_gain_reduction_db: f64,
 }
 
+/// Source measurements associated with positions in one buffered audio frame.
+/// Gain and limiter state remain on the playback timeline, not the decode timeline.
+pub struct BufferedLoudnessAnalysis {
+    measurements: Vec<(usize, LiveLoudnessMetrics)>,
+}
+
 /// Measurement window used by the gain rider.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum LiveLoudnessMeasurement {
@@ -149,6 +155,7 @@ pub struct LiveLoudnessProcessor {
     limiter_gain: f64,
     limiter_release: f64,
     metrics: LiveLoudnessMetrics,
+    analysis_control_metrics: LiveLoudnessMetrics,
 }
 
 impl LiveLoudnessProcessor {
@@ -173,6 +180,7 @@ impl LiveLoudnessProcessor {
             limiter_release: 1.0
                 - (-1.0 / (LIMITER_RELEASE_SECONDS * f64::from(sample_rate))).exp(),
             metrics: LiveLoudnessMetrics::default(),
+            analysis_control_metrics: LiveLoudnessMetrics::default(),
         })
     }
 
@@ -211,17 +219,39 @@ impl LiveLoudnessProcessor {
     /// sanitized before analysis so malformed live input cannot poison the
     /// analyzer or encoder.
     pub fn process(&mut self, frame: &mut frame::Audio) {
-        self.analyze_frame(frame, true, true);
+        self.analyze_frame(frame, true, true, None);
     }
 
     /// Applies the live limiter using buffered future source samples, keeping
     /// this frame's sample count and PTS intact. Preview never enters analysis.
-    pub(crate) fn process_with_lookahead(&mut self, frame: &mut frame::Audio, future: &[[f32; 2]]) {
+    pub fn process_with_lookahead(&mut self, frame: &mut frame::Audio, future: &[[f32; 2]]) {
         if frame.planes() != 2 || frame.samples() == 0 {
             return;
         }
 
-        self.analyze_frame(frame, true, false);
+        self.analyze_frame(frame, true, false, None);
+        self.limit_with_lookahead(frame, future);
+    }
+
+    /// Number of future stereo samples required by the peak limiter.
+    pub fn peak_lookahead_samples(&self) -> usize {
+        super::lookahead_samples(self.sample_rate) + super::TRUE_PEAK_FUTURE_SAMPLES
+    }
+
+    /// Apply the current rider and lookahead limiter to previously analyzed audio.
+    /// This supports offline experiments with a longer loudness preview window.
+    pub fn apply_gain_with_lookahead(&mut self, frame: &mut frame::Audio, future: &[[f32; 2]]) {
+        if frame.planes() != 2 || frame.samples() == 0 {
+            return;
+        }
+
+        sanitize_samples(frame);
+        self.metrics.limiter_gain_reduction_db = 0.0;
+        self.apply_gain_and_ceiling(frame, 0, frame.samples(), false);
+        self.limit_with_lookahead(frame, future);
+    }
+
+    fn limit_with_lookahead(&mut self, frame: &mut frame::Audio, future: &[[f32; 2]]) {
         let mut preview_gain_db = self.rider_gain_db
             + self.config.gain_up_db_per_second * super::LIVE_LATENCY.as_secs_f64();
 
@@ -244,10 +274,57 @@ impl LiveLoudnessProcessor {
     /// This is used by offline/lookahead callers that apply the resulting gain
     /// to an earlier buffered frame.
     pub fn analyze(&mut self, frame: &mut frame::Audio) {
-        self.analyze_frame(frame, false, false);
+        self.analyze_frame(frame, false, false, None);
     }
 
-    fn analyze_frame(&mut self, frame: &mut frame::Audio, apply_gain: bool, sample_ceiling: bool) {
+    /// Analyze ahead of playback, retaining the exact 100 ms control boundaries.
+    pub fn analyze_buffered(&mut self, frame: &mut frame::Audio) -> BufferedLoudnessAnalysis {
+        let mut measurements = vec![(0, self.analysis_control_metrics)];
+        self.analyze_frame(frame, false, false, Some(&mut measurements));
+
+        BufferedLoudnessAnalysis { measurements }
+    }
+
+    /// Replay source measurements at their original sample positions, then limit peaks.
+    pub fn apply_buffered_gain(
+        &mut self,
+        frame: &mut frame::Audio,
+        analysis: &BufferedLoudnessAnalysis,
+        future: &[[f32; 2]],
+    ) {
+        if frame.planes() != 2 || frame.samples() == 0 {
+            return;
+        }
+
+        sanitize_samples(frame);
+        self.metrics.limiter_gain_reduction_db = 0.0;
+
+        for (index, &(start, measurement)) in analysis.measurements.iter().enumerate() {
+            self.metrics.momentary_lufs = measurement.momentary_lufs;
+            self.metrics.short_term_lufs = measurement.short_term_lufs;
+            self.metrics.integrated_lufs = measurement.integrated_lufs;
+            self.metrics.true_peak_dbtp = measurement.true_peak_dbtp;
+            if index > 0 {
+                self.update_rider_target();
+            }
+
+            let end = analysis
+                .measurements
+                .get(index + 1)
+                .map_or(frame.samples(), |&(offset, _)| offset);
+            self.apply_gain_and_ceiling(frame, start, end, false);
+        }
+
+        self.limit_with_lookahead(frame, future);
+    }
+
+    fn analyze_frame(
+        &mut self,
+        frame: &mut frame::Audio,
+        apply_gain: bool,
+        sample_ceiling: bool,
+        mut measurements: Option<&mut Vec<(usize, LiveLoudnessMetrics)>>,
+    ) {
         if frame.planes() != 2 || frame.samples() == 0 {
             return;
         }
@@ -283,7 +360,13 @@ impl LiveLoudnessProcessor {
                 self.samples_until_analysis = self.sample_rate as usize / 10;
                 // Apply a completed measurement to subsequent samples only,
                 // so control timing is independent of input packet boundaries.
-                self.update_rider_target();
+                self.analysis_control_metrics = self.metrics;
+
+                if let Some(measurements) = measurements.as_mut() {
+                    measurements.push((offset, self.analysis_control_metrics));
+                } else {
+                    self.update_rider_target();
+                }
             }
         }
     }

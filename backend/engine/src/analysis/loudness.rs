@@ -30,11 +30,24 @@ pub struct LoudnessAnalyzer {
 
 impl LoudnessAnalyzer {
     pub fn new(sample_rate: u32) -> Result<Self, ebur128_stream::Error> {
+        Self::with_modes(
+            sample_rate,
+            Mode::Momentary | Mode::ShortTerm | Mode::TruePeak,
+        )
+    }
+
+    /// Display meters report sample peaks separately and do not need 4x true-peak analysis.
+    #[cfg(feature = "desktop-base")]
+    pub(crate) fn new_display_meter(sample_rate: u32) -> Result<Self, ebur128_stream::Error> {
+        Self::with_modes(sample_rate, Mode::Momentary | Mode::ShortTerm)
+    }
+
+    fn with_modes(sample_rate: u32, modes: Mode) -> Result<Self, ebur128_stream::Error> {
         Ok(Self {
             analyzer: AnalyzerBuilder::new()
                 .sample_rate(sample_rate)
                 .channels(&[Channel::Left, Channel::Right])
-                .modes(Mode::Momentary | Mode::ShortTerm | Mode::TruePeak)
+                .modes(modes)
                 .build()?,
             integrated: IntegratedLoudness::new(),
             samples_per_block: sample_rate as usize / 10,

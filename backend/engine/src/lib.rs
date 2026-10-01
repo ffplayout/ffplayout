@@ -19,6 +19,8 @@ mod audio_mixer;
 mod benchmark;
 mod compositor;
 mod input;
+#[cfg(feature = "desktop-base")]
+mod loudness_preview;
 mod output;
 mod playback_control;
 mod playout;
@@ -27,8 +29,8 @@ mod utils;
 pub use analysis::audio_level::{AudioFrameCallback, AudioLevel, AudioLevelCallback};
 pub use analysis::loudness::{LoudnessMeterControl, LoudnessMetrics};
 pub use audio_mixer::{
-    AudioEffectsControl, LiveLoudnessConfig, LiveLoudnessControl, LiveLoudnessMeasurement,
-    LiveLoudnessMetrics, LiveLoudnessProcessor,
+    AudioEffectsControl, BufferedLoudnessAnalysis, LiveDynamicsProcessor, LiveLoudnessConfig,
+    LiveLoudnessControl, LiveLoudnessMeasurement, LiveLoudnessMetrics, LiveLoudnessProcessor,
 };
 use input::live::{LiveEnded, LiveOverrideOutput};
 pub use input::live::{
@@ -596,6 +598,83 @@ impl Playout {
 
     pub fn play(&mut self, path: &str) -> Result<ClipResult> {
         self.play_with_seek(path, None)
+    }
+
+    /// Play directly through the desktop output with experimental loudness lookahead.
+    /// Only the requested audio/video preview is buffered; no intermediate file is created.
+    /// Enabling `dynamics` selects the example's experimental AGC/compressor chain
+    /// and adds its short audio/video preview independently of `lookahead`.
+    #[cfg(feature = "desktop-base")]
+    pub fn play_with_loudness_preview(
+        &mut self,
+        path: &str,
+        loudness: LiveLoudnessConfig,
+        measurement: LiveLoudnessMeasurement,
+        lookahead: Duration,
+        dynamics: bool,
+        show_stats: bool,
+    ) -> Result<(ClipResult, LiveLoudnessMetrics)> {
+        let config = self.config.clone();
+        let playback_control = self.playback_control.clone();
+        let fallback_duration = self.fallback_duration;
+        let mut timeline = self.timeline;
+        let path = path.to_owned();
+        let benchmark = benchmark::start(config.channel_id);
+        let processor = LiveLoudnessProcessor::new(config.sample_rate, loudness)?;
+        let dynamics = dynamics
+            .then(|| LiveDynamicsProcessor::new(config.sample_rate, loudness))
+            .transpose()?;
+        let stats = show_stats
+            .then(|| loudness_preview::AudioStatsOverlay::new(config.sample_rate))
+            .transpose()?;
+        let operation = self.output.run_desktop(benchmark, move |output| {
+            let mut preview = loudness_preview::LoudnessPreview::new(
+                output,
+                processor,
+                measurement,
+                lookahead,
+                config.sample_rate,
+                config.video_time_base,
+            );
+            preview.set_dynamics(dynamics);
+            preview.set_stats(stats);
+            let result = play_to_output(
+                &path,
+                &config,
+                &mut timeline,
+                &mut preview,
+                fallback_duration,
+                &playback_control,
+                PlayOptions {
+                    seek_seconds: None,
+                    duration_seconds: None,
+                    external_audio_path: None,
+                    subtitles_media_path: None,
+                    logo_fade: LogoFade::default(),
+                },
+            );
+            let result = result.and_then(|result| {
+                if !matches!(result, ClipResult::Stopped | ClipResult::Skipped) {
+                    preview.finish()?;
+                }
+
+                Ok((result, preview.metrics()))
+            });
+
+            (result, timeline)
+        });
+
+        match operation {
+            Ok((result, timeline)) => {
+                self.timeline = timeline;
+
+                result
+            }
+            Err(error) if error.downcast_ref::<PlaybackStopped>().is_some() => {
+                Ok((ClipResult::Stopped, LiveLoudnessMetrics::default()))
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub fn play_with_seek(&mut self, path: &str, seek_seconds: Option<f64>) -> Result<ClipResult> {

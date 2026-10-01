@@ -1,12 +1,14 @@
 pub mod control;
+mod live_dynamics;
 pub mod live_loudness;
 mod lookahead;
 pub mod volume;
 
 pub use control::*;
+pub use live_dynamics::LiveDynamicsProcessor;
 pub use live_loudness::{
-    LiveLoudnessConfig, LiveLoudnessControl, LiveLoudnessMeasurement, LiveLoudnessMetrics,
-    LiveLoudnessProcessor,
+    BufferedLoudnessAnalysis, LiveLoudnessConfig, LiveLoudnessControl, LiveLoudnessMeasurement,
+    LiveLoudnessMetrics, LiveLoudnessProcessor,
 };
 
 pub(crate) use lookahead::{LIVE_LATENCY, TRUE_PEAK_FUTURE_SAMPLES, lookahead_samples};

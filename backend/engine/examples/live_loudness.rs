@@ -7,7 +7,8 @@
 //! When present, the video stream is copied into an MP4. The first audio stream
 //! is decoded, normalized by [`LiveLoudnessProcessor`], and encoded as 128
 //! kbit/s Opus. Audio-only inputs produce an `.opus` file. No external `ffmpeg`
-//! executable is used.
+//! executable is used. With `--desktop`, audio and video are processed directly
+//! during playback, buffering only the selected lookahead (requires a desktop feature).
 
 use std::{
     collections::VecDeque,
@@ -18,7 +19,8 @@ use std::{
 use anyhow::{Context, Result, bail};
 use clap::{Parser, ValueEnum};
 use ff_engine::{
-    LiveLoudnessConfig, LiveLoudnessMeasurement, LiveLoudnessMetrics, LiveLoudnessProcessor,
+    BufferedLoudnessAnalysis, LiveDynamicsProcessor, LiveLoudnessConfig, LiveLoudnessMeasurement,
+    LiveLoudnessMetrics, LiveLoudnessProcessor,
 };
 use ffmpeg::Rescale;
 use ffmpeg::{
@@ -37,13 +39,15 @@ const CHANNELS: usize = 2;
 
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]
 enum AnalysisMode {
-    /// Analyze and correct each frame immediately; no added delay.
+    /// Use the live short-term rider with 10 ms peak lookahead.
     #[default]
     ImmediateShortTerm,
     /// Buffer 500 ms and drive the rider from EBU R128 momentary loudness.
     Momentary500ms,
     /// Buffer 3 seconds and drive the rider from EBU R128 short-term loudness.
     ShortTerm3s,
+    /// Experimental slow AGC, 50 ms compressor preview and true-peak limiter.
+    LiveDynamics,
 }
 
 impl AnalysisMode {
@@ -52,6 +56,7 @@ impl AnalysisMode {
             Self::ImmediateShortTerm => "immediate-short-term",
             Self::Momentary500ms => "momentary-500ms",
             Self::ShortTerm3s => "short-term-3s",
+            Self::LiveDynamics => "live-dynamics",
         }
     }
 }
@@ -59,17 +64,27 @@ impl AnalysisMode {
 #[derive(Debug, Parser)]
 #[command(
     about = "Normalize an audio stream with the engine's live loudness processor",
-    after_help = "The immediate mode follows short-term loudness rather than forcing programme-integrated loudness. The lookahead modes use either 400 ms momentary or 3-second short-term loudness.\n\nFor unusually quiet source material, a target of -17 LUFS may require more than the conservative default of --max-gain-db 8; for example use --max-gain-db 16."
+    after_help = "All modes use the live 10 ms true-peak limiter. The immediate mode uses causal short-term analysis. Offline buffering preserves audio/video alignment. The buffered rider modes preserve source timing. live-dynamics adds a stereo-linked 6:1 soft-knee compressor with 50 ms preview, slow AGC, and a -55 dBFS pause detector. It needs about 70 ms of audio preview, not three seconds.\n\nFor unusually quiet source material, a target of -17 LUFS may require more than the conservative default of --max-gain-db 8; for example use --max-gain-db 16."
 )]
 struct Arguments {
     /// Input audio or video file. Video inputs retain their original video stream.
     input: PathBuf,
 
+    /// Play directly in a desktop window with audio, without rendering a file.
+    #[cfg(feature = "desktop-base")]
+    #[arg(long)]
+    desktop: bool,
+
+    /// Hide the audio statistics overlay during desktop playback.
+    #[cfg(feature = "desktop-base")]
+    #[arg(long)]
+    no_audio_stats: bool,
+
     /// Overwrite an existing output file.
     #[arg(short = 'y', long)]
     overwrite: bool,
 
-    /// Loudness analysis/correction mode. Lookahead modes delay audio by the selected window. Options are: immediate-short-term, momentary500ms, short-term3s.
+    /// Loudness analysis/correction mode. Offline buffering preserves A/V alignment; every mode uses the live peak limiter. Options are: immediate-short-term, momentary500ms, short-term3s, live-dynamics.
     #[arg(long, value_enum, default_value_t = AnalysisMode::ImmediateShortTerm)]
     analysis_mode: AnalysisMode,
 
@@ -97,11 +112,11 @@ struct Arguments {
     #[arg(long, default_value_t = 2.0)]
     gain_down_db_per_second: f64,
 
-    /// Signals below the selected measurement's loudness are not amplified, in LUFS. This keeps silence and low ambient noise from being raised.
+    /// Silence gate for rider modes, in LUFS. live-dynamics uses a fixed -55 dBFS pause threshold.
     #[arg(long, default_value_t = -60.0, allow_hyphen_values = true)]
     silence_gate_lufs: f64,
 
-    /// Final sample ceiling in dBTP. This is a safety ceiling after the gain rider; it does not replace a look-ahead limiter.
+    /// Final true-peak ceiling in dBTP, applied by the live lookahead limiter.
     #[arg(long, default_value_t = -1.0, allow_hyphen_values = true)]
     true_peak_ceiling_dbtp: f64,
 }
@@ -145,10 +160,16 @@ impl Arguments {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
     let arguments = Arguments::parse();
     let input = arguments.input.clone();
     let loudness_config = arguments.loudness_config()?;
     ffmpeg::init().context("initializing FFmpeg libraries")?;
+    #[cfg(feature = "desktop-base")]
+    if arguments.desktop {
+        return play_desktop(&arguments, loudness_config);
+    }
+
     let mut input_context = format::input(&input).context("opening input")?;
     let video_input = input_context.streams().best(media::Type::Video);
     let audio_input = input_context
@@ -324,6 +345,45 @@ fn main() -> Result<()> {
     progress.finish();
     println!("created: {}", output.display());
     println!("final metrics: {:#?}", loudness.metrics());
+
+    Ok(())
+}
+
+#[cfg(feature = "desktop-base")]
+fn play_desktop(arguments: &Arguments, loudness: LiveLoudnessConfig) -> Result<()> {
+    use std::time::Duration;
+
+    use ff_engine::{ClipResult, OutputConfig, Playout};
+
+    let (measurement, lookahead) = match arguments.analysis_mode {
+        AnalysisMode::ImmediateShortTerm => (LiveLoudnessMeasurement::ShortTerm, Duration::ZERO),
+        AnalysisMode::Momentary500ms => (
+            LiveLoudnessMeasurement::Momentary,
+            Duration::from_millis(500),
+        ),
+        AnalysisMode::ShortTerm3s => (LiveLoudnessMeasurement::ShortTerm, Duration::from_secs(3)),
+        AnalysisMode::LiveDynamics => (LiveLoudnessMeasurement::ShortTerm, Duration::ZERO),
+    };
+    let config = OutputConfig::new(1280, 720, 25, SAMPLE_RATE);
+    let mut playout = Playout::open_desktop(config, 10.0)?;
+    let (result, metrics) = playout.play_with_loudness_preview(
+        arguments.input.to_string_lossy().as_ref(),
+        loudness,
+        measurement,
+        lookahead,
+        matches!(arguments.analysis_mode, AnalysisMode::LiveDynamics),
+        !arguments.no_audio_stats,
+    )?;
+
+    if let ClipResult::Fallback { reason } = &result {
+        bail!("desktop playback failed: {reason}");
+    }
+
+    playout.finish()?;
+    if !matches!(result, ClipResult::Stopped) {
+        println!("final metrics: {metrics:#?}");
+    }
+
     Ok(())
 }
 
@@ -375,9 +435,10 @@ impl Progress {
 
 struct LoudnessPipeline {
     processor: LiveLoudnessProcessor,
+    dynamics: Option<LiveDynamicsProcessor>,
     lookahead_samples: usize,
     buffered_samples: usize,
-    pending: VecDeque<frame::Audio>,
+    pending: VecDeque<(frame::Audio, Option<BufferedLoudnessAnalysis>)>,
 }
 
 impl LoudnessPipeline {
@@ -390,9 +451,15 @@ impl LoudnessPipeline {
                 SAMPLE_RATE as usize / 2
             }
             AnalysisMode::ShortTerm3s => SAMPLE_RATE as usize * 3,
+            AnalysisMode::LiveDynamics => 0,
         };
+        let dynamics = matches!(mode, AnalysisMode::LiveDynamics)
+            .then(|| LiveDynamicsProcessor::new(SAMPLE_RATE, config))
+            .transpose()?;
+
         Ok(Self {
             processor,
+            dynamics,
             lookahead_samples,
             buffered_samples: 0,
             pending: VecDeque::new(),
@@ -400,36 +467,74 @@ impl LoudnessPipeline {
     }
 
     fn process(&mut self, mut frame: frame::Audio, samples: &mut [Vec<f32>; CHANNELS]) {
-        if self.lookahead_samples == 0 {
-            self.processor.process(&mut frame);
-            append_frame(samples, &frame);
+        let analysis =
+            (self.lookahead_samples > 0).then(|| self.processor.analyze_buffered(&mut frame));
+
+        self.buffered_samples += frame.samples();
+        self.pending.push_back((frame, analysis));
+        let preview_samples = self.lookahead_samples.max(self.required_samples());
+
+        while self.pending.front().is_some_and(|(frame, _)| {
+            self.buffered_samples.saturating_sub(frame.samples()) >= preview_samples
+        }) {
+            self.emit_front(samples);
+        }
+    }
+
+    fn emit_front(&mut self, samples: &mut [Vec<f32>; CHANNELS]) {
+        let Some((mut frame, analysis)) = self.pending.pop_front() else {
             return;
+        };
+        self.buffered_samples -= frame.samples();
+        let limit = self.required_samples();
+        let mut future = Vec::with_capacity(limit);
+
+        for (buffered, _) in &self.pending {
+            for index in 0..buffered.samples() {
+                if future.len() == limit {
+                    break;
+                }
+
+                future.push([
+                    buffered.plane::<f32>(0)[index],
+                    buffered.plane::<f32>(1)[index],
+                ]);
+            }
+
+            if future.len() == limit {
+                break;
+            }
         }
 
-        self.processor.analyze(&mut frame);
-        self.buffered_samples += frame.samples();
-        self.pending.push_back(frame);
-        while self.buffered_samples >= self.lookahead_samples {
-            let mut buffered = self
-                .pending
-                .pop_front()
-                .expect("lookahead buffer is not empty");
-            self.buffered_samples -= buffered.samples();
-            self.processor.apply_gain(&mut buffered);
-            append_frame(samples, &buffered);
+        if let Some(dynamics) = self.dynamics.as_mut() {
+            dynamics.process(&mut frame, &future);
+        } else if let Some(analysis) = analysis {
+            self.processor
+                .apply_buffered_gain(&mut frame, &analysis, &future);
+        } else {
+            self.processor.process_with_lookahead(&mut frame, &future);
         }
+
+        append_frame(samples, &frame);
     }
 
     fn flush(&mut self, samples: &mut [Vec<f32>; CHANNELS]) {
-        while let Some(mut frame) = self.pending.pop_front() {
-            self.processor.apply_gain(&mut frame);
-            append_frame(samples, &frame);
+        while !self.pending.is_empty() {
+            self.emit_front(samples);
         }
-        self.buffered_samples = 0;
+    }
+
+    fn required_samples(&self) -> usize {
+        self.dynamics.as_ref().map_or(
+            self.processor.peak_lookahead_samples(),
+            LiveDynamicsProcessor::lookahead_samples,
+        )
     }
 
     fn metrics(&self) -> LiveLoudnessMetrics {
-        self.processor.metrics()
+        self.dynamics
+            .as_ref()
+            .map_or_else(|| self.processor.metrics(), LiveDynamicsProcessor::metrics)
     }
 }
 
@@ -603,4 +708,127 @@ fn output_path(input: &Path, has_video: bool, analysis_mode: AnalysisMode) -> Re
         "{stem} # live_loudness # {}.{extension}",
         analysis_mode.file_suffix()
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn audio(samples: usize, value: f32) -> frame::Audio {
+        let mut frame =
+            frame::Audio::new(Sample::F32(Type::Planar), samples, ChannelLayout::STEREO);
+        frame.set_rate(SAMPLE_RATE);
+
+        for channel in 0..CHANNELS {
+            frame.plane_mut::<f32>(channel).fill(value);
+        }
+
+        frame
+    }
+
+    #[test]
+    fn all_modes_limit_future_peaks_and_drain_without_losing_samples() {
+        for mode in [
+            AnalysisMode::ImmediateShortTerm,
+            AnalysisMode::Momentary500ms,
+            AnalysisMode::ShortTerm3s,
+            AnalysisMode::LiveDynamics,
+        ] {
+            let mut pipeline = LoudnessPipeline::new(LiveLoudnessConfig::default(), mode).unwrap();
+            let mut output = [Vec::new(), Vec::new()];
+            pipeline.process(audio(1_024, 0.1), &mut output);
+            assert!(output[0].is_empty());
+            let mut peak = audio(1_024, 0.1);
+
+            for channel in 0..CHANNELS {
+                peak.plane_mut::<f32>(channel)[0] = 2.0;
+            }
+
+            pipeline.process(peak, &mut output);
+
+            if pipeline.lookahead_samples > 0 {
+                assert!(output[0].is_empty());
+            }
+
+            pipeline.flush(&mut output);
+            assert_eq!(output[0].len(), 2_048);
+            assert_eq!(output[0], output[1]);
+            assert!(output[0][1_000] < 0.06);
+            assert!(
+                output[0]
+                    .iter()
+                    .all(|value| value.abs() <= 10.0_f32.powf(-1.0 / 20.0))
+            );
+            assert_eq!(pipeline.buffered_samples, 0);
+        }
+    }
+
+    #[test]
+    fn three_second_mode_analyzes_future_audio_before_emitting() {
+        let mut pipeline =
+            LoudnessPipeline::new(LiveLoudnessConfig::default(), AnalysisMode::ShortTerm3s)
+                .unwrap();
+        let mut output = [Vec::new(), Vec::new()];
+
+        for _ in 0..30 {
+            pipeline.process(audio(4_800, 0.1), &mut output);
+        }
+
+        assert!(output[0].is_empty());
+        assert!(pipeline.metrics().short_term_lufs.is_some());
+        pipeline.process(audio(4_800, 0.1), &mut output);
+        assert_eq!(output[0].len(), 4_800);
+        pipeline.flush(&mut output);
+        assert_eq!(output[0].len(), 31 * 4_800);
+    }
+    #[test]
+    fn three_second_buffer_keeps_gain_changes_on_the_source_timeline() {
+        let mut immediate = LoudnessPipeline::new(
+            LiveLoudnessConfig::default(),
+            AnalysisMode::ImmediateShortTerm,
+        )
+        .unwrap();
+        let mut delayed =
+            LoudnessPipeline::new(LiveLoudnessConfig::default(), AnalysisMode::ShortTerm3s)
+                .unwrap();
+        let mut reference = [Vec::new(), Vec::new()];
+        let mut output = [Vec::new(), Vec::new()];
+        let rate = SAMPLE_RATE as usize;
+
+        // Irregular packet boundaries cross the 100 ms measurement cadence.
+        // Loud input at four seconds must not attenuate the quiet input at one second.
+        for offset in (0..rate * 10).step_by(777) {
+            let count = 777.min(rate * 10 - offset);
+            let mut frame = audio(count, 0.0);
+
+            for channel in 0..CHANNELS {
+                for (index, sample) in frame.plane_mut::<f32>(channel).iter_mut().enumerate() {
+                    let position = offset + index;
+                    let amplitude = if (rate * 4..rate * 6).contains(&position) {
+                        0.4
+                    } else {
+                        0.01
+                    };
+                    *sample = (std::f64::consts::TAU * 997.0 * position as f64
+                        / f64::from(SAMPLE_RATE))
+                    .sin() as f32
+                        * amplitude;
+                }
+            }
+
+            immediate.process(frame.clone(), &mut reference);
+            delayed.process(frame, &mut output);
+        }
+
+        immediate.flush(&mut reference);
+        delayed.flush(&mut output);
+        assert_eq!(output[0].len(), rate * 10);
+
+        for (index, (&actual, &expected)) in output[0].iter().zip(&reference[0]).enumerate() {
+            assert!(
+                (actual - expected).abs() < 0.000001,
+                "gain correction shifted at sample {index}: {actual} vs {expected}"
+            );
+        }
+    }
 }
