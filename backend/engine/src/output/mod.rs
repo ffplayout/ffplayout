@@ -51,6 +51,23 @@ pub(crate) trait FrameOutput {
 
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()>;
 
+    /// Volume has already been applied; meters and encoding still run normally.
+    fn encode_processed_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.encode_audio(frame)
+    }
+
+    fn handles_loudness(&self) -> bool {
+        false
+    }
+
+    fn encode_live_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.encode_audio(frame)
+    }
+
+    fn encode_audio_with_gain_hold(&mut self, frame: &frame::Audio, _hold: bool) -> Result<()> {
+        self.encode_audio(frame)
+    }
+
     /// Discard output buffered past a manual clip skip and re-anchor at the
     /// supplied synchronized timeline position. Encoded outputs cannot
     /// retract muxed packets and therefore use the default padding path.
@@ -246,6 +263,14 @@ impl FrameOutput for Output {
 
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
         Self::encode_audio(self, frame)
+    }
+
+    fn encode_processed_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        match &mut self.kind {
+            OutputKind::Encoded(output) => output.encode_processed_audio(frame),
+            #[cfg(feature = "desktop-base")]
+            OutputKind::Desktop(output) => output.encode_audio(frame),
+        }
     }
 
     fn apply_logo_overlay(

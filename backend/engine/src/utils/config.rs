@@ -256,6 +256,7 @@ pub struct OutputConfig {
     pub audio_time_base: Rational,
     pub audio_effects: AudioEffectsControl,
     /// Live-ingest-only EBU R128 gain rider and ceiling limiter settings.
+    pub loudness_scope: crate::LoudnessScope,
     pub live_loudness: LiveLoudnessConfig,
     pub live_loudness_control: LiveLoudnessControl,
     pub audio_level_callback: Option<AudioLevelCallback>,
@@ -1364,6 +1365,7 @@ impl OutputConfig {
             video_time_base: Rational(1, fps as i32),
             audio_time_base: Rational(1, sample_rate as i32),
             audio_effects: AudioEffectsControl::default(),
+            loudness_scope: crate::LoudnessScope::Off,
             live_loudness: LiveLoudnessConfig::default(),
             live_loudness_control: LiveLoudnessControl::new(false, LiveLoudnessConfig::default()),
             audio_level_callback: None,
@@ -1399,6 +1401,12 @@ impl OutputConfig {
 
     pub fn with_audio_effects(mut self, audio_effects: AudioEffectsControl) -> Self {
         self.audio_effects = audio_effects;
+        self
+    }
+
+    pub fn with_loudness_scope(mut self, scope: crate::LoudnessScope) -> Self {
+        self.loudness_scope = scope;
+
         self
     }
 

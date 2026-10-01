@@ -27,6 +27,8 @@ struct AudioState {
     samples: Mutex<VecDeque<f32>>,
     queued_samples: AtomicU64,
     playing: AtomicBool,
+    xruns: AtomicU64,
+    missing_samples: AtomicU64,
 }
 
 impl DesktopAudio {
@@ -39,6 +41,8 @@ impl DesktopAudio {
                 samples: Mutex::new(VecDeque::new()),
                 queued_samples: AtomicU64::new(0),
                 playing: AtomicBool::new(false),
+                xruns: AtomicU64::new(0),
+                missing_samples: AtomicU64::new(0),
             }),
             device_buffer_samples: AUDIO_DEVICE_BUFFER_SAMPLES,
         }
@@ -68,21 +72,28 @@ impl DesktopAudio {
             })?
             .with_sample_rate(sample_rate);
         let sample_format = supported.sample_format();
-        let config: cpal::StreamConfig = supported.into();
-        let device_buffer_samples = match config.buffer_size {
-            cpal::BufferSize::Fixed(size) => u64::from(size),
-            cpal::BufferSize::Default => AUDIO_DEVICE_BUFFER_SAMPLES,
-        };
+        let buffer_size = preferred_buffer_size(supported.buffer_size());
+        let mut config: cpal::StreamConfig = supported.into();
+        config.buffer_size = buffer_size;
         let state = Arc::new(AudioState {
             samples: Mutex::new(VecDeque::with_capacity(
                 (sample_rate as usize * AUDIO_MAX_QUEUE_MS as usize / 1_000) * AUDIO_CHANNELS,
             )),
             queued_samples: AtomicU64::new(0),
             playing: AtomicBool::new(false),
+            xruns: AtomicU64::new(0),
+            missing_samples: AtomicU64::new(0),
         });
         let callback_state = Arc::clone(&state);
-        let error_callback = move |error| {
-            log::warn!(channel = channel_id; "desktop audio stream error: {error}");
+        let error_state = Arc::clone(&state);
+        let error_callback = move |error: cpal::Error| {
+            // Logging can acquire locks and perform I/O. Never let an xrun warning
+            // delay ALSA's recovery on the audio thread and cause another xrun.
+            if error.kind() == cpal::ErrorKind::Xrun {
+                error_state.xruns.fetch_add(1, Ordering::Relaxed);
+            } else {
+                log::warn!(channel = channel_id; "desktop audio stream error: {error}");
+            }
         };
         let stream = match sample_format {
             SampleFormat::I8 => {
@@ -132,6 +143,17 @@ impl DesktopAudio {
                 ));
             }
         };
+        let device_buffer_samples = stream
+            .buffer_size()
+            .map(u64::from)
+            .unwrap_or_else(|_| match config.buffer_size {
+                cpal::BufferSize::Fixed(size) => u64::from(size),
+                cpal::BufferSize::Default => AUDIO_DEVICE_BUFFER_SAMPLES,
+            })
+            .max(1);
+        log::debug!(channel = channel_id;
+            "desktop audio device buffer: {device_buffer_samples} samples ({:.2} ms)",
+            device_buffer_samples as f64 * 1000.0 / f64::from(sample_rate));
         stream
             .play()
             .context("starting desktop audio output stream")?;
@@ -162,8 +184,15 @@ impl DesktopAudio {
     pub(super) fn clear(&self) {
         if let Ok(mut samples) = self.state.samples.lock() {
             samples.clear();
+            self.state.queued_samples.store(0, Ordering::Release);
         }
-        self.state.queued_samples.store(0, Ordering::Release);
+    }
+
+    pub(super) fn take_underruns(&self) -> (u64, u64) {
+        (
+            self.state.xruns.swap(0, Ordering::Relaxed),
+            self.state.missing_samples.swap(0, Ordering::Relaxed),
+        )
     }
 
     pub(super) fn pause(&self) {
@@ -180,6 +209,17 @@ impl DesktopAudio {
 
     pub(super) fn device_buffer_samples(&self) -> u64 {
         self.device_buffer_samples
+    }
+}
+
+/// Avoid tiny host-default periods: a broadcast preview does not need the
+/// lowest possible device latency, and 1024 frames tolerate scheduler jitter.
+fn preferred_buffer_size(supported: &cpal::SupportedBufferSize) -> cpal::BufferSize {
+    match *supported {
+        cpal::SupportedBufferSize::Range { min, max } if min > 0 && min <= max => {
+            cpal::BufferSize::Fixed((AUDIO_DEVICE_BUFFER_SAMPLES as u32).clamp(min, max))
+        }
+        _ => cpal::BufferSize::Default,
     }
 }
 
@@ -233,6 +273,7 @@ where
 
         return;
     };
+    let requested = output.len() as u64 / AUDIO_CHANNELS as u64;
     let mut consumed = 0_u64;
 
     for sample in output {
@@ -242,6 +283,12 @@ where
         } else {
             *sample = T::from_sample(0.0);
         }
+    }
+
+    let missing = requested.saturating_sub(consumed / AUDIO_CHANNELS as u64);
+
+    if missing > 0 {
+        state.missing_samples.fetch_add(missing, Ordering::Relaxed);
     }
 
     if consumed > 0 {
@@ -254,6 +301,54 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_buffer_request_respects_supported_limits() {
+        use cpal::{BufferSize, SupportedBufferSize};
+
+        for (min, max, expected) in [(64, 8192, 1024), (2048, 8192, 2048), (64, 512, 512)] {
+            assert_eq!(
+                preferred_buffer_size(&SupportedBufferSize::Range { min, max }),
+                BufferSize::Fixed(expected)
+            );
+        }
+
+        assert_eq!(
+            preferred_buffer_size(&SupportedBufferSize::Unknown),
+            BufferSize::Default
+        );
+    }
+
+    #[test]
+    fn queue_underruns_count_only_missing_frames_and_keep_the_sample_clock() {
+        let audio = DesktopAudio::for_test();
+        audio.queue(&[0.25, -0.25]).unwrap();
+        audio.resume();
+        let mut output = [1.0_f32; AUDIO_CHANNELS * 3];
+        write_audio_data(&mut output, &audio.state);
+        assert_eq!(output, [0.25, -0.25, 0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(audio.queued_samples(), 0);
+        assert_eq!(audio.take_underruns(), (0, 2));
+        assert_eq!(audio.take_underruns(), (0, 0));
+        audio.pause();
+        write_audio_data(&mut output, &audio.state);
+        assert_eq!(audio.take_underruns(), (0, 0));
+    }
+
+    #[test]
+    fn clearing_queue_resets_samples_and_count_together() {
+        let audio = DesktopAudio::for_test();
+        audio.queue(&[0.25; 16]).unwrap();
+        audio.clear();
+        assert_eq!(audio.queued_samples(), 0);
+        assert!(audio.samples_for_test().is_empty());
+        audio.queue(&[0.5; 4]).unwrap();
+        audio.resume();
+        let mut output = [0.0_f32; 4];
+        write_audio_data(&mut output, &audio.state);
+        assert_eq!(output, [0.5; 4]);
+        assert_eq!(audio.queued_samples(), 0);
+    }
 
     #[test]
     fn prefers_high_fidelity_pcm_formats() {
@@ -269,6 +364,8 @@ mod tests {
             samples: Mutex::new(VecDeque::from([0.25, -0.25])),
             queued_samples: AtomicU64::new(1),
             playing: AtomicBool::new(false),
+            xruns: AtomicU64::new(0),
+            missing_samples: AtomicU64::new(0),
         };
         let mut output = [1.0_f32; AUDIO_CHANNELS];
 
@@ -284,6 +381,8 @@ mod tests {
             samples: Mutex::new(VecDeque::from([0.25, -0.25, 0.5, -0.5])),
             queued_samples: AtomicU64::new(2),
             playing: AtomicBool::new(true),
+            xruns: AtomicU64::new(0),
+            missing_samples: AtomicU64::new(0),
         };
         let mut output = [0.0_f32; AUDIO_CHANNELS * 2];
 
@@ -299,6 +398,8 @@ mod tests {
             samples: Mutex::new(VecDeque::from([0.0, 0.0])),
             queued_samples: AtomicU64::new(1),
             playing: AtomicBool::new(true),
+            xruns: AtomicU64::new(0),
+            missing_samples: AtomicU64::new(0),
         };
         let mut output = [0_u8; AUDIO_CHANNELS];
 

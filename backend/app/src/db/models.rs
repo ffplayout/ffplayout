@@ -372,15 +372,30 @@ pub struct Configuration {
     pub processing_logo_opacity: f64,
     pub processing_logo_position: String,
     pub processing_volume: f64,
-    pub processing_live_loudness_enable: bool,
-    pub processing_live_loudness_target_lufs: f64,
-    pub processing_live_loudness_dead_band_lu: f64,
-    pub processing_live_loudness_max_gain_db: f64,
-    pub processing_live_loudness_max_attenuation_db: f64,
-    pub processing_live_loudness_gain_up_db_per_second: f64,
-    pub processing_live_loudness_gain_down_db_per_second: f64,
-    pub processing_live_loudness_silence_gate_lufs: f64,
-    pub processing_live_loudness_true_peak_ceiling_dbtp: f64,
+    pub processing_loudness_scope: String,
+    pub processing_compressor_ratio: f64,
+    pub processing_compressor_attack_ms: f64,
+    pub processing_compressor_hold_ms: f64,
+    pub processing_compressor_release_ms: f64,
+    pub processing_compressor_strong_release_ms: f64,
+    pub processing_compressor_knee_db: f64,
+    pub processing_pause_hold_ms: f64,
+    pub processing_pause_return_delay_ms: f64,
+    pub processing_loudness_output_max_correction_db: f64,
+    pub processing_loudness_output_gain_up_db_per_second: f64,
+    pub processing_loudness_output_gain_down_db_per_second: f64,
+
+    pub processing_compressor_threshold_dbfs: f64,
+    pub processing_pause_threshold_dbfs: f64,
+    pub processing_loudness_enable: bool,
+    pub processing_loudness_target_lufs: f64,
+    pub processing_loudness_dead_band_lu: f64,
+    pub processing_loudness_max_gain_db: f64,
+    pub processing_loudness_max_attenuation_db: f64,
+    pub processing_loudness_gain_up_db_per_second: f64,
+    pub processing_loudness_gain_down_db_per_second: f64,
+    pub processing_loudness_silence_gate_lufs: f64,
+    pub processing_loudness_true_peak_ceiling_dbtp: f64,
     #[serde(default)]
     pub processing_vtt_enable: bool,
     #[serde(default)]
@@ -432,25 +447,40 @@ impl Configuration {
             processing_logo_opacity: config.processing.logo_opacity,
             processing_logo_position: config.processing.logo_position,
             processing_volume: config.audio.volume,
-            processing_live_loudness_enable: config.audio.live_loudness_enable,
-            processing_live_loudness_target_lufs: config.audio.live_loudness_target_lufs,
-            processing_live_loudness_dead_band_lu: config.audio.live_loudness_dead_band_lu,
-            processing_live_loudness_max_gain_db: config.audio.live_loudness_max_gain_db,
-            processing_live_loudness_max_attenuation_db: config
+            processing_loudness_scope: config.audio.loudness_scope.clone(),
+            processing_compressor_ratio: config.audio.compressor_ratio,
+            processing_compressor_attack_ms: config.audio.compressor_attack_ms,
+            processing_compressor_hold_ms: config.audio.compressor_hold_ms,
+            processing_compressor_release_ms: config.audio.compressor_release_ms,
+            processing_compressor_strong_release_ms: config.audio.compressor_strong_release_ms,
+            processing_compressor_knee_db: config.audio.compressor_knee_db,
+            processing_pause_hold_ms: config.audio.pause_hold_ms,
+            processing_pause_return_delay_ms: config.audio.pause_return_delay_ms,
+            processing_loudness_output_max_correction_db: config
                 .audio
-                .live_loudness_max_attenuation_db,
-            processing_live_loudness_gain_up_db_per_second: config
+                .loudness_output_max_correction_db,
+            processing_loudness_output_gain_up_db_per_second: config
                 .audio
-                .live_loudness_gain_up_db_per_second,
-            processing_live_loudness_gain_down_db_per_second: config
+                .loudness_output_gain_up_db_per_second,
+            processing_loudness_output_gain_down_db_per_second: config
                 .audio
-                .live_loudness_gain_down_db_per_second,
-            processing_live_loudness_silence_gate_lufs: config
+                .loudness_output_gain_down_db_per_second,
+
+            processing_compressor_threshold_dbfs: config.audio.compressor_threshold_dbfs,
+            processing_pause_threshold_dbfs: config.audio.pause_threshold_dbfs,
+            processing_loudness_enable: config.audio.loudness_scope != "off",
+            processing_loudness_target_lufs: config.audio.loudness_target_lufs,
+            processing_loudness_dead_band_lu: config.audio.loudness_dead_band_lu,
+            processing_loudness_max_gain_db: config.audio.loudness_max_gain_db,
+            processing_loudness_max_attenuation_db: config.audio.loudness_max_attenuation_db,
+            processing_loudness_gain_up_db_per_second: config.audio.loudness_gain_up_db_per_second,
+            processing_loudness_gain_down_db_per_second: config
                 .audio
-                .live_loudness_silence_gate_lufs,
-            processing_live_loudness_true_peak_ceiling_dbtp: config
+                .loudness_gain_down_db_per_second,
+            processing_loudness_silence_gate_lufs: config.audio.loudness_silence_gate_lufs,
+            processing_loudness_true_peak_ceiling_dbtp: config
                 .audio
-                .live_loudness_true_peak_ceiling_dbtp,
+                .loudness_true_peak_ceiling_dbtp,
             processing_vtt_enable: config.processing.vtt_enable,
             processing_vtt_dummy: config.processing.vtt_dummy,
             processing_vtt_name: config.processing.vtt_name,

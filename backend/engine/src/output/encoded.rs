@@ -635,13 +635,28 @@ impl EncodedOutput {
     }
 
     pub(super) fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.encode_audio_with_effects(frame, true)
+    }
+
+    pub(super) fn encode_processed_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.encode_audio_with_effects(frame, false)
+    }
+
+    fn encode_audio_with_effects(
+        &mut self,
+        frame: &frame::Audio,
+        apply_effects: bool,
+    ) -> Result<()> {
         if frame.samples() == 0 {
             return Ok(());
         }
 
         let mut frame = frame.clone();
         benchmark::measure(Stage::AudioProcess, || {
-            self.audio_effects.process(&mut frame);
+            if apply_effects {
+                self.audio_effects.process(&mut frame);
+            }
+
             self.audio_level_meter.process_frame(&frame);
             self.loudness_meter.process_frame(&frame);
             self.align_audio_buffer_to_frame_pts(frame.pts())?;
@@ -1527,6 +1542,43 @@ mod open_tests {
     };
 
     use super::*;
+
+    #[test]
+    fn processed_audio_bypasses_volume_but_regular_audio_still_applies_it() {
+        ffmpeg::init().unwrap();
+        let directory = env::temp_dir().join(format!("processed_audio_test_{}", process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("processed_audio.ts");
+        let config = OutputConfig::new(320, 240, 25, 48000);
+        config.audio_effects.set_volume(1.5).unwrap();
+        let mut output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &config,
+            EncodedFormat::Stream {
+                muxer: "mpegts".to_string(),
+            },
+        )
+        .unwrap();
+        let mut audio = frame::Audio::new(
+            Sample::F32(ffmpeg::format::sample::Type::Planar),
+            32,
+            ChannelLayout::STEREO,
+        );
+        audio.set_rate(48000);
+        audio.set_pts(Some(0));
+        audio.plane_mut::<f32>(0).fill(0.2);
+        audio.plane_mut::<f32>(1).fill(0.2);
+        output.encode_processed_audio(&audio).unwrap();
+        audio.set_pts(Some(32));
+        output.encode_audio(&audio).unwrap();
+        assert_eq!(output.audio_buffer[0].len(), 64);
+        for (index, &sample) in output.audio_buffer[0].iter().enumerate() {
+            let expected = if index < 32 { 0.2 } else { 0.3 };
+            assert!((sample - expected).abs() < 1e-6);
+        }
+        output.finish().unwrap();
+        fs::remove_dir_all(&directory).unwrap();
+    }
 
     #[test]
     fn mpegts_writes_dvb_service_metadata() {

@@ -37,7 +37,6 @@ impl LoudnessAnalyzer {
     }
 
     /// Display meters report sample peaks separately and do not need 4x true-peak analysis.
-    #[cfg(feature = "desktop-base")]
     pub(crate) fn new_display_meter(sample_rate: u32) -> Result<Self, ebur128_stream::Error> {
         Self::with_modes(sample_rate, Mode::Momentary | Mode::ShortTerm)
     }

@@ -54,9 +54,9 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
 
     pub(super) fn pump_live(&mut self) -> Result<bool> {
         let mut received_event = false;
-        self.live
-            .delay
-            .set_audio_lookahead(self.live.loudness_control.settings().enabled);
+        self.live.delay.set_audio_lookahead(
+            !self.output.handles_loudness() && self.live.loudness_control.settings().enabled,
+        );
 
         loop {
             // Check every event too: a busy live queue may never become empty.
@@ -314,7 +314,11 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     *sample = 0.0;
                 }
             }
-            self.output.encode_audio(&frame)?;
+            if self.live.active {
+                self.output.encode_live_audio(&frame)?;
+            } else {
+                self.output.encode_audio(&frame)?;
+            }
             self.remember_audio_frame_end(self.live.audio_pts + samples as i64);
             remaining_samples -= samples;
         }
@@ -370,7 +374,11 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     *sample = 0.0;
                 }
             }
-            self.output.encode_audio(&frame)?;
+            if self.live.active {
+                self.output.encode_live_audio(&frame)?;
+            } else {
+                self.output.encode_audio(&frame)?;
+            }
             fill_pts += samples as i64;
             self.remember_audio_frame_end(fill_pts);
         }
@@ -529,9 +537,13 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         let samples = frame.samples() as i64;
         self.pad_audio_until(pts)?;
         frame.set_pts(Some(pts));
-        self.sync_loudness_processor();
+        if !self.output.handles_loudness() {
+            self.sync_loudness_processor();
+        }
 
-        if let Some(loudness) = &mut self.live.loudness {
+        if !self.output.handles_loudness()
+            && let Some(loudness) = &mut self.live.loudness
+        {
             let future = collect_audio_preview(
                 self.live
                     .pending_audio
@@ -545,7 +557,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             loudness.process_with_lookahead(&mut frame, &future);
             self.live.loudness_control.set_metrics(loudness.metrics());
         }
-        self.output.encode_audio(&frame)?;
+        self.output.encode_live_audio(&frame)?;
         self.remember_audio_frame_end(pts + samples);
         self.live.last_audio_at = Some(Instant::now());
 
@@ -701,6 +713,10 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
     }
 
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.encode_audio_with_gain_hold(frame, false)
+    }
+
+    fn encode_audio_with_gain_hold(&mut self, frame: &frame::Audio, hold: bool) -> Result<()> {
         if !self.live.active
             && let Some(pts) = frame.pts()
         {
@@ -713,7 +729,7 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
         let pts = self.file_audio_pts(frame.pts().unwrap_or(self.live.audio_pts));
         self.fill_audio_until(pts)?;
         frame.set_pts(Some(pts));
-        self.output.encode_audio(&frame)?;
+        self.output.encode_audio_with_gain_hold(&frame, hold)?;
         self.remember_audio_frame_end(pts + samples);
 
         Ok(())
@@ -762,6 +778,10 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
 
     fn set_video_end(&mut self, video_end_pts: Option<i64>) -> Result<()> {
         self.output.set_video_end(video_end_pts)
+    }
+
+    fn video_decoded(&mut self) -> Result<()> {
+        self.output.video_decoded()
     }
 
     fn video_finished(&mut self) -> Result<()> {

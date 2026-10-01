@@ -160,6 +160,7 @@ export default {
         reload: 'Перезагрузка',
     },
     config: {
+        audioDefaultValue: 'По умолчанию: {value}',
         channel: 'Канал',
         user: 'Юзер',
         global: 'Глобальные',

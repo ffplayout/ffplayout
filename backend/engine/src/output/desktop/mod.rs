@@ -375,6 +375,7 @@ struct DesktopRenderer {
     last_rendered_video_pts: Option<i64>,
     last_video_present: Option<Instant>,
     last_starvation_report: Option<Instant>,
+    last_audio_health_report: Option<Instant>,
     fps: u32,
     subtitles_enabled: bool,
     subtitles: Vec<DesktopSubtitleCue>,
@@ -652,47 +653,11 @@ impl FrameOutput for DesktopFrameSender {
     }
 
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
-        if frame.samples() == 0 {
-            return Ok(());
-        }
+        self.encode_audio_with_effects(frame, true)
+    }
 
-        let (samples, samples_per_channel, recording_frame) =
-            benchmark::measure(Stage::AudioProcess, || {
-                let mut frame = frame.clone();
-                self.audio_effects
-                    .lock()
-                    .map_err(|_| anyhow!("audio effect chain lock poisoned"))?
-                    .process(&mut frame);
-                self.audio_level_meter.process_frame(&frame);
-                self.loudness_meter.process_frame(&frame);
-                let left = frame.plane::<f32>(0);
-                let right = frame.plane::<f32>(1);
-                let mut interleaved =
-                    take_audio_buffer(&self.audio_buffer_pool, frame.samples() * AUDIO_CHANNELS);
-                for (left, right) in left.iter().zip(right) {
-                    interleaved.push(if left.is_finite() { *left } else { 0.0 });
-                    interleaved.push(if right.is_finite() { *right } else { 0.0 });
-                }
-
-                let samples = frame.samples();
-                Ok::<_, anyhow::Error>((interleaved, samples, frame))
-            })?;
-
-        benchmark::measure(Stage::DesktopSend, || {
-            self.audio_sender
-                .send(DesktopAudioMessage::Samples {
-                    samples,
-                    samples_per_channel,
-                })
-                .map_err(|_| anyhow::Error::new(PlaybackStopped))
-        })?;
-        self.next_audio_pts = frame.pts().unwrap_or(self.next_audio_pts) + frame.samples() as i64;
-
-        if self.reserve_recording_slot() {
-            self.send_reserved_recording(DesktopRecordingMessage::Audio(recording_frame));
-        }
-
-        Ok(())
+    fn encode_processed_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.encode_audio_with_effects(frame, false)
     }
 
     fn reset_after_skip(&mut self, video_pts: i64, audio_pts: i64) -> Result<bool> {
@@ -777,6 +742,57 @@ impl FrameOutput for DesktopFrameSender {
 }
 
 impl DesktopFrameSender {
+    fn encode_audio_with_effects(
+        &mut self,
+        frame: &frame::Audio,
+        apply_effects: bool,
+    ) -> Result<()> {
+        if frame.samples() == 0 {
+            return Ok(());
+        }
+
+        let (samples, samples_per_channel, recording_frame) =
+            benchmark::measure(Stage::AudioProcess, || {
+                let mut frame = frame.clone();
+                if apply_effects {
+                    self.audio_effects
+                        .lock()
+                        .map_err(|_| anyhow!("audio effect chain lock poisoned"))?
+                        .process(&mut frame);
+                }
+
+                self.audio_level_meter.process_frame(&frame);
+                self.loudness_meter.process_frame(&frame);
+                let left = frame.plane::<f32>(0);
+                let right = frame.plane::<f32>(1);
+                let mut interleaved =
+                    take_audio_buffer(&self.audio_buffer_pool, frame.samples() * AUDIO_CHANNELS);
+                for (left, right) in left.iter().zip(right) {
+                    interleaved.push(if left.is_finite() { *left } else { 0.0 });
+                    interleaved.push(if right.is_finite() { *right } else { 0.0 });
+                }
+
+                let samples = frame.samples();
+                Ok::<_, anyhow::Error>((interleaved, samples, frame))
+            })?;
+
+        benchmark::measure(Stage::DesktopSend, || {
+            self.audio_sender
+                .send(DesktopAudioMessage::Samples {
+                    samples,
+                    samples_per_channel,
+                })
+                .map_err(|_| anyhow::Error::new(PlaybackStopped))
+        })?;
+        self.next_audio_pts = frame.pts().unwrap_or(self.next_audio_pts) + frame.samples() as i64;
+
+        if self.reserve_recording_slot() {
+            self.send_reserved_recording(DesktopRecordingMessage::Audio(recording_frame));
+        }
+
+        Ok(())
+    }
+
     fn reserve_recording_slot(&mut self) -> bool {
         let active = self
             .recording_active
@@ -927,6 +943,7 @@ impl DesktopRenderer {
             last_rendered_video_pts: None,
             last_video_present: None,
             last_starvation_report: None,
+            last_audio_health_report: None,
             subtitles_enabled: true,
             subtitles: Vec::new(),
             active_subtitle_text: None,
@@ -957,6 +974,7 @@ impl DesktopRenderer {
         let mut clip_finished = false;
 
         loop {
+            self.report_audio_health();
             self.handle_events()?;
             self.apply_pending_window_aspect_constraint();
 
@@ -992,6 +1010,34 @@ impl DesktopRenderer {
             if !received {
                 std_thread::sleep(SCHEDULER_INTERVAL);
             }
+        }
+    }
+
+    fn report_audio_health(&mut self) {
+        let now = Instant::now();
+
+        if self
+            .last_audio_health_report
+            .is_some_and(|last| now.duration_since(last) < Duration::from_secs(1))
+        {
+            return;
+        }
+
+        self.last_audio_health_report = Some(now);
+        let (xruns, missing) = self.audio.take_underruns();
+        let queued_ms = self.queued_audio_samples() as f64 * 1000.0 / f64::from(self.sample_rate);
+        let pending_ms = self.pending_audio_samples as f64 * 1000.0 / f64::from(self.sample_rate);
+
+        if xruns > 0 {
+            log::warn!(channel = self.channel_id;
+                "desktop audio device underrun/overrun: {xruns} event(s); audio queued {queued_ms:.1} ms, pending {pending_ms:.1} ms, video queued {} frames",
+                self.video_queue.len());
+        }
+
+        if missing > 0 && !self.video_finished {
+            log::debug!(channel = self.channel_id;
+                "desktop audio queue underrun: {:.1} ms missing; audio queued {queued_ms:.1} ms, pending {pending_ms:.1} ms, video queued {} frames",
+                missing as f64 * 1000.0 / f64::from(self.sample_rate), self.video_queue.len());
         }
     }
 
@@ -2146,6 +2192,70 @@ mod tests {
     use ffmpeg_next::util::color;
 
     #[test]
+    fn processed_audio_bypasses_desktop_volume_and_reaches_recording() {
+        use ffmpeg_next::{
+            ChannelLayout,
+            format::{Sample, sample::Type},
+        };
+
+        let (video_sender, _video_rx) = sync_channel(2);
+        let (audio_sender, audio_rx) = sync_channel(2);
+        let (control_sender, _control_rx) = sync_channel(2);
+        let (discontinuity_sender, _discontinuity_rx) = sync_channel(1);
+        let (recording_sender, recording_rx) = sync_channel(256);
+        let mut sender = DesktopFrameSender {
+            next_audio_pts: 480_000,
+            video_sender,
+            audio_sender,
+            control_sender,
+            discontinuity_sender,
+            audio_effects: Arc::new(Mutex::new(AudioEffectChain::new(
+                AudioEffectsControl::new(1.5).unwrap(),
+                48_000,
+            ))),
+            audio_buffer_pool: Arc::new(Mutex::new(Vec::new())),
+            audio_level_meter: AudioLevelMeter::new(48_000, None),
+            loudness_meter: LoudnessMeter::new(48_000, Default::default()),
+            current_logo_opacity: 0.0,
+            recording_sender: Some(recording_sender),
+            recording_active: Some(Arc::new(AtomicBool::new(true))),
+            recording_queue_depth: Some(Arc::new(AtomicUsize::new(0))),
+            recording_logo: None,
+            recording_dropped_messages: 0,
+            recording_last_overload_log: None,
+            channel_id: 0,
+        };
+        let mut audio = frame::Audio::new(Sample::F32(Type::Planar), 32, ChannelLayout::STEREO);
+        audio.set_rate(48000);
+        audio.set_pts(Some(480000));
+        audio.plane_mut::<f32>(0).fill(0.2);
+        audio.plane_mut::<f32>(1).fill(0.2);
+        sender.encode_processed_audio(&audio).unwrap();
+        audio.set_pts(Some(480032));
+        sender.encode_audio(&audio).unwrap();
+
+        for expected in [0.2, 0.3] {
+            let DesktopAudioMessage::Samples { samples, .. } = audio_rx.try_recv().unwrap() else {
+                panic!("expected audio samples");
+            };
+            assert!(
+                samples
+                    .iter()
+                    .all(|sample| (sample - expected).abs() < 1e-6)
+            );
+            let DesktopRecordingMessage::Audio(frame) = recording_rx.try_recv().unwrap() else {
+                panic!("expected recording audio");
+            };
+            assert!(
+                frame
+                    .plane::<f32>(0)
+                    .iter()
+                    .all(|sample| (sample - expected).abs() < 1e-6)
+            );
+        }
+    }
+
+    #[test]
     fn embedded_desktop_icon_is_valid() {
         assert!(desktop_window_icon().is_ok());
     }
@@ -2172,6 +2282,7 @@ mod tests {
             last_rendered_video_pts: None,
             last_video_present: None,
             last_starvation_report: None,
+            last_audio_health_report: None,
             fps: 25,
             subtitles_enabled: false,
             subtitles: Vec::new(),

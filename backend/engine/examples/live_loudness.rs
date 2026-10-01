@@ -155,6 +155,7 @@ impl Arguments {
             gain_down_db_per_second: self.gain_down_db_per_second,
             silence_gate_lufs: self.silence_gate_lufs,
             true_peak_ceiling_dbtp: self.true_peak_ceiling_dbtp,
+            ..LiveLoudnessConfig::default()
         })
     }
 }

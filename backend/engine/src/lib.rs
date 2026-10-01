@@ -28,9 +28,11 @@ mod utils;
 
 pub use analysis::audio_level::{AudioFrameCallback, AudioLevel, AudioLevelCallback};
 pub use analysis::loudness::{LoudnessMeterControl, LoudnessMetrics};
+use audio_mixer::program::{ProgramAudioOutput, ProgramAudioState};
 pub use audio_mixer::{
     AudioEffectsControl, BufferedLoudnessAnalysis, LiveDynamicsProcessor, LiveLoudnessConfig,
     LiveLoudnessControl, LiveLoudnessMeasurement, LiveLoudnessMetrics, LiveLoudnessProcessor,
+    LoudnessScope,
 };
 use input::live::{LiveEnded, LiveOverrideOutput};
 pub use input::live::{
@@ -96,6 +98,7 @@ pub struct LogoFade {
 pub struct Playout {
     config: OutputConfig,
     output: Output,
+    program_audio: ProgramAudioState,
     timeline: Timeline,
     fallback_duration: f64,
     playback_control: PlaybackControl,
@@ -590,6 +593,7 @@ impl Playout {
         Self {
             config,
             output,
+            program_audio: ProgramAudioState::default(),
             timeline: Timeline::new(),
             fallback_duration,
             playback_control: PlaybackControl::default(),
@@ -751,6 +755,7 @@ impl Playout {
             let mut timeline = self.timeline;
             let path = path.to_string();
             let mut live_for_worker = live.take();
+            let mut program_audio = std::mem::take(&mut self.program_audio);
             let benchmark = benchmark::start(config.channel_id);
 
             if let Some(live) = live_for_worker.as_ref() {
@@ -758,51 +763,35 @@ impl Playout {
             }
 
             let operation = self.output.run_desktop(benchmark, move |output| {
-                let result = if let Some(live) = live_for_worker.as_mut() {
-                    let mut output = LiveOverrideOutput::new(output, live, &playback_control);
-                    play_to_output(
-                        &path,
-                        &config,
-                        &mut timeline,
-                        &mut output,
-                        fallback_duration,
-                        &playback_control,
-                        PlayOptions {
-                            seek_seconds,
-                            duration_seconds,
-                            external_audio_path: external_audio_path.as_deref(),
-                            subtitles_media_path: subtitles_media_path.as_deref(),
-                            logo_fade,
-                        },
-                    )
-                } else {
-                    play_to_output(
-                        &path,
-                        &config,
-                        &mut timeline,
-                        output,
-                        fallback_duration,
-                        &playback_control,
-                        PlayOptions {
-                            seek_seconds,
-                            duration_seconds,
-                            external_audio_path: external_audio_path.as_deref(),
-                            subtitles_media_path: subtitles_media_path.as_deref(),
-                            logo_fade,
-                        },
-                    )
-                };
+                let result = play_program_clip(
+                    output,
+                    &mut program_audio,
+                    &mut live_for_worker,
+                    &path,
+                    &config,
+                    &mut timeline,
+                    fallback_duration,
+                    &playback_control,
+                    PlayOptions {
+                        seek_seconds,
+                        duration_seconds,
+                        external_audio_path: external_audio_path.as_deref(),
+                        subtitles_media_path: subtitles_media_path.as_deref(),
+                        logo_fade,
+                    },
+                );
 
                 if matches!(&result, Ok(ClipResult::LiveEnded))
                     && let Some(live) = live_for_worker.as_ref()
                 {
                     live.reanchor_timeline(&mut timeline);
                 }
-                (result, timeline, live_for_worker)
+                (result, timeline, live_for_worker, program_audio)
             });
 
             return match operation {
-                Ok((result, timeline, live_for_worker)) => {
+                Ok((result, timeline, live_for_worker, program_audio)) => {
+                    self.program_audio = program_audio;
                     self.timeline = timeline;
                     *live = live_for_worker;
                     result
@@ -814,48 +803,31 @@ impl Playout {
             };
         }
 
-        if let Some(live) = live.as_mut() {
-            let result = {
-                let mut output =
-                    LiveOverrideOutput::new(&mut self.output, live, &self.playback_control);
-                play_to_output(
-                    path,
-                    &self.config,
-                    &mut self.timeline,
-                    &mut output,
-                    self.fallback_duration,
-                    &self.playback_control,
-                    PlayOptions {
-                        seek_seconds,
-                        duration_seconds,
-                        external_audio_path: external_audio_path.as_deref(),
-                        subtitles_media_path: subtitles_media_path.as_deref(),
-                        logo_fade,
-                    },
-                )
-            };
+        let result = play_program_clip(
+            &mut self.output,
+            &mut self.program_audio,
+            live,
+            path,
+            &self.config,
+            &mut self.timeline,
+            self.fallback_duration,
+            &self.playback_control,
+            PlayOptions {
+                seek_seconds,
+                duration_seconds,
+                external_audio_path: external_audio_path.as_deref(),
+                subtitles_media_path: subtitles_media_path.as_deref(),
+                logo_fade,
+            },
+        );
 
-            if matches!(&result, Ok(ClipResult::LiveEnded)) {
-                live.reanchor_timeline(&mut self.timeline);
-            }
-            result
-        } else {
-            play_to_output(
-                path,
-                &self.config,
-                &mut self.timeline,
-                &mut self.output,
-                self.fallback_duration,
-                &self.playback_control,
-                PlayOptions {
-                    seek_seconds,
-                    duration_seconds,
-                    external_audio_path: external_audio_path.as_deref(),
-                    subtitles_media_path: subtitles_media_path.as_deref(),
-                    logo_fade,
-                },
-            )
+        if matches!(&result, Ok(ClipResult::LiveEnded))
+            && let Some(live) = live.as_ref()
+        {
+            live.reanchor_timeline(&mut self.timeline);
         }
+
+        result
     }
 
     pub fn finish(self) -> Result<()> {
@@ -876,6 +848,52 @@ fn init_ffmpeg(config: &OutputConfig) -> Result<()> {
     );
 
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn play_program_clip<O: FrameOutput>(
+    output: &mut O,
+    state: &mut ProgramAudioState,
+    live: &mut Option<LiveReceiver>,
+    path: &str,
+    config: &OutputConfig,
+    timeline: &mut Timeline,
+    fallback_duration: f64,
+    playback_control: &PlaybackControl,
+    options: PlayOptions<'_>,
+) -> Result<ClipResult> {
+    let mut output = ProgramAudioOutput::new(output, state, config)?;
+    let result = if let Some(live) = live.as_mut() {
+        let mut live_output = LiveOverrideOutput::new(&mut output, live, playback_control);
+        play_to_output(
+            path,
+            config,
+            timeline,
+            &mut live_output,
+            fallback_duration,
+            playback_control,
+            options,
+        )
+    } else {
+        play_to_output(
+            path,
+            config,
+            timeline,
+            &mut output,
+            fallback_duration,
+            playback_control,
+            options,
+        )
+    };
+
+    if result
+        .as_ref()
+        .is_ok_and(|result| !matches!(result, ClipResult::Stopped))
+    {
+        output.finish()?;
+    }
+
+    result
 }
 
 fn play_to_output<O: FrameOutput>(

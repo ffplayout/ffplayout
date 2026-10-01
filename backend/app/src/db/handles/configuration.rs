@@ -78,15 +78,30 @@ pub async fn select_configuration(
         processing.logo_opacity AS processing_logo_opacity,
         processing.logo_position AS processing_logo_position,
         audio.volume AS processing_volume,
-        audio.live_loudness_enable AS processing_live_loudness_enable,
-        audio.live_loudness_target_lufs AS processing_live_loudness_target_lufs,
-        audio.live_loudness_dead_band_lu AS processing_live_loudness_dead_band_lu,
-        audio.live_loudness_max_gain_db AS processing_live_loudness_max_gain_db,
-        audio.live_loudness_max_attenuation_db AS processing_live_loudness_max_attenuation_db,
-        audio.live_loudness_gain_up_db_per_second AS processing_live_loudness_gain_up_db_per_second,
-        audio.live_loudness_gain_down_db_per_second AS processing_live_loudness_gain_down_db_per_second,
-        audio.live_loudness_silence_gate_lufs AS processing_live_loudness_silence_gate_lufs,
-        audio.live_loudness_true_peak_ceiling_dbtp AS processing_live_loudness_true_peak_ceiling_dbtp,
+        audio.loudness_scope AS processing_loudness_scope,
+        audio.compressor_ratio AS processing_compressor_ratio,
+        audio.compressor_attack_ms AS processing_compressor_attack_ms,
+        audio.compressor_hold_ms AS processing_compressor_hold_ms,
+        audio.compressor_release_ms AS processing_compressor_release_ms,
+        audio.compressor_strong_release_ms AS processing_compressor_strong_release_ms,
+        audio.compressor_knee_db AS processing_compressor_knee_db,
+        audio.pause_hold_ms AS processing_pause_hold_ms,
+        audio.pause_return_delay_ms AS processing_pause_return_delay_ms,
+        audio.loudness_output_max_correction_db AS processing_loudness_output_max_correction_db,
+        audio.loudness_output_gain_up_db_per_second AS processing_loudness_output_gain_up_db_per_second,
+        audio.loudness_output_gain_down_db_per_second AS processing_loudness_output_gain_down_db_per_second,
+
+        audio.compressor_threshold_dbfs AS processing_compressor_threshold_dbfs,
+        audio.pause_threshold_dbfs AS processing_pause_threshold_dbfs,
+        (audio.loudness_scope != 'off') AS processing_loudness_enable,
+        audio.loudness_target_lufs AS processing_loudness_target_lufs,
+        audio.loudness_dead_band_lu AS processing_loudness_dead_band_lu,
+        audio.loudness_max_gain_db AS processing_loudness_max_gain_db,
+        audio.loudness_max_attenuation_db AS processing_loudness_max_attenuation_db,
+        audio.loudness_gain_up_db_per_second AS processing_loudness_gain_up_db_per_second,
+        audio.loudness_gain_down_db_per_second AS processing_loudness_gain_down_db_per_second,
+        audio.loudness_silence_gate_lufs AS processing_loudness_silence_gate_lufs,
+        audio.loudness_true_peak_ceiling_dbtp AS processing_loudness_true_peak_ceiling_dbtp,
         processing.vtt_enable AS processing_vtt_enable,
         processing.vtt_dummy AS processing_vtt_dummy,
         processing.vtt_name AS processing_vtt_name,
@@ -259,12 +274,27 @@ pub async fn update_configuration_on(
         .bind(config.processing.vtt_enable).bind(config.processing.vtt_dummy)
         .bind(config.processing.vtt_name).bind(config.processing.vtt_language)
         .bind(config.processing.vtt_default).execute(&mut *connection).await?;
-    sqlx::query("UPDATE config_audio SET volume = $2, live_loudness_enable = $3, live_loudness_target_lufs = $4, live_loudness_dead_band_lu = $5, live_loudness_max_gain_db = $6, live_loudness_max_attenuation_db = $7, live_loudness_gain_up_db_per_second = $8, live_loudness_gain_down_db_per_second = $9, live_loudness_silence_gate_lufs = $10, live_loudness_true_peak_ceiling_dbtp = $11 WHERE config_id = $1")
-        .bind(id).bind(config.audio.volume).bind(config.audio.live_loudness_enable)
-        .bind(config.audio.live_loudness_target_lufs).bind(config.audio.live_loudness_dead_band_lu)
-        .bind(config.audio.live_loudness_max_gain_db).bind(config.audio.live_loudness_max_attenuation_db)
-        .bind(config.audio.live_loudness_gain_up_db_per_second).bind(config.audio.live_loudness_gain_down_db_per_second)
-        .bind(config.audio.live_loudness_silence_gate_lufs).bind(config.audio.live_loudness_true_peak_ceiling_dbtp)
+    sqlx::query("UPDATE config_audio SET volume = $2, loudness_enable = $3, loudness_target_lufs = $4, loudness_dead_band_lu = $5, loudness_max_gain_db = $6, loudness_max_attenuation_db = $7, loudness_gain_up_db_per_second = $8, loudness_gain_down_db_per_second = $9, loudness_silence_gate_lufs = $10, loudness_true_peak_ceiling_dbtp = $11, loudness_scope = $12, compressor_ratio = $13, compressor_threshold_dbfs = $14, pause_threshold_dbfs = $15, compressor_attack_ms = $16, compressor_hold_ms = $17, compressor_release_ms = $18, compressor_strong_release_ms = $19, compressor_knee_db = $20, pause_hold_ms = $21, pause_return_delay_ms = $22, loudness_output_max_correction_db = $23, loudness_output_gain_up_db_per_second = $24, loudness_output_gain_down_db_per_second = $25 WHERE config_id = $1")
+        .bind(id).bind(config.audio.volume).bind(config.audio.loudness_scope != "off")
+        .bind(config.audio.loudness_target_lufs).bind(config.audio.loudness_dead_band_lu)
+        .bind(config.audio.loudness_max_gain_db).bind(config.audio.loudness_max_attenuation_db)
+        .bind(config.audio.loudness_gain_up_db_per_second).bind(config.audio.loudness_gain_down_db_per_second)
+        .bind(config.audio.loudness_silence_gate_lufs).bind(config.audio.loudness_true_peak_ceiling_dbtp)
+        .bind(&config.audio.loudness_scope)
+        .bind(config.audio.compressor_ratio)
+        .bind(config.audio.compressor_threshold_dbfs)
+        .bind(config.audio.pause_threshold_dbfs)
+        .bind(config.audio.compressor_attack_ms)
+        .bind(config.audio.compressor_hold_ms)
+        .bind(config.audio.compressor_release_ms)
+        .bind(config.audio.compressor_strong_release_ms)
+        .bind(config.audio.compressor_knee_db)
+        .bind(config.audio.pause_hold_ms)
+        .bind(config.audio.pause_return_delay_ms)
+        .bind(config.audio.loudness_output_max_correction_db)
+        .bind(config.audio.loudness_output_gain_up_db_per_second)
+        .bind(config.audio.loudness_output_gain_down_db_per_second)
+
         .execute(&mut *connection).await?;
     {
         let listeners = &config.ingest.listeners;
@@ -448,6 +478,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn loudness_migration_preserves_existing_scope_and_defaults_new_rows_to_all() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!("../../migrations")
+            .run_to(4, &pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE config_audio SET live_loudness_enable = 1 WHERE config_id = 1")
+            .execute(&pool)
+            .await
+            .unwrap();
+        db_migrate(&pool).await.unwrap();
+        let scopes: Vec<(i32, String)> =
+            sqlx::query_as("SELECT config_id, loudness_scope FROM config_audio ORDER BY config_id")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(scopes[0].1, "live");
+        assert!(scopes.iter().skip(1).all(|(_, scope)| scope == "off"));
+        // Reinsert an existing row using only its key, as channel creation does.
+        sqlx::query("DELETE FROM config_audio WHERE config_id = 1")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO config_audio (config_id) VALUES (1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let config = select_configuration(&pool, 1).await.unwrap();
+        assert_eq!(config.processing_loudness_scope, "all");
+        assert_eq!(config.processing_compressor_ratio, 3.0);
+        assert_eq!(config.processing_compressor_attack_ms, 5.0);
+        assert_eq!(config.processing_compressor_hold_ms, 100.0);
+        assert_eq!(config.processing_compressor_release_ms, 1200.0);
+        assert_eq!(config.processing_compressor_strong_release_ms, 500.0);
+        assert_eq!(config.processing_compressor_knee_db, 6.0);
+        assert_eq!(config.processing_pause_hold_ms, 300.0);
+        assert_eq!(config.processing_pause_return_delay_ms, 2000.0);
+        assert_eq!(config.processing_loudness_output_max_correction_db, 3.0);
+        assert_eq!(config.processing_loudness_output_gain_up_db_per_second, 0.1);
+        assert_eq!(
+            config.processing_loudness_output_gain_down_db_per_second,
+            0.25
+        );
+
+        assert_eq!(config.processing_compressor_threshold_dbfs, -26.0);
+        assert_eq!(config.processing_pause_threshold_dbfs, -55.0);
+    }
+
+    #[tokio::test]
     async fn migration_preserves_non_default_configuration_data() {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
@@ -467,7 +550,11 @@ mod tests {
                 ingest_url = 'rtmp://127.0.0.1:1940/live/test',
                 playlist_length = '12:00:00', storage_filler = 'custom/filler.mp4',
                 text_preset_id = 4, task_enable = 1, task_path = '/opt/task', output_id = 2;
-             UPDATE audio_config SET volume = 0.42, live_loudness_enable = 1;
+             UPDATE audio_config SET volume = 0.42, live_loudness_enable = 1,
+                live_loudness_target_lufs = -19.0, live_loudness_dead_band_lu = 0.75,
+                live_loudness_max_gain_db = 5.0, live_loudness_max_attenuation_db = -9.0,
+                live_loudness_gain_up_db_per_second = 0.2, live_loudness_gain_down_db_per_second = 1.5,
+                live_loudness_silence_gate_lufs = -58.0, live_loudness_true_peak_ceiling_dbtp = -2.0;
              UPDATE outputs SET width = 1920, height = 1080 WHERE id = 2;
              UPDATE recordings SET enabled = 1, source = 'encode', width = 640, height = 360;",
         )
@@ -482,7 +569,27 @@ mod tests {
         assert_eq!(config.logging_ignore, "custom warning");
         assert_eq!(config.processing_logo, "custom/logo.png");
         assert_eq!(config.processing_volume, 0.42);
-        assert!(config.processing_live_loudness_enable);
+        assert!(config.processing_loudness_enable);
+        assert_eq!(config.processing_loudness_scope, "live");
+        assert_eq!(config.processing_loudness_target_lufs, -19.0);
+        assert_eq!(config.processing_loudness_dead_band_lu, 0.75);
+        assert_eq!(config.processing_loudness_max_gain_db, 5.0);
+        assert_eq!(config.processing_loudness_max_attenuation_db, -9.0);
+        assert_eq!(config.processing_loudness_gain_up_db_per_second, 0.2);
+        assert_eq!(config.processing_loudness_gain_down_db_per_second, 1.5);
+        assert_eq!(config.processing_loudness_silence_gate_lufs, -58.0);
+        assert_eq!(config.processing_loudness_true_peak_ceiling_dbtp, -2.0);
+        let columns: Vec<String> =
+            sqlx::query_scalar("SELECT name FROM pragma_table_info('config_audio')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert!(
+            !columns
+                .iter()
+                .any(|name| name.starts_with("live_loudness_"))
+        );
+
         let migrated_listener: (bool, String, i32) = sqlx::query_as(
             "SELECT enabled, identifier, priority FROM config_live_input
              WHERE config_id = $1 AND backend = 'rtmp' AND takeover_mode = 'connection'",

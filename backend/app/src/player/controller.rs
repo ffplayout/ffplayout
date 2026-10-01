@@ -35,16 +35,30 @@ use crate::{
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const SUPERVISOR_STOP_TIMEOUT: Duration = Duration::from_secs(15);
 
-pub fn live_loudness_config(processing: &crate::utils::config::Audio) -> LiveLoudnessConfig {
+pub fn loudness_config(processing: &crate::utils::config::Audio) -> LiveLoudnessConfig {
     LiveLoudnessConfig {
-        target_lufs: processing.live_loudness_target_lufs,
-        dead_band_lu: processing.live_loudness_dead_band_lu,
-        max_gain_db: processing.live_loudness_max_gain_db,
-        max_attenuation_db: processing.live_loudness_max_attenuation_db,
-        gain_up_db_per_second: processing.live_loudness_gain_up_db_per_second,
-        gain_down_db_per_second: processing.live_loudness_gain_down_db_per_second,
-        silence_gate_lufs: processing.live_loudness_silence_gate_lufs,
-        true_peak_ceiling_dbtp: processing.live_loudness_true_peak_ceiling_dbtp,
+        compressor_ratio: processing.compressor_ratio,
+        compressor_attack_ms: processing.compressor_attack_ms,
+        compressor_hold_ms: processing.compressor_hold_ms,
+        compressor_release_ms: processing.compressor_release_ms,
+        compressor_strong_release_ms: processing.compressor_strong_release_ms,
+        compressor_knee_db: processing.compressor_knee_db,
+        pause_hold_ms: processing.pause_hold_ms,
+        pause_return_delay_ms: processing.pause_return_delay_ms,
+        output_max_correction_db: processing.loudness_output_max_correction_db,
+        output_gain_up_db_per_second: processing.loudness_output_gain_up_db_per_second,
+        output_gain_down_db_per_second: processing.loudness_output_gain_down_db_per_second,
+
+        compressor_threshold_dbfs: processing.compressor_threshold_dbfs,
+        pause_threshold_dbfs: processing.pause_threshold_dbfs,
+        target_lufs: processing.loudness_target_lufs,
+        dead_band_lu: processing.loudness_dead_band_lu,
+        max_gain_db: processing.loudness_max_gain_db,
+        max_attenuation_db: processing.loudness_max_attenuation_db,
+        gain_up_db_per_second: processing.loudness_gain_up_db_per_second,
+        gain_down_db_per_second: processing.loudness_gain_down_db_per_second,
+        silence_gate_lufs: processing.loudness_silence_gate_lufs,
+        true_peak_ceiling_dbtp: processing.loudness_true_peak_ceiling_dbtp,
     }
 }
 
@@ -148,8 +162,8 @@ impl ChannelManager {
         let storage = init_storage(config.channel.storage.clone(), extensions).await?;
         let audio_effects = AudioEffectsControl::new(config.audio.volume).unwrap_or_default();
         let live_loudness = ff_engine::LiveLoudnessControl::new(
-            config.audio.live_loudness_enable,
-            live_loudness_config(&config.audio),
+            config.audio.loudness_scope != "off",
+            loudness_config(&config.audio),
         );
         let text_overlay = TextOverlayState::default();
         if let Some(preset) = config.text.preset.as_ref() {

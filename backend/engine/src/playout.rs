@@ -1343,7 +1343,10 @@ fn receive_audio_frames<O: FrameOutput>(
         if let Some(callback) = &audio.audio_frame_callback {
             callback.emit(&converted);
         }
-        output.encode_audio(&converted)?;
+        output.encode_audio_with_gain_hold(
+            &converted,
+            media_fade_plan.audio_gain_at(timeline.audio_pts + samples) < 1.0,
+        )?;
         audio.source_next_pts = converted.pts().map(|pts| pts + samples);
         timeline.audio_pts += samples;
         *decoded_samples += samples;
@@ -1414,7 +1417,10 @@ fn flush_audio_resampler<O: FrameOutput>(
         } else {
             timeline.audio_pts
         }));
-        output.encode_audio(&converted)?;
+        output.encode_audio_with_gain_hold(
+            &converted,
+            media_fade_plan.audio_gain_at(timeline.audio_pts + samples) < 1.0,
+        )?;
         audio.source_next_pts = converted.pts().map(|pts| pts + samples);
         timeline.audio_pts += samples;
         *decoded_samples += samples;

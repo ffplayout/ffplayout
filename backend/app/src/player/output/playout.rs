@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     file::norm_abs_path,
     player::{
-        controller::ChannelManager,
+        controller::{ChannelManager, loudness_config},
         input::source_generator,
         utils::{Media, get_delta, sec_to_time},
     },
@@ -478,10 +478,20 @@ fn engine_output_config(
         .map_err(ServiceError::Conflict)?;
 
     let recording = recording_config(config)?;
+    // Source selection is activated at startup, after any pending restart.
+    live_loudness.update(
+        config.audio.loudness_scope != "off",
+        loudness_config(&config.audio),
+    );
 
     Ok(
         OutputConfig::new(width, height, fps, ENGINE_AUDIO_SAMPLE_RATE)
             .with_audio_effects(audio_effects)
+            .with_loudness_scope(match config.audio.loudness_scope.as_str() {
+                "all" => ff_engine::LoudnessScope::All,
+                "live" => ff_engine::LoudnessScope::Live,
+                _ => ff_engine::LoudnessScope::Off,
+            })
             .with_live_loudness_control(live_loudness)
             .with_loudness_meter_control(loudness_meter)
             .with_audio_level_callback(Some(AudioLevelCallback::new(move |level| {

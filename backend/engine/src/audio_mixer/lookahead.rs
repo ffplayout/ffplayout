@@ -80,6 +80,8 @@ pub(super) struct LookaheadLimiter {
     gain: f64,
     release: f64,
     lookahead: usize,
+    signal: Vec<[f64; 2]>,
+    envelope: Vec<f64>,
 }
 
 impl LookaheadLimiter {
@@ -89,6 +91,8 @@ impl LookaheadLimiter {
             gain: 1.0,
             release: 1.0 - (-1.0 / (RELEASE_SECONDS * f64::from(sample_rate))).exp(),
             lookahead: lookahead_samples(sample_rate),
+            signal: Vec::new(),
+            envelope: Vec::new(),
         }
     }
 
@@ -103,15 +107,17 @@ impl LookaheadLimiter {
     ) -> f64 {
         let samples = frame.samples();
         let preview_len = self.lookahead + TRUE_PEAK_FUTURE_SAMPLES;
-        let mut signal = Vec::with_capacity(HISTORY_SAMPLES + samples + preview_len);
+        let signal = &mut self.signal;
+        signal.clear();
         signal.extend_from_slice(&self.history);
 
-        for index in 0..samples {
-            signal.push([
-                f64::from(frame.plane::<f32>(0)[index]),
-                f64::from(frame.plane::<f32>(1)[index]),
-            ]);
-        }
+        signal.extend(
+            frame
+                .plane::<f32>(0)
+                .iter()
+                .zip(frame.plane::<f32>(1))
+                .map(|(&left, &right)| [f64::from(left), f64::from(right)]),
+        );
 
         for sample in future.iter().take(preview_len) {
             signal.push(sample.map(|value| {
@@ -128,27 +134,9 @@ impl LookaheadLimiter {
         signal.resize(HISTORY_SAMPLES + samples + preview_len, [0.0; 2]);
         self.history
             .copy_from_slice(&signal[samples..samples + HISTORY_SAMPLES]);
-        let mut peaks = Vec::with_capacity(samples + self.lookahead);
-
-        for index in 0..samples + self.lookahead {
-            let center = HISTORY_SAMPLES + index;
-            let mut peak = signal[center][0].abs().max(signal[center][1].abs());
-
-            for coefficients in COEFFS {
-                let mut reconstructed = [0.0_f64; 2];
-
-                for (tap, coefficient) in coefficients.iter().enumerate() {
-                    for (channel, value) in reconstructed.iter_mut().enumerate() {
-                        *value +=
-                            coefficient * signal[center + TRUE_PEAK_FUTURE_SAMPLES - tap][channel];
-                    }
-                }
-
-                peak = peak.max(reconstructed[0].abs()).max(reconstructed[1].abs());
-            }
-
-            peaks.push(peak);
-        }
+        let envelope = &mut self.envelope;
+        envelope.resize(samples + self.lookahead, 0.0);
+        true_peaks(signal, envelope);
 
         let ceiling = 10.0_f64.powf((ceiling_db - PEAK_HEADROOM_DB) / 20.0);
         // Propagate every peak's gain requirement backwards. A later, larger
@@ -161,10 +149,13 @@ impl LookaheadLimiter {
             .saturating_sub(TRUE_PEAK_FUTURE_SAMPLES)
             .max(1);
         let attack_step = 1.0 / attack_samples as f64;
-        let mut envelope: Vec<f64> = peaks
-            .iter()
-            .map(|peak| if *peak > ceiling { ceiling / peak } else { 1.0 })
-            .collect();
+        for peak in envelope.iter_mut() {
+            *peak = if *peak > ceiling {
+                ceiling / *peak
+            } else {
+                1.0
+            };
+        }
 
         for index in (0..envelope.len().saturating_sub(1)).rev() {
             envelope[index] = envelope[index].min(envelope[index + 1] + attack_step);
@@ -181,7 +172,11 @@ impl LookaheadLimiter {
             // Recover in dB: an additive step towards unity would produce
             // a large relative jump after strong attenuation, creating new
             // intersample peaks between adjacent output samples.
-            let released = self.gain.max(f64::MIN_POSITIVE).powf(1.0 - self.release);
+            let released = if self.gain == 1.0 {
+                1.0
+            } else {
+                self.gain.max(f64::MIN_POSITIVE).powf(1.0 - self.release)
+            };
             self.gain = released.min(required);
 
             let sample_peak = signal[HISTORY_SAMPLES + index][0]
@@ -194,8 +189,14 @@ impl LookaheadLimiter {
 
             minimum_gain = minimum_gain.min(self.gain);
 
-            for (channel, sample) in signal[HISTORY_SAMPLES + index].iter().enumerate() {
-                frame.plane_mut::<f32>(channel)[index] = (sample * self.gain) as f32;
+            envelope[index] = self.gain;
+        }
+
+        for channel in [0, 1] {
+            let output = frame.plane_mut::<f32>(channel);
+
+            for (index, sample) in output.iter_mut().enumerate() {
+                *sample = (signal[HISTORY_SAMPLES + index][channel] * envelope[index]) as f32;
             }
         }
 
@@ -203,8 +204,138 @@ impl LookaheadLimiter {
     }
 }
 
+/// Four interpolation phases for both channels. Retain scalar summation order
+/// and f64 precision; SIMD runs across adjacent samples rather than reducing taps.
+fn true_peaks(signal: &[[f64; 2]], peaks: &mut [f64]) {
+    assert!(signal.len() >= peaks.len() + HISTORY_SAMPLES + TRUE_PEAK_FUTURE_SAMPLES);
+
+    #[cfg(target_arch = "x86_64")]
+    if std::arch::is_x86_feature_detected!("avx") {
+        // SAFETY: Runtime detection ensures AVX is available. The length check
+        // above guarantees a complete 12-tap window for each output sample.
+        unsafe {
+            true_peaks_avx(signal, peaks);
+        }
+        return;
+    }
+
+    true_peaks_scalar(signal, peaks);
+}
+
+fn true_peaks_scalar(signal: &[[f64; 2]], peaks: &mut [f64]) {
+    for (index, peak) in peaks.iter_mut().enumerate() {
+        let window = &signal[index..index + 12];
+        *peak = window[HISTORY_SAMPLES][0]
+            .abs()
+            .max(window[HISTORY_SAMPLES][1].abs());
+
+        for coefficients in COEFFS {
+            let mut reconstructed = [0.0_f64; 2];
+
+            for (tap, coefficient) in coefficients.iter().enumerate() {
+                for channel in 0..2 {
+                    reconstructed[channel] += coefficient * window[11 - tap][channel];
+                }
+            }
+
+            *peak = peak.max(reconstructed[0].abs()).max(reconstructed[1].abs());
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx")]
+unsafe fn true_peaks_avx(signal: &[[f64; 2]], peaks: &mut [f64]) {
+    use std::arch::x86_64::{
+        _mm256_add_pd, _mm256_andnot_pd, _mm256_loadu_pd, _mm256_max_pd, _mm256_mul_pd,
+        _mm256_set1_pd, _mm256_setzero_pd, _mm256_storeu_pd,
+    };
+
+    let paired = peaks.len() / 2 * 2;
+    let sign = _mm256_set1_pd(-0.0);
+
+    for index in (0..paired).step_by(2) {
+        // A 13-frame window covers two adjacent 12-tap convolutions. Each
+        // unaligned load reads two consecutive stereo frames (four f64 lanes).
+        let window = &signal[index..index + 13];
+        // SAFETY: All loads read two frames inside this checked window. Array
+        // elements are contiguous and loads require no additional alignment.
+        let mut peak = unsafe { _mm256_loadu_pd(window[HISTORY_SAMPLES].as_ptr()) };
+        peak = _mm256_andnot_pd(sign, peak);
+
+        for coefficients in COEFFS {
+            let mut reconstructed = _mm256_setzero_pd();
+
+            for (tap, coefficient) in coefficients.iter().enumerate() {
+                let values = unsafe { _mm256_loadu_pd(window[11 - tap].as_ptr()) };
+                reconstructed = _mm256_add_pd(
+                    reconstructed,
+                    _mm256_mul_pd(_mm256_set1_pd(*coefficient), values),
+                );
+            }
+
+            peak = _mm256_max_pd(peak, _mm256_andnot_pd(sign, reconstructed));
+        }
+
+        let mut lanes = [0.0; 4];
+        // SAFETY: The local array has space for all four lanes.
+        unsafe {
+            _mm256_storeu_pd(lanes.as_mut_ptr(), peak);
+        }
+        peaks[index] = lanes[0].max(lanes[1]);
+        peaks[index + 1] = lanes[2].max(lanes[3]);
+    }
+
+    true_peaks_scalar(&signal[paired..], &mut peaks[paired..]);
+}
+
 pub(crate) fn lookahead_samples(sample_rate: u32) -> usize {
     (LIVE_LATENCY.as_secs_f64() * f64::from(sample_rate)).ceil() as usize
+}
+
+/// Collect contiguous source audio without crossing a timestamp gap. A gap
+/// contributes silence; overlapping samples are skipped, just as at output.
+pub(crate) fn collect_audio_preview<'a>(
+    frames: impl Iterator<Item = &'a frame::Audio>,
+    mut expected_pts: i64,
+    limit: usize,
+    jitter: u64,
+) -> Vec<[f32; 2]> {
+    let mut samples = Vec::with_capacity(limit);
+
+    for frame in frames {
+        if frame.planes() != 2 {
+            break;
+        }
+
+        let pts = frame.pts().unwrap_or(expected_pts);
+        let difference = pts.saturating_sub(expected_pts);
+        let skip = if pts.abs_diff(expected_pts) <= jitter {
+            0
+        } else if difference > 0 {
+            let gap = (difference as usize).min(limit - samples.len());
+            samples.resize(samples.len() + gap, [0.0; 2]);
+            expected_pts += gap as i64;
+            0
+        } else {
+            (difference.unsigned_abs() as usize).min(frame.samples())
+        };
+
+        for index in skip..frame.samples() {
+            if samples.len() == limit {
+                break;
+            }
+
+            samples.push([frame.plane::<f32>(0)[index], frame.plane::<f32>(1)[index]]);
+            expected_pts += 1;
+        }
+
+        if samples.len() == limit {
+            break;
+        }
+    }
+
+    samples
 }
 
 #[cfg(test)]
@@ -257,6 +388,28 @@ mod tests {
         }
 
         output
+    }
+
+    #[test]
+    fn dispatched_true_peaks_match_scalar_for_odd_sizes_and_stereo_transients() {
+        for count in [0, 1, 2, 3, 17, 1024, 1505] {
+            let signal: Vec<_> = (0..count + HISTORY_SAMPLES + TRUE_PEAK_FUTURE_SAMPLES)
+                .map(|index| {
+                    let left = ((index as f64 * 0.713).sin() * 3.0)
+                        + if index % 7 == 0 { 2.0 } else { 0.0 };
+                    let right = (index as f64 * 2.931).cos() * 0.01;
+                    [left, right]
+                })
+                .collect();
+            let mut scalar = vec![0.0; count];
+            let mut dispatched = vec![0.0; count];
+            true_peaks_scalar(&signal, &mut scalar);
+            true_peaks(&signal, &mut dispatched);
+            assert_eq!(
+                scalar, dispatched,
+                "SIMD changed a true peak for {count} samples"
+            );
+        }
     }
 
     #[test]

@@ -85,3 +85,7 @@ required-features = ["desktop-base", "transcription-example"]
 [[bench]]
 name = "overlay_blend"
 harness = false
+
+[[bench]]
+name = "audio_dynamics"
+harness = false

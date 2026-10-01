@@ -654,33 +654,64 @@ impl Processing {
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Audio {
     pub volume: f64,
-    pub live_loudness_enable: bool,
-    pub live_loudness_target_lufs: f64,
-    pub live_loudness_dead_band_lu: f64,
-    pub live_loudness_max_gain_db: f64,
-    pub live_loudness_max_attenuation_db: f64,
-    pub live_loudness_gain_up_db_per_second: f64,
-    pub live_loudness_gain_down_db_per_second: f64,
-    pub live_loudness_silence_gate_lufs: f64,
-    pub live_loudness_true_peak_ceiling_dbtp: f64,
+    #[ts(type = "\"all\" | \"live\" | \"off\"")]
+    pub loudness_scope: String,
+    pub compressor_ratio: f64,
+    pub compressor_attack_ms: f64,
+    pub compressor_hold_ms: f64,
+    pub compressor_release_ms: f64,
+    pub compressor_strong_release_ms: f64,
+    pub compressor_knee_db: f64,
+    pub pause_hold_ms: f64,
+    pub pause_return_delay_ms: f64,
+    pub loudness_output_max_correction_db: f64,
+    pub loudness_output_gain_up_db_per_second: f64,
+    pub loudness_output_gain_down_db_per_second: f64,
+
+    pub compressor_threshold_dbfs: f64,
+    pub pause_threshold_dbfs: f64,
+    // Derived from loudness_scope.
+    pub loudness_enable: bool,
+    pub loudness_target_lufs: f64,
+    pub loudness_dead_band_lu: f64,
+    pub loudness_max_gain_db: f64,
+    pub loudness_max_attenuation_db: f64,
+    pub loudness_gain_up_db_per_second: f64,
+    pub loudness_gain_down_db_per_second: f64,
+    pub loudness_silence_gate_lufs: f64,
+    pub loudness_true_peak_ceiling_dbtp: f64,
 }
 
 impl Audio {
     fn new(config: &models::Configuration) -> Self {
         Self {
             volume: config.processing_volume,
-            live_loudness_enable: config.processing_live_loudness_enable,
-            live_loudness_target_lufs: config.processing_live_loudness_target_lufs,
-            live_loudness_dead_band_lu: config.processing_live_loudness_dead_band_lu,
-            live_loudness_max_gain_db: config.processing_live_loudness_max_gain_db,
-            live_loudness_max_attenuation_db: config.processing_live_loudness_max_attenuation_db,
-            live_loudness_gain_up_db_per_second: config
-                .processing_live_loudness_gain_up_db_per_second,
-            live_loudness_gain_down_db_per_second: config
-                .processing_live_loudness_gain_down_db_per_second,
-            live_loudness_silence_gate_lufs: config.processing_live_loudness_silence_gate_lufs,
-            live_loudness_true_peak_ceiling_dbtp: config
-                .processing_live_loudness_true_peak_ceiling_dbtp,
+            loudness_scope: config.processing_loudness_scope.clone(),
+            compressor_ratio: config.processing_compressor_ratio,
+            compressor_attack_ms: config.processing_compressor_attack_ms,
+            compressor_hold_ms: config.processing_compressor_hold_ms,
+            compressor_release_ms: config.processing_compressor_release_ms,
+            compressor_strong_release_ms: config.processing_compressor_strong_release_ms,
+            compressor_knee_db: config.processing_compressor_knee_db,
+            pause_hold_ms: config.processing_pause_hold_ms,
+            pause_return_delay_ms: config.processing_pause_return_delay_ms,
+            loudness_output_max_correction_db: config.processing_loudness_output_max_correction_db,
+            loudness_output_gain_up_db_per_second: config
+                .processing_loudness_output_gain_up_db_per_second,
+            loudness_output_gain_down_db_per_second: config
+                .processing_loudness_output_gain_down_db_per_second,
+
+            compressor_threshold_dbfs: config.processing_compressor_threshold_dbfs,
+            pause_threshold_dbfs: config.processing_pause_threshold_dbfs,
+            loudness_enable: config.processing_loudness_scope != "off",
+            loudness_target_lufs: config.processing_loudness_target_lufs,
+            loudness_dead_band_lu: config.processing_loudness_dead_band_lu,
+            loudness_max_gain_db: config.processing_loudness_max_gain_db,
+            loudness_max_attenuation_db: config.processing_loudness_max_attenuation_db,
+            loudness_gain_up_db_per_second: config.processing_loudness_gain_up_db_per_second,
+            loudness_gain_down_db_per_second: config.processing_loudness_gain_down_db_per_second,
+            loudness_silence_gate_lufs: config.processing_loudness_silence_gate_lufs,
+            loudness_true_peak_ceiling_dbtp: config.processing_loudness_true_peak_ceiling_dbtp,
         }
     }
 }

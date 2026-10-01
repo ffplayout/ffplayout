@@ -289,6 +289,21 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
         None
     );
 
+    config.audio.loudness_scope = "all".to_string();
+    config.audio.compressor_ratio = 4.0;
+    config.audio.compressor_attack_ms = 10.0;
+    config.audio.compressor_hold_ms = 200.0;
+    config.audio.compressor_release_ms = 2400.0;
+    config.audio.compressor_strong_release_ms = 1000.0;
+    config.audio.compressor_knee_db = 12.0;
+    config.audio.pause_hold_ms = 600.0;
+    config.audio.pause_return_delay_ms = 4000.0;
+    config.audio.loudness_output_max_correction_db = 6.0;
+    config.audio.loudness_output_gain_up_db_per_second = 0.2;
+    config.audio.loudness_output_gain_down_db_per_second = 0.5;
+
+    config.audio.compressor_threshold_dbfs = -30.0;
+    config.audio.pause_threshold_dbfs = -65.0;
     config.mail.subject = "Updated through API".to_string();
     config.notification.topic = "ffplayout-alerts".to_string();
     config.notification.tags = "warning,broadcast".to_string();
@@ -308,6 +323,24 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
         .unwrap();
     assert_eq!(update_config_response.status(), StatusCode::OK);
     let stored = handles::select_configuration(&pool, 1).await.unwrap();
+    assert_eq!(stored.processing_loudness_scope, "all");
+    assert_eq!(stored.processing_compressor_ratio, 4.0);
+    assert_eq!(stored.processing_compressor_attack_ms, 10.0);
+    assert_eq!(stored.processing_compressor_hold_ms, 200.0);
+    assert_eq!(stored.processing_compressor_release_ms, 2400.0);
+    assert_eq!(stored.processing_compressor_strong_release_ms, 1000.0);
+    assert_eq!(stored.processing_compressor_knee_db, 12.0);
+    assert_eq!(stored.processing_pause_hold_ms, 600.0);
+    assert_eq!(stored.processing_pause_return_delay_ms, 4000.0);
+    assert_eq!(stored.processing_loudness_output_max_correction_db, 6.0);
+    assert_eq!(stored.processing_loudness_output_gain_up_db_per_second, 0.2);
+    assert_eq!(
+        stored.processing_loudness_output_gain_down_db_per_second,
+        0.5
+    );
+
+    assert_eq!(stored.processing_compressor_threshold_dbfs, -30.0);
+    assert_eq!(stored.processing_pause_threshold_dbfs, -65.0);
     assert_eq!(stored.mail_subject, "Updated through API");
     assert_eq!(stored.notification_topic, "ffplayout-alerts");
     assert_eq!(stored.notification_tags, "warning,broadcast");

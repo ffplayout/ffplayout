@@ -27,6 +27,10 @@ impl GainEffect {
         }
     }
 
+    pub(crate) fn preview_gain_bound(&self) -> f64 {
+        f64::from(self.current.max(self.target).max(self.control.volume_f32()))
+    }
+
     fn next_gain(&mut self) -> f32 {
         let requested = self.control.volume_f32();
 

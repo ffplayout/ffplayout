@@ -30,6 +30,22 @@ const GAIN_BATCH_SAMPLES: usize = 1_024;
 /// Parameters for the live gain rider and the final safety limiter.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LiveLoudnessConfig {
+    pub compressor_ratio: f64,
+    pub compressor_attack_ms: f64,
+    pub compressor_hold_ms: f64,
+    pub compressor_release_ms: f64,
+    /// Release time while compressor attenuation exceeds 12 dB.
+    pub compressor_strong_release_ms: f64,
+    pub compressor_knee_db: f64,
+    pub pause_hold_ms: f64,
+    /// Delay from the start of quiet input before positive gain returns to zero.
+    pub pause_return_delay_ms: f64,
+    pub output_max_correction_db: f64,
+    pub output_gain_up_db_per_second: f64,
+    pub output_gain_down_db_per_second: f64,
+
+    pub compressor_threshold_dbfs: f64,
+    pub pause_threshold_dbfs: f64,
     pub target_lufs: f64,
     pub dead_band_lu: f64,
     pub max_gain_db: f64,
@@ -46,6 +62,20 @@ pub struct LiveLoudnessConfig {
 impl Default for LiveLoudnessConfig {
     fn default() -> Self {
         Self {
+            compressor_ratio: 3.0,
+            compressor_attack_ms: 5.0,
+            compressor_hold_ms: 100.0,
+            compressor_release_ms: 1200.0,
+            compressor_strong_release_ms: 500.0,
+            compressor_knee_db: 6.0,
+            pause_hold_ms: 300.0,
+            pause_return_delay_ms: 2000.0,
+            output_max_correction_db: 3.0,
+            output_gain_up_db_per_second: 0.1,
+            output_gain_down_db_per_second: 0.25,
+
+            compressor_threshold_dbfs: -26.0,
+            pause_threshold_dbfs: -55.0,
             target_lufs: TARGET_LUFS,
             dead_band_lu: DEAD_BAND_LU,
             max_gain_db: MAX_GAIN_DB,

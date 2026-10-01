@@ -96,7 +96,14 @@ fn requires_playout_restart(current: &PlayoutConfig, updated: &PlayoutConfig) ->
 
         config.remove("mail");
         config.remove("notification");
-        config.remove("audio");
+        if let Some(audio) = config
+            .get_mut("audio")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            let scope = audio.get("loudness_scope").cloned();
+            audio.clear();
+            audio.insert("loudness_scope".to_string(), scope.unwrap_or_default());
+        }
     }
 
     current != updated
@@ -352,7 +359,7 @@ pub async fn update_playout_config(
     }
     ff_engine::AudioEffectsControl::new(data.audio.volume)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
-    validate_live_loudness(&data.audio)?;
+    validate_loudness(&data.audio)?;
     data.output.validate().map_err(ServiceError::BadRequest)?;
     data.recording
         .validate()
@@ -514,32 +521,75 @@ pub async fn update_playout_config(
         .set_volume(new_config.audio.volume)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     manager.live_loudness.update(
-        new_config.audio.live_loudness_enable,
-        crate::player::controller::live_loudness_config(&new_config.audio),
+        running_config
+            .as_deref()
+            .unwrap_or(&config)
+            .audio
+            .loudness_scope
+            != "off",
+        crate::player::controller::loudness_config(&new_config.audio),
     );
     manager.update_config(new_config).await;
 
     Ok(Json(PlayoutConfigUpdate { requires_restart }))
 }
 
-fn validate_live_loudness(processing: &crate::utils::config::Audio) -> Result<(), ServiceError> {
+fn validate_loudness(processing: &crate::utils::config::Audio) -> Result<(), ServiceError> {
+    if !matches!(processing.loudness_scope.as_str(), "all" | "live" | "off")
+        || !processing.compressor_ratio.is_finite()
+        || !(1.0..=10.0).contains(&processing.compressor_ratio)
+        || !processing.compressor_threshold_dbfs.is_finite()
+        || !(-60.0..=0.0).contains(&processing.compressor_threshold_dbfs)
+        || !processing.pause_threshold_dbfs.is_finite()
+        || !(-90.0..=-20.0).contains(&processing.pause_threshold_dbfs)
+    {
+        return Err(ServiceError::BadRequest(
+            "Invalid audio dynamics settings".to_string(),
+        ));
+    }
+
+    let dynamics_ranges = [
+        (processing.compressor_attack_ms, 0.1..=50.0),
+        (processing.compressor_hold_ms, 0.0..=2000.0),
+        (processing.compressor_release_ms, 10.0..=10000.0),
+        (processing.compressor_strong_release_ms, 10.0..=10000.0),
+        (processing.compressor_knee_db, 0.0..=24.0),
+        (processing.pause_hold_ms, 0.0..=5000.0),
+        (processing.pause_return_delay_ms, 0.0..=30000.0),
+        (processing.loudness_output_max_correction_db, 0.0..=12.0),
+        (processing.loudness_output_gain_up_db_per_second, 0.0..=5.0),
+        (
+            processing.loudness_output_gain_down_db_per_second,
+            0.0..=5.0,
+        ),
+    ];
+    if dynamics_ranges
+        .iter()
+        .any(|(value, range)| !value.is_finite() || !range.contains(value))
+        || processing.pause_return_delay_ms < processing.pause_hold_ms
+    {
+        return Err(ServiceError::BadRequest(
+            "Invalid audio timing or output correction settings".to_string(),
+        ));
+    }
+
     let values = [
-        processing.live_loudness_target_lufs,
-        processing.live_loudness_dead_band_lu,
-        processing.live_loudness_max_gain_db,
-        processing.live_loudness_max_attenuation_db,
-        processing.live_loudness_gain_up_db_per_second,
-        processing.live_loudness_gain_down_db_per_second,
-        processing.live_loudness_silence_gate_lufs,
-        processing.live_loudness_true_peak_ceiling_dbtp,
+        processing.loudness_target_lufs,
+        processing.loudness_dead_band_lu,
+        processing.loudness_max_gain_db,
+        processing.loudness_max_attenuation_db,
+        processing.loudness_gain_up_db_per_second,
+        processing.loudness_gain_down_db_per_second,
+        processing.loudness_silence_gate_lufs,
+        processing.loudness_true_peak_ceiling_dbtp,
     ];
     if values.iter().any(|value| !value.is_finite())
-        || processing.live_loudness_dead_band_lu < 0.0
-        || processing.live_loudness_max_gain_db < 0.0
-        || processing.live_loudness_max_attenuation_db > 0.0
-        || processing.live_loudness_gain_up_db_per_second < 0.0
-        || processing.live_loudness_gain_down_db_per_second < 0.0
-        || processing.live_loudness_true_peak_ceiling_dbtp > 0.0
+        || processing.loudness_dead_band_lu < 0.0
+        || processing.loudness_max_gain_db < 0.0
+        || processing.loudness_max_attenuation_db > 0.0
+        || processing.loudness_gain_up_db_per_second < 0.0
+        || processing.loudness_gain_down_db_per_second < 0.0
+        || processing.loudness_true_peak_ceiling_dbtp > 0.0
     {
         return Err(ServiceError::BadRequest(
             "invalid live loudness settings".to_string(),
@@ -678,13 +728,121 @@ mod tests {
     }
 
     #[test]
-    fn live_loudness_changes_do_not_require_restart() {
+    fn loudness_parameter_changes_do_not_require_restart() {
         let current = PlayoutConfig::default();
         let mut updated = current.clone();
-        updated.audio.live_loudness_enable = true;
-        updated.audio.live_loudness_target_lufs = -23.0;
+        updated.audio.loudness_enable = true;
+        updated.audio.loudness_target_lufs = -23.0;
 
         assert!(!requires_playout_restart(&current, &updated));
+    }
+
+    #[test]
+    fn scope_changes_require_restart_but_dynamics_parameters_do_not() {
+        let current = PlayoutConfig::default();
+        let mut updated = current.clone();
+        updated.audio.loudness_scope = "live".to_string();
+        assert!(requires_playout_restart(&current, &updated));
+        updated.audio.loudness_scope = current.audio.loudness_scope.clone();
+        updated.audio.compressor_ratio = 4.0;
+        updated.audio.compressor_attack_ms = 10.0;
+        updated.audio.compressor_hold_ms = 200.0;
+        updated.audio.compressor_release_ms = 2400.0;
+        updated.audio.compressor_strong_release_ms = 1000.0;
+        updated.audio.compressor_knee_db = 12.0;
+        updated.audio.pause_hold_ms = 600.0;
+        updated.audio.pause_return_delay_ms = 4000.0;
+        updated.audio.loudness_output_max_correction_db = 6.0;
+        updated.audio.loudness_output_gain_up_db_per_second = 0.2;
+        updated.audio.loudness_output_gain_down_db_per_second = 0.5;
+
+        updated.audio.compressor_threshold_dbfs = -30.0;
+        updated.audio.pause_threshold_dbfs = -65.0;
+        assert!(!requires_playout_restart(&current, &updated));
+    }
+
+    #[test]
+    fn dynamics_validation_rejects_invalid_scope_and_detector_parameters() {
+        let mut audio = crate::utils::config::Audio {
+            loudness_scope: "all".to_string(),
+            compressor_ratio: 3.0,
+            compressor_attack_ms: 5.0,
+            compressor_hold_ms: 100.0,
+            compressor_release_ms: 1200.0,
+            compressor_strong_release_ms: 500.0,
+            compressor_knee_db: 6.0,
+            pause_hold_ms: 300.0,
+            pause_return_delay_ms: 2000.0,
+            loudness_output_max_correction_db: 3.0,
+            loudness_output_gain_up_db_per_second: 0.1,
+            loudness_output_gain_down_db_per_second: 0.25,
+
+            compressor_threshold_dbfs: -26.0,
+            pause_threshold_dbfs: -55.0,
+            ..Default::default()
+        };
+        assert!(super::validate_loudness(&audio).is_ok());
+        audio.compressor_attack_ms = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_attack_ms = 51.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_attack_ms = 5.0;
+        audio.compressor_hold_ms = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_hold_ms = 2001.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_hold_ms = 100.0;
+        audio.compressor_release_ms = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_release_ms = 10001.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_release_ms = 1200.0;
+        audio.compressor_strong_release_ms = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_strong_release_ms = 10001.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_strong_release_ms = 500.0;
+        audio.compressor_knee_db = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_knee_db = 25.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_knee_db = 6.0;
+        audio.pause_hold_ms = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.pause_hold_ms = 5001.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.pause_hold_ms = 300.0;
+        audio.pause_return_delay_ms = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.pause_return_delay_ms = 30001.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.pause_return_delay_ms = 2000.0;
+        audio.loudness_output_max_correction_db = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.loudness_output_max_correction_db = 13.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.loudness_output_max_correction_db = 3.0;
+        audio.loudness_output_gain_up_db_per_second = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.loudness_output_gain_up_db_per_second = 6.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.loudness_output_gain_up_db_per_second = 0.1;
+        audio.loudness_output_gain_down_db_per_second = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.loudness_output_gain_down_db_per_second = 6.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.loudness_output_gain_down_db_per_second = 0.25;
+        audio.pause_return_delay_ms = audio.pause_hold_ms - 1.0;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.pause_return_delay_ms = 2000.0;
+        audio.loudness_scope = "unknown".to_string();
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.loudness_scope = "live".to_string();
+        audio.compressor_ratio = f64::NAN;
+        assert!(super::validate_loudness(&audio).is_err());
+        audio.compressor_ratio = 3.0;
+        audio.pause_threshold_dbfs = -10.0;
+        assert!(super::validate_loudness(&audio).is_err());
     }
 
     #[test]

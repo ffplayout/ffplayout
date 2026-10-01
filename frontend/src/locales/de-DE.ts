@@ -159,6 +159,7 @@ export default {
         reload: 'Neu laden',
     },
     config: {
+        audioDefaultValue: 'Standard: {value}',
         channel: 'Kanal',
         user: 'Benutzer',
         global: 'Global',

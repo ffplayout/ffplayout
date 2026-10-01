@@ -10,6 +10,7 @@ pub(crate) use stats::AudioStatsOverlay;
 use crate::{
     BufferedLoudnessAnalysis, LiveDynamicsProcessor, LiveLoudnessMeasurement, LiveLoudnessMetrics,
     LiveLoudnessProcessor,
+    audio_mixer::collect_audio_preview,
     output::FrameOutput,
     utils::ffmpeg::{make_audio_frame_writable, reference_audio_frame, reference_video_frame},
 };
@@ -119,22 +120,16 @@ impl<'a, O: FrameOutput> LoudnessPreview<'a, O> {
                 Some(PendingFrame::Audio(mut audio, analysis)) => {
                     self.buffered_samples -= audio.samples();
                     let limit = self.required_samples();
-                    let future: Vec<[f32; 2]> = self
-                        .pending
-                        .iter()
-                        .filter_map(|item| match item {
-                            PendingFrame::Audio(audio, _) => Some(audio),
-                            PendingFrame::Video(_) => None,
-                        })
-                        .flat_map(|audio| {
-                            audio
-                                .plane::<f32>(0)
-                                .iter()
-                                .zip(audio.plane::<f32>(1))
-                                .map(|(&left, &right)| [left, right])
-                        })
-                        .take(limit)
-                        .collect();
+                    let frames = self.pending.iter().filter_map(|item| match item {
+                        PendingFrame::Audio(audio, _) => Some(audio),
+                        PendingFrame::Video(_) => None,
+                    });
+                    let future = collect_audio_preview(
+                        frames,
+                        audio.pts().unwrap_or_default() + audio.samples() as i64,
+                        limit,
+                        0,
+                    );
 
                     if let Some(stats) = self.stats.as_mut() {
                         stats.observe_input(&audio);
@@ -409,7 +404,10 @@ mod tests {
     fn live_dynamics_desktop_uses_short_preview_and_emits_audio_and_video() {
         ffmpeg_next::init().unwrap();
         let mut output = Output::default();
-        let config = LiveLoudnessConfig::default();
+        let config = LiveLoudnessConfig {
+            compressor_ratio: 6.0,
+            ..LiveLoudnessConfig::default()
+        };
         let processor = LiveLoudnessProcessor::new(48000, config).unwrap();
         let mut preview = LoudnessPreview::new(
             &mut output,
