@@ -10,6 +10,8 @@ use ffmpeg_next::frame;
 
 use crate::analysis::loudness::LoudnessAnalyzer;
 
+use super::lookahead::LookaheadLimiter;
+
 const TARGET_LUFS: f64 = -23.0;
 const DEAD_BAND_LU: f64 = 1.0;
 const MAX_GAIN_DB: f64 = 8.0;
@@ -37,8 +39,7 @@ pub struct LiveLoudnessConfig {
     /// times this rate until Momentary loudness is back within 3 LU of target.
     pub gain_down_db_per_second: f64,
     pub silence_gate_lufs: f64,
-    /// Currently a sample ceiling; a true-peak guarantee needs the planned
-    /// oversampled lookahead limiter.
+    /// Ceiling for the oversampled live lookahead limiter.
     pub true_peak_ceiling_dbtp: f64,
 }
 
@@ -132,8 +133,8 @@ pub enum LiveLoudnessMeasurement {
 /// Stateful EBU R128 analyzer, slow gain rider and ceiling limiter.
 ///
 /// `ebur128-stream` performs the 4x true-peak measurement on the source. The
-/// stereo-linked sample limiter adds no latency and cannot guarantee output
-/// true peaks. A future lookahead limiter can replace this safety stage.
+/// live path uses a stereo-linked, 4x oversampled lookahead limiter. Direct
+/// callers of `process` retain the immediate sample limiter without buffering.
 pub struct LiveLoudnessProcessor {
     analyzer: LoudnessAnalyzer,
     config: LiveLoudnessConfig,
@@ -144,6 +145,7 @@ pub struct LiveLoudnessProcessor {
     fast_attenuation: bool,
     gain_limit_ramp_remaining: usize,
     samples_until_analysis: usize,
+    lookahead: LookaheadLimiter,
     limiter_gain: f64,
     limiter_release: f64,
     metrics: LiveLoudnessMetrics,
@@ -166,6 +168,7 @@ impl LiveLoudnessProcessor {
             fast_attenuation: false,
             gain_limit_ramp_remaining: 0,
             samples_until_analysis: sample_rate as usize / 10,
+            lookahead: LookaheadLimiter::new(sample_rate),
             limiter_gain: 1.0,
             limiter_release: 1.0
                 - (-1.0 / (LIMITER_RELEASE_SECONDS * f64::from(sample_rate))).exp(),
@@ -208,17 +211,43 @@ impl LiveLoudnessProcessor {
     /// sanitized before analysis so malformed live input cannot poison the
     /// analyzer or encoder.
     pub fn process(&mut self, frame: &mut frame::Audio) {
-        self.analyze_frame(frame, true);
+        self.analyze_frame(frame, true, true);
+    }
+
+    /// Applies the live limiter using buffered future source samples, keeping
+    /// this frame's sample count and PTS intact. Preview never enters analysis.
+    pub(crate) fn process_with_lookahead(&mut self, frame: &mut frame::Audio, future: &[[f32; 2]]) {
+        if frame.planes() != 2 || frame.samples() == 0 {
+            return;
+        }
+
+        self.analyze_frame(frame, true, false);
+        let mut preview_gain_db = self.rider_gain_db
+            + self.config.gain_up_db_per_second * super::LIVE_LATENCY.as_secs_f64();
+
+        if self.gain_limit_ramp_remaining > 0 {
+            preview_gain_db = preview_gain_db.max(
+                self.rider_gain_db
+                    .clamp(self.config.max_attenuation_db, self.config.max_gain_db),
+            );
+        }
+
+        self.metrics.limiter_gain_reduction_db = self.lookahead.process(
+            frame,
+            future,
+            db_to_gain(preview_gain_db),
+            self.config.true_peak_ceiling_dbtp,
+        );
     }
 
     /// Updates source metrics and the rider target without applying gain.
     /// This is used by offline/lookahead callers that apply the resulting gain
     /// to an earlier buffered frame.
     pub fn analyze(&mut self, frame: &mut frame::Audio) {
-        self.analyze_frame(frame, false);
+        self.analyze_frame(frame, false, false);
     }
 
-    fn analyze_frame(&mut self, frame: &mut frame::Audio, apply_gain: bool) {
+    fn analyze_frame(&mut self, frame: &mut frame::Audio, apply_gain: bool, sample_ceiling: bool) {
         if frame.planes() != 2 || frame.samples() == 0 {
             return;
         }
@@ -244,7 +273,7 @@ impl LiveLoudnessProcessor {
             self.metrics.true_peak_dbtp = metrics.true_peak_dbtp;
 
             if apply_gain {
-                self.apply_gain_and_ceiling(frame, offset, end);
+                self.apply_gain_and_ceiling(frame, offset, end, sample_ceiling);
             }
 
             self.samples_until_analysis -= samples;
@@ -268,7 +297,7 @@ impl LiveLoudnessProcessor {
 
         sanitize_samples(frame);
         self.metrics.limiter_gain_reduction_db = 0.0;
-        self.apply_gain_and_ceiling(frame, 0, frame.samples());
+        self.apply_gain_and_ceiling(frame, 0, frame.samples(), true);
     }
 
     fn update_rider_target(&mut self) {
@@ -352,7 +381,13 @@ impl LiveLoudnessProcessor {
         db_to_gain(self.rider_gain_db)
     }
 
-    fn apply_gain_and_ceiling(&mut self, frame: &mut frame::Audio, start: usize, end: usize) {
+    fn apply_gain_and_ceiling(
+        &mut self,
+        frame: &mut frame::Audio,
+        start: usize,
+        end: usize,
+        sample_ceiling: bool,
+    ) {
         let ceiling = f64::from(db_to_gain(self.config.true_peak_ceiling_dbtp) as f32);
         let mut offset = start;
         let mut minimum_limiter_gain = db_to_gain(-self.metrics.limiter_gain_reduction_db);
@@ -367,6 +402,12 @@ impl LiveLoudnessProcessor {
                 let rider = self.next_rider_gain();
                 let peak = f64::from(left.abs().max(right.abs())) * rider;
                 let required = if peak > ceiling { ceiling / peak } else { 1.0 };
+
+                if !sample_ceiling {
+                    *gain = rider;
+
+                    continue;
+                }
 
                 if required < self.limiter_gain {
                     self.limiter_gain = required;
@@ -383,7 +424,9 @@ impl LiveLoudnessProcessor {
                     .iter_mut()
                     .zip(gains)
                 {
-                    *sample = (f64::from(*sample) * gain) as f32;
+                    *sample = (f64::from(*sample) * gain)
+                        .clamp(-f64::from(f32::MAX), f64::from(f32::MAX))
+                        as f32;
                 }
             }
 
@@ -758,6 +801,29 @@ mod tests {
                 .all(|sample| sample.abs() <= ceiling)
         );
         assert!(processor.metrics().limiter_gain_reduction_db > 0.0);
+    }
+
+    #[test]
+    fn live_lookahead_sanitizes_input_and_preview_without_changing_timestamps() {
+        let mut processor =
+            LiveLoudnessProcessor::new(SAMPLE_RATE, LiveLoudnessConfig::default()).unwrap();
+        processor.rider_gain_db = 8.0;
+        processor.target_gain_db = 8.0;
+        let input = [f32::MAX, f32::NAN, f32::INFINITY, 0.1];
+        let future = vec![[f32::NEG_INFINITY, f32::NAN]; 486];
+        let mut frame = stereo_frame(&input, &input);
+        frame.set_pts(Some(12_345));
+        processor.process_with_lookahead(&mut frame, &future);
+
+        assert_eq!(frame.pts(), Some(12_345));
+        assert_eq!(frame.samples(), input.len());
+        assert!(
+            frame
+                .plane::<f32>(0)
+                .iter()
+                .all(|sample| sample.is_finite() && sample.abs() <= db_to_gain(-1.0) as f32)
+        );
+        assert!(processor.metrics().limiter_gain_reduction_db.is_finite());
     }
 
     #[test]

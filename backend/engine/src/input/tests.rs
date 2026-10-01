@@ -26,6 +26,7 @@ use crate::{
 struct CountingOutput {
     video_frames: usize,
     audio_frames: usize,
+    audio_pts: Vec<i64>,
     last_audio: Option<(i64, usize, f32)>,
     reset_after_skip: bool,
     skip_target: Option<(i64, i64)>,
@@ -55,6 +56,7 @@ impl FrameOutput for CountingOutput {
 
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
         self.audio_frames += 1;
+        self.audio_pts.push(frame.pts().unwrap_or(0));
 
         if frame.samples() > 0 {
             self.last_audio = Some((
@@ -88,6 +90,7 @@ fn test_live_receiver(rx: mpsc::Receiver<LiveEvent>) -> LiveReceiver {
     LiveReceiver {
         rx,
         pending_event: None,
+        delay: super::delay::LiveDelay::new(Duration::ZERO, 25, 48_000),
         live_session: None,
         abort: Arc::new(AtomicBool::new(false)),
         channel_id: 0,
@@ -801,6 +804,139 @@ fn startup_buffer_bounds_tiny_and_oversized_audio_frames() {
         assert!(live.pending_audio.front().unwrap().pts().unwrap() > 0);
         assert!(live.connecting);
     }
+}
+
+#[test]
+fn live_limiter_reads_the_next_buffered_packet_and_keeps_audio_pts() {
+    #[derive(Default)]
+    struct CaptureOutput {
+        audio: Vec<(i64, Vec<f32>)>,
+    }
+
+    impl FrameOutput for CaptureOutput {
+        fn audio_frame_size(&self) -> usize {
+            1_024
+        }
+
+        fn encode_video(&mut self, _: &frame::Video) -> Result<()> {
+            Ok(())
+        }
+
+        fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+            self.audio
+                .push((frame.pts().unwrap_or(0), frame.plane::<f32>(0).to_vec()));
+
+            Ok(())
+        }
+    }
+
+    let (tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.delay =
+        super::delay::LiveDelay::new(Duration::from_millis(10), live.fps, live.sample_rate);
+    live.loudness_control
+        .update(true, LiveLoudnessConfig::default());
+    let mut output = CaptureOutput::default();
+    let control = crate::PlaybackControl::default();
+    tx.send(LiveEvent::Started {
+        session_id: 1,
+        has_audio: true,
+        listener_id: 1,
+    })
+    .unwrap();
+    tx.send(LiveEvent::Video(
+        1,
+        frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 4, 4),
+    ))
+    .unwrap();
+    let mut before = audio_frame(0, 1_024);
+    let mut peak = audio_frame(1_024, 1_024);
+
+    for channel in 0..2 {
+        before.plane_mut::<f32>(channel).fill(0.1);
+        peak.plane_mut::<f32>(channel).fill(0.1);
+        peak.plane_mut::<f32>(channel)[0] = 2.0;
+    }
+
+    tx.send(LiveEvent::Audio(1, before)).unwrap();
+    tx.send(LiveEvent::Audio(1, peak)).unwrap();
+    tx.send(LiveEvent::Ended(1)).unwrap();
+    LiveOverrideOutput::new(&mut output, &mut live, &control)
+        .pump_live()
+        .unwrap();
+    assert!(output.audio.is_empty());
+    thread::sleep(Duration::from_millis(10));
+    LiveOverrideOutput::new(&mut output, &mut live, &control)
+        .pump_live()
+        .unwrap();
+
+    assert_eq!(output.audio[0].0, 0);
+    assert_eq!(output.audio[1].0, 1_024);
+    assert_eq!(output.audio[0].1.len(), 1_024);
+    assert_eq!(output.audio[1].1.len(), 1_024);
+    assert_eq!(output.audio[0].1[0], 0.1);
+    assert!(
+        output.audio[0].1[1_000] < 0.06,
+        "attenuation must precede the peak in the next packet"
+    );
+    assert!(output.audio[1].1[0] <= 10.0_f32.powf(-1.0 / 20.0));
+    assert!(!control.live_active());
+}
+
+#[test]
+fn delayed_live_takeover_keeps_audio_video_timing_and_drains_disconnected_tail() {
+    let (tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    let latency = Duration::from_millis(10);
+    live.delay = super::delay::LiveDelay::new(latency, live.fps, live.sample_rate);
+    let control = crate::PlaybackControl::default();
+    let mut output = CountingOutput::default();
+    tx.send(LiveEvent::Started {
+        session_id: 1,
+        has_audio: true,
+        listener_id: 1,
+    })
+    .unwrap();
+    let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 4, 4);
+    video.set_pts(Some(25));
+    tx.send(LiveEvent::Video(1, video)).unwrap();
+    tx.send(LiveEvent::Audio(1, audio_frame(48_000, 1024)))
+        .unwrap();
+
+    assert!(
+        !LiveOverrideOutput::new(&mut output, &mut live, &control)
+            .pump_live()
+            .unwrap()
+    );
+    assert!(!control.live_active());
+    assert_eq!(output.video_frames, 0);
+    assert_eq!(output.audio_frames, 0);
+    thread::sleep(latency);
+    LiveOverrideOutput::new(&mut output, &mut live, &control)
+        .pump_live()
+        .unwrap();
+    assert!(control.live_active());
+    assert_eq!(live.last_video_output_pts, Some(0));
+    assert_eq!(output.last_audio.unwrap().0, 0);
+    assert_eq!(output.video_frames, 1);
+    assert_eq!(output.audio_frames, 1);
+
+    tx.send(LiveEvent::Audio(1, audio_frame(49_024, 1024)))
+        .unwrap();
+    tx.send(LiveEvent::Ended(1)).unwrap();
+    drop(tx);
+    LiveOverrideOutput::new(&mut output, &mut live, &control)
+        .pump_live()
+        .unwrap();
+    assert!(control.live_active());
+    assert_eq!(output.audio_frames, 1);
+    thread::sleep(latency);
+    LiveOverrideOutput::new(&mut output, &mut live, &control)
+        .pump_live()
+        .unwrap();
+    assert!(!control.live_active());
+    assert_eq!(&output.audio_pts[..2], &[0, 1024]);
+    assert!(live.delay.is_empty());
 }
 
 #[test]

@@ -1,6 +1,5 @@
 use std::{
     collections::VecDeque,
-    mem,
     sync::mpsc::TryRecvError,
     thread,
     time::{Duration, Instant},
@@ -18,13 +17,14 @@ use log::{debug, info, warn};
 
 use crate::{
     PlaybackControl,
-    audio_mixer::LiveLoudnessProcessor,
+    audio_mixer::{LiveLoudnessProcessor, TRUE_PEAK_FUTURE_SAMPLES, lookahead_samples},
     compositor::logo::LogoOverlay,
     output::FrameOutput,
     playout::check_playback_control,
     utils::ffmpeg::{make_audio_frame_writable, reference_audio_frame, reference_video_frame},
 };
 
+use super::delay::collect_audio_preview;
 use super::live::{
     LIVE_AUDIO_GRACE_SECONDS, LIVE_AUDIO_PTS_JITTER_SECONDS, LIVE_IDLE_TIMEOUT,
     LIVE_SEND_RETRY_INTERVAL, LIVE_STARTUP_TIMEOUT, LiveEnded, LiveEvent, LiveReceiver,
@@ -54,6 +54,9 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
 
     pub(super) fn pump_live(&mut self) -> Result<bool> {
         let mut received_event = false;
+        self.live
+            .delay
+            .set_audio_lookahead(self.live.loudness_control.settings().enabled);
 
         loop {
             // Check every event too: a busy live queue may never become empty.
@@ -64,7 +67,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 .pending_event
                 .take()
                 .map(Ok)
-                .unwrap_or_else(|| self.live.rx.try_recv())
+                .unwrap_or_else(|| self.live.delay.next_event(&self.live.rx, Instant::now()))
             {
                 Ok(LiveEvent::Started {
                     session_id,
@@ -207,7 +210,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 .last_media_at
                 .map(|last_media_at| last_media_at.elapsed())
                 .unwrap_or_default();
-            if self.live.active && idle_for >= LIVE_IDLE_TIMEOUT {
+            if self.live.active && self.live.delay.is_empty() && idle_for >= LIVE_IDLE_TIMEOUT {
                 info!(channel = self.live.channel_id; "live listener #{} idle; switching back to file playback", self.live.listener_id);
                 self.fill_live_gap(idle_for)?;
                 self.align_live_pts_to_common_time();
@@ -240,7 +243,13 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
     /// repeatedly trimming valid audio merely because the muxer interleaves
     /// video ahead of it. A sustained audio dropout is still padded.
     pub(super) fn pad_missing_live_audio(&mut self) -> Result<()> {
-        if !self.live.active || !self.live.source_has_audio {
+        if !self.live.active
+            || !self.live.source_has_audio
+            || self
+                .live
+                .delay
+                .has_waiting_audio(self.live.session_id, Instant::now())
+        {
             return Ok(());
         }
 
@@ -478,6 +487,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
 
     pub(super) fn encode_live_audio_frame(&mut self, mut frame: frame::Audio) -> Result<()> {
         let source_pts = frame.pts().unwrap_or(0);
+        let preview_start_pts = source_pts + frame.samples() as i64;
         let source_seconds = audio_seconds(self.live.sample_rate, source_pts);
         let mut pts = seconds_to_audio_pts(
             self.live.sample_rate,
@@ -522,8 +532,17 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         self.sync_loudness_processor();
 
         if let Some(loudness) = &mut self.live.loudness {
+            let future = collect_audio_preview(
+                self.live
+                    .pending_audio
+                    .iter()
+                    .chain(self.live.delay.future_audio(self.live.session_id)),
+                preview_start_pts,
+                self.live.sample_rate,
+                lookahead_samples(self.live.sample_rate) + TRUE_PEAK_FUTURE_SAMPLES,
+            );
             make_audio_frame_writable(&mut frame)?;
-            loudness.process(&mut frame);
+            loudness.process_with_lookahead(&mut frame, &future);
             self.live.loudness_control.set_metrics(loudness.metrics());
         }
         self.output.encode_audio(&frame)?;
@@ -534,10 +553,8 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
     }
 
     fn flush_pending_audio(&mut self) -> Result<()> {
-        let pending = mem::take(&mut self.live.pending_audio);
-        self.live.pending_audio_samples = 0;
-
-        for frame in pending {
+        while let Some(frame) = self.live.pending_audio.pop_front() {
+            self.live.pending_audio_samples -= frame.samples();
             self.encode_live_audio_frame(frame)?;
         }
 

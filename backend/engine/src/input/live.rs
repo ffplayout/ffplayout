@@ -21,7 +21,7 @@ use log::{debug, error, info, warn};
 
 use crate::{
     PlaybackControl,
-    audio_mixer::{LiveLoudnessControl, LiveLoudnessMetrics, LiveLoudnessProcessor},
+    audio_mixer::{LIVE_LATENCY, LiveLoudnessControl, LiveLoudnessMetrics, LiveLoudnessProcessor},
     benchmark::{self, BenchHandle, Stage},
     output::FrameOutput,
     playout::{InputPlaybackOptions, LogoFadePlan, Timeline, play_opened_input},
@@ -32,10 +32,13 @@ use crate::{
     },
 };
 
+use super::delay::LiveDelay;
+
 pub(crate) use super::playback::LiveOverrideOutput;
 
 pub(super) const LIVE_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const MAX_PENDING_AUDIO_FRAMES: usize = 512;
+pub(super) const LIVE_AUDIO_FRAME_SAMPLES: usize = 1024;
 
 // The live decoder supplies stereo planar f32 at the configured sample rate.
 pub(super) fn trim_audio_start(input: &frame::Audio, skip: usize) -> Result<frame::Audio> {
@@ -166,6 +169,7 @@ impl Drop for LiveReaderPermit {
 pub struct LiveReceiver {
     pub(super) rx: Receiver<LiveEvent>,
     pub(super) pending_event: Option<LiveEvent>,
+    pub(super) delay: LiveDelay,
     pub(super) live_session: Option<crate::LiveSession>,
     pub(super) abort: Arc<AtomicBool>,
     pub(super) channel_id: i32,
@@ -575,6 +579,7 @@ impl LiveReceiver {
         Self {
             rx,
             pending_event: None,
+            delay: LiveDelay::new(LIVE_LATENCY, cfg.fps, cfg.sample_rate),
             live_session: None,
             abort,
             channel_id: cfg.channel_id.unwrap_or_default(),
@@ -663,7 +668,7 @@ impl LiveFrameSender {
 
 impl FrameOutput for LiveFrameSender {
     fn audio_frame_size(&self) -> usize {
-        1024
+        LIVE_AUDIO_FRAME_SAMPLES
     }
 
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
