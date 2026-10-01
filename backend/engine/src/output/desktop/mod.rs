@@ -813,7 +813,7 @@ impl DesktopFrameSender {
         };
 
         if queue_depth
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |depth| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |depth| {
                 (depth < RECORDING_CHANNEL_CAPACITY).then_some(depth + 1)
             })
             .is_err()

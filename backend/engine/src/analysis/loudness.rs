@@ -133,7 +133,7 @@ impl LoudnessMeterControl {
     pub fn unsubscribe(&self) {
         let _ = self
             .subscribers
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1));
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1));
     }
 
     pub fn active(&self) -> bool {
