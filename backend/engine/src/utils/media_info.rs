@@ -199,6 +199,7 @@ pub fn detect_audio_silence(
     )?;
 
     let analyzed_seconds = analyzed_samples as f64 / f64::from(SILENCE_SAMPLE_RATE);
+
     Ok(SilenceDetection {
         silent: !has_loud_sample && analyzed_seconds >= min_silence_seconds,
         analyzed_seconds,
@@ -215,6 +216,7 @@ fn receive_silence_frames(
     has_loud_sample: &mut bool,
 ) -> Result<()> {
     let mut raw = frame::Audio::empty();
+
     while decoder.receive_frame(&mut raw).is_ok() {
         if raw.channel_layout().is_empty() {
             raw.set_channel_layout(input_layout);
@@ -223,11 +225,13 @@ fn receive_silence_frames(
         let mut converted = frame::Audio::empty();
         resampler.run(&raw, &mut converted)?;
         let remaining = max_samples.saturating_sub(*analyzed_samples);
+
         if remaining == 0 {
             return Ok(());
         }
 
         let samples = converted.samples().min(remaining);
+
         for channel in 0..converted.planes() {
             if converted.plane::<f32>(channel)[..samples]
                 .iter()
@@ -269,6 +273,7 @@ fn probe_audio_stream(stream: &format::stream::Stream) -> AudioStream {
 
 fn audio_channel_layout(decoder: &codec::decoder::Audio) -> ChannelLayout {
     let channel_layout = decoder.channel_layout();
+
     if channel_layout.is_empty() {
         ChannelLayout::default(i32::from(decoder.channels()).max(1))
     } else {
@@ -332,6 +337,7 @@ fn parse_duration_seconds(duration: &str) -> Option<f64> {
     let hours = parts.next()?.parse::<f64>().ok()?;
     let minutes = parts.next()?.parse::<f64>().ok()?;
     let seconds = parts.next()?.parse::<f64>().ok()?;
+
     if parts.next().is_some() {
         return None;
     }
@@ -385,7 +391,7 @@ mod tests {
 
     fn media_mix_asset(name: &str) -> String {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/assets/storage/media_mix")
+            .join("../../tests_assets/storage/media_mix")
             .join(name)
             .to_string_lossy()
             .into_owned()

@@ -35,14 +35,17 @@ impl AudioMasterClock {
         allow_underflow: bool,
     ) -> u64 {
         let consumed = submitted.saturating_sub(queued);
+
         if consumed != self.last_consumed_samples {
             self.last_consumed_samples = consumed;
             self.anchor_samples = consumed.saturating_sub(self.device_buffer_samples);
             self.anchor_time = now;
         }
+
         let elapsed_samples = (now.duration_since(self.anchor_time).as_secs_f64()
             * f64::from(self.sample_rate)) as u64;
         let interpolated = self.anchor_samples.saturating_add(elapsed_samples);
+
         if allow_underflow {
             interpolated
         } else {

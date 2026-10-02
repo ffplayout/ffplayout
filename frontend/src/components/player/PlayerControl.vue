@@ -6,7 +6,7 @@ import timezone from 'dayjs/plugin/timezone.js'
 import utc from 'dayjs/plugin/utc.js'
 import mpegts from 'mpegts.js'
 
-import { ref, onMounted, onBeforeUnmount, watch, useTemplateRef } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch, useTemplateRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { throttle } from 'es-toolkit/function'
 import { storeToRefs } from 'pinia'
@@ -55,6 +55,8 @@ playlistStore.current = currentDefault
 const timeStr = ref('00:00:00')
 const timer = ref()
 const errorCounter = ref(0)
+const controlsUnlocked = ref(false)
+const lastReportedRunning = ref<boolean | null>(null)
 const volumeLevel = ref(configStore.playout.audio?.volume ?? 1)
 const streamExtension = ref(configStore.channels[configStore.i]?.preview_url.split('.').pop())
 const httpStreamFlv = ref(null)
@@ -71,6 +73,18 @@ const timeDiv = useTemplateRef('timeDiv')
 const { width } = useElementSize(timeDiv)
 
 const streamUrl = ref(`/data/event/${configStore.channels[configStore.i]?.id}?endpoint=playout&uuid=${authStore.uuid}`)
+
+const activeIngestLabel = computed(() => {
+    const id = playlistStore.ingestListenerId
+
+    if (id === null) return t('control.ingest')
+
+    const backend = playlistStore.ingestListenerBackend?.toUpperCase()
+    const name = playlistStore.ingestListenerName?.trim()
+    const details = name && backend ? `${name} (${backend} #${id})` : backend ? `${backend} #${id}` : `#${id}`
+
+    return `${t('control.ingest')}: ${details}`
+})
 
 type PlayerControlButton = {
     label: string
@@ -191,19 +205,23 @@ watch([status, error], async () => {
 })
 
 watch([data], () => {
-    if (data.value) {
+    if (data.value && data.value !== 'connected') {
         try {
             const playout_status = JSON.parse(data.value)
             playlistStore.setStatus(playout_status)
+            updateControlsForStatus(true)
         } catch {
             indexStore.sseConnected = true
             playlistStore.playoutIsRunning = false
             resetStatus()
+            updateControlsForStatus(false)
         }
     }
 })
 
 watch([i], () => {
+    controlsUnlocked.value = false
+    lastReportedRunning.value = null
     resetStatus()
     volumeLevel.value = configStore.playout.audio?.volume ?? 1
 
@@ -247,6 +265,8 @@ function volumeIcon() {
 }
 
 const applyVolumeControl = throttle(async () => {
+    if (!controlsUnlocked.value) return
+
     const volume = Math.min(1.5, Math.max(0, Number(volumeLevel.value) || 0))
     volumeLevel.value = volume
     configStore.playout.audio.volume = volume
@@ -259,6 +279,8 @@ const applyVolumeControl = throttle(async () => {
 }, 250)
 
 function muteAudio() {
+    if (!controlsUnlocked.value) return
+
     if (configStore.playout.audio.volume === 0) {
         volumeLevel.value = 1
     } else {
@@ -279,13 +301,26 @@ async function clock() {
 
 function resetStatus() {
     playlistStore.ingestRuns = false
+    playlistStore.ingestListenerId = null
+    playlistStore.ingestListenerName = null
+    playlistStore.ingestListenerBackend = null
     playlistStore.elapsedSec = 0
     playlistStore.shift = 0
     playlistStore.audioLevel = null
     playlistStore.current = currentDefault
 }
 
+function updateControlsForStatus(running: boolean) {
+    if (lastReportedRunning.value !== running) {
+        controlsUnlocked.value = !running
+    }
+
+    lastReportedRunning.value = running
+}
+
 const controlProcess = throttle(async (state: string) => {
+    if (!controlsUnlocked.value) return
+
     /*
         Control playout (start, stop, restart)
     */
@@ -306,6 +341,8 @@ const controlProcess = throttle(async (state: string) => {
 }, 2000)
 
 const controlPlayout = throttle(async (state: string) => {
+    if (!controlsUnlocked.value) return
+
     /*
         Control playout:
         - jump to next clip
@@ -331,6 +368,8 @@ const controlPlayout = throttle(async (state: string) => {
 }, 1000)
 
 function runControl(button: PlayerControlButton) {
+    if (!controlsUnlocked.value) return
+
     if (button.target === 'process') {
         controlProcess(button.command)
     } else {
@@ -395,8 +434,12 @@ function runControl(button: PlayerControlButton) {
                 <div class="col-span-1 xs:col-span-2 p-1">
                     <div class="w-full h-full bg-base-100 rounded-sm flex items-center px-3 py-2 xl:py-1 shadow">
                         <div class="w-full h-full flex flex-col content-center">
-                            <div v-if="playlistStore.ingestRuns" class="h-1/4 font-bold truncate leading-5">
-                                {{ t('control.ingest') }}
+                            <div
+                                v-if="playlistStore.ingestRuns"
+                                class="h-1/4 font-bold truncate content-center leading-5"
+                                :title="activeIngestLabel"
+                            >
+                                {{ activeIngestLabel }}
                             </div>
                             <div
                                 v-else
@@ -467,7 +510,7 @@ function runControl(button: PlayerControlButton) {
 
             <div class="order-3 xl:order-4 p-1">
                 <div class="bg-base-100 h-full flex flex-col justify-center rounded-sm shadow">
-                    <div class="w-full h-[calc(100%-44px)] grid grid-cols-3">
+                    <div class="w-full flex-1 min-h-0 grid grid-cols-3">
                         <div
                             v-for="(column, columnIndex) in playerControlColumns"
                             :key="columnIndex"
@@ -478,14 +521,18 @@ function runControl(button: PlayerControlButton) {
                                 :key="button.command"
                                 class="w-full h-1/2 p-2"
                                 :title="
-                                    button.target === 'playout' && playlistStore.ingestRuns
-                                        ? t('control.navigationDisabledLive')
-                                        : t(button.label)
+                                    !controlsUnlocked
+                                        ? t('control.controlsLocked')
+                                        : button.target === 'playout' && playlistStore.ingestRuns
+                                          ? t('control.navigationDisabledLive')
+                                          : t(button.label)
                                 "
                             >
                                 <button
                                     :aria-label="t(button.label)"
-                                    :disabled="button.target === 'playout' && playlistStore.ingestRuns"
+                                    :disabled="
+                                        !controlsUnlocked || (button.target === 'playout' && playlistStore.ingestRuns)
+                                    "
                                     class="btn btn-primary h-full w-full"
                                     :class="[
                                         button.class,
@@ -495,18 +542,43 @@ function runControl(button: PlayerControlButton) {
                                     ]"
                                     @click="runControl(button)"
                                 >
-                                    <i :class="button.icon" />
+                                    <i
+                                        :class="[
+                                            button.icon,
+                                            (!controlsUnlocked ||
+                                                (button.target === 'playout' && playlistStore.ingestRuns)) &&
+                                                'opacity-40',
+                                        ]"
+                                    />
                                 </button>
                             </div>
                         </div>
                     </div>
-                    <div class="w-full px-2 pb-3">
+                    <div class="w-full px-2 pb-3" :title="!controlsUnlocked ? t('control.controlsLocked') : undefined">
                         <div class="flex items-center gap-2">
                             <button
+                                type="button"
+                                class="btn btn-ghost btn-xs flex items-center justify-center px-1 text-base"
+                                :class="controlsUnlocked && 'text-warning'"
+                                :title="t(controlsUnlocked ? 'control.lockControls' : 'control.unlockControls')"
+                                :aria-label="t(controlsUnlocked ? 'control.lockControls' : 'control.unlockControls')"
+                                :aria-pressed="controlsUnlocked"
+                                @click="controlsUnlocked = !controlsUnlocked"
+                            >
+                                <i
+                                    class="block leading-none before:align-baseline"
+                                    :class="controlsUnlocked ? 'bi-unlock' : 'bi-lock'"
+                                    aria-hidden="true"
+                                />
+                            </button>
+                            <span class="h-6 w-px shrink-0 bg-base-content/30" aria-hidden="true" />
+                            <button
                                 class="btn btn-sm px-1 btn-primary text-xl text-base-content/70"
-                                :class="volumeIcon()"
+                                :disabled="!controlsUnlocked"
                                 @click="muteAudio"
-                            />
+                            >
+                                <i :class="[volumeIcon(), !controlsUnlocked && 'opacity-40']" />
+                            </button>
                             <input
                                 v-model.number="volumeLevel"
                                 type="range"
@@ -514,6 +586,7 @@ function runControl(button: PlayerControlButton) {
                                 max="1.5"
                                 step="0.01"
                                 class="range range-primary range-sm flex-1 bg-base-300"
+                                :disabled="!controlsUnlocked"
                                 @input="applyVolumeControl"
                             />
                             <span class="w-7 text-right text-xs tabular-nums">{{ volumeLevel.toFixed(2) }}</span>

@@ -14,17 +14,25 @@ pub mod player;
 pub mod sse;
 pub mod utils;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 #[cfg(not(debug_assertions))]
 pub mod serve;
 
 use api::auth;
 use db::models::{Role, UserMeta};
-use utils::{
-    args_parse::{Args, parse_args},
-    errors::ServiceError,
-};
+use utils::{args_parse::Args, errors::ServiceError};
 
+#[cfg(not(test))]
+use utils::args_parse::parse_args;
+
+#[cfg(not(test))]
 pub static ARGS: LazyLock<Args> = LazyLock::new(parse_args);
+
+// Unit tests must not interpret libtest filters and flags as application options.
+#[cfg(test)]
+pub static ARGS: LazyLock<Args> = LazyLock::new(Args::default);
 
 #[macro_export]
 macro_rules! vec_strings {

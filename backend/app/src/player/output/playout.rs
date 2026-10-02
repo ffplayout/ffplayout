@@ -6,8 +6,9 @@ use std::{
 };
 
 use ff_engine::{
-    AsyncPlayout, AudioLevelCallback, ClipResult, HlsHealth, LogLevel, LogoConfig, LogoFade,
-    OutputConfig, RecordingConfig, RecordingEncodeConfig, TextOverlayState,
+    AsyncPlayout, AudioLevelCallback, ClipResult, HlsHealth, LiveInputBackend, LiveListenerConfig,
+    LogLevel, LogoConfig, LogoFade, OutputConfig, RecordingConfig, RecordingEncodeConfig,
+    TextOverlayState,
 };
 use log::*;
 use tokio::time::sleep;
@@ -16,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     file::norm_abs_path,
     player::{
-        controller::ChannelManager,
+        controller::{ChannelManager, loudness_config},
         input::source_generator,
         utils::{Media, get_delta, sec_to_time},
     },
@@ -35,6 +36,7 @@ const HLS_RATE_CORRECTION_MAX_DELTA_FACTOR: f64 = 1.0;
 
 pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
+    let _running_config = manager.track_running_config(config.clone());
     validate_supported_config(&config)?;
 
     manager
@@ -66,15 +68,36 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         );
     }
 
-    if config.ingest.enable {
-        let url = config.ingest.ingest_url.clone();
+    let listeners: Vec<_> = config
+        .ingest
+        .listeners
+        .iter()
+        .filter(|input| input.enabled)
+        .filter_map(|input| {
+            let backend = match input.backend.as_str() {
+                "rtmp" => LiveInputBackend::Rtmp,
+                "srt" => LiveInputBackend::Srt,
+                _ => return None,
+            };
+
+            Some(LiveListenerConfig {
+                id: input.id,
+                priority: input.priority,
+                backend,
+                url: input.identifier.clone(),
+                options: input.options.clone(),
+                demuxer_options: input.demuxer_options.clone(),
+            })
+        })
+        .collect();
+    let count = listeners.len();
+
+    if count > 0 {
         playout
-            .start_rtmp_live(url.clone(), output_config)
+            .start_live_listeners(listeners, output_config)
             .await
             .map_err(engine_error)?;
-        info!(channel = config.general.channel_id;
-            "Start ingest server, listening on: <span class=\"log-addr\">{url}</span>"
-        );
+        info!(channel = config.general.channel_id; "Started {count} live listener(s)");
     }
 
     let result = match config.output.mode {
@@ -455,10 +478,20 @@ fn engine_output_config(
         .map_err(ServiceError::Conflict)?;
 
     let recording = recording_config(config)?;
+    // Source selection is activated at startup, after any pending restart.
+    live_loudness.update(
+        config.audio.loudness_scope != "off",
+        loudness_config(&config.audio),
+    );
 
     Ok(
         OutputConfig::new(width, height, fps, ENGINE_AUDIO_SAMPLE_RATE)
             .with_audio_effects(audio_effects)
+            .with_loudness_scope(match config.audio.loudness_scope.as_str() {
+                "all" => ff_engine::LoudnessScope::All,
+                "live" => ff_engine::LoudnessScope::Live,
+                _ => ff_engine::LoudnessScope::Off,
+            })
             .with_live_loudness_control(live_loudness)
             .with_loudness_meter_control(loudness_meter)
             .with_audio_level_callback(Some(AudioLevelCallback::new(move |level| {
@@ -484,6 +517,7 @@ fn engine_output_config(
             )
             .with_protocol_options(config.output.protocol_options.clone())
             .with_muxer_options(config.output.muxer_options.clone())
+            .with_metadata_options(config.output.metadata_options.clone())
             .with_recording(recording),
     )
 }

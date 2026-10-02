@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, time::Instant};
 
 use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{
@@ -12,6 +12,8 @@ use crate::{
     LogoFade, PlaybackControl,
     benchmark::{self, Stage},
     compositor::{logo::*, text::TextOverlay},
+    input::diagnostics::LiveInputStage,
+    input::timestamps::LiveTimestampTracker,
     output::FrameOutput,
     utils::{
         config::{OutputConfig, TextOverlayState},
@@ -51,9 +53,11 @@ pub(crate) fn check_playback_control(playback_control: &PlaybackControl) -> Resu
     if playback_control.is_shutdown() || playback_control.take_restart() {
         return Err(PlaybackRestart.into());
     }
+
     if playback_control.take_skip_current() || playback_control.take_navigation() {
         return Err(PlaybackSkipped.into());
     }
+
     Ok(())
 }
 
@@ -67,6 +71,8 @@ pub(crate) struct Timeline {
     // onto the continuous playout timeline. File playback always uses the
     // normal monotonically increasing timeline values.
     source_timestamp_mode: bool,
+    live_audio_source_us: Option<i64>,
+    live_video_source_us: Option<i64>,
 }
 
 impl Timeline {
@@ -77,6 +83,8 @@ impl Timeline {
             text_pts: 0,
             logo_opacity: 1.0,
             source_timestamp_mode: false,
+            live_audio_source_us: None,
+            live_video_source_us: None,
         }
     }
 
@@ -92,6 +100,8 @@ impl Timeline {
         self.audio_pts = audio_pts;
         self.text_pts = video_pts;
         self.source_timestamp_mode = false;
+        self.live_audio_source_us = None;
+        self.live_video_source_us = None;
     }
 
     pub(crate) fn finish_logo_fade(&mut self, fade: LogoFade) {
@@ -252,6 +262,7 @@ fn play_looped_clip<O: FrameOutput>(
         )?;
 
         let elapsed = elapsed_timeline_seconds(cfg, timeline, before_video_pts, before_audio_pts);
+
         if elapsed <= minimum_progress {
             return Err(anyhow!(
                 "{path} did not advance the playout timeline while looping to the requested duration"
@@ -332,6 +343,7 @@ impl MediaFadePlan {
         };
 
         let scheduled_out_us = seek_us.saturating_add(requested_duration_us);
+
         if (scheduled_out_us - source_duration_us).abs() <= MEDIA_DURATION_TOLERANCE_US {
             return Self::default();
         }
@@ -384,6 +396,7 @@ impl MediaFadePlan {
         };
 
         let scheduled_out_us = seek_us.saturating_add(requested_duration_us);
+
         if scheduled_out_us.saturating_add(MEDIA_DURATION_TOLERANCE_US) >= source_duration_us {
             return Self::default();
         }
@@ -480,6 +493,8 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     mut external_audio: Option<&mut ExternalAudioInput>,
 ) -> Result<()> {
     timeline.source_timestamp_mode = options.preserve_source_timestamps;
+    timeline.live_audio_source_us = None;
+    timeline.live_video_source_us = None;
     let seek_seconds = (!is_live_input(label))
         .then_some(options.seek_seconds)
         .flatten();
@@ -561,7 +576,8 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             audio_end_pts
         }
         _ => None,
-    };
+    }
+    .filter(|_| !timeline.source_timestamp_mode);
     let video_padding_end_pts = if !has_video && embedded_audio {
         Some(timeline.video_pts)
     } else {
@@ -617,6 +633,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     let mut decoded_audio_samples = 0_i64;
     output.set_video_end(video_end_pts)?;
     output.clear_vtt_subtitles()?;
+
     if let Some(media_path) = options.subtitles_media_path {
         benchmark::measure(Stage::Vtt, || {
             output.write_vtt_subtitles(
@@ -633,12 +650,27 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     }
 
     let result = (|| -> Result<()> {
+        if let Some(diagnostics) = output.input_diagnostics() {
+            diagnostics.set_stage(LiveInputStage::ReadingPacket);
+        }
+
         for (stream, packet) in ictx.packets() {
             check_playback_control(options.playback_control)?;
+
+            if let Some(diagnostics) = output.input_diagnostics() {
+                diagnostics.packet_received();
+            }
+
             if Some(stream.index()) == video_index {
                 if !video_finished && let Some(video) = video.as_mut() {
+                    if let Some(diagnostics) = output.input_diagnostics() {
+                        diagnostics.set_stage(LiveInputStage::ProcessingVideo);
+                    }
+
                     benchmark::measure(Stage::VideoDecode, || video.decoder.send_packet(&packet))?;
                     receive_video_frames(
+                        cfg,
+                        audio_padding_end_pts,
                         video,
                         timeline,
                         output,
@@ -648,6 +680,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
                         media_fade_plan,
                         options.playback_control,
                     )?;
+
                     if !has_audio && !timeline.source_timestamp_mode {
                         synchronize_silence_to_video(
                             cfg,
@@ -669,6 +702,10 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             } else if Some(stream.index()) == audio_index
                 && let Some(audio) = audio.as_mut()
             {
+                if let Some(diagnostics) = output.input_diagnostics() {
+                    diagnostics.set_stage(LiveInputStage::ProcessingAudio);
+                }
+
                 benchmark::measure(Stage::AudioDecode, || audio.decoder.send_packet(&packet))?;
                 receive_audio_frames(
                     audio,
@@ -707,10 +744,19 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             {
                 break;
             }
+
+            if let Some(diagnostics) = output.input_diagnostics() {
+                diagnostics.set_stage(LiveInputStage::ReadingPacket);
+            }
+        }
+
+        if let Some(diagnostics) = output.input_diagnostics() {
+            diagnostics.set_stage(LiveInputStage::Finishing);
         }
 
         finish_video(
             cfg,
+            audio_padding_end_pts,
             &mut video,
             timeline,
             output,
@@ -724,9 +770,11 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             !has_audio && !timeline.source_timestamp_mode,
             external_audio.as_deref_mut(),
         )?;
+
         if !has_audio && !timeline.source_timestamp_mode {
             synchronize_silence_to_video(cfg, timeline, output, options.playback_control)?;
         }
+
         if let Some(audio) = audio.as_mut() {
             benchmark::measure(Stage::AudioDecode, || audio.decoder.send_eof())?;
             receive_audio_frames(
@@ -777,9 +825,11 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         if !timeline.source_timestamp_mode {
             synchronize_timeline(cfg, timeline, output, last_video_frame)?;
         }
+
         if !video_finished_notified {
             output.video_finished()?;
         }
+
         Ok(())
     })();
 
@@ -813,6 +863,7 @@ fn seconds_to_microseconds(seconds: f64) -> i64 {
 #[allow(clippy::too_many_arguments)]
 fn finish_video<O: FrameOutput>(
     cfg: &OutputConfig,
+    audio_padding_end_pts: Option<i64>,
     video: &mut Option<VideoDecoder>,
     timeline: &mut Timeline,
     output: &mut O,
@@ -833,6 +884,8 @@ fn finish_video<O: FrameOutput>(
     if let Some(video) = video.as_mut() {
         benchmark::measure(Stage::VideoDecode, || video.decoder.send_eof())?;
         receive_video_frames(
+            cfg,
+            audio_padding_end_pts,
             video,
             timeline,
             output,
@@ -842,6 +895,7 @@ fn finish_video<O: FrameOutput>(
             media_fade_plan,
             playback_control,
         )?;
+
         if synthesize_silence {
             synchronize_silence_to_video(cfg, timeline, output, playback_control)?;
         } else if let Some(external_audio) = external_audio.as_deref_mut() {
@@ -857,6 +911,7 @@ fn finish_video<O: FrameOutput>(
     }
     repeat_single_video_frame_to_limit(
         cfg,
+        audio_padding_end_pts,
         video,
         timeline,
         output,
@@ -877,6 +932,7 @@ fn finish_video<O: FrameOutput>(
 #[allow(clippy::too_many_arguments)]
 fn repeat_single_video_frame_to_limit<O: FrameOutput>(
     cfg: &OutputConfig,
+    audio_padding_end_pts: Option<i64>,
     video: &mut Option<VideoDecoder>,
     timeline: &mut Timeline,
     output: &mut O,
@@ -896,9 +952,11 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
         return Ok(());
     };
     let repeat_frames = single_frame_repeat_frames(*decoded_frames, timeline.video_pts, limit_pts);
+
     if repeat_frames == 0 {
         return Ok(());
     }
+
     let Some(frame) = video.last_output_frame.as_ref() else {
         return Ok(());
     };
@@ -923,6 +981,15 @@ fn repeat_single_video_frame_to_limit<O: FrameOutput>(
             decoded_frames,
             None,
         )?;
+
+        synchronize_finished_audio(
+            cfg,
+            timeline,
+            output,
+            audio_padding_end_pts,
+            playback_control,
+        )?;
+
         if synthesize_silence {
             synchronize_silence_to_video(cfg, timeline, output, playback_control)?;
         } else if let Some(external_audio) = external_audio.as_deref_mut() {
@@ -984,6 +1051,7 @@ fn parse_duration_us(duration: &str) -> Option<i64> {
     let hours = parts.next()?.parse::<f64>().ok()?;
     let minutes = parts.next()?.parse::<f64>().ok()?;
     let seconds = parts.next()?.parse::<f64>().ok()?;
+
     if parts.next().is_some() {
         return None;
     }
@@ -994,6 +1062,8 @@ fn parse_duration_us(duration: &str) -> Option<i64> {
 
 #[allow(clippy::too_many_arguments)]
 fn receive_video_frames<O: FrameOutput>(
+    cfg: &OutputConfig,
+    audio_padding_end_pts: Option<i64>,
     video: &mut VideoDecoder,
     timeline: &mut Timeline,
     output: &mut O,
@@ -1004,10 +1074,16 @@ fn receive_video_frames<O: FrameOutput>(
     playback_control: &PlaybackControl,
 ) -> Result<()> {
     let mut raw = frame::Video::empty();
+
     while benchmark::measure_success(Stage::VideoDecode, || video.decoder.receive_frame(&mut raw))
         .is_ok()
     {
+        if let Some(diagnostics) = output.input_diagnostics() {
+            diagnostics.video_decoded();
+        }
+
         check_playback_control(playback_control)?;
+
         if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
             return Ok(());
         }
@@ -1020,15 +1096,35 @@ fn receive_video_frames<O: FrameOutput>(
             continue;
         }
 
-        let source_pts = raw.timestamp().or_else(|| raw.pts()).map(|pts| {
+        let timestamp = raw.timestamp().or_else(|| raw.pts());
+        // Repair discontinuities before frame-rate conversion can expand one
+        // bad timestamp into seconds of duplicate frames and discard the tail.
+        let timestamp =
+            if timeline.source_timestamp_mode && video.frame_rate_converter.timestamps_reliable {
+                let normalized = video.normalize_live_timestamp(
+                    timestamp,
+                    timeline.live_audio_source_us,
+                    cfg.channel_id.unwrap_or_default(),
+                );
+                timeline.live_video_source_us = normalized.map(|pts| {
+                    pts.rescale(
+                        video.frame_rate_converter.input_time_base,
+                        Rational(1, 1_000_000),
+                    )
+                    .saturating_add(video.source_frame_duration_us)
+                });
+
+                normalized
+            } else {
+                timestamp
+            };
+        let source_pts = timestamp.map(|pts| {
             pts.rescale(
                 video.frame_rate_converter.input_time_base,
                 Rational(1, video.output_fps as i32),
             )
         });
-        let output_frames = video
-            .frame_rate_converter
-            .output_frames(raw.timestamp().or_else(|| raw.pts()));
+        let output_frames = video.frame_rate_converter.output_frames(timestamp);
         if output_frames == 0 {
             continue;
         }
@@ -1057,11 +1153,13 @@ fn receive_video_frames<O: FrameOutput>(
         if *decoded_frames == 0 {
             video.last_output_frame = Some(reference_video_frame(&pristine)?);
         }
+
         if output_frames == 1 {
             // Pass the scaler result directly. The compositing helper keeps
             // it shared when possible and handles copy-on-write when the
             // single-frame repeat source or another owner aliases it.
             check_playback_control(playback_control)?;
+
             if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
                 return Ok(());
             }
@@ -1075,15 +1173,24 @@ fn receive_video_frames<O: FrameOutput>(
                 decoded_frames,
                 source_pts,
             )?;
+            synchronize_finished_audio(
+                cfg,
+                timeline,
+                output,
+                audio_padding_end_pts,
+                playback_control,
+            )?;
         } else {
             // Frame-rate up-conversion can share the pristine pixels. The
             // compositing helper requests a writable buffer only when an
             // active effect actually changes them.
             for index in 0..output_frames {
                 check_playback_control(playback_control)?;
+
                 if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
                     return Ok(());
                 }
+
                 let frame = reference_video_frame(&pristine)?;
                 encode_composited_frame(
                     frame,
@@ -1095,9 +1202,17 @@ fn receive_video_frames<O: FrameOutput>(
                     decoded_frames,
                     source_pts.map(|pts| pts - (output_frames - 1 - index)),
                 )?;
+                synchronize_finished_audio(
+                    cfg,
+                    timeline,
+                    output,
+                    audio_padding_end_pts,
+                    playback_control,
+                )?;
             }
         }
     }
+
     Ok(())
 }
 
@@ -1112,14 +1227,17 @@ fn encode_composited_frame<O: FrameOutput>(
     decoded_frames: &mut i64,
     source_pts: Option<i64>,
 ) -> Result<()> {
-    video.update_runtime_text(timeline.video_pts, timeline.text_pts);
+    video
+        .runtime_text
+        .update(timeline.video_pts, timeline.text_pts);
     let video_opacity = media_fade_plan.video_opacity_at(timeline.video_pts);
     let changes_pixels = video_frame_needs_write(
         video_opacity,
         video.logo.is_some(),
         video.text.is_some(),
-        video.runtime_text.is_some(),
+        video.runtime_text.overlay.is_some(),
     );
+
     if changes_pixels {
         make_video_frame_writable(&mut frame)?;
     }
@@ -1171,18 +1289,21 @@ fn apply_overlays(
             output.apply_logo_overlay(frame, logo, opacity);
         }
     }
+
     if let Some(text) = &mut video.text {
         let (width, height) = text.dimensions();
         benchmark::measure_overlay(Stage::TextStatic, width, height, || {
             text.blend(frame, timeline.video_pts, timeline.text_pts);
         });
     }
-    if let Some(text) = &mut video.runtime_text {
+
+    if let Some(text) = &mut video.runtime_text.overlay {
         let (width, height) = text.dimensions();
         benchmark::measure_overlay(Stage::TextRuntime, width, height, || {
             text.blend(frame, timeline.video_pts, timeline.text_pts);
         });
     }
+
     timeline.text_pts += 1;
 }
 
@@ -1207,6 +1328,7 @@ fn apply_video_fade(frame: &mut frame::Video, opacity: f32) {
         } as usize;
         let stride = frame.stride(plane);
         let data = frame.data_mut(plane);
+
         for row in data.chunks_mut(stride).take(height) {
             for sample in &mut row[..width] {
                 *sample = (*sample as f32 * opacity + target * (1.0 - opacity)).round() as u8;
@@ -1237,10 +1359,16 @@ fn receive_audio_frames<O: FrameOutput>(
     playback_control: &PlaybackControl,
 ) -> Result<()> {
     let mut raw = frame::Audio::empty();
+
     while benchmark::measure_success(Stage::AudioDecode, || audio.decoder.receive_frame(&mut raw))
         .is_ok()
     {
+        if let Some(diagnostics) = output.input_diagnostics() {
+            diagnostics.audio_decoded();
+        }
+
         check_playback_control(playback_control)?;
+
         if limit_pts.is_some_and(|limit| timeline.audio_pts >= limit) {
             return Ok(());
         }
@@ -1265,6 +1393,32 @@ fn receive_audio_frames<O: FrameOutput>(
             .or_else(|| raw.pts())
             .map(|pts| pts.rescale(audio.input_time_base, Rational(1, converted.rate() as i32)));
         let samples = converted.samples() as i64;
+        let source_pts = if timeline.source_timestamp_mode {
+            source_pts.map(|pts| {
+                let rate = i64::from(converted.rate());
+                let reference_pts = timeline.live_video_source_us.map(|pts| {
+                    pts.rescale(Rational(1, 1_000_000), Rational(1, converted.rate() as i32))
+                });
+                let update = audio.live_timestamps.normalize_with_reference(
+                    pts,
+                    samples,
+                    rate,
+                    reference_pts,
+                    Instant::now(),
+                );
+                update.log_correction("audio", pts, i64::from(converted.rate()), audio.channel_id);
+                timeline.live_audio_source_us = Some(
+                    update
+                        .pts
+                        .saturating_add(samples)
+                        .rescale(Rational(1, converted.rate() as i32), Rational(1, 1_000_000)),
+                );
+
+                update.pts
+            })
+        } else {
+            source_pts
+        };
         apply_audio_fade(&mut converted, timeline.audio_pts, media_fade_plan);
         converted.set_pts(Some(if timeline.source_timestamp_mode {
             source_pts
@@ -1273,14 +1427,19 @@ fn receive_audio_frames<O: FrameOutput>(
         } else {
             timeline.audio_pts
         }));
+
         if let Some(callback) = &audio.audio_frame_callback {
             callback.emit(&converted);
         }
-        output.encode_audio(&converted)?;
+        output.encode_audio_with_gain_hold(
+            &converted,
+            media_fade_plan.audio_gain_at(timeline.audio_pts + samples) < 1.0,
+        )?;
         audio.source_next_pts = converted.pts().map(|pts| pts + samples);
         timeline.audio_pts += samples;
         *decoded_samples += samples;
     }
+
     Ok(())
 }
 
@@ -1306,6 +1465,7 @@ fn resample_audio_frame(
     );
     converted.set_rate(output.rate);
     resampler.run(input, &mut converted)?;
+
     Ok(converted)
 }
 
@@ -1334,6 +1494,7 @@ fn flush_audio_resampler<O: FrameOutput>(
             audio.resampler.flush(&mut converted)
         })?;
         let samples = converted.samples() as i64;
+
         if samples == 0 {
             return Ok(());
         }
@@ -1344,7 +1505,10 @@ fn flush_audio_resampler<O: FrameOutput>(
         } else {
             timeline.audio_pts
         }));
-        output.encode_audio(&converted)?;
+        output.encode_audio_with_gain_hold(
+            &converted,
+            media_fade_plan.audio_gain_at(timeline.audio_pts + samples) < 1.0,
+        )?;
         audio.source_next_pts = converted.pts().map(|pts| pts + samples);
         timeline.audio_pts += samples;
         *decoded_samples += samples;
@@ -1394,6 +1558,87 @@ fn fallback_video_time_base(
     Ok(Rational(frame_rate.denominator(), frame_rate.numerator()))
 }
 
+struct RuntimeTextOverlay {
+    state: TextOverlayState,
+    revision: u64,
+    overlay: Option<TextOverlay>,
+    label: String,
+    width: u32,
+    height: u32,
+    fps: u32,
+    channel_id: i32,
+    context: &'static str,
+}
+
+impl RuntimeTextOverlay {
+    fn new(
+        label: &str,
+        cfg: &OutputConfig,
+        start_pts: i64,
+        scroll_pts: i64,
+        context: &'static str,
+    ) -> Result<Self> {
+        let snapshot = cfg.text_overlay_state.snapshot_at(scroll_pts);
+        let overlay = snapshot
+            .config
+            .as_ref()
+            .map(|text| {
+                TextOverlay::load(
+                    text,
+                    label,
+                    cfg.width,
+                    cfg.height,
+                    cfg.fps,
+                    start_pts,
+                    snapshot.start_pts.unwrap_or(scroll_pts),
+                    None,
+                )
+            })
+            .transpose()?
+            .flatten();
+
+        Ok(Self {
+            state: cfg.text_overlay_state.clone(),
+            revision: snapshot.revision,
+            overlay,
+            label: label.to_string(),
+            width: cfg.width,
+            height: cfg.height,
+            fps: cfg.fps,
+            channel_id: cfg.channel_id.unwrap_or_default(),
+            context,
+        })
+    }
+
+    fn update(&mut self, pts: i64, scroll_pts: i64) {
+        let snapshot = self.state.snapshot_at(scroll_pts);
+
+        if snapshot.revision == self.revision {
+            return;
+        }
+
+        self.revision = snapshot.revision;
+        self.overlay = snapshot.config.and_then(|config| {
+            TextOverlay::load(
+                &config,
+                &self.label,
+                self.width,
+                self.height,
+                self.fps,
+                pts,
+                snapshot.start_pts.unwrap_or(scroll_pts),
+                None,
+            )
+            .map_err(|error| {
+                debug!(channel = self.channel_id; "failed to render {}: {error:#}", self.context);
+                error
+            })
+            .ok()
+            .flatten()
+        });
+    }
+}
+
 struct VideoDecoder {
     decoder: codec::decoder::Video,
     scaler: scaling::Context,
@@ -1405,16 +1650,14 @@ struct VideoDecoder {
     y_offset: u32,
     logo: Option<LogoOverlay>,
     text: Option<TextOverlay>,
-    runtime_text_state: TextOverlayState,
-    runtime_text_revision: u64,
-    runtime_text: Option<TextOverlay>,
-    label: String,
+    runtime_text: RuntimeTextOverlay,
     frame_rate_converter: FrameRateConverter,
+    live_timestamps: LiveTimestampTracker,
+    source_frame_duration_us: i64,
     output_fps: u32,
     trim_start_us: Option<i64>,
     last_output_frame: Option<frame::Video>,
     last_composited_frame: Option<frame::Video>,
-    channel_id: i32,
 }
 
 impl VideoDecoder {
@@ -1455,26 +1698,8 @@ impl VideoDecoder {
             scale.scaled_height,
             scaling::flag::Flags::BILINEAR,
         )?;
-        let runtime_text_snapshot = cfg.text_overlay_state.snapshot_at(scroll_pts);
-        let runtime_text = runtime_text_snapshot
-            .config
-            .as_ref()
-            .map(|text| {
-                let text_start_pts = runtime_text_snapshot.start_pts.unwrap_or(scroll_pts);
-                TextOverlay::load(
-                    text,
-                    label,
-                    cfg.width,
-                    cfg.height,
-                    cfg.fps,
-                    start_pts,
-                    text_start_pts,
-                    None,
-                )
-            })
-            .transpose()?
-            .flatten();
-
+        let runtime_text =
+            RuntimeTextOverlay::new(label, cfg, start_pts, scroll_pts, "runtime text overlay")?;
         Ok(Self {
             decoder,
             scaler,
@@ -1499,20 +1724,23 @@ impl VideoDecoder {
                 })
                 .transpose()?
                 .flatten(),
-            runtime_text_state: cfg.text_overlay_state.clone(),
-            runtime_text_revision: runtime_text_snapshot.revision,
             runtime_text,
-            label: label.to_string(),
             frame_rate_converter: FrameRateConverter::new(
                 input_time_base,
                 cfg.fps,
                 timestamps_reliable,
             ),
+            live_timestamps: LiveTimestampTracker::default(),
+            source_frame_duration_us: 1_i64
+                .rescale(
+                    fallback_video_time_base(stream.avg_frame_rate(), stream.rate(), cfg.fps)?,
+                    Rational(1, 1_000_000),
+                )
+                .max(1),
             output_fps: cfg.fps,
             trim_start_us: timestamps_reliable.then_some(trim_start_us).flatten(),
             last_output_frame: None,
             last_composited_frame: None,
-            channel_id: cfg.channel_id.unwrap_or_default(),
         })
     }
 
@@ -1523,31 +1751,29 @@ impl VideoDecoder {
             || self.y_offset != 0
     }
 
-    fn update_runtime_text(&mut self, pts: i64, scroll_pts: i64) {
-        let snapshot = self.runtime_text_state.snapshot_at(scroll_pts);
-        if snapshot.revision == self.runtime_text_revision {
-            return;
-        }
-        self.runtime_text_revision = snapshot.revision;
-        self.runtime_text = snapshot.config.and_then(|config| {
-            let text_start_pts = snapshot.start_pts.unwrap_or(scroll_pts);
-            TextOverlay::load(
-                &config,
-                &self.label,
-                self.output_width,
-                self.output_height,
-                self.output_fps,
-                pts,
-                text_start_pts,
-                None,
-            )
-            .map_err(|error| {
-                debug!(channel = self.channel_id; "failed to render runtime text overlay: {error:#}");
-                error
-            })
-            .ok()
-            .flatten()
-        });
+    fn normalize_live_timestamp(
+        &mut self,
+        timestamp: Option<i64>,
+        reference_us: Option<i64>,
+        channel_id: i32,
+    ) -> Option<i64> {
+        let timestamp = timestamp?;
+        let time_base = self.frame_rate_converter.input_time_base;
+        let source_us = timestamp.rescale(time_base, Rational(1, 1_000_000));
+        let update = self.live_timestamps.normalize_with_reference(
+            source_us,
+            self.source_frame_duration_us,
+            1_000_000,
+            reference_us,
+            Instant::now(),
+        );
+        update.log_correction("video", source_us, 1_000_000, channel_id);
+
+        Some(if update.pts == source_us {
+            timestamp
+        } else {
+            update.pts.rescale(Rational(1, 1_000_000), time_base)
+        })
     }
 }
 
@@ -1629,6 +1855,7 @@ impl FrameRateConverter {
         };
         let Some(timestamp) = timestamp else {
             self.next_output_frame += 1;
+
             return 1;
         };
 
@@ -1646,6 +1873,8 @@ impl FrameRateConverter {
 struct AudioDecoder {
     audio_frame_callback: Option<crate::AudioFrameCallback>,
     source_next_pts: Option<i64>,
+    live_timestamps: LiveTimestampTracker,
+    channel_id: i32,
     decoder: codec::decoder::Audio,
     resampler: resampling::Context,
     input_channel_layout: ChannelLayout,
@@ -1674,10 +1903,12 @@ impl ExternalAudioInput {
         let mut input = open_media_input(path)?;
         let container_duration_us = (input.duration() > 0).then_some(input.duration());
         let seek_seconds = (!is_live_input(path)).then_some(seek_seconds).flatten();
+
         if let Some(seek_seconds) = seek_seconds {
             seek_input(&mut input, seek_seconds)
                 .with_context(|| format!("failed to seek external audio {path}"))?;
         }
+
         let stream = input
             .streams()
             .best(media::Type::Audio)
@@ -1718,6 +1949,7 @@ impl ExternalAudioInput {
             check_playback_control(playback_control)?;
             let packet = {
                 let mut packets = self.input.packets();
+
                 loop {
                     match packets.next() {
                         Some((stream, packet)) if stream.index() == self.stream_index => {
@@ -1770,6 +2002,7 @@ impl ExternalAudioInput {
             && let Some(target_audio_pts) = target_audio_pts
         {
             let silence_samples = target_audio_pts.saturating_sub(timeline.audio_pts);
+
             if silence_samples > 0 {
                 write_silence(cfg, timeline, output, silence_samples)?;
                 *decoded_samples += silence_samples;
@@ -1801,6 +2034,7 @@ impl AudioDecoder {
                     "{label}: audio stream has an invalid time base and no sample rate"
                 ));
             }
+
             let fallback = Rational(1, sample_rate);
             warn!(
                 channel = cfg.channel_id.unwrap_or_default();
@@ -1823,6 +2057,8 @@ impl AudioDecoder {
             decoder,
             resampler,
             source_next_pts: None,
+            live_timestamps: LiveTimestampTracker::default(),
+            channel_id: cfg.channel_id.unwrap_or_default(),
             input_channel_layout: channel_layout,
             input_time_base,
             trim_start_us: timestamps_reliable.then_some(trim_start_us).flatten(),
@@ -1832,6 +2068,7 @@ impl AudioDecoder {
 
 fn audio_channel_layout(decoder: &codec::decoder::Audio) -> ChannelLayout {
     let channel_layout = decoder.channel_layout();
+
     if channel_layout.is_empty() {
         ChannelLayout::default(i32::from(decoder.channels()).max(1))
     } else {
@@ -1923,10 +2160,39 @@ fn synchronize_silence_to_video<O: FrameOutput>(
         i128::from(cfg.fps),
     ) as i64;
     let samples = target_audio_pts.saturating_sub(timeline.audio_pts);
+
     if samples > 0 {
         write_silence(cfg, timeline, output, samples)?;
     }
     check_playback_control(playback_control)
+}
+
+/// The decoder may release several buffered video frames at EOF or during
+/// frame-rate conversion. Fill the ended audio track between those frames,
+/// rather than waiting until the entire decoded batch has been emitted.
+fn synchronize_finished_audio<O: FrameOutput>(
+    cfg: &OutputConfig,
+    timeline: &mut Timeline,
+    output: &mut O,
+    audio_end_pts: Option<i64>,
+    playback_control: &PlaybackControl,
+) -> Result<()> {
+    // Decoder priming and end padding can make the decoded sample count end
+    // slightly before the container duration. Two codec frames cover AAC's
+    // usual priming plus the final partial frame without masking a real gap.
+    let audio_end_tolerance = (output.audio_frame_size().max(1) as i64).saturating_mul(2);
+    let audio_end_reached = audio_end_pts.is_some_and(|end_pts| {
+        timeline.audio_pts >= end_pts
+            || (timeline.audio_pts >= end_pts.saturating_sub(audio_end_tolerance)
+                && i128::from(timeline.video_pts) * i128::from(cfg.sample_rate)
+                    >= i128::from(end_pts) * i128::from(cfg.fps))
+    });
+
+    if audio_end_reached {
+        synchronize_silence_to_video(cfg, timeline, output, playback_control)?;
+    }
+
+    Ok(())
 }
 
 /// Keep streams interleaved once one embedded track reaches its declared end.
@@ -1944,19 +2210,7 @@ fn synchronize_declared_stream_ends<O: FrameOutput>(
 ) -> Result<()> {
     check_playback_control(playback_control)?;
 
-    // Decoder priming and end padding can make the decoded sample count end
-    // slightly before the container duration. Two codec frames cover AAC's
-    // usual priming plus the final partial frame without masking a real gap.
-    let audio_end_tolerance = (output.audio_frame_size().max(1) as i64).saturating_mul(2);
-    let audio_end_reached = audio_end_pts.is_some_and(|end_pts| {
-        timeline.audio_pts >= end_pts
-            || (timeline.audio_pts >= end_pts.saturating_sub(audio_end_tolerance)
-                && i128::from(timeline.video_pts) * i128::from(cfg.sample_rate)
-                    >= i128::from(end_pts) * i128::from(cfg.fps))
-    });
-    if audio_end_reached {
-        synchronize_silence_to_video(cfg, timeline, output, playback_control)?;
-    }
+    synchronize_finished_audio(cfg, timeline, output, audio_end_pts, playback_control)?;
 
     let video_end_reached = video_end_pts.is_some_and(|end_pts| {
         timeline.video_pts >= end_pts
@@ -1964,6 +2218,7 @@ fn synchronize_declared_stream_ends<O: FrameOutput>(
                 && i128::from(timeline.audio_pts) * i128::from(cfg.fps)
                     >= i128::from(end_pts) * i128::from(cfg.sample_rate))
     });
+
     if video_end_reached {
         let (video_frames, _) = padding_to_sync(
             timeline.video_pts,
@@ -1971,6 +2226,7 @@ fn synchronize_declared_stream_ends<O: FrameOutput>(
             cfg.fps,
             cfg.sample_rate,
         )?;
+
         if video_frames > 0 {
             write_padding_video_frames(cfg, timeline, output, video_frames, last_video_frame)?;
         }
@@ -1997,6 +2253,7 @@ fn synchronize_after_skip<O: FrameOutput>(
     if output.reset_after_skip(target_video_pts, target_audio_pts)? {
         timeline.video_pts = target_video_pts;
         timeline.audio_pts = target_audio_pts;
+
         return Ok(());
     }
 
@@ -2052,6 +2309,7 @@ fn write_black_frames<O: FrameOutput>(
 ) -> Result<()> {
     for _ in 0..frames {
         let mut black = black_video_frame_for_config(cfg);
+
         if let Some(overlays) = overlays.as_mut() {
             overlays.apply(&mut black, timeline);
         }
@@ -2059,19 +2317,13 @@ fn write_black_frames<O: FrameOutput>(
         output.encode_video(&black)?;
         timeline.video_pts += 1;
     }
+
     Ok(())
 }
 
 struct FallbackOverlays {
     text: Option<TextOverlay>,
-    runtime_text_state: TextOverlayState,
-    runtime_text_revision: u64,
-    runtime_text: Option<TextOverlay>,
-    label: String,
-    output_width: u32,
-    output_height: u32,
-    output_fps: u32,
-    channel_id: i32,
+    runtime_text: RuntimeTextOverlay,
 }
 
 impl FallbackOverlays {
@@ -2082,25 +2334,13 @@ impl FallbackOverlays {
         scroll_pts: i64,
         end_pts: Option<i64>,
     ) -> Result<Self> {
-        let runtime_text_snapshot = cfg.text_overlay_state.snapshot_at(scroll_pts);
-        let runtime_text = runtime_text_snapshot
-            .config
-            .as_ref()
-            .map(|text| {
-                let text_start_pts = runtime_text_snapshot.start_pts.unwrap_or(scroll_pts);
-                TextOverlay::load(
-                    text,
-                    label,
-                    cfg.width,
-                    cfg.height,
-                    cfg.fps,
-                    fade_start_pts,
-                    text_start_pts,
-                    None,
-                )
-            })
-            .transpose()?
-            .flatten();
+        let runtime_text = RuntimeTextOverlay::new(
+            label,
+            cfg,
+            fade_start_pts,
+            scroll_pts,
+            "fallback runtime text overlay",
+        )?;
 
         Ok(Self {
             text: cfg
@@ -2120,14 +2360,7 @@ impl FallbackOverlays {
                 })
                 .transpose()?
                 .flatten(),
-            runtime_text_state: cfg.text_overlay_state.clone(),
-            runtime_text_revision: runtime_text_snapshot.revision,
             runtime_text,
-            label: label.to_string(),
-            output_width: cfg.width,
-            output_height: cfg.height,
-            output_fps: cfg.fps,
-            channel_id: cfg.channel_id.unwrap_or_default(),
         })
     }
 
@@ -2135,38 +2368,13 @@ impl FallbackOverlays {
         if let Some(text) = &mut self.text {
             text.blend(frame, timeline.video_pts, timeline.text_pts);
         }
-        self.update_runtime_text(timeline.video_pts, timeline.text_pts);
-        if let Some(text) = &mut self.runtime_text {
+        self.runtime_text
+            .update(timeline.video_pts, timeline.text_pts);
+        if let Some(text) = &mut self.runtime_text.overlay {
             text.blend(frame, timeline.video_pts, timeline.text_pts);
         }
-        timeline.text_pts += 1;
-    }
 
-    fn update_runtime_text(&mut self, pts: i64, scroll_pts: i64) {
-        let snapshot = self.runtime_text_state.snapshot_at(scroll_pts);
-        if snapshot.revision == self.runtime_text_revision {
-            return;
-        }
-        self.runtime_text_revision = snapshot.revision;
-        self.runtime_text = snapshot.config.and_then(|config| {
-            let text_start_pts = snapshot.start_pts.unwrap_or(scroll_pts);
-            TextOverlay::load(
-                &config,
-                &self.label,
-                self.output_width,
-                self.output_height,
-                self.output_fps,
-                pts,
-                text_start_pts,
-                None,
-            )
-            .map_err(|error| {
-                debug!(channel = self.channel_id; "failed to render fallback runtime text overlay: {error:#}");
-                error
-            })
-            .ok()
-            .flatten()
-        });
+        timeline.text_pts += 1;
     }
 }
 
@@ -2186,6 +2394,7 @@ fn write_padding_video_frames<O: FrameOutput>(
             output.encode_video(&frame)?;
             timeline.video_pts += 1;
         }
+
         Ok(())
     } else {
         write_black_frames(cfg, timeline, output, frames, None)
@@ -2217,6 +2426,7 @@ fn fill_plane(frame: &mut frame::Video, plane: usize, value: u8) {
     } as usize;
     let stride = frame.stride(plane);
     let data = frame.data_mut(plane);
+
     for y in 0..height {
         let start = y * stride;
         data[start..start + width].fill(value);
@@ -2264,11 +2474,13 @@ fn write_silence_frame<O: FrameOutput>(
     );
     frame.set_rate(cfg.sample_rate);
     frame.set_pts(Some(timeline.audio_pts));
+
     for plane in 0..frame.planes() {
         frame.plane_mut::<f32>(plane).fill(0.0);
     }
     output.encode_audio(&frame)?;
     timeline.audio_pts += samples as i64;
+
     Ok(())
 }
 
@@ -2280,41 +2492,48 @@ fn write_silence<O: FrameOutput>(
 ) -> Result<()> {
     if samples > 0 && output.pad_audio(samples)? {
         timeline.audio_pts += samples;
+
         return Ok(());
     }
 
     let frame_samples = output.audio_frame_size().max(1);
+
     while samples > 0 {
         let current_samples = samples.min(frame_samples as i64) as usize;
         write_silence_frame(cfg, timeline, output, current_samples)?;
         samples -= current_samples as i64;
     }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
+    use std::{
+        path::Path,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
     };
 
     use anyhow::Result;
-    use ffmpeg_next::{codec, frame, media, util::format::pixel::Pixel};
+    use ffmpeg_next::{Rescale, codec, frame, media, util::format::pixel::Pixel};
+
+    use crate::{
+        AudioFrameCallback,
+        output::FrameOutput,
+        utils::{config::OutputConfig, helper::open_media_input},
+    };
 
     use super::{
         AudioDecoder, FrameRateConverter, InputPlaybackOptions, LogoFade, LogoFadePlan,
-        MediaFadePlan, PlaybackControl, Rational, Timeline, apply_audio_fade,
+        MediaFadePlan, PlaybackControl, Rational, Timeline, VideoDecoder, apply_audio_fade,
         fallback_video_time_base, fit_dimensions, has_valid_time_base, padding_to_sync,
         parse_duration_us, play_clip, play_clip_with_external_audio, play_opened_input,
         resample_audio_frame, should_loop_input, should_play_loop_iteration,
         single_frame_repeat_frames, synchronize_after_skip, synchronize_declared_stream_ends,
         video_frame_needs_write, write_padding_video_frames,
-    };
-    use crate::{
-        AudioFrameCallback,
-        output::FrameOutput,
-        utils::{config::OutputConfig, helper::open_media_input},
     };
 
     #[test]
@@ -2391,6 +2610,7 @@ mod tests {
                 frame.pts().unwrap_or_default(),
             ));
             self.events.push("video");
+
             Ok(())
         }
 
@@ -2399,16 +2619,19 @@ mod tests {
             self.audio_frame_samples.push(frame.samples());
             self.audio_pts.push(frame.pts().unwrap_or_default());
             self.events.push("audio");
+
             Ok(())
         }
 
         fn video_finished(&mut self) -> Result<()> {
             self.events.push("video_finished");
+
             Ok(())
         }
 
         fn reset_after_skip(&mut self, video_pts: i64, audio_pts: i64) -> Result<bool> {
             self.skip_target = Some((video_pts, audio_pts));
+
             Ok(self.reset_on_skip)
         }
     }
@@ -2423,8 +2646,8 @@ mod tests {
     }
 
     fn media_mix_asset(name: &str) -> String {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/assets/storage/media_mix")
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests_assets/storage/media_mix")
             .join(name)
             .to_string_lossy()
             .into_owned()
@@ -2651,6 +2874,50 @@ mod tests {
     }
 
     #[test]
+    fn live_video_outliers_are_repaired_before_frame_rate_conversion() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let input = open_media_input(&media_mix_asset("av_sync.mp4")).unwrap();
+        let stream = input.streams().best(media::Type::Video).unwrap();
+
+        for jump_us in [5_377_000, -5_377_000] {
+            let mut video =
+                VideoDecoder::new(&stream, &cfg, "timestamp test", None, 0, 0, None).unwrap();
+            let source_time_base = video.frame_rate_converter.input_time_base;
+            let duration_us = video.source_frame_duration_us;
+            let mut healthy_conversion = FrameRateConverter::new(source_time_base, cfg.fps, true);
+
+            for index in 0..10 {
+                let source_us = index * duration_us + if index == 1 { jump_us } else { 0 };
+                let source_pts = source_us.rescale(Rational(1, 1_000_000), source_time_base);
+                let healthy_pts =
+                    (index * duration_us).rescale(Rational(1, 1_000_000), source_time_base);
+                let corrected = video.normalize_live_timestamp(Some(source_pts), None, 0);
+                assert_eq!(
+                    video.frame_rate_converter.output_frames(corrected),
+                    healthy_conversion.output_frames(Some(healthy_pts)),
+                    "an isolated timestamp outlier must not duplicate or drop video frames"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn live_video_real_gap_supported_by_audio_still_produces_filler_frames() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let input = open_media_input(&media_mix_asset("av_sync.mp4")).unwrap();
+        let stream = input.streams().best(media::Type::Video).unwrap();
+        let mut video =
+            VideoDecoder::new(&stream, &cfg, "timestamp test", None, 0, 0, None).unwrap();
+        let initial = video.normalize_live_timestamp(Some(0), None, 0);
+        assert_eq!(video.frame_rate_converter.output_frames(initial), 1);
+        let resumed_source =
+            1_i64.rescale(Rational(1, 1), video.frame_rate_converter.input_time_base);
+        let resumed = video.normalize_live_timestamp(Some(resumed_source), Some(1_000_000), 0);
+        assert_eq!(resumed, Some(resumed_source));
+        assert_eq!(video.frame_rate_converter.output_frames(resumed), 25);
+    }
+
+    #[test]
     fn source_timestamp_mode_keeps_audio_and_video_on_the_input_timebase() {
         let cfg = OutputConfig::new(320, 240, 25, 48_000);
         let path = media_mix_asset("av_sync.mp4");
@@ -2872,6 +3139,7 @@ mod tests {
             &cfg,
         );
         let mut audio = frame::Audio::new(Sample::F32(Type::Planar), 4, ChannelLayout::STEREO);
+
         for plane in 0..audio.planes() {
             audio.plane_mut::<f32>(plane).fill(1.0);
         }
@@ -2904,15 +3172,31 @@ mod tests {
 
         assert_eq!(timeline.video_pts, 250);
         assert_eq!(timeline.audio_pts, 480_000);
-        let longest_video_run = output
-            .events
-            .split(|event| *event == "audio")
-            .map(|events| events.iter().filter(|event| **event == "video").count())
-            .max()
-            .unwrap_or_default();
+        // Decoder delay can leave real audio ahead of video before its end.
+        // Only the final second (after this fixture's nine-second audio track)
+        // must receive silence interleaved with each remaining video frame.
+        let mut video_frames = 0;
+        let mut unaccompanied_frames = 0;
+        let mut longest_video_run = 0;
+
+        for event in &output.events {
+            match *event {
+                "video" => {
+                    video_frames += 1;
+
+                    if video_frames > 225 {
+                        unaccompanied_frames += 1;
+                        longest_video_run = longest_video_run.max(unaccompanied_frames);
+                    }
+                }
+                "audio" => unaccompanied_frames = 0,
+                _ => {}
+            }
+        }
+
         assert!(
-            longest_video_run <= 10,
-            "short embedded audio must be followed by interleaved silence; longest video run was {longest_video_run}"
+            longest_video_run <= 1,
+            "ended audio must be padded between video frames; longest video run was {longest_video_run}"
         );
         assert_eq!(output.events.last(), Some(&"video_finished"));
     }

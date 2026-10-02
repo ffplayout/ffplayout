@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     ffi::CString,
-    fs,
+    fmt, fs,
     path::Path,
     ptr,
 };
@@ -17,11 +17,6 @@ use ffmpeg::{
 };
 use ffmpeg_next as ffmpeg;
 
-use super::{
-    hls,
-    recording::{self, RecordingMonitor, RecordingMuxer},
-    vtt,
-};
 use crate::{
     HlsHealth,
     analysis::{audio_level::AudioLevelMeter, loudness::LoudnessMeter},
@@ -31,11 +26,18 @@ use crate::{
     utils::{
         config::{
             HlsSubtitle, HlsVariant, OutputConfig, audio_encoder_context,
-            engine_audio_sample_format, validate_output_protocol_options, video_codec_uses_bitrate,
+            engine_audio_sample_format, validate_output_metadata, validate_output_protocol_options,
+            video_codec_uses_bitrate,
         },
         ffmpeg_capabilities::validate_muxer_options,
         helper::{is_network_url, open_network_output},
     },
+};
+
+use super::{
+    hls,
+    recording::{self, RecordingMonitor, RecordingMuxer},
+    vtt,
 };
 
 pub(super) struct EncodedOutput {
@@ -110,23 +112,28 @@ impl VaapiUpload {
                 0,
             )
         };
+
         if result < 0 {
             return Err(ffmpeg::Error::from(result))
                 .context("failed to create VAAPI device /dev/dri/renderD128");
         }
+
         if device_ctx.is_null() {
             return Err(anyhow!("VAAPI device creation returned no device context"));
         }
 
         let frames_ctx = unsafe { ffmpeg::ffi::av_hwframe_ctx_alloc(device_ctx) };
         unsafe { ffmpeg::ffi::av_buffer_unref(&mut device_ctx) };
+
         if frames_ctx.is_null() {
             return Err(anyhow!("failed to allocate VAAPI frame context"));
         }
 
         let frames = unsafe { (*frames_ctx).data.cast::<ffmpeg::ffi::AVHWFramesContext>() };
+
         if frames.is_null() {
             unsafe { ffmpeg::ffi::av_buffer_unref(&mut (frames_ctx as *mut _)) };
+
             return Err(anyhow!("VAAPI frame context has no frame pool data"));
         }
         unsafe {
@@ -135,9 +142,12 @@ impl VaapiUpload {
             (*frames).width = width as i32;
             (*frames).height = height as i32;
         }
+
         let result = unsafe { ffmpeg::ffi::av_hwframe_ctx_init(frames_ctx) };
+
         if result < 0 {
             unsafe { ffmpeg::ffi::av_buffer_unref(&mut (frames_ctx as *mut _)) };
+
             return Err(ffmpeg::Error::from(result))
                 .context("failed to initialize VAAPI frame context");
         }
@@ -150,10 +160,12 @@ impl VaapiUpload {
 
     fn attach_to_encoder(&self, video_ctx: &mut codec::encoder::video::Video) -> Result<()> {
         let frames_ctx = unsafe { ffmpeg::ffi::av_buffer_ref(self.frames_ctx) };
+
         if frames_ctx.is_null() {
             return Err(anyhow!("failed to retain VAAPI frame context for encoder"));
         }
         unsafe { (*video_ctx.as_mut_ptr()).hw_frames_ctx = frames_ctx };
+
         Ok(())
     }
 
@@ -162,21 +174,26 @@ impl VaapiUpload {
         let result = unsafe {
             ffmpeg::ffi::av_hwframe_get_buffer(self.frames_ctx, self.frame.as_mut_ptr(), 0)
         };
+
         if result < 0 {
             return Err(ffmpeg::Error::from(result)).context("failed to allocate VAAPI frame");
         }
+
         let result = unsafe {
             ffmpeg::ffi::av_hwframe_transfer_data(self.frame.as_mut_ptr(), source.as_ptr(), 0)
         };
+
         if result < 0 {
             return Err(ffmpeg::Error::from(result)).context("failed to upload frame to VAAPI");
         }
+
         let result =
             unsafe { ffmpeg::ffi::av_frame_copy_props(self.frame.as_mut_ptr(), source.as_ptr()) };
         if result < 0 {
             return Err(ffmpeg::Error::from(result))
                 .context("failed to copy VAAPI frame properties");
         }
+
         Ok(&self.frame)
     }
 }
@@ -210,6 +227,7 @@ impl EncodedOutput {
         let input_height = cfg.height;
         let mut recording_cfg = cfg.clone();
         recording_cfg.protocol_options.clear();
+        recording_cfg.metadata_options.clear();
         recording_cfg.width = encode.width.max(1);
         recording_cfg.height = encode.height.max(1);
         recording_cfg.video_codec = encode.video_codec.clone();
@@ -234,6 +252,7 @@ impl EncodedOutput {
             },
         )?;
         output.recording_monitor = Some(monitor);
+
         Ok(output)
     }
 
@@ -251,6 +270,8 @@ impl EncodedOutput {
         output_format: EncodedFormat,
         hls_health: Option<HlsHealth>,
     ) -> Result<Self> {
+        validate_output_metadata(&cfg.metadata_options).map_err(anyhow::Error::msg)?;
+
         match &output_format {
             EncodedFormat::Hls { .. } => {
                 validate_muxer_options("hls", &cfg.muxer_options).map_err(anyhow::Error::msg)?;
@@ -260,6 +281,7 @@ impl EncodedOutput {
             }
             EncodedFormat::Auto | EncodedFormat::Recording { .. } => {}
         }
+
         match &output_format {
             EncodedFormat::Stream { .. } if is_network_url(path) => {
                 validate_output_protocol_options(cfg.stream_type, path, &cfg.protocol_options)
@@ -280,6 +302,7 @@ impl EncodedOutput {
             }
             _ => {}
         }
+
         let pace_output = !matches!(&output_format, EncodedFormat::Recording { .. });
         let hls_variants = match &output_format {
             EncodedFormat::Auto
@@ -295,6 +318,7 @@ impl EncodedOutput {
         };
         let vtt_subtitles = hls_subtitle.is_some();
         hls::validate_variants(hls_variants)?;
+
         if let Some(subtitle) = hls_subtitle {
             subtitle.validate().map_err(anyhow::Error::msg)?;
         }
@@ -342,9 +366,11 @@ impl EncodedOutput {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create HLS directory {}", parent.display()))?;
         }
+
         if matches!(output_format, EncodedFormat::Hls { .. }) && !uses_var_stream_map {
             hls::remove_master_playlist(path)?;
         }
+
         let hls_start_number = if matches!(output_format, EncodedFormat::Hls { .. }) {
             let resume_playlists =
                 hls_resume_playlist_paths(path, &hls_playlist_path, hls_variants)?;
@@ -377,6 +403,17 @@ impl EncodedOutput {
             }
             EncodedFormat::Auto => format::output(path)?,
         };
+
+        if !cfg.metadata_options.is_empty()
+            && !matches!(output_format, EncodedFormat::Recording { .. })
+        {
+            let mut metadata = ffmpeg::Dictionary::new();
+
+            for (key, value) in &cfg.metadata_options {
+                metadata.set(key, value);
+            }
+            octx.set_metadata(metadata);
+        }
         // Matroska stores codec initialization data in its header. Keep it on
         // the shared encoders when a packet-copy recording is active; FFmpeg's
         // stream muxers accept those headers as well. An encode-mode recording
@@ -407,6 +444,7 @@ impl EncodedOutput {
             )?);
             audio_streams.push(open_audio_stream(&mut octx, cfg, global_header, variant)?);
         }
+
         if vtt_subtitles {
             subtitle_streams.push(open_subtitle_stream(&mut octx)?);
         }
@@ -459,9 +497,11 @@ impl EncodedOutput {
                     hls::standalone_segment_pattern(path)
                 };
                 options.set("hls_segment_filename", &segment_filename);
+
                 if let Some(start_number) = hls_start_number {
                     options.set("start_number", &start_number.to_string());
                 }
+
                 if uses_var_stream_map {
                     options.set("master_pl_name", "master.m3u8");
                     options.set(
@@ -571,6 +611,7 @@ impl EncodedOutput {
                 } else {
                     frame
                 };
+
                 if let Some(vaapi_upload) = &mut stream.vaapi_upload {
                     let vaapi_frame = vaapi_upload.upload(input_frame)?;
                     stream.encoder.send_frame(vaapi_frame)?;
@@ -581,6 +622,7 @@ impl EncodedOutput {
             }
             Ok::<_, anyhow::Error>(())
         })?;
+
         if let Some(error) = self
             .transcoded_recording
             .as_mut()
@@ -588,23 +630,41 @@ impl EncodedOutput {
         {
             self.disable_transcoded_recording(error);
         }
+
         Ok(())
     }
 
     pub(super) fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.encode_audio_with_effects(frame, true)
+    }
+
+    pub(super) fn encode_processed_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.encode_audio_with_effects(frame, false)
+    }
+
+    fn encode_audio_with_effects(
+        &mut self,
+        frame: &frame::Audio,
+        apply_effects: bool,
+    ) -> Result<()> {
         if frame.samples() == 0 {
             return Ok(());
         }
 
         let mut frame = frame.clone();
         benchmark::measure(Stage::AudioProcess, || {
-            self.audio_effects.process(&mut frame);
+            if apply_effects {
+                self.audio_effects.process(&mut frame);
+            }
+
             self.audio_level_meter.process_frame(&frame);
             self.loudness_meter.process_frame(&frame);
             self.align_audio_buffer_to_frame_pts(frame.pts())?;
+
             if self.audio_buffer[0].is_empty() {
                 self.audio_buffer_pts = frame.pts();
             }
+
             for channel in 0..self.audio_buffer.len() {
                 self.audio_buffer[channel].extend(
                     frame
@@ -617,6 +677,7 @@ impl EncodedOutput {
         })?;
 
         self.write_complete_audio_frames()?;
+
         if let Some(error) = self
             .transcoded_recording
             .as_mut()
@@ -624,6 +685,7 @@ impl EncodedOutput {
         {
             self.disable_transcoded_recording(error);
         }
+
         Ok(())
     }
 
@@ -634,13 +696,16 @@ impl EncodedOutput {
         let Some(buffer_pts) = self.audio_buffer_pts else {
             return Ok(());
         };
+
         if self.audio_buffer[0].is_empty() {
             return Ok(());
         }
 
         let expected_pts = buffer_pts + self.audio_buffer[0].len() as i64;
+
         if frame_pts != expected_pts {
             self.pad_audio_buffer()?;
+
             if self.audio_buffer[0].is_empty() {
                 self.audio_buffer_pts = Some(frame_pts);
             }
@@ -656,11 +721,13 @@ impl EncodedOutput {
         source_start_ms: i64,
     ) -> Result<()> {
         self.pending_vtt_cues.clear();
+
         if !self.vtt_subtitles || self.subtitle_streams.is_empty() {
             return Ok(());
         }
 
         let vtt_path = vtt::sidecar_path(media_path);
+
         if !vtt_path.exists() {
             return Ok(());
         }
@@ -697,11 +764,13 @@ impl EncodedOutput {
             packet.set_duration(cue.end_ms - cue.start_ms);
             self.write_subtitle_packet(&mut packet)?;
         }
+
         Ok(())
     }
 
     fn write_complete_audio_frames(&mut self) -> Result<()> {
         let frame_size = self.audio_frame_size();
+
         if frame_size == 0 {
             return Err(anyhow!("audio encoder reported a frame size of zero"));
         }
@@ -741,6 +810,7 @@ impl EncodedOutput {
             for index in 0..self.audio_streams.len() {
                 {
                     let stream = &mut self.audio_streams[index];
+
                     if let Some(resampler) = &mut stream.resampler {
                         let mut converted = frame::Audio::empty();
                         resampler.run(frame, &mut converted)?;
@@ -762,6 +832,7 @@ impl EncodedOutput {
         }
 
         let frame_size = self.audio_frame_size();
+
         for channel in &mut self.audio_buffer {
             channel.resize(frame_size, 0.0);
         }
@@ -777,6 +848,7 @@ impl EncodedOutput {
         if let Some(monitor) = &mut self.recording_monitor {
             monitor.check()?;
         }
+
         let stream_time_base = self
             .octx
             .stream(stream_index)
@@ -785,20 +857,24 @@ impl EncodedOutput {
 
         packet.set_stream(stream_index);
         packet.rescale_ts(encoder_time_base, stream_time_base);
+
         if self.pace_output {
             self.clock
                 .wait_until(packet.dts().or_else(|| packet.pts()), stream_time_base);
         }
         packet.write_interleaved(&mut self.octx)?;
+
         if let Some(health) = &self.hls_health {
             health.mark_muxed();
         }
+
         Ok(())
     }
 
     pub(super) fn finish(mut self) -> Result<()> {
         benchmark::measure(Stage::AudioEncode, || {
             self.pad_audio_buffer()?;
+
             for index in 0..self.audio_streams.len() {
                 self.flush_audio_resampler(index)?;
                 self.audio_streams[index].encoder.send_eof()?;
@@ -814,6 +890,7 @@ impl EncodedOutput {
             }
 
             self.octx.write_trailer()?;
+
             if let Some(recording) = self.recording.take()
                 && let Err(error) = recording.finish()
             {
@@ -821,11 +898,13 @@ impl EncodedOutput {
             }
             Ok::<_, anyhow::Error>(())
         })?;
+
         if let Some(recording) = self.transcoded_recording.take()
             && let Err(error) = recording.finish()
         {
             self.log_recording_error(error);
         }
+
         Ok(())
     }
 
@@ -860,6 +939,7 @@ impl EncodedOutput {
 
     fn write_video_packets(&mut self, index: usize) -> Result<()> {
         let mut packet = ffmpeg::Packet::empty();
+
         while self.video_streams[index]
             .encoder
             .receive_packet(&mut packet)
@@ -868,6 +948,7 @@ impl EncodedOutput {
             if packet.duration() == 0 {
                 packet.set_duration(1);
             }
+
             let stream_index = self.video_streams[index].stream_index;
             let time_base = self.video_streams[index].encoder.time_base();
             let recording_error = (index == self.recording_video_stream_index)
@@ -882,11 +963,13 @@ impl EncodedOutput {
             }
             self.write_packet(&mut packet, stream_index, time_base)?;
         }
+
         Ok(())
     }
 
     fn write_audio_packets(&mut self, index: usize) -> Result<()> {
         let mut packet = ffmpeg::Packet::empty();
+
         while self.audio_streams[index]
             .encoder
             .receive_packet(&mut packet)
@@ -906,6 +989,7 @@ impl EncodedOutput {
             }
             self.write_packet(&mut packet, stream_index, time_base)?;
         }
+
         Ok(())
     }
 
@@ -919,7 +1003,7 @@ impl EncodedOutput {
         self.log_recording_error(error);
     }
 
-    fn log_recording_error(&self, error: impl std::fmt::Display) {
+    fn log_recording_error(&self, error: impl fmt::Display) {
         log::error!(channel = self.channel_id.unwrap_or_default(); "Recording disabled: {error}");
     }
 
@@ -938,6 +1022,7 @@ impl EncodedOutput {
         packet.set_stream(stream_index);
         packet.rescale_ts(Rational(1, 1_000), stream_time_base);
         packet.write_interleaved(&mut self.octx)?;
+
         Ok(())
     }
 }
@@ -952,6 +1037,7 @@ fn muxer_options_excluding<'a>(
 ) -> ffmpeg::Dictionary<'static> {
     let excluded = excluded.into_iter().collect::<BTreeSet<_>>();
     let mut dictionary = ffmpeg::Dictionary::new();
+
     for (key, value) in options {
         if !excluded.contains(key.as_str()) {
             dictionary.set(key, value);
@@ -981,6 +1067,7 @@ fn merged_hls_flags(default_flags: &str, configured_flags: Option<&String>) -> S
         {
             continue;
         }
+
         if !flags.contains(&flag) {
             flags.push(flag);
         }
@@ -1054,9 +1141,11 @@ fn open_video_stream(
     video_ctx.set_time_base(cfg.video_time_base);
     video_ctx.set_frame_rate(Some(Rational(cfg.fps as i32, 1)));
     let maxrate = variant.map_or(cfg.video_maxrate(), |variant| variant.video_bitrate);
+
     if encoder_backend.uses_target_bitrate(cfg, video_codec) {
         video_ctx.set_bit_rate(maxrate as usize);
     }
+
     match &output_format {
         EncodedFormat::Hls {
             segment_seconds, ..
@@ -1066,13 +1155,17 @@ fn open_video_stream(
         }
         EncodedFormat::Auto => {}
     }
+
     let mut video_flags = codec::flag::Flags::empty();
+
     if global_header {
         video_flags |= codec::flag::Flags::GLOBAL_HEADER;
     }
+
     if matches!(output_format, EncodedFormat::Hls { .. }) {
         video_flags |= codec::flag::Flags::CLOSED_GOP;
     }
+
     if encoder_backend == VideoEncoderBackend::Qsv && qsv_uses_icq(cfg) {
         // QSV selects ICQ from AVCodecContext::global_quality. Passing this
         // through the encoder option dictionary does not reliably update the
@@ -1081,6 +1174,7 @@ fn open_video_stream(
         log::debug!(channel = cfg.channel_id.unwrap_or_default(); "QSV encoder rate control: ICQ, global quality: {global_quality}");
         video_ctx.set_global_quality(global_quality);
     }
+
     if !video_flags.is_empty() {
         video_ctx.set_flags(video_flags);
     }
@@ -1225,6 +1319,7 @@ impl VideoEncoderBackend {
                 options.set("tune", "zerolatency");
                 options.set("maxrate", &maxrate.to_string());
                 options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+
                 match cfg.video_option("rate_control") {
                     Some("cbr") => options.set("minrate", &maxrate.to_string()),
                     _ => options.set("crf", cfg.video_option("quality").unwrap_or("23")),
@@ -1235,6 +1330,7 @@ impl VideoEncoderBackend {
                 options.set("tune", "ll");
                 options.set("maxrate", &maxrate.to_string());
                 options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+
                 match cfg.video_option("rate_control") {
                     Some("cbr") => options.set("rc", "cbr"),
                     _ => {
@@ -1247,9 +1343,11 @@ impl VideoEncoderBackend {
                 options.set("preset", cfg.video_option("preset").unwrap_or("faster"));
                 options.set("async_depth", "4");
                 options.set("low_delay_brc", "1");
+
                 if !qsv_uses_icq(cfg) {
                     options.set("maxrate", &maxrate.to_string());
                     options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+
                     if cfg.video_option("rate_control") == Some("cbr") {
                         options.set("rdo", "0");
                     }
@@ -1266,6 +1364,7 @@ impl VideoEncoderBackend {
                         _ => "VBR",
                     },
                 );
+
                 if rate_control == "cqp" {
                     options.set("qp", cfg.video_option("quality").unwrap_or("23"));
                 } else {
@@ -1279,6 +1378,7 @@ impl VideoEncoderBackend {
                 options.set("row-mt", cfg.video_option("row-mt").unwrap_or("auto"));
                 options.set("maxrate", &maxrate.to_string());
                 options.set("bufsize", &maxrate.saturating_mul(2).to_string());
+
                 match cfg.video_option("rate_control") {
                     Some("cbr") => options.set("minrate", &maxrate.to_string()),
                     _ => options.set("crf", cfg.video_option("quality").unwrap_or("31")),
@@ -1307,6 +1407,7 @@ fn video_encoder_has_option(codec: codec::codec::Codec, name: &str) -> bool {
 
     unsafe {
         let priv_class = (*codec.as_ptr()).priv_class;
+
         if priv_class.is_null() {
             return false;
         }
@@ -1422,6 +1523,7 @@ fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOu
     parameters.set_medium(ffmpeg::media::Type::Subtitle);
     parameters.set_id(codec::Id::WEBVTT);
     stream.set_parameters(parameters);
+
     Ok(SubtitleOutputStream {
         stream_index: stream.index(),
     })
@@ -1429,12 +1531,165 @@ fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOu
 
 #[cfg(test)]
 mod open_tests {
-    use super::*;
+    use std::{
+        env, fs,
+        process::{self, Command},
+    };
+
     use crate::utils::{
         config::{HlsSubtitle, OutputConfig},
         ffmpeg_capabilities::ffmpeg_capabilities,
     };
-    use std::fs;
+
+    use super::*;
+
+    #[test]
+    fn processed_audio_bypasses_volume_but_regular_audio_still_applies_it() {
+        ffmpeg::init().unwrap();
+        let directory = env::temp_dir().join(format!("processed_audio_test_{}", process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("processed_audio.ts");
+        let config = OutputConfig::new(320, 240, 25, 48000);
+        config.audio_effects.set_volume(1.5).unwrap();
+        let mut output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &config,
+            EncodedFormat::Stream {
+                muxer: "mpegts".to_string(),
+            },
+        )
+        .unwrap();
+        let mut audio = frame::Audio::new(
+            Sample::F32(ffmpeg::format::sample::Type::Planar),
+            32,
+            ChannelLayout::STEREO,
+        );
+        audio.set_rate(48000);
+        audio.set_pts(Some(0));
+        audio.plane_mut::<f32>(0).fill(0.2);
+        audio.plane_mut::<f32>(1).fill(0.2);
+        output.encode_processed_audio(&audio).unwrap();
+        audio.set_pts(Some(32));
+        output.encode_audio(&audio).unwrap();
+        assert_eq!(output.audio_buffer[0].len(), 64);
+        for (index, &sample) in output.audio_buffer[0].iter().enumerate() {
+            let expected = if index < 32 { 0.2 } else { 0.3 };
+            assert!((sample - expected).abs() < 1e-6);
+        }
+        output.finish().unwrap();
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn mpegts_writes_dvb_service_metadata() {
+        ffmpeg::init().ok();
+        let path = env::temp_dir().join(format!("ffplayout_metadata_{}.ts", process::id()));
+        let cfg = OutputConfig::new(320, 240, 25, 44_100).with_metadata_options(BTreeMap::from([
+            ("service_name".to_string(), "Example Channel".to_string()),
+            (
+                "service_provider".to_string(),
+                "Example Provider".to_string(),
+            ),
+        ]));
+        let mut output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Stream {
+                muxer: "mpegts".to_string(),
+            },
+        )
+        .unwrap();
+
+        for index in 0..25 {
+            let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
+            video.set_pts(Some(index));
+            video.data_mut(0).fill(16);
+            video.data_mut(1).fill(128);
+            video.data_mut(2).fill(128);
+            output.encode_video(&video).unwrap();
+        }
+        output.finish().unwrap();
+
+        let probe = Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-show_programs",
+                "-of",
+                "default=noprint_wrappers=1",
+            ])
+            .arg(&path)
+            .output()
+            .expect("ffprobe is required for FFmpeg integration tests");
+        fs::remove_file(&path).ok();
+        assert!(
+            probe.status.success(),
+            "{}",
+            String::from_utf8_lossy(&probe.stderr)
+        );
+        let programs = String::from_utf8(probe.stdout).unwrap();
+        assert!(
+            programs.contains("TAG:service_name=Example Channel"),
+            "{programs}"
+        );
+        assert!(
+            programs.contains("TAG:service_provider=Example Provider"),
+            "{programs}"
+        );
+    }
+
+    #[test]
+    fn matroska_writes_generic_container_metadata() {
+        ffmpeg::init().ok();
+        let path =
+            env::temp_dir().join(format!("ffplayout_generic_metadata_{}.mkv", process::id()));
+        let cfg = OutputConfig::new(320, 240, 25, 44_100).with_metadata_options(BTreeMap::from([
+            ("title".to_string(), "Example Program".to_string()),
+            ("copyright".to_string(), "Example Copyright".to_string()),
+        ]));
+        let mut output = EncodedOutput::open(
+            path.to_str().unwrap(),
+            &cfg,
+            EncodedFormat::Stream {
+                muxer: "matroska".to_string(),
+            },
+        )
+        .unwrap();
+
+        for index in 0..25 {
+            let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
+            video.set_pts(Some(index));
+            video.data_mut(0).fill(16);
+            video.data_mut(1).fill(128);
+            video.data_mut(2).fill(128);
+            output.encode_video(&video).unwrap();
+        }
+        output.finish().unwrap();
+
+        let probe = Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-show_format",
+                "-of",
+                "default=noprint_wrappers=1",
+            ])
+            .arg(&path)
+            .output()
+            .expect("ffprobe is required for FFmpeg integration tests");
+        fs::remove_file(&path).ok();
+        assert!(
+            probe.status.success(),
+            "{}",
+            String::from_utf8_lossy(&probe.stderr)
+        );
+        let format = String::from_utf8(probe.stdout).unwrap();
+        assert!(format.contains("TAG:title=Example Program"), "{format}");
+        assert!(
+            format.contains("TAG:COPYRIGHT=Example Copyright"),
+            "{format}"
+        );
+    }
 
     #[test]
     fn configured_hls_flags_are_combined_with_required_flags() {
@@ -1459,8 +1714,7 @@ mod open_tests {
     #[test]
     fn hls_accepts_program_date_time_muxer_option() {
         ffmpeg::init().ok();
-        let dir =
-            std::env::temp_dir().join(format!("hls_program_date_time_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_program_date_time_test_{}", process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("stream.m3u8");
         let cfg = OutputConfig::new(320, 240, 25, 44_100).with_muxer_options(BTreeMap::from([(
@@ -1495,6 +1749,7 @@ mod open_tests {
             );
             audio.set_rate(44_100);
             audio.set_pts(Some(index * output.audio_frame_size() as i64));
+
             for channel in 0..2 {
                 audio.plane_mut::<f32>(channel).fill(0.0);
             }
@@ -1682,7 +1937,7 @@ mod open_tests {
     #[test]
     fn vtt_only_master_playlist_uses_literal_playlist_name() {
         ffmpeg::init().ok();
-        let dir = std::env::temp_dir().join(format!("hls_vtt_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_vtt_test_{}", process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("index.m3u8");
         let cfg = OutputConfig::new(320, 240, 25, 44100);
@@ -1707,6 +1962,7 @@ mod open_tests {
         );
         assert!(path.exists(), "expected literal index.m3u8 to exist");
         let master = fs::read_to_string(dir.join("master.m3u8")).unwrap();
+
         if ffmpeg_capabilities().features.hls_subtitle_name {
             assert!(master.contains("NAME=\"Subtitles\""), "{master}");
         } else {
@@ -1720,8 +1976,7 @@ mod open_tests {
     #[test]
     fn hls_vtt_resume_after_live_does_not_write_future_cues_twice() {
         ffmpeg::init().ok();
-        let dir =
-            std::env::temp_dir().join(format!("hls_vtt_live_resume_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_vtt_live_resume_test_{}", process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("index.m3u8");
         let media_path = dir.join("programme.mp4");
@@ -1770,7 +2025,7 @@ mod open_tests {
     #[test]
     fn standalone_hls_output_does_not_create_master_playlist() {
         ffmpeg::init().ok();
-        let dir = std::env::temp_dir().join(format!("hls_standalone_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_standalone_test_{}", process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("stream.m3u8");
         fs::write(dir.join("master.m3u8"), "stale").unwrap();
@@ -1799,7 +2054,7 @@ mod open_tests {
     #[test]
     fn cbr_encoder_options_are_accepted() {
         ffmpeg::init().ok();
-        let dir = std::env::temp_dir().join(format!("hls_cbr_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_cbr_test_{}", process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("index.m3u8");
         let cfg = OutputConfig::new(320, 240, 25, 44100).with_encoding(
@@ -1838,7 +2093,7 @@ mod open_tests {
     #[test]
     fn stream_output_can_use_mpegts_muxer() {
         ffmpeg::init().ok();
-        let dir = std::env::temp_dir().join(format!("stream_mpegts_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("stream_mpegts_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("stream.ts");
@@ -1859,7 +2114,7 @@ mod open_tests {
     #[test]
     fn stream_output_can_open_segmented_matroska_recording() {
         ffmpeg::init().ok();
-        let dir = std::env::temp_dir().join(format!("recording_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("recording_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let stream_path = dir.join("stream.ts");
@@ -1890,6 +2145,7 @@ mod open_tests {
             );
             audio.set_rate(44_100);
             audio.set_pts(Some(index * output.audio_frame_size() as i64));
+
             for channel in 0..2 {
                 audio.plane_mut::<f32>(channel).fill(0.0);
             }
@@ -1911,8 +2167,7 @@ mod open_tests {
     #[test]
     fn recording_open_failure_does_not_stop_primary_output() {
         ffmpeg::init().ok();
-        let dir =
-            std::env::temp_dir().join(format!("recording_failure_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("recording_failure_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let blocked_path = dir.join("not-a-directory");
@@ -1940,7 +2195,7 @@ mod open_tests {
     #[test]
     fn hls_output_can_copy_to_segmented_matroska_recording() {
         ffmpeg::init().ok();
-        let dir = std::env::temp_dir().join(format!("hls_recording_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_recording_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let recording_path = dir.join("recording");
@@ -1973,6 +2228,7 @@ mod open_tests {
             );
             audio.set_rate(44_100);
             audio.set_pts(Some(index * output.audio_frame_size() as i64));
+
             for channel in 0..2 {
                 audio.plane_mut::<f32>(channel).fill(0.0);
             }
@@ -1991,8 +2247,7 @@ mod open_tests {
     #[test]
     fn stream_output_can_transcode_segmented_matroska_recording() {
         ffmpeg::init().ok();
-        let dir =
-            std::env::temp_dir().join(format!("recording_encode_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("recording_encode_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let recording_path = dir.join("recording");
@@ -2059,6 +2314,7 @@ mod open_tests {
             );
             audio.set_rate(44_100);
             audio.set_pts(Some(index * output.audio_frame_size() as i64));
+
             for channel in 0..2 {
                 audio.plane_mut::<f32>(channel).fill(0.0);
             }
@@ -2077,11 +2333,12 @@ mod open_tests {
     #[test]
     fn libfdk_aac_sample_format_is_converted_when_available() {
         ffmpeg::init().ok();
+
         if codec::encoder::find_by_name("libfdk_aac").is_none() {
             return;
         }
 
-        let dir = std::env::temp_dir().join(format!("hls_fdk_aac_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_fdk_aac_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("stream.m3u8");
@@ -2124,6 +2381,7 @@ mod open_tests {
             );
             audio.set_rate(44100);
             audio.set_pts(Some(index * output.audio_frame_size() as i64));
+
             for channel in 0..2 {
                 audio.plane_mut::<f32>(channel).fill(0.0);
             }
@@ -2138,7 +2396,7 @@ mod open_tests {
     #[test]
     fn standalone_hls_resumes_existing_playlist() {
         ffmpeg::init().ok();
-        let dir = std::env::temp_dir().join(format!("hls_append_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_append_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("stream.m3u8");
@@ -2170,6 +2428,7 @@ mod open_tests {
                 );
                 audio.set_rate(44100);
                 audio.set_pts(Some(index * output.audio_frame_size() as i64));
+
                 for channel in 0..2 {
                     audio.plane_mut::<f32>(channel).fill(0.0);
                 }
@@ -2198,7 +2457,7 @@ mod open_tests {
     #[test]
     fn resumed_hls_deletes_segments_that_leave_playlist() {
         ffmpeg::init().ok();
-        let dir = std::env::temp_dir().join(format!("hls_delete_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_delete_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("stream.m3u8");
@@ -2229,6 +2488,7 @@ mod open_tests {
                 );
                 audio.set_rate(44100);
                 audio.set_pts(Some(index * output.audio_frame_size() as i64));
+
                 for channel in 0..2 {
                     audio.plane_mut::<f32>(channel).fill(0.0);
                 }
@@ -2240,6 +2500,7 @@ mod open_tests {
         let playlist = fs::read_to_string(&path).unwrap();
         assert!(!playlist.contains("stream_0.ts"), "{playlist}");
         assert!(!dir.join("stream_0.ts").exists());
+
         for segment in playlist.lines().filter(|line| line.ends_with(".ts")) {
             assert!(
                 dir.join(segment).exists(),
@@ -2252,8 +2513,7 @@ mod open_tests {
     #[test]
     fn master_playlist_contains_base_output_and_additional_variant() {
         ffmpeg::init().ok();
-        let dir =
-            std::env::temp_dir().join(format!("hls_multiple_streams_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_multiple_streams_test_{}", process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("stream.m3u8");
         let cfg = OutputConfig::new(320, 240, 25, 44100);
@@ -2290,6 +2550,7 @@ mod open_tests {
             let bit_rate = parameters.bit_rate();
             assert!(bit_rate > 0, "stream {} has no bitrate", stream.index());
         }
+
         for index in 0..16 {
             let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
             video.set_pts(Some(index));
@@ -2301,6 +2562,7 @@ mod open_tests {
             );
             audio.set_rate(44100);
             audio.set_pts(Some(index * output.audio_frame_size() as i64));
+
             for channel in 0..2 {
                 audio.plane_mut::<f32>(channel).fill(0.0);
             }

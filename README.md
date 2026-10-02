@@ -28,7 +28,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - normal system requirements and no special tools beyond FFmpeg libraries
 - CPU-based processing; a GPU is not required
 - log to channel log files, mail queues, or color output to console
-- conform audio and video, if is necessary to match output stream:
+- Conform audio and video as needed to match the output stream:
   - letterbox or pillarbox to fit aspect
   - change fps
   - fit target resolution

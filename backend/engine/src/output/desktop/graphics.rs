@@ -35,6 +35,7 @@ pub(super) fn create_desktop_logo(
     output_height: u32,
 ) -> Result<DesktopLogo> {
     let logo = LogoOverlay::load(config, output_width, output_height)?;
+
     Ok(DesktopLogo {
         bitmap: RgbaBitmap {
             pixels: yuva420p_to_rgba(&logo).into(),
@@ -82,12 +83,15 @@ pub(super) fn create_subtitle_bitmap(
     let height = white.height + SUBTITLE_OUTLINE * 2;
     let mut pixels = vec![0_u8; width as usize * height as usize * 4];
     let outline = SUBTITLE_OUTLINE as i32;
+
     for y in -outline..=outline {
         for x in -outline..=outline {
             if x == 0 && y == 0 {
                 continue;
             }
+
             let distance = ((x * x + y * y) as f32).sqrt();
+
             if distance <= outline as f32 + 0.25 {
                 let alpha = (1.0 - distance / (outline as f32 + 0.75)).clamp(0.25, 1.0);
                 composite_bitmap(&mut pixels, width, &black, outline + x, outline + y, alpha);
@@ -95,6 +99,7 @@ pub(super) fn create_subtitle_bitmap(
         }
     }
     composite_bitmap(&mut pixels, width, &white, outline, outline, 1.0);
+
     Ok(Some(RgbaBitmap {
         pixels: pixels.into(),
         width,
@@ -119,6 +124,7 @@ pub(super) fn create_help_bitmap(
         },
         (window_width * 3 / 5).clamp(280, 680),
     )?;
+
     Ok(Some(RgbaBitmap {
         pixels: bitmap.pixels.into(),
         width: bitmap.width,
@@ -146,6 +152,7 @@ fn yuva420p_to_rgba(logo: &LogoOverlay) -> Vec<u8> {
     let v_stride = logo.frame.stride(2);
     let a_stride = logo.frame.stride(3);
     let mut pixels = vec![0_u8; width * height * 4];
+
     for y in 0..height {
         for x in 0..width {
             let (r, g, b) = yuv_to_rgb(
@@ -175,20 +182,26 @@ fn composite_bitmap(
 ) {
     for source_y in 0..source.height as usize {
         let destination_y = y + source_y as i32;
+
         if destination_y < 0 {
             continue;
         }
+
         for source_x in 0..source.width as usize {
             let destination_x = x + source_x as i32;
+
             if destination_x < 0 {
                 continue;
             }
+
             let destination_index =
                 (destination_y as usize * destination_width as usize + destination_x as usize) * 4;
             let source_index = (source_y * source.width as usize + source_x) * 4;
+
             if destination_index + 4 > destination.len() {
                 continue;
             }
+
             let pixel = [
                 source.pixels[source_index],
                 source.pixels[source_index + 1],
@@ -206,6 +219,7 @@ fn composite_bitmap(
 fn alpha_composite_rgba(destination: &mut [u8], source: &[u8]) {
     let alpha = u16::from(source[3]);
     let inverse = 255 - alpha;
+
     for channel in 0..3 {
         destination[channel] =
             ((u16::from(destination[channel]) * inverse + u16::from(source[channel]) * alpha + 127)

@@ -63,6 +63,24 @@ fn main() {
 
     #[cfg(not(debug_assertions))]
     {
+        // These files live outside the Cargo package. Watch the frontend inputs
+        // individually so changes rebuild the embedded assets without watching
+        // frontend/dist, which this build script generates itself.
+        for path in [
+            "../../frontend/src",
+            "../../frontend/public",
+            "../../frontend/index.html",
+            "../../frontend/env.d.ts",
+            "../../frontend/tsconfig.app.json",
+            "../../frontend/tsconfig.node.json",
+            "../../tsconfig.json",
+            "../../vite.config.ts",
+            "../../package.json",
+            "../../package-lock.json",
+        ] {
+            println!("cargo:rerun-if-changed={path}");
+        }
+
         if !Path::new(RUN_P_BIN).exists() {
             info!("run-p not found, installing frontend dependencies with npm ci");
             run_npm(&["ci"]);

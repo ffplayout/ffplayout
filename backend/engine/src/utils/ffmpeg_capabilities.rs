@@ -161,10 +161,13 @@ fn detect_encoders() -> Vec<FfmpegCodec> {
 
     loop {
         let codec_ptr = unsafe { ffi::av_codec_iterate(&mut opaque) };
+
         if codec_ptr.is_null() {
             break;
         }
+
         let codec = unsafe { codec::codec::Codec::wrap(codec_ptr) };
+
         if !codec.is_encoder() {
             continue;
         }
@@ -176,6 +179,7 @@ fn detect_encoders() -> Vec<FfmpegCodec> {
             _ => continue,
         };
         let name = codec.name().to_string();
+
         if name.is_empty() {
             continue;
         }
@@ -301,6 +305,7 @@ pub fn validate_muxer_options(
     if options.is_empty() {
         return Ok(());
     }
+
     if muxer_name == "hls" {
         validate_hls_compatibility(options)?;
     }
@@ -316,6 +321,7 @@ pub fn validate_muxer_options(
             ptr::null(),
         )
     };
+
     if result < 0 || context.is_null() {
         return Err(format!(
             "FFmpeg output format {muxer_name:?} is not available"
@@ -324,17 +330,20 @@ pub fn validate_muxer_options(
 
     let validation = (|| {
         let private = unsafe { (*context).priv_data };
+
         if private.is_null() {
             return Err(format!(
                 "FFmpeg muxer {muxer_name:?} does not support private options"
             ));
         }
+
         for (key, value) in options {
             let key_c = CString::new(key.as_str())
                 .map_err(|_| format!("invalid muxer option name {key:?}"))?;
             let value_c = CString::new(value.as_str())
                 .map_err(|_| format!("invalid value for muxer option {key:?}"))?;
             let result = unsafe { ffi::av_opt_set(private, key_c.as_ptr(), value_c.as_ptr(), 0) };
+
             if result < 0 {
                 return Err(format!(
                     "invalid FFmpeg {muxer_name} muxer option {key}={value}: {}",
@@ -342,6 +351,7 @@ pub fn validate_muxer_options(
                 ));
             }
         }
+
         Ok(())
     })();
 
@@ -356,6 +366,7 @@ fn validate_hls_compatibility(options: &BTreeMap<String, String>) -> Result<(), 
                 "HLS muxer option {key:?} is not compatible with ffplayout's segment management"
             ));
         }
+
         if key == "hls_flags" {
             for flag in value.split('+').filter(|flag| !flag.is_empty()) {
                 if !HLS_COMPATIBLE_FLAGS.contains(&flag) {
@@ -366,6 +377,7 @@ fn validate_hls_compatibility(options: &BTreeMap<String, String>) -> Result<(), 
             }
         }
     }
+
     Ok(())
 }
 
@@ -375,6 +387,7 @@ fn codec_id_name(codec_id: ffi::AVCodecID) -> String {
 
 fn is_hardware_encoder(codec: codec::codec::Codec, name: &str) -> bool {
     let capabilities = unsafe { (*codec.as_ptr()).capabilities };
+
     if capabilities & ffi::AV_CODEC_CAP_HARDWARE as i32 != 0 {
         return true;
     }
@@ -482,6 +495,7 @@ mod tests {
     fn matroska_codec_lists_only_contain_muxer_compatible_encoders() {
         let capabilities = ffmpeg_capabilities();
         assert!(capabilities.has_muxer(FfmpegOutputTarget::Matroska));
+
         for codec in capabilities
             .video_codecs_for(FfmpegOutputTarget::Matroska)
             .into_iter()
@@ -514,6 +528,7 @@ mod tests {
     #[test]
     fn excludes_rgb_only_video_encoders() {
         let capabilities = FfmpegCapabilities::detect();
+
         if !capabilities
             .encoders
             .iter()

@@ -84,6 +84,7 @@ impl LogoOverlay {
 
         if yuva.is_none() {
             decoder.send_eof()?;
+
             if decoder.receive_frame(&mut decoded).is_ok() {
                 let mut scaled = frame::Video::empty();
                 scaler.run(&decoded, &mut scaled)?;
@@ -154,15 +155,19 @@ fn logo_dimensions(
 
 fn parse_logo_dimension(value: &str, input: u32, output: u32) -> Result<Option<u32>> {
     let value = value.trim();
+
     if value == "-1" {
         return Ok(None);
     }
+
     if value == "iw" || value == "ih" {
         return Ok(Some(input));
     }
+
     if value == "W" || value == "H" || value == "main_w" || value == "main_h" {
         return Ok(Some(output));
     }
+
     if let Some(percent) = value.strip_suffix('%') {
         let percent = percent
             .trim()
@@ -192,6 +197,7 @@ pub(crate) fn logo_position(
         .ok_or_else(|| anyhow!("logo position must use X:Y"))?;
     let x = eval_position_expr(x, output_width, logo_width)?;
     let y = eval_position_expr(y, output_height, logo_height)?;
+
     Ok((
         x.clamp(0, i64::from(output_width.saturating_sub(logo_width))) as u32,
         y.clamp(0, i64::from(output_height.saturating_sub(logo_height))) as u32,
@@ -208,11 +214,14 @@ fn eval_position_expr(expr: &str, main: u32, overlay: u32) -> Result<i64> {
         .replace(['w', 'h'], "O")
         .replace('-', "+-");
     let mut total = 0_i64;
+
     for part in normalized.split('+') {
         let part = part.trim();
+
         if part.is_empty() {
             continue;
         }
+
         let (sign, part) = part
             .strip_prefix('-')
             .map_or((1_i64, part), |part| (-1_i64, part));
@@ -225,6 +234,7 @@ fn eval_position_expr(expr: &str, main: u32, overlay: u32) -> Result<i64> {
         };
         total += sign * value;
     }
+
     Ok(total)
 }
 

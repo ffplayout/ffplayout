@@ -1,8 +1,8 @@
 # Pipeline implementation backlog
 
-This backlog covers the configuration storage prepared by migration 4
-(`00004_pipeline_options.sql`). The migration intentionally only creates safe
-defaults; none of the options below are active until its work package is
+This backlog covers the configuration storage prepared by migration 4 and 5
+(`00004_pipeline_options.sql` and `00005_output_metadata_and_live_listeners.sql`). The migrations intentionally create safe
+defaults; options below remain inactive until their work package is
 implemented and tested.
 
 Each package is designed to be completed independently by a future agent. Do
@@ -19,7 +19,7 @@ uses it.
 - Keep enforced operational settings, such as network timeouts and HLS segment
   management, under ffplayout's control.
 - Add database, API, engine, and UI tests as part of the same package.
-- Migration 4 is unstable only until the next release that contains it. After
+- Migration 5 is unstable only until the next release that contains it. After
   that release, add new migrations instead of editing it.
 
 ## 1. Source protocol and demuxer options
@@ -44,42 +44,66 @@ separate from `config_live_input`, which configures takeover sources.
 consumed by FFmpeg; invalid options fail before saving; network and local-file
 sources receive only options intended for them.
 
-## 2. Generic live-input backends and takeover
+## 2. RTMP/SRT live listeners and takeover
 
 **Stored table:** `config_live_input`
 
-Implement selected, long-running live sources. The existing RTMP listener is
-already represented by its migrated `rtmp`/`connection` entry. A source being
-reachable must not by itself be treated as either a request to take over
-playout or as a reliable end of a programme.
+RTMP and SRT `connection` listeners already use this table and run concurrently.
+The engine selects the highest-priority ready listener (stable ID as
+tie-breaker) without pre-empting an active takeover. Protocol and demuxer
+options are separate; `format=live_flv` is an explicit RTMP demuxer override,
+not a default. Only the RTMP/SRT connection-listener work belongs here.
 
-- [ ] Add configuration models, CRUD API, validation, capability reporting,
-  and a UI for prioritised live-input entries.
-- [ ] Define initial backend identifiers: `rtmp`, `srt_listener`, `ndi`, and
-  `decklink`; treat `identifier` as respectively a URL/listen endpoint,
-  discovered NDI source name, or a stable hardware-device name.
-- [ ] Keep backend-specific settings in `options`; validate them per backend
-  and never pass them across protocol, device, or FFmpeg layers.
-- [ ] Implement all stored takeover modes: `manual`, `external_trigger`,
-  `signal_presence`, `connection`, and `duration`.
-- [ ] Arbitrate simultaneous takeover requests by descending `priority` and
-  stable `id`; an active takeover is not pre-empted automatically.
-- [ ] Apply `signal_loss_grace_seconds` before returning to the playlist, so
-  temporary NDI/network or SDI signal loss cannot flap playout.
-- [ ] Enforce `max_duration_seconds` as a hard safety stop; `0` means no limit.
-- [ ] Model state separately from configuration: availability, takeover active,
-  last signal, and actionable failure reason must be observable but must not be
-  persisted as static configuration.
-- [ ] Preserve the current RTMP listener behaviour through its migrated
-  `rtmp`/`connection` entry; its API/UI fields may be renamed only alongside a
-  backwards-compatible API transition.
-- [ ] Keep protocol-based live playlist-source detection separate from
-  takeover state; HTTP(S) remains classified as ordinary remote media.
+- [x] Add configuration models, save/load API, validation, and a UI for
+  prioritised RTMP/SRT listeners. The supported FFmpeg input protocol is
+  checked when an enabled listener is saved.
+- [x] Use `rtmp` and `srt` backend identifiers with listen URLs in
+  `identifier`; support multiple concurrent listeners on distinct ports.
+- [x] Validate protocol `options` and separate `demuxer_options` per backend;
+  pass each map only to its corresponding FFmpeg input layer.
+- [x] Implement `connection` takeover on the first decoded video frame.
+- [x] Arbitrate ready listeners by descending `priority` (0–100) and stable
+  `id`; an active takeover is not pre-empted automatically.
+- [x] Migrate the former RTMP address and enabled state into its
+  `rtmp`/`connection` entry; the legacy API fields are not retained.
+- [ ] Expose per-listener runtime state and actionable failure reasons
+  separately from persisted configuration (for example listening, connected,
+  on air, and last failure).
+- ~~Expose and enforce `max_duration_seconds` as a hard cutoff for RTMP/SRT connection listeners.~~
+  Not planned: a fixed limit could interrupt a legitimate long broadcast.
+
+**Acceptance criteria:** RTMP and SRT listeners can wait concurrently without
+blocking one another; priority selects among ready listeners but never
+pre-empts one already on air; ending the active input returns to the playlist
+or selects a still-ready listener.
+
+## 2a. NDI/DeckLink live-input foundation
+
+**Stored table:** `config_live_input`; **depends on:** package 2.
+
+Prepare the shared takeover contract for persistent discoverable sources before
+implementing the NDI and DeckLink backends in packages 9 and 10. A reachable
+device or present signal alone must not automatically interrupt the playlist.
+
+- [ ] Define `ndi` and `decklink` identifiers as a discovered NDI source name
+  or stable hardware-device name, not a network listen URL.
+- [ ] Add backend capability reporting and discovery; reject a configured
+  backend that is unavailable in the current build.
+- [ ] Validate backend-specific `options` and keep device settings separate
+  from protocol and demuxer option dictionaries.
+- [ ] Define and implement the stored `manual`, `external_trigger`,
+  `signal_presence`, and `duration` takeover modes where supported. Preserve
+  the existing RTMP/SRT `connection` behaviour.
+- [ ] Apply `signal_loss_grace_seconds` before ending such a takeover, so
+  temporary NDI or SDI signal loss cannot flap playout.
+- [ ] Reuse the shared priority/no-preemption rules and expose per-device
+  availability, last signal, active takeover, and failure reason as runtime
+  state rather than static configuration.
 
 **Acceptance criteria:** an idle NDI or DeckLink source never interrupts the
-playlist; a configured trigger starts takeover; loss/end returns to the
-playlist only after its grace period; a stuck source is stopped at its maximum
-duration; ordinary RTMP ingest remains backwards compatible.
+playlist; only its configured takeover policy starts playback; signal loss
+returns to the playlist after the configured grace period; unsupported
+hardware or modes fail clearly.
 
 ## 3. Output protocol options
 
@@ -104,6 +128,29 @@ added as a separate hardening measure without changing the FFmpeg pipeline.
 
 **Acceptance criteria:** examples such as SRT latency and UDP packet size work;
 unsupported or unsafe settings are rejected without affecting a running output.
+
+## 3a. Output container metadata
+
+**Stored field:** `config_output.metadata_options` (JSON map in a new
+migration; do not add dedicated `service_name` or `service_provider` columns).
+
+Output metadata belongs to the FFmpeg output context, not to its muxer or
+protocol option dictionaries. MPEG-TS reads `service_name` and
+`service_provider` from this metadata to populate the DVB service description.
+
+- [x] Add a generic output metadata map to the database, API, engine config,
+  and advanced UI with translations.
+- [x] Validate metadata keys, values, and size before saving. Container-specific
+  tag support remains the responsibility of the selected FFmpeg muxer.
+- [x] Set output-context metadata before writing the muxer header. Do not pass
+  metadata through `muxer_options` or `protocol_options`.
+- [x] Verify the resulting MPEG-TS service metadata with a container-level
+  regression test; preserve FFmpeg defaults when the map is empty.
+
+**Acceptance criteria:** an SRT, UDP, or custom MPEG-TS stream can advertise a
+configured DVB service name and provider; other formats can receive arbitrary
+global tags where their muxer supports them. Invalid metadata is rejected and
+empty configuration keeps FFmpeg defaults.
 
 ## 4. Audio encoder options
 
@@ -207,7 +254,7 @@ formats fail before playout starts.
 
 ## 9. NDI live-input backend
 
-**Depends on:** package 2.
+**Depends on:** packages 2 and 2a.
 
 - [ ] Build FFmpeg with the NDI SDK under an explicit Cargo/build feature and
   expose whether that capability is available.
@@ -225,7 +272,7 @@ requires that action.
 
 ## 10. DeckLink live-input backend
 
-**Depends on:** packages 2 and 5.
+**Depends on:** packages 2, 2a, and 5.
 
 - [ ] Choose and document FFmpeg `libavdevice` or direct DeckLink SDK capture;
   initially prefer the FFmpeg path.

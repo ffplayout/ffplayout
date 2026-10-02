@@ -15,6 +15,7 @@ pub(super) fn desktop_icon_rgba() -> Vec<u8> {
         if byte.is_ascii_whitespace() {
             continue;
         }
+
         if let Some(high) = high_nibble.take() {
             rgba.push(high << 4 | hex_digit(byte));
         } else {

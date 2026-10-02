@@ -43,6 +43,7 @@ pub(crate) fn network_output_options(
     protocol_options: &BTreeMap<String, String>,
 ) -> Dictionary<'static> {
     let mut options = Dictionary::new();
+
     for (key, value) in protocol_options {
         options.set(key, value);
     }
@@ -72,6 +73,7 @@ pub(crate) fn open_network_output(
             muxer.as_ref().map_or(ptr::null(), |v| v.as_ptr()),
             path.as_ptr(),
         );
+
         if result < 0 || context.is_null() {
             if !context.is_null() {
                 ffi::avformat_free_context(context);
@@ -90,9 +92,11 @@ pub(crate) fn open_network_output(
             &mut dictionary,
         );
         let remaining = Dictionary::own(dictionary);
+
         if result < 0 {
             return Err(FfmpegError::from(result).into());
         }
+
         let unused: Vec<_> = remaining
             .iter()
             .filter(|(key, _)| options.contains_key(*key))
@@ -101,6 +105,7 @@ pub(crate) fn open_network_output(
         if !unused.is_empty() {
             anyhow::bail!("unused output protocol options: {}", unused.join(", "));
         }
+
         Ok(output)
     }
 }
@@ -137,9 +142,11 @@ mod tests {
             ffmpeg_next::ffi::avio_write(pb, data.as_ptr(), data.len() as i32);
             ffmpeg_next::ffi::avio_flush(pb);
         }
+
         let mut packet = [0u8; 512];
         assert_eq!(receiver.recv(&mut packet).unwrap(), 188);
         assert_eq!(receiver.recv(&mut packet).unwrap(), 188);
+
         for key in ["pkt_size ", "not_an_option"] {
             let options = BTreeMap::from([(key.to_string(), "188".to_string())]);
             let error = super::open_network_output(&url, Some("mpegts"), &options)
@@ -172,15 +179,19 @@ mod tests {
                     &mut options,
                 );
                 drop(ffmpeg_next::Dictionary::own(options));
+
                 if result < 0 {
                     return Err(ffmpeg_next::Error::from(result));
                 }
+
                 let mut data = [0u8; 188];
                 let result = ffi::avio_read(pb, data.as_mut_ptr(), data.len() as i32);
                 ffi::avio_closep(&mut pb);
+
                 if result < 0 {
                     return Err(ffmpeg_next::Error::from(result));
                 }
+
                 Ok((result, data))
             }
         });

@@ -199,7 +199,10 @@ mod tests {
     use crate::{
         db::models::Channel,
         player::utils::{Media, get_data_map},
-        utils::{config::PlayoutConfig, system::SystemStat},
+        utils::{
+            config::{LiveInput, PlayoutConfig},
+            system::SystemStat,
+        },
     };
 
     async fn manager() -> ChannelManager {
@@ -315,8 +318,17 @@ mod tests {
     #[tokio::test]
     async fn live_navigation_is_ignored_without_memory_or_database_changes() {
         let manager = manager().await;
+        let mut running = manager.config.read().await.clone();
+        running.ingest.listeners.push(LiveInput {
+            id: 17,
+            enabled: true,
+            name: "On air".to_string(),
+            backend: "rtmp".to_string(),
+            ..LiveInput::default()
+        });
+        let _running_config = manager.track_running_config(running);
         let control = manager.playback_control.lock().await.clone();
-        let live = control.try_activate_live().unwrap();
+        let live = control.try_activate_live_for_listener(17).unwrap();
         for command in [PlayerCtl::Back, PlayerCtl::Next, PlayerCtl::Reset] {
             let response = control_state(&manager.db_pool, &manager, &command)
                 .await
@@ -328,12 +340,63 @@ mod tests {
             assert_eq!(manager.channel.lock().await.time_shift, 42.0);
         }
         assert_eq!(get_data_map(&manager).await["ingest"], true);
+        assert_eq!(get_data_map(&manager).await["ingest_listener_id"], 17);
+        assert_eq!(
+            get_data_map(&manager).await["ingest_listener_name"],
+            "On air"
+        );
+        assert_eq!(
+            get_data_map(&manager).await["ingest_listener_backend"],
+            "rtmp"
+        );
+
+        let mut saved = manager.config.read().await.clone();
+        saved.ingest.listeners.push(LiveInput {
+            id: 17,
+            enabled: true,
+            name: "Next listener".to_string(),
+            backend: "srt".to_string(),
+            ..LiveInput::default()
+        });
+        manager.update_config(saved).await;
+        assert_eq!(
+            get_data_map(&manager).await["ingest_listener_name"],
+            "On air"
+        );
+        assert_eq!(
+            get_data_map(&manager).await["ingest_listener_backend"],
+            "rtmp"
+        );
+
         drop(live);
         assert_eq!(get_data_map(&manager).await["ingest"], false);
+        assert!(get_data_map(&manager).await["ingest_listener_id"].is_null());
         assert!(
             control.try_activate_live().is_some(),
             "ignored commands must not queue navigation"
         );
+    }
+
+    #[tokio::test]
+    async fn running_config_guard_does_not_clear_a_newer_playout() {
+        let manager = manager().await;
+        let first = manager.track_running_config(PlayoutConfig::default());
+        let mut newer_config = PlayoutConfig::default();
+        newer_config.ingest.listeners.push(LiveInput {
+            id: 23,
+            name: "New listener".to_string(),
+            ..LiveInput::default()
+        });
+        let second = manager.track_running_config(newer_config);
+
+        drop(first);
+        assert_eq!(
+            manager.running_listener_label(23).unwrap().0,
+            "New listener"
+        );
+
+        drop(second);
+        assert!(manager.running_config().is_none());
     }
 
     #[tokio::test]

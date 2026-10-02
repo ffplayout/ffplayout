@@ -56,21 +56,35 @@ fn validate_resolved_path(name: &str, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn resolve_existing_ancestor(path: &Path) -> std::io::Result<PathBuf> {
-    let mut existing = path;
+pub(crate) fn resolve_existing_ancestor(path: &Path) -> std::io::Result<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let mut existing = absolute.as_path();
     let mut missing = Vec::new();
-    while !existing.exists() {
-        let Some(name) = existing.file_name() else {
-            break;
-        };
-        missing.push(name.to_os_string());
-        existing = existing.parent().unwrap_or(existing);
+
+    loop {
+        match fs::symlink_metadata(existing) {
+            Ok(_) => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let Some(name) = existing.file_name() else {
+                    return Err(error);
+                };
+                missing.push(name.to_os_string());
+                existing = existing.parent().ok_or(error)?;
+            }
+            Err(error) => return Err(error),
+        }
     }
 
     let mut resolved = fs::canonicalize(existing)?;
+
     for component in missing.iter().rev() {
         resolved.push(component);
     }
+
     Ok(resolved)
 }
 

@@ -72,6 +72,7 @@ impl SoftbufferRenderer {
         if self.width == 0 || self.height == 0 {
             return Ok(());
         }
+
         let mut target = self
             .surface
             .buffer_mut()
@@ -96,8 +97,10 @@ fn compose_window_frame(
     if width == 0 || height == 0 {
         return Ok(());
     }
+
     if let Some(video) = &frame.video {
         let rect = fit_rect(video.width, video.height, width, height);
+
         if rect.width != width || rect.height != height {
             target.fill(0);
         }
@@ -105,18 +108,23 @@ fn compose_window_frame(
     } else {
         target.fill(0);
     }
+
     if let Some(logo) = &frame.logo {
         draw_logo(target, width, height, size, logo)?;
     }
+
     if let Some(subtitle) = &frame.subtitle {
         draw_subtitle(target, width, height, subtitle);
     }
+
     if frame.volume_overlay {
         draw_volume_overlay(target, width, height, frame.volume);
     }
+
     if let Some(help) = &frame.help {
         draw_help_overlay(target, width, height, help);
     }
+
     Ok(())
 }
 
@@ -125,6 +133,7 @@ pub(super) fn scale_nearest(video: &VideoSurface, target: &mut [u32], stride: u3
     if dst.width == 0 || dst.height == 0 {
         return;
     }
+
     if video.width == dst.width && video.height == dst.height {
         for row in 0..dst.height as usize {
             let source_start = row * video.width as usize;
@@ -132,10 +141,13 @@ pub(super) fn scale_nearest(video: &VideoSurface, target: &mut [u32], stride: u3
             target[target_start..target_start + dst.width as usize]
                 .copy_from_slice(&video.pixels[source_start..source_start + video.width as usize]);
         }
+
         return;
     }
+
     for dy in 0..dst.height {
         let sy = (dy as u64 * video.height as u64 / dst.height as u64) as u32;
+
         for dx in 0..dst.width {
             let sx = (dx as u64 * video.width as u64 / dst.width as u64) as u32;
             let src = (sy * video.width + sx) as usize;
@@ -175,6 +187,7 @@ fn draw_logo(
         },
         logo.opacity,
     );
+
     Ok(())
 }
 
@@ -196,14 +209,18 @@ fn draw_bitmap_scaled(
     if dst.width == 0 || dst.height == 0 {
         return;
     }
+
     let x_end = dst.x.saturating_add(dst.width).min(target_width);
     let y_end = dst.y.saturating_add(dst.height).min(target_height);
+
     for y in dst.y..y_end {
         let source_y = ((y - dst.y) as u64 * bitmap.height as u64 / dst.height as u64) as u32;
+
         for x in dst.x..x_end {
             let source_x = ((x - dst.x) as u64 * bitmap.width as u64 / dst.width as u64) as u32;
             let index = (source_y * bitmap.width + source_x) as usize * 4;
             let alpha = (u16::from(bitmap.pixels[index + 3]) * u16::from(opacity) / 255) as u8;
+
             if alpha > 0 {
                 let color = (u32::from(bitmap.pixels[index]) << 16)
                     | (u32::from(bitmap.pixels[index + 1]) << 8)
@@ -297,6 +314,7 @@ fn fill_blended_rect(
 ) {
     let x_end = rect.x.saturating_add(rect.width).min(stride);
     let y_end = rect.y.saturating_add(rect.height).min(canvas_height);
+
     for y in rect.y..y_end {
         for x in rect.x..x_end {
             let index = (y * stride + x) as usize;

@@ -71,6 +71,7 @@ pub fn blend_overlay(target: &mut frame::Video, overlay: OverlayRef<'_>, opacity
     if opacity_factor <= 0.0 {
         return;
     }
+
     let opacity = ((overlay.opacity as f64) * opacity_factor.clamp(0.0, 1.0))
         .round()
         .clamp(0.0, 255.0) as u8;

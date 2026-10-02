@@ -8,43 +8,53 @@ use ffmpeg_next::{
 pub(crate) fn reference_video_frame(source: &frame::Video) -> Result<frame::Video> {
     let mut referenced = frame::Video::empty();
     let result = unsafe { ffi::av_frame_ref(referenced.as_mut_ptr(), source.as_ptr()) };
+
     if result < 0 {
         return Err(ffmpeg_next::Error::from(result)).context("referencing FFmpeg video frame");
     }
+
     Ok(referenced)
 }
 
 pub(crate) fn reference_audio_frame(source: &frame::Audio) -> Result<frame::Audio> {
     let mut referenced = frame::Audio::empty();
     let result = unsafe { ffi::av_frame_ref(referenced.as_mut_ptr(), source.as_ptr()) };
+
     if result < 0 {
         return Err(ffmpeg_next::Error::from(result)).context("referencing FFmpeg audio frame");
     }
+
     Ok(referenced)
 }
 
 pub(crate) fn make_video_frame_writable(frame: &mut frame::Video) -> Result<()> {
     let result = unsafe { ffi::av_frame_make_writable(frame.as_mut_ptr()) };
+
     if result < 0 {
         return Err(ffmpeg_next::Error::from(result)).context("making FFmpeg video frame writable");
     }
+
     Ok(())
 }
 
 pub(crate) fn make_audio_frame_writable(frame: &mut frame::Audio) -> Result<()> {
     let result = unsafe { ffi::av_frame_make_writable(frame.as_mut_ptr()) };
+
     if result < 0 {
         return Err(ffmpeg_next::Error::from(result)).context("making FFmpeg audio frame writable");
     }
+
     Ok(())
 }
 
 pub(crate) fn reference_packet(source: &Packet) -> Result<Packet> {
     let mut referenced = Packet::empty();
     let result = unsafe { ffi::av_packet_ref(referenced.as_mut_ptr(), source.as_ptr()) };
+
     if result < 0 {
         return Err(ffmpeg_next::Error::from(result)).context("referencing FFmpeg packet");
     }
+
     Ok(referenced)
 }
 

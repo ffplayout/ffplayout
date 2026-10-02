@@ -1,5 +1,10 @@
 use std::{error::Error, fmt};
 
+use anyhow::Result;
+#[cfg(feature = "desktop-base")]
+use anyhow::anyhow;
+use ffmpeg_next::frame;
+
 #[cfg(feature = "desktop-base")]
 pub(crate) mod desktop;
 mod encoded;
@@ -7,23 +12,19 @@ mod hls;
 mod recording;
 mod vtt;
 
-pub use hls::resolved_variant_playlist_path;
-
-use anyhow::Result;
-#[cfg(feature = "desktop-base")]
-use anyhow::anyhow;
-#[cfg(feature = "desktop-base")]
-use desktop::{DesktopFrameSender, DesktopOutput};
-use encoded::{EncodedFormat, EncodedOutput};
-use ffmpeg_next::frame;
-
 #[cfg(feature = "desktop-base")]
 use crate::benchmark::BenchHandle;
 use crate::{
     HlsHealth,
     compositor::logo::{LogoOverlay, blend_logo},
+    input::diagnostics::LiveInputDiagnostics,
     utils::config::{HlsSubtitle, HlsVariant, OutputConfig},
 };
+
+#[cfg(feature = "desktop-base")]
+use desktop::{DesktopFrameSender, DesktopOutput};
+use encoded::{EncodedFormat, EncodedOutput};
+pub use hls::resolved_variant_playlist_path;
 
 #[derive(Debug)]
 pub(crate) struct PlaybackStopped;
@@ -37,21 +38,48 @@ impl fmt::Display for PlaybackStopped {
 impl Error for PlaybackStopped {}
 
 pub(crate) trait FrameOutput {
+    fn input_diagnostics(&self) -> Option<&LiveInputDiagnostics> {
+        None
+    }
+
     fn audio_frame_size(&self) -> usize;
+
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()>;
+
     /// Realtime outputs can decline a full queue so live ingest can pad audio
     /// and observe cancellation before retrying the same video frame.
     fn try_encode_video(&mut self, frame: &frame::Video) -> Result<bool> {
         self.encode_video(frame)?;
+
         Ok(true)
     }
+
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()>;
+
+    /// Volume has already been applied; meters and encoding still run normally.
+    fn encode_processed_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.encode_audio(frame)
+    }
+
+    fn handles_loudness(&self) -> bool {
+        false
+    }
+
+    fn encode_live_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        self.encode_audio(frame)
+    }
+
+    fn encode_audio_with_gain_hold(&mut self, frame: &frame::Audio, _hold: bool) -> Result<()> {
+        self.encode_audio(frame)
+    }
+
     /// Discard output buffered past a manual clip skip and re-anchor at the
     /// supplied synchronized timeline position. Encoded outputs cannot
     /// retract muxed packets and therefore use the default padding path.
     fn reset_after_skip(&mut self, _video_pts: i64, _audio_pts: i64) -> Result<bool> {
         Ok(false)
     }
+
     fn apply_logo_overlay(
         &mut self,
         frame: &mut frame::Video,
@@ -60,25 +88,31 @@ pub(crate) trait FrameOutput {
     ) {
         blend_logo(frame, logo, opacity_factor);
     }
+
     fn benchmarks_logo_overlay(&self) -> bool {
         true
     }
+
     fn set_video_end(&mut self, _video_end_pts: Option<i64>) -> Result<()> {
         Ok(())
     }
+
     /// Signals that all decoded video frames have been queued. Realtime
     /// outputs can start short clips without ending their timeline early.
     fn video_decoded(&mut self) -> Result<()> {
         Ok(())
     }
+
     fn video_finished(&mut self) -> Result<()> {
         Ok(())
     }
+
     /// Lets realtime outputs account for silence that already elapsed while
     /// decode was blocked behind video backpressure.
     fn pad_audio(&mut self, _samples: i64) -> Result<bool> {
         Ok(false)
     }
+
     fn write_vtt_subtitles(
         &mut self,
         _media_path: &str,
@@ -87,11 +121,13 @@ pub(crate) trait FrameOutput {
     ) -> Result<()> {
         Ok(())
     }
+
     /// Discard subtitles queued for the previous clip. Encoded outputs keep
     /// cues pending until file playback reaches their timestamp.
     fn clear_vtt_subtitles(&mut self) -> Result<()> {
         Ok(())
     }
+
     /// Release subtitle cues whose output timestamp has been reached by an
     /// actually emitted file video frame.
     fn advance_vtt_subtitles(&mut self, _output_position_ms: i64) -> Result<()> {
@@ -234,6 +270,14 @@ impl FrameOutput for Output {
         Self::encode_audio(self, frame)
     }
 
+    fn encode_processed_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+        match &mut self.kind {
+            OutputKind::Encoded(output) => output.encode_processed_audio(frame),
+            #[cfg(feature = "desktop-base")]
+            OutputKind::Desktop(output) => output.encode_audio(frame),
+        }
+    }
+
     fn apply_logo_overlay(
         &mut self,
         frame: &mut frame::Video,
@@ -274,6 +318,7 @@ impl FrameOutput for Output {
         match &mut self.kind {
             OutputKind::Encoded(output) => {
                 output.clear_vtt_subtitles();
+
                 Ok(())
             }
             #[cfg(feature = "desktop-base")]

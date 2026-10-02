@@ -38,6 +38,7 @@ declare global {
         video_options: string
         protocol_options: string
         muxer_options: string
+        metadata_options: string
         audio_codec: string | null
         audio_options: string
         audio_bitrate: number | null
@@ -251,6 +252,9 @@ declare global {
         audio?: AudioLevel
         loudness?: LiveLoudnessMetrics
         ingest: boolean
+        ingest_listener_id?: number | null
+        ingest_listener_name?: string | null
+        ingest_listener_backend?: string | null
         mode: string
         elapsed: number
         shift: number

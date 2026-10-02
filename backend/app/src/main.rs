@@ -78,6 +78,7 @@ fn main() -> Result<(), ProcessError> {
     #[cfg(any(feature = "desktop", feature = "desktop-cpu"))]
     {
         ff_engine::run_desktop_on_main_thread(run_async_main)
+            .map_err(|error| ProcessError::Custom(format!("Desktop runtime failed: {error:#}")))?
     }
 
     #[cfg(not(any(feature = "desktop", feature = "desktop-cpu")))]

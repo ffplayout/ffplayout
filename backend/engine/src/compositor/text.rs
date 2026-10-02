@@ -1,16 +1,16 @@
 use std::{
     collections::BTreeSet,
+    mem,
     path::Path,
     sync::{Mutex, OnceLock, PoisonError},
 };
 
 use anyhow::{Context, Result, anyhow};
+#[cfg(feature = "desktop-base")]
+use cosmic_text::{Align, Wrap};
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
 use ffmpeg_next::{frame, util::format::pixel::Pixel};
 use regex::Regex;
-
-#[cfg(feature = "desktop-base")]
-use cosmic_text::{Align, Wrap};
 
 use crate::{
     compositor::overlay::{OverlayFrame, blend_overlay, chroma_alpha},
@@ -30,10 +30,13 @@ const MAX_GLYPH_CACHE_BYTES: usize = 32 * 1024 * 1024;
 // small reusable glyphs instead of forcing a complete cache rebuild.
 fn trim_glyph_cache(cache: &mut SwashCache, checked: &mut Option<(usize, usize)>) {
     let counts = (cache.image_cache.len(), cache.outline_command_cache.len());
+
     if *checked == Some(counts) {
         return;
     }
+
     let mut entries = Vec::with_capacity(counts.0 + counts.1);
+
     for (key, image) in &cache.image_cache {
         entries.push((
             *key,
@@ -41,30 +44,36 @@ fn trim_glyph_cache(cache: &mut SwashCache, checked: &mut Option<(usize, usize)>
             image.as_ref().map_or(0, |image| image.data.capacity()),
         ));
     }
+
     for (key, commands) in &cache.outline_command_cache {
         entries.push((
             *key,
             false,
             commands
                 .as_ref()
-                .map_or(0, |commands| std::mem::size_of_val(commands.as_ref())),
+                .map_or(0, |commands| mem::size_of_val(commands.as_ref())),
         ));
     }
+
     let mut bytes = entries
         .iter()
         .fold(0usize, |sum, entry| sum.saturating_add(entry.2));
     let mut count = entries.len();
+
     if count > MAX_GLYPH_CACHE_ENTRIES || bytes > MAX_GLYPH_CACHE_BYTES {
         entries.sort_unstable_by_key(|entry| std::cmp::Reverse(entry.2));
+
         for (key, image, size) in entries {
             if count <= MAX_GLYPH_CACHE_ENTRIES * 3 / 4 && bytes <= MAX_GLYPH_CACHE_BYTES * 3 / 4 {
                 break;
             }
+
             if image {
                 cache.image_cache.remove(&key);
             } else {
                 cache.outline_command_cache.remove(&key);
             }
+
             count -= 1;
             bytes = bytes.saturating_sub(size);
         }
@@ -187,6 +196,7 @@ fn render_text_bitmap(
     } = &mut *renderer;
     let mut buffer = Buffer::new(font_system, Metrics::new(font_size, line_height));
     buffer.set_size(Some(width as f32), Some(height as f32));
+
     if let Some(wrap) = wrap {
         buffer.set_wrap(wrap);
     }
@@ -210,6 +220,7 @@ fn render_text_bitmap(
             };
 
             bounds.include(dest.x, dest.y, dest.width, dest.height);
+
             for py in 0..dest.height {
                 for px in 0..dest.width {
                     let idx = ((dest.y + py) * width as usize + dest.x + px) * 4;
@@ -224,6 +235,7 @@ fn render_text_bitmap(
         return Err(anyhow!("text bitmap produced no visible pixels"));
     };
     let mut cropped = vec![0_u8; bounds.width * bounds.height * 4];
+
     for y in 0..bounds.height {
         let src_start = ((bounds.y + y) * width as usize + bounds.x) * 4;
         let src_end = src_start + bounds.width * 4;
@@ -268,6 +280,7 @@ impl TextOverlay {
         let Some(text) = overlay_text(config, media_path) else {
             return Ok(None);
         };
+
         if text.trim().is_empty() {
             return Ok(None);
         }
@@ -304,6 +317,7 @@ impl TextOverlay {
 
     pub fn blend(&mut self, target: &mut frame::Video, pts: i64, scroll_pts: i64) {
         let opacity = self.opacity_at(pts);
+
         if opacity <= 0.0 {
             return;
         }
@@ -320,10 +334,12 @@ impl TextOverlay {
 
     fn opacity_at(&self, pts: i64) -> f64 {
         let mut opacity: f64 = 1.0;
+
         if self.fade_in_frames > 0 {
             let elapsed = (pts - self.fade_start_pts).max(0);
             opacity = opacity.min(elapsed as f64 / self.fade_in_frames as f64);
         }
+
         if self.fade_out_frames > 0
             && let Some(end_pts) = self.end_pts
         {
@@ -335,6 +351,7 @@ impl TextOverlay {
 
     fn x_at(&self, pts: i64) -> i32 {
         let elapsed = (pts - self.scroll_start_pts).max(0);
+
         match self.scroll {
             TextScroll::None => self.base_x,
             TextScroll::LeftToRight { pixels_per_second } => {
@@ -353,6 +370,7 @@ impl TextOverlay {
     fn scroll_offset(&self, elapsed: i64, pixels_per_second: u32) -> i64 {
         let offset = elapsed * i64::from(pixels_per_second) / i64::from(self.fps.max(1));
         let travel = i64::from(self.output_width) + i64::from(self.overlay.width);
+
         if travel <= 0 {
             return offset;
         }
@@ -362,6 +380,7 @@ impl TextOverlay {
         }
 
         let cycles = i64::from(self.scroll_repeat) + 1;
+
         if offset < travel.saturating_mul(cycles) {
             offset % travel
         } else {
@@ -432,9 +451,11 @@ fn render_text_overlay(
     buffer.set_size(Some(text_width as f32), Some(text_height as f32));
 
     let mut attrs = Attrs::new();
+
     if let Some(family) = &config.font_family {
         attrs = attrs.family(Family::Name(family));
     }
+
     attrs = attrs.weight(match config.font_weight {
         TextWeight::Normal => Weight::NORMAL,
         TextWeight::Semibold => Weight::SEMIBOLD,
@@ -467,6 +488,7 @@ fn render_text_overlay(
                 return;
             };
             bounds.include(dest.x, dest.y, dest.width, dest.height);
+
             for py in 0..dest.height {
                 for px in 0..dest.width {
                     let idx = ((dest.y + py) * render_width as usize + dest.x + px) * 4;
@@ -489,6 +511,7 @@ fn render_text_overlay(
     if let Some(background) = config.background {
         let mut boxed = vec![0_u8; rgba.len()];
         draw_box(&mut boxed, render_width, &bounds, background.color);
+
         for y in bounds.y..bounds.y + bounds.height {
             for x in bounds.x..bounds.x + bounds.width {
                 let idx = (y * render_width as usize + x) * 4;
@@ -501,12 +524,14 @@ fn render_text_overlay(
                 alpha_composite(&mut boxed[idx..idx + 4], text);
             }
         }
+
         rgba = boxed;
     }
 
     let width = even(bounds.width as u32).max(2);
     let height = even(bounds.height as u32).max(2);
     let mut cropped = vec![0_u8; width as usize * height as usize * 4];
+
     for y in 0..height as usize {
         for x in 0..width as usize {
             let src_idx = ((bounds.y + y) * render_width as usize + bounds.x + x) * 4;
@@ -559,6 +584,7 @@ fn rgba_to_yuva420p(rgba: &[u8], width: u32, height: u32) -> Result<frame::Video
             let mut g = 0_u16;
             let mut b = 0_u16;
             let mut count = 0_u16;
+
             for dy in 0..2 {
                 for dx in 0..2 {
                     let px = x * 2 + dx;
@@ -570,6 +596,7 @@ fn rgba_to_yuva420p(rgba: &[u8], width: u32, height: u32) -> Result<frame::Video
                     count += 1;
                 }
             }
+
             let (_, u, v) = rgb_to_yuv((r / count) as u8, (g / count) as u8, (b / count) as u8);
             frame.data_mut(1)[y * u_stride + x] = u;
             frame.data_mut(2)[y * v_stride + x] = v;
@@ -621,6 +648,7 @@ fn alpha_composite(dst: &mut [u8], src: RgbaColor) {
 
 fn draw_box(rgba: &mut [u8], width: u32, bounds: &ResolvedBounds, color: RgbaColor) {
     let width = width as usize;
+
     for y in bounds.y..bounds.y + bounds.height {
         for x in bounds.x..bounds.x + bounds.width {
             let idx = (y * width + x) * 4;
@@ -743,6 +771,7 @@ mod cache_tests {
         cache.image_cache.insert(key(0), None);
         trim_glyph_cache(&mut cache, &mut None);
         assert_eq!(cache.image_cache.len(), 1);
+
         for glyph in 1..=MAX_GLYPH_CACHE_ENTRIES {
             cache.image_cache.insert(key(glyph as u16), None);
         }
@@ -767,6 +796,7 @@ mod cache_tests {
     fn repeated_growth_retains_headroom_and_reuses_unchanged_cache() {
         let mut cache = SwashCache::new();
         let mut checked = None;
+
         for cycle in 0..20 {
             for glyph in 0..5000 {
                 cache.image_cache.insert(key(glyph), None);
@@ -788,6 +818,7 @@ mod cache_tests {
     fn changing_text_render_stress() {
         let started = std::time::Instant::now();
         let mut worst = std::time::Duration::ZERO;
+
         for index in 0..1000 {
             let config = TextConfig {
                 font_size: (20 + index % 80) as f32,

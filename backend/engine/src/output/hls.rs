@@ -3,7 +3,7 @@ use std::{
     ffi::CString,
     fs,
     io::ErrorKind,
-    path::Path,
+    path::{Path, PathBuf},
     ptr,
     time::{Duration, SystemTime},
 };
@@ -51,14 +51,17 @@ pub fn resolved_variant_playlist_path(path: &str, variant_name: &str) -> Result<
 
 pub(super) fn validate_variants(variants: &[HlsVariant]) -> Result<()> {
     let mut names = HashSet::new();
+
     for variant in variants {
         if variant.name == "master" {
             return Err(anyhow!("HLS variant name \"master\" is reserved"));
         }
+
         if !names.insert(variant.name.as_str()) {
             return Err(anyhow!("duplicate HLS variant name {}", variant.name));
         }
     }
+
     Ok(())
 }
 
@@ -74,12 +77,15 @@ pub(super) fn output_context(path: &str) -> Result<ffmpeg::format::context::Outp
             format.as_ptr(),
             path.as_ptr(),
         );
+
         if result < 0 {
             if !context.is_null() {
                 ffmpeg::ffi::avformat_free_context(context);
             }
+
             return Err(ffmpeg::Error::from(result).into());
         }
+
         if context.is_null() {
             return Err(ffmpeg::Error::Unknown.into());
         }
@@ -109,6 +115,7 @@ fn prepare_resume_start_number_at(
     prune_unreferenced_segments(&cleanup_playlists)?;
 
     let mut latest = None;
+
     for path in &cleanup_playlists {
         if let Some(modified) = fresh_playlist_modified_time(path)? {
             latest = latest.max(Some(modified));
@@ -125,6 +132,7 @@ fn prepare_resume_start_number_at(
         .gt(&HLS_RESUME_MAX_AGE)
     {
         remove_stale_playlists(&cleanup_playlists, master_playlist)?;
+
         return Ok(None);
     }
 
@@ -136,8 +144,10 @@ fn cleanup_playlist_paths(
     master_playlist: Option<&str>,
 ) -> Result<Vec<String>> {
     let mut paths = media_playlists.iter().cloned().collect::<HashSet<_>>();
+
     if let Some(master_playlist) = master_playlist {
         paths.insert(master_playlist.to_string());
+
         for playlist in child_playlist_paths(master_playlist)? {
             paths.insert(playlist);
         }
@@ -159,12 +169,15 @@ fn prune_unreferenced_segments(media_playlists: &[String]) -> Result<()> {
         let entry =
             entry.with_context(|| format!("failed to read entry in {}", parent.display()))?;
         let path = entry.path();
+
         if !is_hls_segment(&path) {
             continue;
         }
+
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
+
         if segment_family(file_name).is_some_and(|family| segment_families.contains(family))
             && !referenced_segments.contains(file_name)
         {
@@ -194,32 +207,39 @@ fn remove_stale_playlists(media_playlists: &[String], master_playlist: Option<&s
     for segment in referenced_segment_paths(media_playlists)? {
         remove_playlist(&segment)?;
     }
+
     for playlist in media_playlists {
         remove_playlist(Path::new(playlist))
             .with_context(|| format!("failed to remove stale HLS playlist {playlist}"))?;
     }
+
     if let Some(master_playlist) = master_playlist {
         remove_playlist(Path::new(master_playlist))
             .with_context(|| format!("failed to remove stale HLS master {master_playlist}"))?;
     }
+
     Ok(())
 }
 
-fn referenced_segment_paths(media_playlists: &[String]) -> Result<Vec<std::path::PathBuf>> {
+fn referenced_segment_paths(media_playlists: &[String]) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
+
     for playlist in media_playlists {
         let Some(parent) = Path::new(playlist).parent() else {
             continue;
         };
+
         for segment in playlist_segment_entries(playlist)? {
             paths.push(parent.join(segment));
         }
     }
+
     Ok(paths)
 }
 
 fn referenced_segments(media_playlists: &[String]) -> Result<HashSet<String>> {
     let mut segments = HashSet::new();
+
     for playlist in media_playlists {
         for segment in playlist_segment_entries(playlist)? {
             if let Some(file_name) = Path::new(&segment)
@@ -230,6 +250,7 @@ fn referenced_segments(media_playlists: &[String]) -> Result<HashSet<String>> {
             }
         }
     }
+
     Ok(segments)
 }
 
@@ -311,9 +332,11 @@ fn segment_families(
 fn segment_family(file_name: &str) -> Option<&str> {
     let path = Path::new(file_name);
     let extension = path.extension()?.to_str()?;
+
     if extension != "ts" && extension != "vtt" {
         return None;
     }
+
     let stem = path.file_stem()?.to_str()?;
     let number_start = stem
         .char_indices()
@@ -323,7 +346,7 @@ fn segment_family(file_name: &str) -> Option<&str> {
     (number_start < stem.len()).then_some(&stem[..number_start])
 }
 
-fn common_playlist_parent(media_playlists: &[String]) -> Option<std::path::PathBuf> {
+fn common_playlist_parent(media_playlists: &[String]) -> Option<PathBuf> {
     let first = media_playlists.first()?;
     Path::new(first).parent().map(Path::to_path_buf)
 }
@@ -344,7 +367,7 @@ fn remove_playlist(path: &Path) -> Result<()> {
     }
 }
 
-pub(super) fn master_playlist_path(path: &str) -> std::path::PathBuf {
+pub(super) fn master_playlist_path(path: &str) -> PathBuf {
     Path::new(path).with_file_name("master.m3u8")
 }
 
@@ -357,6 +380,7 @@ fn media_sequence_start_number(paths: &[String]) -> Result<Option<u64>> {
                 return Err(error).with_context(|| format!("failed to read HLS playlist {path}"));
             }
         };
+
         if let Some(sequence) = playlist.lines().find_map(|line| {
             line.trim()
                 .strip_prefix("#EXT-X-MEDIA-SEQUENCE:")
@@ -371,6 +395,7 @@ fn media_sequence_start_number(paths: &[String]) -> Result<Option<u64>> {
 
 fn playlist_uri(line: &str) -> Option<&str> {
     let entry = line.trim();
+
     if entry.is_empty() || entry.starts_with('#') {
         return None;
     }
@@ -428,6 +453,8 @@ pub(super) fn var_stream_map(variants: &[HlsVariant], subtitle: Option<&HlsSubti
 
 #[cfg(test)]
 mod tests {
+    use std::{env, process};
+
     use super::*;
 
     fn variant(name: &str) -> HlsVariant {
@@ -502,7 +529,7 @@ mod tests {
 
     #[test]
     fn resume_uses_playlist_media_sequence_as_start_number() {
-        let dir = std::env::temp_dir().join(format!("hls_sequence_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_sequence_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let playlist = dir.join("stream.m3u8");
@@ -521,7 +548,7 @@ mod tests {
 
     #[test]
     fn prune_unreferenced_segments_keeps_playlist_entries() {
-        let dir = std::env::temp_dir().join(format!("hls_prune_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_prune_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let playlist = dir.join("stream.m3u8");
@@ -550,7 +577,7 @@ mod tests {
 
     #[test]
     fn empty_subtitle_playlist_still_prunes_its_vtt_segments() {
-        let dir = std::env::temp_dir().join(format!("hls_vtt_prune_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_vtt_prune_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let playlist = dir.join("stream_vtt.m3u8");
@@ -567,7 +594,7 @@ mod tests {
 
     #[test]
     fn cleanup_playlist_paths_include_master_children_only() {
-        let dir = std::env::temp_dir().join(format!("hls_master_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_master_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let master = dir.join("master.m3u8");
@@ -598,7 +625,7 @@ mod tests {
 
     #[test]
     fn stale_playlist_starts_clean_without_touching_other_output() {
-        let dir = std::env::temp_dir().join(format!("hls_stale_test_{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("hls_stale_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         let playlist = dir.join("stream.m3u8");

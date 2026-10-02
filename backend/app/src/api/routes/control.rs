@@ -179,6 +179,9 @@ pub async fn control_playout(
 ///       },
 ///       "index": 39,
 ///       "ingest": false,
+///       "ingest_listener_id": null,
+///       "ingest_listener_name": null,
+///       "ingest_listener_backend": null,
 ///       "mode": "playlist",
 ///       "played": 67.808
 ///     }

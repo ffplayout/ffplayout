@@ -2,7 +2,7 @@ use std::{
     ffi::CString,
     fs,
     path::{Path, PathBuf},
-    ptr,
+    process, ptr,
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -42,6 +42,7 @@ impl RecordingMuxer {
         if config.path.trim().is_empty() {
             return Err(anyhow!("recording path must not be empty"));
         }
+
         if config.segment_duration == 0 {
             return Err(anyhow!(
                 "recording segment duration must be greater than zero"
@@ -108,11 +109,13 @@ impl RecordingMuxer {
         packet.set_stream(stream_index);
         packet.rescale_ts(encoder_time_base, stream_time_base);
         packet.write_interleaved(&mut self.octx)?;
+
         Ok(())
     }
 
     pub(super) fn finish(mut self) -> Result<()> {
         self.octx.write_trailer()?;
+
         Ok(())
     }
 }
@@ -130,6 +133,7 @@ impl RecordingMonitor {
         {
             return Ok(());
         }
+
         self.next_check = Instant::now() + self.check_interval;
 
         if self.retention_days > 0
@@ -167,9 +171,10 @@ pub(super) fn prepare_recording(config: &RecordingConfig) -> Result<(PathBuf, Re
     let sequence = RECORDING_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let pattern = directory.join(format!(
         "recording-ch{channel_id}-%Y-%m-%d_%H-%M-%S-{}-{sequence}.mkv",
-        std::process::id()
+        process::id()
     ));
     let check_interval = Duration::from_secs(u64::from(config.segment_duration));
+
     Ok((
         pattern,
         RecordingMonitor {
@@ -199,15 +204,19 @@ pub(super) fn segment_output_context(path: &Path) -> Result<format::context::Out
             muxer.as_ptr(),
             path.as_ptr(),
         );
+
         if result < 0 {
             if !context.is_null() {
                 ffmpeg::ffi::avformat_free_context(context);
             }
+
             return Err(ffmpeg::Error::from(result).into());
         }
+
         if context.is_null() {
             return Err(ffmpeg::Error::Unknown.into());
         }
+
         Ok(format::context::Output::wrap(context))
     }
 }
@@ -234,6 +243,7 @@ fn ensure_minimum_free_space(directory: &Path, minimum_free_space_gb: u32) -> Re
             minimum_free_space_gb
         ));
     }
+
     Ok(())
 }
 
@@ -241,13 +251,16 @@ fn remove_expired_segments(directory: &Path, retention_days: u32, channel_id: i3
     if retention_days == 0 {
         return Ok(());
     }
+
     let cutoff = SystemTime::now()
         .checked_sub(Duration::from_secs(u64::from(retention_days) * 86_400))
         .unwrap_or(UNIX_EPOCH);
     let channel_prefix = format!("recording-ch{channel_id}-");
+
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
         let path = entry.path();
+
         if !is_managed_segment(&path)
             || !path
                 .file_name()
@@ -265,12 +278,14 @@ fn remove_expired_segments(directory: &Path, retention_days: u32, channel_id: i3
             Some(recorded_at) => recorded_at,
             None => entry.metadata()?.modified()?,
         };
+
         if recorded_at < cutoff {
             fs::remove_file(&path).with_context(|| {
                 format!("failed to remove expired recording {}", path.display())
             })?;
         }
     }
+
     Ok(())
 }
 
@@ -347,6 +362,7 @@ fn parse_recording_timestamp(value: &str) -> Option<NaiveDateTime> {
         .ok()?;
     let [year, month, day] = <[u32; 3]>::try_from(date).ok()?;
     let [hour, minute, second] = <[u32; 3]>::try_from(time).ok()?;
+
     if year < 1970 || hour >= 24 || minute >= 60 || second >= 60 {
         return None;
     }
@@ -385,7 +401,7 @@ fn reject_unused_options(options: ffmpeg::Dictionary<'_>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, time::SystemTime};
+    use std::{env, fs, path::Path, process, time::SystemTime};
 
     use crate::RecordingConfig;
 
@@ -395,33 +411,33 @@ mod tests {
 
     #[test]
     fn accepts_disabled_minimum_free_space_limit() {
-        assert!(ensure_minimum_free_space(std::path::Path::new("."), 0).is_ok());
+        assert!(ensure_minimum_free_space(Path::new("."), 0).is_ok());
     }
 
     #[test]
     fn rejects_an_unattainable_minimum_free_space_limit() {
-        assert!(ensure_minimum_free_space(std::path::Path::new("."), u32::MAX).is_err());
+        assert!(ensure_minimum_free_space(Path::new("."), u32::MAX).is_err());
     }
 
     #[test]
     fn recognizes_only_managed_recording_segments() {
-        assert!(is_managed_segment(std::path::Path::new(
+        assert!(is_managed_segment(Path::new(
             "recording-ch2-2026-08-13_15-42-09-42-0.mkv"
         )));
-        assert!(is_managed_segment(std::path::Path::new(
+        assert!(is_managed_segment(Path::new(
             "recording-ch2-1786617288287263738-42-000001.mkv"
         )));
-        assert!(!is_managed_segment(std::path::Path::new("archive.mkv")));
-        assert!(!is_managed_segment(std::path::Path::new(
+        assert!(!is_managed_segment(Path::new("archive.mkv")));
+        assert!(!is_managed_segment(Path::new(
             "recording-ch2-2026-08-13_15-42-09-42-x.mkv"
         )));
     }
 
     #[test]
     fn retention_does_not_delete_unmanaged_mkv_files() {
-        let directory = std::env::temp_dir().join(format!(
+        let directory = env::temp_dir().join(format!(
             "ffplayout-recording-retention-{}-{}",
-            std::process::id(),
+            process::id(),
             SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -439,9 +455,9 @@ mod tests {
 
     #[test]
     fn retention_uses_the_filename_timestamp_even_if_mtime_is_recent() {
-        let directory = std::env::temp_dir().join(format!(
+        let directory = env::temp_dir().join(format!(
             "ffplayout-recording-filename-age-{}-{}",
-            std::process::id(),
+            process::id(),
             SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -462,9 +478,9 @@ mod tests {
 
     #[test]
     fn retention_falls_back_to_mtime_for_legacy_segments() {
-        let directory = std::env::temp_dir().join(format!(
+        let directory = env::temp_dir().join(format!(
             "ffplayout-recording-legacy-age-{}-{}",
-            std::process::id(),
+            process::id(),
             SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -486,9 +502,9 @@ mod tests {
 
     #[test]
     fn periodic_check_removes_expired_segments_without_disabling_recording() {
-        let directory = std::env::temp_dir().join(format!(
+        let directory = env::temp_dir().join(format!(
             "ffplayout-recording-periodic-{}-{}",
-            std::process::id(),
+            process::id(),
             SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -515,9 +531,9 @@ mod tests {
 
     #[test]
     fn retention_is_scoped_to_the_channel_at_startup_and_periodically() {
-        let directory = std::env::temp_dir().join(format!(
+        let directory = env::temp_dir().join(format!(
             "ffplayout-recording-channel-retention-{}-{}",
-            std::process::id(),
+            process::id(),
             SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -526,6 +542,7 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
         let old = SystemTime::now() - std::time::Duration::from_secs(2 * 86_400);
         let mut paths = Vec::new();
+
         for channel in [0, 1, 10, 2] {
             for suffix in ["2000-01-01_00-00-00-1-0", "1786617288287263738-42-000001"] {
                 let path = directory.join(format!("recording-ch{channel}-{suffix}.mkv"));
@@ -533,25 +550,31 @@ mod tests {
                 paths.push((channel, path));
             }
         }
+
         let mut config = RecordingConfig::new(directory.to_string_lossy().into_owned(), 60);
         config.channel_id = Some(1);
         config.retention_days = 1;
         config.minimum_free_space_gb = 0;
         let (_, mut monitor) = prepare_recording(&config).unwrap();
+
         for (channel, path) in &paths {
             assert_eq!(path.exists(), *channel != 1, "{}", path.display());
+
             if *channel == 1 {
                 fs::File::create(path).unwrap().set_modified(old).unwrap();
             }
         }
+
         monitor.next_check = std::time::Instant::now();
         monitor.check().unwrap();
+
         for (channel, path) in &paths {
             assert_eq!(path.exists(), *channel != 1, "{}", path.display());
         }
         // No configured channel uses ch0 in both filenames and retention.
         config.channel_id = None;
         prepare_recording(&config).unwrap();
+
         for (channel, path) in &paths {
             assert_eq!(
                 path.exists(),
@@ -565,10 +588,8 @@ mod tests {
 
     #[test]
     fn recording_patterns_are_unique_and_include_the_channel() {
-        let directory = std::env::temp_dir().join(format!(
-            "ffplayout-recording-pattern-{}",
-            std::process::id()
-        ));
+        let directory =
+            env::temp_dir().join(format!("ffplayout-recording-pattern-{}", process::id()));
         let config =
             RecordingConfig::new(directory.to_string_lossy(), 300).with_channel_id(Some(7));
 

@@ -11,10 +11,10 @@ use tokio::sync::Mutex;
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::utils::errors::ServiceError;
-
 pub mod broadcast;
 pub mod routes;
+
+use crate::utils::errors::ServiceError;
 
 #[derive(Debug, Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -146,6 +146,16 @@ pub fn check_uuid(
     uuid: &str,
     ip_address: &str,
 ) -> Result<&'static str, ServiceError> {
+    validated_uuid(uuids, uuid, ip_address)?;
+
+    Ok("UUID is valid")
+}
+
+pub(crate) fn validated_uuid<'a>(
+    uuids: &'a mut HashSet<UuidData>,
+    uuid: &str,
+    ip_address: &str,
+) -> Result<&'a UuidData, ServiceError> {
     let client_uuid =
         Uuid::parse_str(uuid).map_err(|_| ServiceError::Forbidden("Invalid UUID".to_string()))?;
 
@@ -159,10 +169,38 @@ pub fn check_uuid(
                 ));
             }
 
-            Ok("UUID is valid")
+            Ok(entry)
         }
         None => Err(ServiceError::Forbidden(
             "Invalid or expired UUID".to_string(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uuid_validation_returns_the_owner_and_rejects_invalid_ip_and_expiration() {
+        let entry = UuidData::new("127.0.0.1".to_string(), Some(42));
+        let uuid = entry.uuid.to_string();
+        let mut uuids = HashSet::from([entry]);
+
+        assert_eq!(
+            validated_uuid(&mut uuids, &uuid, "127.0.0.1")
+                .unwrap()
+                .user_id,
+            Some(42)
+        );
+        assert!(check_uuid(&mut uuids, &uuid, "127.0.0.2").is_err());
+        assert!(check_uuid(&mut uuids, "invalid", "127.0.0.1").is_err());
+        assert!(check_uuid(&mut uuids, &Uuid::new_v4().to_string(), "127.0.0.1").is_err());
+        let mut expired = uuids.drain().next().unwrap();
+        expired.expiration = SystemTime::now() - Duration::from_secs(1);
+        uuids.insert(expired);
+
+        assert!(check_uuid(&mut uuids, &uuid, "127.0.0.1").is_err());
+        assert!(uuids.is_empty());
     }
 }

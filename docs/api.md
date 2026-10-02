@@ -116,6 +116,13 @@ output is opened. The map is rejected for HLS, desktop, and local-file outputs.
 Values such as SRT passphrases are stored and returned unchanged by these
 authenticated endpoints.
 
+`output.metadata_options` is a separate string map of global container tags,
+such as `title`, `copyright`, `service_name`, or `service_provider`. Tag names
+and values are validated for safe length and characters before saving. They
+are applied to the FFmpeg output context before its header is written, not as
+muxer or transport options. Whether a tag is retained or visible depends on
+the selected output format. Desktop output does not accept container metadata.
+
 For `output.mode: "stream"`, `output.stream_type` also accepts `"custom"`.
 Set `output.stream_format` to an FFmpeg output format such as `"decklink"` and
 `output.stream_url` to its target, for example a DeckLink device name. The

@@ -2,7 +2,7 @@ use std::{
     cmp, fmt,
     path::Path,
     sync::{
-        Arc, Mutex as StdMutex,
+        Arc, Mutex as StdMutex, PoisonError,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
@@ -35,16 +35,30 @@ use crate::{
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const SUPERVISOR_STOP_TIMEOUT: Duration = Duration::from_secs(15);
 
-pub fn live_loudness_config(processing: &crate::utils::config::Audio) -> LiveLoudnessConfig {
+pub fn loudness_config(processing: &crate::utils::config::Audio) -> LiveLoudnessConfig {
     LiveLoudnessConfig {
-        target_lufs: processing.live_loudness_target_lufs,
-        dead_band_lu: processing.live_loudness_dead_band_lu,
-        max_gain_db: processing.live_loudness_max_gain_db,
-        max_attenuation_db: processing.live_loudness_max_attenuation_db,
-        gain_up_db_per_second: processing.live_loudness_gain_up_db_per_second,
-        gain_down_db_per_second: processing.live_loudness_gain_down_db_per_second,
-        silence_gate_lufs: processing.live_loudness_silence_gate_lufs,
-        true_peak_ceiling_dbtp: processing.live_loudness_true_peak_ceiling_dbtp,
+        compressor_ratio: processing.compressor_ratio,
+        compressor_attack_ms: processing.compressor_attack_ms,
+        compressor_hold_ms: processing.compressor_hold_ms,
+        compressor_release_ms: processing.compressor_release_ms,
+        compressor_strong_release_ms: processing.compressor_strong_release_ms,
+        compressor_knee_db: processing.compressor_knee_db,
+        pause_hold_ms: processing.pause_hold_ms,
+        pause_return_delay_ms: processing.pause_return_delay_ms,
+        output_max_correction_db: processing.loudness_output_max_correction_db,
+        output_gain_up_db_per_second: processing.loudness_output_gain_up_db_per_second,
+        output_gain_down_db_per_second: processing.loudness_output_gain_down_db_per_second,
+
+        compressor_threshold_dbfs: processing.compressor_threshold_dbfs,
+        pause_threshold_dbfs: processing.pause_threshold_dbfs,
+        target_lufs: processing.loudness_target_lufs,
+        dead_band_lu: processing.loudness_dead_band_lu,
+        max_gain_db: processing.loudness_max_gain_db,
+        max_attenuation_db: processing.loudness_max_attenuation_db,
+        gain_up_db_per_second: processing.loudness_gain_up_db_per_second,
+        gain_down_db_per_second: processing.loudness_gain_down_db_per_second,
+        silence_gate_lufs: processing.loudness_silence_gate_lufs,
+        true_peak_ceiling_dbtp: processing.loudness_true_peak_ceiling_dbtp,
     }
 }
 
@@ -74,6 +88,7 @@ pub struct ChannelManager {
     pub id: i32,
     pub db_pool: Pool<Sqlite>,
     pub config: Arc<RwLock<PlayoutConfig>>,
+    running_config: Arc<StdMutex<Option<Arc<PlayoutConfig>>>>,
     pub channel: Arc<Mutex<Channel>>,
     pub decoder: Arc<Mutex<Option<Child>>>,
     pub encoder: Arc<Mutex<Option<Child>>>,
@@ -109,6 +124,24 @@ pub struct ChannelManager {
     pub system: SystemStat,
 }
 
+pub(crate) struct RunningConfigGuard {
+    slot: Arc<StdMutex<Option<Arc<PlayoutConfig>>>>,
+    config: Arc<PlayoutConfig>,
+}
+
+impl Drop for RunningConfigGuard {
+    fn drop(&mut self) {
+        let mut slot = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
+
+        if slot
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, &self.config))
+        {
+            *slot = None;
+        }
+    }
+}
+
 impl ChannelManager {
     pub async fn new(
         db_pool: Pool<Sqlite>,
@@ -129,8 +162,8 @@ impl ChannelManager {
         let storage = init_storage(config.channel.storage.clone(), extensions).await?;
         let audio_effects = AudioEffectsControl::new(config.audio.volume).unwrap_or_default();
         let live_loudness = ff_engine::LiveLoudnessControl::new(
-            config.audio.live_loudness_enable,
-            live_loudness_config(&config.audio),
+            config.audio.loudness_scope != "off",
+            loudness_config(&config.audio),
         );
         let text_overlay = TextOverlayState::default();
         if let Some(preset) = config.text.preset.as_ref() {
@@ -143,6 +176,7 @@ impl ChannelManager {
             db_pool,
             is_alive: Arc::new(AtomicBool::new(false)),
             config: Arc::new(RwLock::new(config)),
+            running_config: Arc::new(StdMutex::new(None)),
             channel: Arc::new(Mutex::new(channel)),
             list_init: Arc::new(AtomicBool::new(true)),
             current_media: Arc::new(Mutex::new(None)),
@@ -209,6 +243,37 @@ impl ChannelManager {
     pub async fn update_config(&self, new_config: PlayoutConfig) {
         let mut config = self.config.write().await;
         *config = new_config;
+    }
+
+    pub(crate) fn track_running_config(&self, config: PlayoutConfig) -> RunningConfigGuard {
+        let config = Arc::new(config);
+        *self
+            .running_config
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(Arc::clone(&config));
+
+        RunningConfigGuard {
+            slot: Arc::clone(&self.running_config),
+            config,
+        }
+    }
+
+    pub(crate) fn running_config(&self) -> Option<Arc<PlayoutConfig>> {
+        self.running_config
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    pub(crate) fn running_listener_label(&self, id: i32) -> Option<(String, String)> {
+        self.running_config().and_then(|config| {
+            config
+                .ingest
+                .listeners
+                .iter()
+                .find(|input| input.id == id)
+                .map(|input| (input.name.clone(), input.backend.clone()))
+        })
     }
 
     pub async fn start(&self) -> Result<(), ServiceError> {
@@ -729,4 +794,24 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
 
     // 4. Player starten
     player(manager).await
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_support::channel_manager;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn failed_start_restores_not_running_state() {
+        let (manager, pool) = channel_manager().await;
+        pool.close().await;
+
+        assert!(manager.start().await.is_err());
+        assert!(!manager.is_alive.load(Ordering::SeqCst));
+        assert!(manager.supervisor_handle.lock().await.is_none());
+        tokio::fs::remove_dir_all(manager.storage.root.read().await.clone())
+            .await
+            .unwrap();
+    }
 }

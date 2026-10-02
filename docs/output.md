@@ -21,6 +21,16 @@ For example, you can use:
 
 Of course, you can also use media platforms that support streaming input.
 
+### Container metadata
+
+The advanced output settings accept global container metadata as key/value
+pairs. For example, `title` and `copyright` can identify a recording or stream.
+For MPEG-TS, set `service_name` and `service_provider` to advertise the DVB
+service description. These tags are separate from muxer and protocol options.
+An empty map preserves FFmpeg's defaults. Which other tags survive depends on
+the selected muxer; HLS playlist tags are not generated automatically from
+container metadata.
+
 ### Protocol options
 
 Advanced stream settings include a protocol-option map. These values are

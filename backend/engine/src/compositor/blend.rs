@@ -90,6 +90,7 @@ impl SimdOp for BlendPlane<'_> {
             }
 
             let vectorized_len = self.width / lanes * lanes;
+
             for offset in (0..vectorized_len).step_by(lanes) {
                 let destination_bytes = u8_ops.load(&destination[offset..]);
                 let source_bytes = u8_ops.load(&source[offset..]);
@@ -159,6 +160,7 @@ fn div_255<T: IntOps<u16>>(ops: T, value: T::Simd) -> T::Simd {
 pub(crate) fn blend_scalar(destination: &mut [u8], source: &[u8], alpha: &[u8], opacity: u8) {
     for ((destination, source), source_alpha) in destination.iter_mut().zip(source).zip(alpha) {
         let alpha = mul_alpha(*source_alpha, opacity);
+
         if alpha == 0 {
             continue;
         }

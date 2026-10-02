@@ -2,7 +2,7 @@
 
 set -eu
 
-source "$(dirname "$0")/man_create.sh"
+"$(dirname "$0")/man_create.sh"
 target=${1:-}
 env_file=".env"
 env_names=()

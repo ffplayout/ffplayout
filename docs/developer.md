@@ -43,6 +43,20 @@ When compiling against a manually installed FFmpeg, make sure `pkg-config` can f
 export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 ```
 
+### Optional SRT logging integration
+
+The engine's build script uses `pkg-config` to check whether libsrt is linkable
+for the target build. If `pkg-config --modversion srt` succeeds, ffplayout links
+libsrt directly and routes its native messages through the ffplayout logger,
+including rate limiting for repeated receive-buffer warnings. Use the
+development files for the same libsrt installation as your FFmpeg build.
+
+If libsrt or its `srt.pc` file is unavailable, ffplayout still builds and SRT
+ingest can still work through an FFmpeg build that supports it. In that case,
+libsrt's native messages may appear directly on stderr instead of in the
+ffplayout logs. The provided static Docker build installs `srt.pc` alongside
+libsrt, so its logger integration is enabled automatically.
+
 `libavfilter` and `libavdevice` are optional and disabled by default to reduce
 the runtime and static-build footprint. ffplayout currently uses its own media
 processing pipeline, so FFmpeg filters such as `drawtext` and FFmpeg devices

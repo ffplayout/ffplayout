@@ -1,4 +1,5 @@
 use std::{
+    mem,
     ops::Deref,
     sync::{Arc, Mutex, PoisonError, Weak},
 };
@@ -46,8 +47,9 @@ impl<T> Drop for RecyclableBuffer<T> {
             return;
         };
         let mut pool = pool.lock().unwrap_or_else(PoisonError::into_inner);
+
         if pool.len() < VIDEO_BUFFER_POOL_CAPACITY {
-            pool.push(std::mem::take(&mut self.data));
+            pool.push(mem::take(&mut self.data));
         }
     }
 }
@@ -120,6 +122,7 @@ impl DesktopFrameConverter {
     pub(super) fn convert(&mut self, frame: &frame::Video) -> Result<VideoSurface> {
         let width = frame.width();
         let height = frame.height();
+
         if width == 0 || height == 0 {
             return Err(anyhow!("desktop video frame has zero dimensions"));
         }
@@ -128,6 +131,7 @@ impl DesktopFrameConverter {
             let input = scaler.input();
             input.format != frame.format() || input.width != width || input.height != height
         });
+
         if reconfigure {
             if let Some(scaler) = &mut self.scaler {
                 scaler.cached(
@@ -150,6 +154,7 @@ impl DesktopFrameConverter {
                     scaling::flag::Flags::FAST_BILINEAR,
                 )?);
             }
+
             self.converted = frame::Video::empty();
         }
         self.scaler
@@ -162,6 +167,7 @@ impl DesktopFrameConverter {
             let mut pixels =
                 take_buffer(&self.buffer_pool, width as usize * height as usize, 0_u32);
             let stride = self.converted.stride(0) / 4;
+
             for (target_row, source_row) in pixels
                 .chunks_exact_mut(width as usize)
                 .zip(self.converted.plane::<[u8; 4]>(0).chunks_exact(stride))
@@ -170,6 +176,7 @@ impl DesktopFrameConverter {
                     *target = bgrz_to_rgb_pixel(*source);
                 }
             }
+
             Ok(VideoSurface {
                 width,
                 height,
@@ -182,6 +189,7 @@ impl DesktopFrameConverter {
         {
             let chroma_width = width.div_ceil(2) as usize;
             let chroma_height = height.div_ceil(2) as usize;
+
             Ok(VideoSurface {
                 width,
                 height,
@@ -237,6 +245,7 @@ fn copy_frame_plane(
     let stride = frame.stride(plane);
     let source = frame.data(plane);
     let mut pixels = take_buffer(pool, width * height, 0);
+
     for (target, source) in pixels
         .chunks_exact_mut(width)
         .zip(source.chunks_exact(stride))
@@ -286,6 +295,7 @@ mod tests {
     #[test]
     fn buffer_pool_is_bounded() {
         let pool = Arc::new(Mutex::new(Vec::new()));
+
         for _ in 0..VIDEO_BUFFER_POOL_CAPACITY + 2 {
             drop(RecyclableBuffer::pooled(vec![0_u8; 4], &pool));
         }

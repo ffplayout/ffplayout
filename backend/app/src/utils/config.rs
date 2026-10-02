@@ -654,33 +654,64 @@ impl Processing {
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Audio {
     pub volume: f64,
-    pub live_loudness_enable: bool,
-    pub live_loudness_target_lufs: f64,
-    pub live_loudness_dead_band_lu: f64,
-    pub live_loudness_max_gain_db: f64,
-    pub live_loudness_max_attenuation_db: f64,
-    pub live_loudness_gain_up_db_per_second: f64,
-    pub live_loudness_gain_down_db_per_second: f64,
-    pub live_loudness_silence_gate_lufs: f64,
-    pub live_loudness_true_peak_ceiling_dbtp: f64,
+    #[ts(type = "\"all\" | \"live\" | \"off\"")]
+    pub loudness_scope: String,
+    pub compressor_ratio: f64,
+    pub compressor_attack_ms: f64,
+    pub compressor_hold_ms: f64,
+    pub compressor_release_ms: f64,
+    pub compressor_strong_release_ms: f64,
+    pub compressor_knee_db: f64,
+    pub pause_hold_ms: f64,
+    pub pause_return_delay_ms: f64,
+    pub loudness_output_max_correction_db: f64,
+    pub loudness_output_gain_up_db_per_second: f64,
+    pub loudness_output_gain_down_db_per_second: f64,
+
+    pub compressor_threshold_dbfs: f64,
+    pub pause_threshold_dbfs: f64,
+    // Derived from loudness_scope.
+    pub loudness_enable: bool,
+    pub loudness_target_lufs: f64,
+    pub loudness_dead_band_lu: f64,
+    pub loudness_max_gain_db: f64,
+    pub loudness_max_attenuation_db: f64,
+    pub loudness_gain_up_db_per_second: f64,
+    pub loudness_gain_down_db_per_second: f64,
+    pub loudness_silence_gate_lufs: f64,
+    pub loudness_true_peak_ceiling_dbtp: f64,
 }
 
 impl Audio {
     fn new(config: &models::Configuration) -> Self {
         Self {
             volume: config.processing_volume,
-            live_loudness_enable: config.processing_live_loudness_enable,
-            live_loudness_target_lufs: config.processing_live_loudness_target_lufs,
-            live_loudness_dead_band_lu: config.processing_live_loudness_dead_band_lu,
-            live_loudness_max_gain_db: config.processing_live_loudness_max_gain_db,
-            live_loudness_max_attenuation_db: config.processing_live_loudness_max_attenuation_db,
-            live_loudness_gain_up_db_per_second: config
-                .processing_live_loudness_gain_up_db_per_second,
-            live_loudness_gain_down_db_per_second: config
-                .processing_live_loudness_gain_down_db_per_second,
-            live_loudness_silence_gate_lufs: config.processing_live_loudness_silence_gate_lufs,
-            live_loudness_true_peak_ceiling_dbtp: config
-                .processing_live_loudness_true_peak_ceiling_dbtp,
+            loudness_scope: config.processing_loudness_scope.clone(),
+            compressor_ratio: config.processing_compressor_ratio,
+            compressor_attack_ms: config.processing_compressor_attack_ms,
+            compressor_hold_ms: config.processing_compressor_hold_ms,
+            compressor_release_ms: config.processing_compressor_release_ms,
+            compressor_strong_release_ms: config.processing_compressor_strong_release_ms,
+            compressor_knee_db: config.processing_compressor_knee_db,
+            pause_hold_ms: config.processing_pause_hold_ms,
+            pause_return_delay_ms: config.processing_pause_return_delay_ms,
+            loudness_output_max_correction_db: config.processing_loudness_output_max_correction_db,
+            loudness_output_gain_up_db_per_second: config
+                .processing_loudness_output_gain_up_db_per_second,
+            loudness_output_gain_down_db_per_second: config
+                .processing_loudness_output_gain_down_db_per_second,
+
+            compressor_threshold_dbfs: config.processing_compressor_threshold_dbfs,
+            pause_threshold_dbfs: config.processing_pause_threshold_dbfs,
+            loudness_enable: config.processing_loudness_scope != "off",
+            loudness_target_lufs: config.processing_loudness_target_lufs,
+            loudness_dead_band_lu: config.processing_loudness_dead_band_lu,
+            loudness_max_gain_db: config.processing_loudness_max_gain_db,
+            loudness_max_attenuation_db: config.processing_loudness_max_attenuation_db,
+            loudness_gain_up_db_per_second: config.processing_loudness_gain_up_db_per_second,
+            loudness_gain_down_db_per_second: config.processing_loudness_gain_down_db_per_second,
+            loudness_silence_gate_lufs: config.processing_loudness_silence_gate_lufs,
+            loudness_true_peak_ceiling_dbtp: config.processing_loudness_true_peak_ceiling_dbtp,
         }
     }
 }
@@ -688,15 +719,50 @@ impl Audio {
 #[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Ingest {
-    pub enable: bool,
-    pub ingest_url: String,
+    pub listeners: Vec<LiveInput>,
 }
 
-impl Ingest {
-    fn new(config: &models::Configuration) -> Self {
-        Self {
-            enable: config.ingest_enable,
-            ingest_url: config.ingest_url.clone(),
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
+pub struct LiveInput {
+    pub id: i32,
+    pub priority: i32,
+    pub enabled: bool,
+    pub name: String,
+    pub backend: String,
+    pub identifier: String,
+    pub options: BTreeMap<String, String>,
+    pub demuxer_options: BTreeMap<String, String>,
+}
+
+impl LiveInput {
+    pub fn listen_port(&self) -> Result<u16, String> {
+        match self.backend.as_str() {
+            "rtmp" => parse_rtmp_ingest_port(&self.identifier),
+            "srt" => {
+                let url = reqwest::Url::parse(&self.identifier)
+                    .map_err(|_| "invalid SRT listener URL".to_string())?;
+
+                if url.scheme() != "srt"
+                    || url.host_str().is_none()
+                    || !url.username().is_empty()
+                    || url.password().is_some()
+                    || url.query().is_some()
+                    || url.fragment().is_some()
+                    || !matches!(url.path(), "" | "/")
+                {
+                    return Err("SRT listener must use srt://host:port".to_string());
+                }
+
+                let port = url.port().ok_or("SRT listener must include a port")?;
+
+                if port < MIN_INGEST_PORT {
+                    return Err(format!("listener port must be at least {MIN_INGEST_PORT}"));
+                }
+
+                Ok(port)
+            }
+            _ => Err("unsupported live input backend".to_string()),
         }
     }
 }
@@ -873,6 +939,9 @@ pub struct Output {
     /// FFmpeg muxer options for this output, such as HLS `hls_flags`.
     #[serde(default)]
     pub muxer_options: BTreeMap<String, String>,
+    /// Global container metadata. Availability depends on the output muxer.
+    #[serde(default)]
+    pub metadata_options: BTreeMap<String, String>,
     #[serde(default = "default_audio_codec")]
     pub audio_codec: String,
     /// FFmpeg AVOptions for the selected audio encoder.
@@ -925,6 +994,7 @@ impl Output {
             .unwrap_or_else(|_| ff_engine::video_option_defaults(&video_codec));
         let protocol_options = serde_json::from_str(&output.protocol_options).unwrap_or_default();
         let muxer_options = serde_json::from_str(&output.muxer_options).unwrap_or_default();
+        let metadata_options = serde_json::from_str(&output.metadata_options).unwrap_or_default();
         let audio_options = serde_json::from_str(&output.audio_options).unwrap_or_default();
 
         Self {
@@ -957,6 +1027,7 @@ impl Output {
             video_options,
             protocol_options,
             muxer_options,
+            metadata_options,
             audio_codec: output.audio_codec.unwrap_or_else(default_audio_codec),
             audio_options,
             audio_bitrate: output
@@ -1045,6 +1116,10 @@ impl Output {
             return Err(
                 "protocol options can only be used with network stream outputs".to_string(),
             );
+        }
+        ff_engine::validate_output_metadata(&self.metadata_options)?;
+        if self.mode == OutputMode::Desktop && !self.metadata_options.is_empty() {
+            return Err("container metadata is unavailable for desktop output".to_string());
         }
 
         if matches!(self.mode, OutputMode::HLS | OutputMode::Stream) {
@@ -1208,7 +1283,8 @@ impl PlayoutConfig {
         let logging = Logging::new(&config);
         let mut processing = Processing::new(&config);
         let audio = Audio::new(&config);
-        let ingest = Ingest::new(&config);
+        let listeners = handles::select_live_inputs(pool, config.id).await?;
+        let ingest = Ingest { listeners };
         let mut playlist = Playlist::new(&config);
         let text = Text::new(&config, text_preset);
         let task = Task::new(&config);
@@ -1414,6 +1490,7 @@ mod output_tests {
             video_options: ff_engine::video_option_defaults("libx264"),
             protocol_options: BTreeMap::new(),
             muxer_options: BTreeMap::new(),
+            metadata_options: BTreeMap::new(),
             audio_codec: "aac".to_string(),
             audio_options: BTreeMap::new(),
             audio_bitrate: 128,
@@ -1425,6 +1502,21 @@ mod output_tests {
     fn validates_structured_output_settings() {
         assert!(output(OutputMode::HLS).validate().is_ok());
         assert!(output(OutputMode::Stream).validate().is_ok());
+    }
+
+    #[test]
+    fn output_metadata_roundtrips_and_is_rejected_for_desktop() {
+        let mut output = output(OutputMode::Stream);
+        output
+            .metadata_options
+            .insert("copyright".into(), "© Example".into());
+        assert!(output.validate().is_ok());
+        let decoded: Output =
+            serde_json::from_value(serde_json::to_value(&output).unwrap()).unwrap();
+        assert_eq!(decoded.metadata_options, output.metadata_options);
+
+        output.mode = OutputMode::Desktop;
+        assert!(output.validate().unwrap_err().contains("desktop"));
     }
 
     #[test]
@@ -1686,7 +1778,46 @@ mod output_tests {
 
 #[cfg(test)]
 mod ingest_tests {
-    use super::{MIN_INGEST_PORT, parse_rtmp_ingest_port};
+    use super::{Ingest, LiveInput, MIN_INGEST_PORT, parse_rtmp_ingest_port};
+
+    #[test]
+    fn ingest_api_uses_only_the_listener_list() {
+        let json = serde_json::to_value(Ingest::default()).unwrap();
+
+        assert_eq!(json, serde_json::json!({ "listeners": [] }));
+        assert!(
+            serde_json::from_value::<Ingest>(serde_json::json!({
+                "enable": true,
+                "ingest_url": "rtmp://127.0.0.1:1936/live/stream"
+            }))
+            .is_err()
+        );
+    }
+
+    fn srt_input(url: &str) -> LiveInput {
+        LiveInput {
+            backend: "srt".to_string(),
+            identifier: url.to_string(),
+            ..LiveInput::default()
+        }
+    }
+
+    #[test]
+    fn validates_srt_listener_addresses_without_url_options() {
+        assert_eq!(srt_input("srt://127.0.0.1:9000").listen_port(), Ok(9000));
+        assert_eq!(srt_input("srt://[::1]:9001").listen_port(), Ok(9001));
+
+        for url in [
+            "srt://127.0.0.1:80",
+            "srt://127.0.0.1",
+            "srt://127.0.0.1:9000?mode=caller",
+            "srt://127.0.0.1:9000/live",
+            "srt://user@127.0.0.1:9000",
+            "http://127.0.0.1:9000",
+        ] {
+            assert!(srt_input(url).listen_port().is_err(), "accepted {url}");
+        }
+    }
 
     #[test]
     fn parses_unprivileged_rtmp_ingest_ports() {

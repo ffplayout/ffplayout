@@ -55,6 +55,7 @@ pub(super) fn fit_rect(src_width: u32, src_height: u32, dst_width: u32, dst_heig
             height: 0,
         };
     }
+
     let scale = (dst_width as f64 / src_width as f64).min(dst_height as f64 / src_height as f64);
     let width = (src_width as f64 * scale).round().max(1.0) as u32;
     let height = (src_height as f64 * scale).round().max(1.0) as u32;

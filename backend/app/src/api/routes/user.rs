@@ -133,18 +133,15 @@ pub async fn update_user(
         Some(password_hash)
     };
 
-    let mut transaction = state.pool.begin().await?;
-    handles::update_user(&mut *transaction, id, two_factor, mail, password_hash).await?;
-
-    if update_channels {
-        sqlx::query("DELETE FROM auth_user_channels WHERE user_id = $1")
-            .bind(id)
-            .execute(&mut *transaction)
-            .await?;
-        handles::insert_user_channel(&mut transaction, id, channel_ids).await?;
-    }
-
-    transaction.commit().await?;
+    handles::update_user_with_channels(
+        &state.pool,
+        id,
+        two_factor,
+        mail,
+        password_hash,
+        update_channels.then_some(channel_ids),
+    )
+    .await?;
 
     Ok("Update Success")
 }

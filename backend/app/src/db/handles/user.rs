@@ -105,10 +105,7 @@ pub async fn insert_or_update_user(pool: &SqlitePool, user: User) -> Result<(), 
         .get("id");
 
     if let Some(channel_ids) = user.channel_ids {
-        sqlx::query("DELETE FROM auth_user_channels WHERE user_id = $1")
-            .bind(user_id)
-            .execute(&mut *transaction)
-            .await?;
+        delete_user_channels(&mut *transaction, user_id).await?;
         insert_user_channel(&mut transaction, user_id, channel_ids).await?;
     }
 
@@ -143,6 +140,7 @@ where
         if has_assignment {
             query.push(", ");
         }
+
         query.push("mail = ").push_bind(mail);
         has_assignment = true;
     }
@@ -151,6 +149,7 @@ where
         if has_assignment {
             query.push(", ");
         }
+
         query.push("password = ").push_bind(password_hash);
     }
 
@@ -161,12 +160,82 @@ where
     Ok(())
 }
 
+pub async fn update_user_with_channels(
+    pool: &SqlitePool,
+    id: i32,
+    two_factor: Option<bool>,
+    mail: Option<String>,
+    password_hash: Option<String>,
+    channel_ids: Option<Vec<i32>>,
+) -> Result<(), ProcessError> {
+    let mut transaction = pool.begin().await?;
+    update_user(&mut *transaction, id, two_factor, mail, password_hash).await?;
+
+    if let Some(channel_ids) = channel_ids {
+        delete_user_channels(&mut *transaction, id).await?;
+        insert_user_channel(&mut transaction, id, channel_ids).await?;
+    }
+
+    transaction.commit().await?;
+
+    Ok(())
+}
+
 pub async fn delete_user(pool: &SqlitePool, id: i32) -> Result<SqliteQueryResult, ProcessError> {
     const QUERY: &str = "DELETE FROM auth_user WHERE id = $1;";
 
     let result = sqlx::query(QUERY).bind(id).execute(pool).await?;
 
     Ok(result)
+}
+
+pub async fn count_users(pool: &SqlitePool) -> Result<i64, ProcessError> {
+    let count = sqlx::query_scalar("SELECT COUNT(*) FROM auth_user")
+        .fetch_one(pool)
+        .await?;
+
+    Ok(count)
+}
+
+pub async fn delete_user_channels<'e, E>(executor: E, user_id: i32) -> Result<(), ProcessError>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    sqlx::query("DELETE FROM auth_user_channels WHERE user_id = $1")
+        .bind(user_id)
+        .execute(executor)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn map_global_admins(pool: &SqlitePool) -> Result<(), ProcessError> {
+    sqlx::query(
+        "INSERT OR IGNORE INTO auth_user_channels (channel_id, user_id)
+         SELECT channels.id, auth_user.id FROM channels CROSS JOIN auth_user WHERE auth_user.role_id = 1",
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn assign_channel_to_global_admins<'e, E>(
+    executor: E,
+    channel_id: i32,
+) -> Result<(), ProcessError>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    sqlx::query(
+        "INSERT OR IGNORE INTO auth_user_channels (channel_id, user_id)
+         SELECT $1, id FROM auth_user WHERE role_id = 1",
+    )
+    .bind(channel_id)
+    .execute(executor)
+    .await?;
+
+    Ok(())
 }
 
 pub async fn insert_user_channel(
@@ -213,6 +282,53 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(two_factor, 0);
+    }
+
+    #[tokio::test]
+    async fn updating_user_and_channels_is_atomic() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::handles::db_migrate(&pool).await.unwrap();
+        sqlx::query("INSERT INTO auth_user (id, mail, username, password, role_id) VALUES (1, 'before@example.org', 'update-user', 'old-hash', 3)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        insert_user_channel(&mut pool.acquire().await.unwrap(), 1, vec![1])
+            .await
+            .unwrap();
+        let result = update_user_with_channels(
+            &pool,
+            1,
+            None,
+            Some("after@example.org".to_string()),
+            Some("new-hash".to_string()),
+            Some(vec![i32::MAX]),
+        )
+        .await;
+
+        assert!(result.is_err());
+        let unchanged = select_login(&pool, "update-user").await.unwrap();
+
+        assert_eq!(unchanged.mail.as_deref(), Some("before@example.org"));
+        assert_eq!(unchanged.password, "old-hash");
+        assert_eq!(unchanged.channel_ids, Some(vec![1]));
+        update_user_with_channels(
+            &pool,
+            1,
+            None,
+            Some("after@example.org".to_string()),
+            None,
+            Some(Vec::new()),
+        )
+        .await
+        .unwrap();
+        let updated = select_login(&pool, "update-user").await.unwrap();
+
+        assert_eq!(updated.mail.as_deref(), Some("after@example.org"));
+        assert!(!updated.channel_ids.unwrap().contains(&1));
     }
 
     #[tokio::test]

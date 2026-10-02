@@ -16,6 +16,7 @@ pub struct AudioEffectsControl {
 impl AudioEffectsControl {
     pub fn new(volume: f64) -> Result<Self> {
         validate_volume(volume)?;
+
         Ok(Self {
             volume: Arc::new(AtomicU32::new((volume as f32).to_bits())),
         })
@@ -47,6 +48,7 @@ fn validate_volume(volume: f64) -> Result<()> {
     if !volume.is_finite() || !(0.0..=1.5).contains(&volume) {
         return Err(anyhow!("audio volume must be between 0.0 and 1.5"));
     }
+
     Ok(())
 }
 

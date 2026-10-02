@@ -372,15 +372,30 @@ pub struct Configuration {
     pub processing_logo_opacity: f64,
     pub processing_logo_position: String,
     pub processing_volume: f64,
-    pub processing_live_loudness_enable: bool,
-    pub processing_live_loudness_target_lufs: f64,
-    pub processing_live_loudness_dead_band_lu: f64,
-    pub processing_live_loudness_max_gain_db: f64,
-    pub processing_live_loudness_max_attenuation_db: f64,
-    pub processing_live_loudness_gain_up_db_per_second: f64,
-    pub processing_live_loudness_gain_down_db_per_second: f64,
-    pub processing_live_loudness_silence_gate_lufs: f64,
-    pub processing_live_loudness_true_peak_ceiling_dbtp: f64,
+    pub processing_loudness_scope: String,
+    pub processing_compressor_ratio: f64,
+    pub processing_compressor_attack_ms: f64,
+    pub processing_compressor_hold_ms: f64,
+    pub processing_compressor_release_ms: f64,
+    pub processing_compressor_strong_release_ms: f64,
+    pub processing_compressor_knee_db: f64,
+    pub processing_pause_hold_ms: f64,
+    pub processing_pause_return_delay_ms: f64,
+    pub processing_loudness_output_max_correction_db: f64,
+    pub processing_loudness_output_gain_up_db_per_second: f64,
+    pub processing_loudness_output_gain_down_db_per_second: f64,
+
+    pub processing_compressor_threshold_dbfs: f64,
+    pub processing_pause_threshold_dbfs: f64,
+    pub processing_loudness_enable: bool,
+    pub processing_loudness_target_lufs: f64,
+    pub processing_loudness_dead_band_lu: f64,
+    pub processing_loudness_max_gain_db: f64,
+    pub processing_loudness_max_attenuation_db: f64,
+    pub processing_loudness_gain_up_db_per_second: f64,
+    pub processing_loudness_gain_down_db_per_second: f64,
+    pub processing_loudness_silence_gate_lufs: f64,
+    pub processing_loudness_true_peak_ceiling_dbtp: f64,
     #[serde(default)]
     pub processing_vtt_enable: bool,
     #[serde(default)]
@@ -391,9 +406,6 @@ pub struct Configuration {
     pub processing_vtt_language: String,
     #[serde(default)]
     pub processing_vtt_default: bool,
-
-    pub ingest_enable: bool,
-    pub ingest_url: String,
 
     pub playlist_day_start: String,
     pub playlist_length: String,
@@ -435,32 +447,45 @@ impl Configuration {
             processing_logo_opacity: config.processing.logo_opacity,
             processing_logo_position: config.processing.logo_position,
             processing_volume: config.audio.volume,
-            processing_live_loudness_enable: config.audio.live_loudness_enable,
-            processing_live_loudness_target_lufs: config.audio.live_loudness_target_lufs,
-            processing_live_loudness_dead_band_lu: config.audio.live_loudness_dead_band_lu,
-            processing_live_loudness_max_gain_db: config.audio.live_loudness_max_gain_db,
-            processing_live_loudness_max_attenuation_db: config
+            processing_loudness_scope: config.audio.loudness_scope.clone(),
+            processing_compressor_ratio: config.audio.compressor_ratio,
+            processing_compressor_attack_ms: config.audio.compressor_attack_ms,
+            processing_compressor_hold_ms: config.audio.compressor_hold_ms,
+            processing_compressor_release_ms: config.audio.compressor_release_ms,
+            processing_compressor_strong_release_ms: config.audio.compressor_strong_release_ms,
+            processing_compressor_knee_db: config.audio.compressor_knee_db,
+            processing_pause_hold_ms: config.audio.pause_hold_ms,
+            processing_pause_return_delay_ms: config.audio.pause_return_delay_ms,
+            processing_loudness_output_max_correction_db: config
                 .audio
-                .live_loudness_max_attenuation_db,
-            processing_live_loudness_gain_up_db_per_second: config
+                .loudness_output_max_correction_db,
+            processing_loudness_output_gain_up_db_per_second: config
                 .audio
-                .live_loudness_gain_up_db_per_second,
-            processing_live_loudness_gain_down_db_per_second: config
+                .loudness_output_gain_up_db_per_second,
+            processing_loudness_output_gain_down_db_per_second: config
                 .audio
-                .live_loudness_gain_down_db_per_second,
-            processing_live_loudness_silence_gate_lufs: config
+                .loudness_output_gain_down_db_per_second,
+
+            processing_compressor_threshold_dbfs: config.audio.compressor_threshold_dbfs,
+            processing_pause_threshold_dbfs: config.audio.pause_threshold_dbfs,
+            processing_loudness_enable: config.audio.loudness_scope != "off",
+            processing_loudness_target_lufs: config.audio.loudness_target_lufs,
+            processing_loudness_dead_band_lu: config.audio.loudness_dead_band_lu,
+            processing_loudness_max_gain_db: config.audio.loudness_max_gain_db,
+            processing_loudness_max_attenuation_db: config.audio.loudness_max_attenuation_db,
+            processing_loudness_gain_up_db_per_second: config.audio.loudness_gain_up_db_per_second,
+            processing_loudness_gain_down_db_per_second: config
                 .audio
-                .live_loudness_silence_gate_lufs,
-            processing_live_loudness_true_peak_ceiling_dbtp: config
+                .loudness_gain_down_db_per_second,
+            processing_loudness_silence_gate_lufs: config.audio.loudness_silence_gate_lufs,
+            processing_loudness_true_peak_ceiling_dbtp: config
                 .audio
-                .live_loudness_true_peak_ceiling_dbtp,
+                .loudness_true_peak_ceiling_dbtp,
             processing_vtt_enable: config.processing.vtt_enable,
             processing_vtt_dummy: config.processing.vtt_dummy,
             processing_vtt_name: config.processing.vtt_name,
             processing_vtt_language: config.processing.vtt_language,
             processing_vtt_default: config.processing.vtt_default,
-            ingest_enable: config.ingest.enable,
-            ingest_url: config.ingest.ingest_url,
             playlist_day_start: config.playlist.day_start,
             playlist_length: config.playlist.length,
             playlist_infinit: config.playlist.infinit,
@@ -518,6 +543,7 @@ pub struct Output {
     pub video_options: String,
     pub protocol_options: String,
     pub muxer_options: String,
+    pub metadata_options: String,
     pub audio_codec: Option<String>,
     pub audio_options: String,
     pub audio_bitrate: Option<i64>,
@@ -558,6 +584,7 @@ impl Output {
             },
             protocol_options: "{}".to_string(),
             muxer_options: "{}".to_string(),
+            metadata_options: "{}".to_string(),
             audio_codec: encoded.then(|| "aac".to_string()),
             audio_options: "{}".to_string(),
             audio_bitrate: encoded.then_some(128),
@@ -571,4 +598,67 @@ fn default_vtt_name() -> String {
 
 fn default_vtt_language() -> String {
     "und".to_string()
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct LiveInputRecord {
+    pub id: i32,
+    pub priority: i32,
+    pub enabled: bool,
+    pub name: String,
+    pub backend: String,
+    pub identifier: String,
+    pub options: String,
+    pub demuxer_options: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SetupSettings {
+    pub logs: String,
+    pub playlists: String,
+    pub public: String,
+    pub storage: String,
+    pub shared: bool,
+    pub smtp_server: String,
+    pub smtp_user: String,
+    pub smtp_password: String,
+    pub smtp_starttls: bool,
+    pub smtp_port: u16,
+}
+
+impl From<GlobalSettings> for SetupSettings {
+    fn from(settings: GlobalSettings) -> Self {
+        Self {
+            logs: settings.logs,
+            playlists: settings.playlists,
+            public: settings.public,
+            storage: settings.storage,
+            shared: settings.shared,
+            smtp_server: settings.smtp_server,
+            smtp_user: settings.smtp_user,
+            smtp_password: String::new(),
+            smtp_starttls: settings.smtp_starttls,
+            smtp_port: settings.smtp_port,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct InitialSetup {
+    pub settings: SetupSettings,
+    pub channel_public: String,
+    pub channel_playlists: String,
+    pub channel_storage: String,
+    pub username: String,
+    pub mail: String,
+    pub password_hash: String,
+    pub two_factor: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct SetupRollback {
+    pub global: GlobalSettings,
+    pub channel: Channel,
+    pub active_outputs: Vec<i32>,
+    pub user_id: i32,
 }

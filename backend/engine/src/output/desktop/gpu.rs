@@ -1,7 +1,10 @@
 #[cfg(feature = "desktop-gpu")]
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicI32, Ordering},
+use std::{
+    mem,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicI32, Ordering},
+    },
 };
 
 use anyhow::{Result, anyhow};
@@ -57,6 +60,7 @@ impl WgpuRenderer {
             (size.width, size.height),
             Arc::clone(&channel_id),
         )?;
+
         Ok(Self {
             window,
             instance,
@@ -73,6 +77,7 @@ impl WgpuRenderer {
             (size.width, size.height),
             Arc::clone(&self.channel_id),
         )?;
+
         Ok(())
     }
 
@@ -81,6 +86,7 @@ impl WgpuRenderer {
             if self.state.device_lost.swap(false, Ordering::AcqRel) {
                 self.rebuild_state()?;
             }
+
             match self.state.surface.get_current_texture() {
                 wgpu::CurrentSurfaceTexture::Success(texture) => {
                     return Ok(Some((texture, false)));
@@ -112,9 +118,11 @@ impl WgpuRenderer {
         if width == 0 || height == 0 {
             return Ok(());
         }
+
         self.state.config.width = width;
         self.state.config.height = height;
         self.state.configure_surface();
+
         Ok(())
     }
 
@@ -122,7 +130,9 @@ impl WgpuRenderer {
         if width == 0 || height == 0 {
             return Ok(());
         }
+
         let _ = (width, height);
+
         Ok(())
     }
 
@@ -144,9 +154,11 @@ impl WgpuRenderer {
         else {
             return Ok(());
         };
+
         if let Some(video) = &frame.video {
             self.state.yuv.upload(video)?;
         }
+
         let target = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -166,9 +178,11 @@ impl WgpuRenderer {
         // On Wayland this must describe the buffer submission that immediately follows.
         self.window.pre_present_notify();
         self.state.queue.present(surface_texture);
+
         if reconfigure_after_present {
             self.state.configure_surface();
         }
+
         Ok(())
     }
 }
@@ -210,6 +224,7 @@ impl WgpuState {
         surface.configure(&device, &config);
         let yuv = GpuYuvRenderer::new(&device, &queue, config.format);
         let sprites = GpuSpriteRenderer::new(&device, &queue, config.format);
+
         Ok(Self {
             surface,
             _adapter: adapter,
@@ -270,7 +285,7 @@ const YUV_SCALE_PARAMETER_END: usize = 20;
 #[cfg(feature = "desktop-gpu")]
 const YUV_PARAMETER_COUNT: usize = 24;
 #[cfg(feature = "desktop-gpu")]
-const YUV_PARAMETER_BYTES: u64 = (YUV_PARAMETER_COUNT * std::mem::size_of::<f32>()) as u64;
+const YUV_PARAMETER_BYTES: u64 = (YUV_PARAMETER_COUNT * mem::size_of::<f32>()) as u64;
 
 #[cfg(feature = "desktop-gpu")]
 const _: () = {
@@ -407,10 +422,12 @@ impl GpuYuvRenderer {
         let recreate = self.textures.as_ref().is_none_or(|textures| {
             textures.width != video.width || textures.height != video.height
         });
+
         if recreate {
             self.textures = Some(self.create_textures(video.width, video.height));
             self.reset_frame_cache();
         }
+
         if self.last_pts == Some(video.pts)
             && self
                 .last_y_plane
@@ -419,6 +436,7 @@ impl GpuYuvRenderer {
         {
             return Ok(());
         }
+
         let textures = self.textures.as_ref().expect("YUV textures initialized");
         write_plane(
             &self.queue,
@@ -447,6 +465,7 @@ impl GpuYuvRenderer {
             .copy_from_slice(&color_render_parameters(video));
         self.last_pts = Some(video.pts);
         self.last_y_plane = Some(Arc::clone(&video.y));
+
         Ok(())
     }
 
@@ -479,6 +498,7 @@ impl GpuYuvRenderer {
                 bytemuck::cast_slice(&self.parameter_values),
             );
         }
+
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("ffplayout_yuv_render_pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -495,6 +515,7 @@ impl GpuYuvRenderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+
         if show_video && let Some(textures) = &self.textures {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &textures.bind_group, &[]);
@@ -964,6 +985,7 @@ impl GpuSpriteRenderer {
         if size.0 == 0 || size.1 == 0 {
             return;
         }
+
         let context = SpriteRenderContext {
             device: &self.device,
             queue: &self.queue,
@@ -988,6 +1010,7 @@ impl GpuSpriteRenderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+
         if let Some(logo) = &frame.logo
             && let Some(rect) = logo_rect(logo, size)
         {
@@ -1000,6 +1023,7 @@ impl GpuSpriteRenderer {
                 size,
             );
         }
+
         if let Some(subtitle) = &frame.subtitle {
             context.draw_bitmap(
                 &mut self.subtitle,
@@ -1010,8 +1034,10 @@ impl GpuSpriteRenderer {
                 size,
             );
         }
+
         if frame.volume_overlay {
             let fill = volume_fill(frame.volume);
+
             if self
                 .volume_bitmap
                 .as_ref()
@@ -1019,6 +1045,7 @@ impl GpuSpriteRenderer {
             {
                 self.volume_bitmap = Some((fill, volume_bitmap(fill)));
             }
+
             let bitmap = self
                 .volume_bitmap
                 .as_ref()
@@ -1039,6 +1066,7 @@ impl GpuSpriteRenderer {
                 size,
             );
         }
+
         if let Some(help) = &frame.help {
             let panel = help_panel_rect(help, size);
             context.draw_bitmap(
@@ -1089,6 +1117,7 @@ impl SpriteRenderContext<'_> {
         if bitmap.width == 0 || bitmap.height == 0 || rect.width == 0 || rect.height == 0 {
             return;
         }
+
         if cache.as_ref().is_none_or(|cached| {
             cached.width != bitmap.width
                 || cached.height != bitmap.height
@@ -1102,6 +1131,7 @@ impl SpriteRenderContext<'_> {
                 bitmap,
             ));
         }
+
         let cached = cache.as_ref().expect("sprite cache initialized");
         let values = [
             rect.width as f32 / surface_size.0 as f32,
@@ -1201,9 +1231,11 @@ fn volume_bitmap(fill: u32) -> RgbaBitmap {
     let width = 240_u32;
     let height = 28_u32;
     let mut pixels = vec![0; width as usize * height as usize * 4];
+
     for pixel in pixels.as_chunks_mut::<4>().0 {
         pixel.copy_from_slice(&[16, 18, 20, 220]);
     }
+
     for y in 11..17 {
         for x in 8..width - 8 {
             let offset = ((y * width + x) * 4) as usize;

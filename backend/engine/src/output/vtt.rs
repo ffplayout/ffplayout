@@ -44,6 +44,7 @@ fn parse_block(lines: &[&str], cues: &mut Vec<VttCue>) -> Result<()> {
     }
 
     let first = lines[0].trim_start_matches('\u{feff}').trim();
+
     if first.starts_with("WEBVTT")
         || first.starts_with("NOTE")
         || first == "STYLE"
@@ -57,6 +58,7 @@ fn parse_block(lines: &[&str], cues: &mut Vec<VttCue>) -> Result<()> {
         .position(|line| line.contains("-->"))
         .ok_or_else(|| anyhow!("VTT cue is missing a timing line"))?;
     let (start_ms, end_ms) = parse_timing(lines[timing_index])?;
+
     if end_ms <= start_ms {
         return Err(anyhow!("VTT cue end must be after start"));
     }
@@ -75,6 +77,7 @@ fn parse_block(lines: &[&str], cues: &mut Vec<VttCue>) -> Result<()> {
         end_ms,
         text,
     });
+
     Ok(())
 }
 
@@ -108,12 +111,15 @@ fn parse_timestamp(value: &str) -> Result<i64> {
 
 fn parse_milliseconds(value: &str) -> Result<i64> {
     let mut millis = value.chars().take(3).collect::<String>();
+
     if millis.is_empty() || !millis.chars().all(|ch| ch.is_ascii_digit()) {
         return Err(anyhow!("invalid VTT millisecond value"));
     }
+
     while millis.len() < 3 {
         millis.push('0');
     }
+
     Ok(millis.parse::<i64>()?)
 }
 

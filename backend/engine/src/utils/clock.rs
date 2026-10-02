@@ -40,12 +40,14 @@ impl PlayoutClock {
 
         let target_us = timestamp.rescale(time_base, rescale::TIME_BASE);
         let now = Instant::now();
+
         if self.anchor_wall.is_none() || self.reanchor_next {
             self.anchor_wall = Some(now);
             self.anchor_media_us = target_us;
             self.rate = self.pending_rate;
             self.reanchor_next = false;
         }
+
         if target_us <= self.anchor_media_us {
             return;
         }
@@ -54,6 +56,7 @@ impl PlayoutClock {
         let media_delta_us = target_us - self.anchor_media_us;
         let paced_target_us = ((media_delta_us as f64) / self.rate).max(0.0) as u64;
         let target = Duration::from_micros(paced_target_us);
+
         if let Some(delay) = target.checked_sub(anchor_wall.elapsed()) {
             thread::sleep(delay);
         }

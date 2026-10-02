@@ -1,5 +1,5 @@
 use std::{
-    sync::Arc,
+    sync::{Arc, Mutex, PoisonError},
     time::{Duration, Instant},
 };
 
@@ -19,6 +19,8 @@ mod audio_mixer;
 mod benchmark;
 mod compositor;
 mod input;
+#[cfg(feature = "desktop-base")]
+mod loudness_preview;
 mod output;
 mod playback_control;
 mod playout;
@@ -26,12 +28,17 @@ mod utils;
 
 pub use analysis::audio_level::{AudioFrameCallback, AudioLevel, AudioLevelCallback};
 pub use analysis::loudness::{LoudnessMeterControl, LoudnessMetrics};
+use audio_mixer::program::{ProgramAudioOutput, ProgramAudioState};
 pub use audio_mixer::{
-    AudioEffectsControl, LiveLoudnessConfig, LiveLoudnessControl, LiveLoudnessMeasurement,
-    LiveLoudnessMetrics, LiveLoudnessProcessor,
+    AudioEffectsControl, BufferedLoudnessAnalysis, LiveDynamicsProcessor, LiveLoudnessConfig,
+    LiveLoudnessControl, LiveLoudnessMeasurement, LiveLoudnessMetrics, LiveLoudnessProcessor,
+    LoudnessScope,
 };
 use input::live::{LiveEnded, LiveOverrideOutput};
-pub use input::live::{LiveReceiver, spawn_rtmp_listener};
+pub use input::live::{
+    LiveInputBackend, LiveListenerConfig, LiveReceiver, live_protocol_available,
+    spawn_live_listeners, spawn_rtmp_listener,
+};
 #[cfg(all(feature = "desktop-base", feature = "tokio"))]
 pub use output::desktop::thread::run_on_main_thread as run_desktop_on_main_thread;
 pub use output::resolved_variant_playlist_path;
@@ -46,6 +53,7 @@ pub use utils::{
         RgbaColor, StreamType, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition,
         TextScroll, TextWeight, VideoOptionChoice, VideoOptionKind, VideoOptionSpec,
         VideoOptionVisibility, VideoOptions, audio_codec_uses_bitrate, validate_audio_options,
+        validate_input_protocol_options, validate_live_demuxer_options, validate_output_metadata,
         validate_output_protocol_options, validate_video_options, video_codec_uses_bitrate,
         video_option_defaults, video_option_specs,
     },
@@ -90,6 +98,7 @@ pub struct LogoFade {
 pub struct Playout {
     config: OutputConfig,
     output: Output,
+    program_audio: ProgramAudioState,
     timeline: Timeline,
     fallback_duration: f64,
     playback_control: PlaybackControl,
@@ -97,20 +106,20 @@ pub struct Playout {
 
 #[derive(Clone)]
 pub struct HlsHealth {
-    last_muxed_at: Arc<std::sync::Mutex<Instant>>,
+    last_muxed_at: Arc<Mutex<Instant>>,
 }
 
 impl HlsHealth {
     pub(crate) fn new() -> Self {
         Self {
-            last_muxed_at: Arc::new(std::sync::Mutex::new(Instant::now())),
+            last_muxed_at: Arc::new(Mutex::new(Instant::now())),
         }
     }
 
     pub fn last_muxed_age(&self) -> Duration {
         self.last_muxed_at
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(PoisonError::into_inner)
             .elapsed()
     }
 
@@ -118,7 +127,7 @@ impl HlsHealth {
         *self
             .last_muxed_at
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Instant::now();
+            .unwrap_or_else(PoisonError::into_inner) = Instant::now();
     }
 }
 
@@ -191,6 +200,7 @@ impl AsyncPlayout {
         })
         .await?;
         playout.hls_health = Some(hls_health);
+
         Ok(playout)
     }
 
@@ -336,16 +346,24 @@ impl AsyncPlayout {
         result.await.context("playout worker stopped during play")?
     }
 
-    pub async fn start_rtmp_live(
+    pub async fn start_live_listeners(
         &self,
-        url: impl Into<String>,
+        inputs: Vec<LiveListenerConfig>,
         config: OutputConfig,
     ) -> Result<()> {
-        let url = url.into();
+        for input in &inputs {
+            if !live_protocol_available(input.backend) {
+                return Err(anyhow!(
+                    "FFmpeg input protocol {:?} is unavailable in this build",
+                    input.backend
+                ));
+            }
+        }
+
         let (response, result) = oneshot::channel();
         self.commands
-            .send(AsyncCommand::StartRtmpLive {
-                url,
+            .send(AsyncCommand::StartLiveListeners {
+                inputs,
                 config: Box::new(config),
                 response,
             })
@@ -353,7 +371,7 @@ impl AsyncPlayout {
 
         result
             .await
-            .context("playout worker stopped while starting RTMP live")?
+            .context("playout worker stopped while starting live listeners")?
     }
 
     pub async fn finish(mut self) -> Result<()> {
@@ -401,8 +419,8 @@ enum AsyncCommand {
         playout_rate: f64,
         response: oneshot::Sender<Result<ClipResult>>,
     },
-    StartRtmpLive {
-        url: String,
+    StartLiveListeners {
+        inputs: Vec<LiveListenerConfig>,
         config: Box<OutputConfig>,
         response: oneshot::Sender<Result<()>>,
     },
@@ -421,6 +439,7 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
         {
             continue;
         }
+
         match command {
             AsyncCommand::Play {
                 path,
@@ -448,14 +467,15 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 // worker alive so that command can explicitly release the
                 // window and its WGPU resources before process shutdown.
             }
-            AsyncCommand::StartRtmpLive {
-                url,
+            AsyncCommand::StartLiveListeners {
+                inputs,
                 config,
                 response,
             } => {
-                let receiver = spawn_rtmp_listener(url, *config);
-                receiver.set_benchmark(benchmark::current());
-                live = Some(receiver);
+                live = (!inputs.is_empty()).then(|| spawn_live_listeners(inputs, *config));
+                if let Some(receiver) = live.as_ref() {
+                    receiver.set_benchmark(benchmark::current());
+                }
                 let _ = response.send(Ok(()));
             }
             AsyncCommand::Finish { response } => {
@@ -469,6 +489,7 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
     drop(live);
     let channel_id = playout.config.channel_id.unwrap_or_default();
     let result = playout.finish();
+
     if let Some(response) = finish_response {
         let _ = response.send(result);
     } else if let Err(error) = result {
@@ -557,6 +578,7 @@ impl Playout {
         if !fallback_duration.is_finite() || fallback_duration <= 0.0 {
             return Err(anyhow!("fallback duration must be a positive number"));
         }
+
         Ok(())
     }
 
@@ -571,6 +593,7 @@ impl Playout {
         Self {
             config,
             output,
+            program_audio: ProgramAudioState::default(),
             timeline: Timeline::new(),
             fallback_duration,
             playback_control: PlaybackControl::default(),
@@ -579,6 +602,83 @@ impl Playout {
 
     pub fn play(&mut self, path: &str) -> Result<ClipResult> {
         self.play_with_seek(path, None)
+    }
+
+    /// Play directly through the desktop output with experimental loudness lookahead.
+    /// Only the requested audio/video preview is buffered; no intermediate file is created.
+    /// Enabling `dynamics` selects the example's experimental AGC/compressor chain
+    /// and adds its short audio/video preview independently of `lookahead`.
+    #[cfg(feature = "desktop-base")]
+    pub fn play_with_loudness_preview(
+        &mut self,
+        path: &str,
+        loudness: LiveLoudnessConfig,
+        measurement: LiveLoudnessMeasurement,
+        lookahead: Duration,
+        dynamics: bool,
+        show_stats: bool,
+    ) -> Result<(ClipResult, LiveLoudnessMetrics)> {
+        let config = self.config.clone();
+        let playback_control = self.playback_control.clone();
+        let fallback_duration = self.fallback_duration;
+        let mut timeline = self.timeline;
+        let path = path.to_owned();
+        let benchmark = benchmark::start(config.channel_id);
+        let processor = LiveLoudnessProcessor::new(config.sample_rate, loudness)?;
+        let dynamics = dynamics
+            .then(|| LiveDynamicsProcessor::new(config.sample_rate, loudness))
+            .transpose()?;
+        let stats = show_stats
+            .then(|| loudness_preview::AudioStatsOverlay::new(config.sample_rate))
+            .transpose()?;
+        let operation = self.output.run_desktop(benchmark, move |output| {
+            let mut preview = loudness_preview::LoudnessPreview::new(
+                output,
+                processor,
+                measurement,
+                lookahead,
+                config.sample_rate,
+                config.video_time_base,
+            );
+            preview.set_dynamics(dynamics);
+            preview.set_stats(stats);
+            let result = play_to_output(
+                &path,
+                &config,
+                &mut timeline,
+                &mut preview,
+                fallback_duration,
+                &playback_control,
+                PlayOptions {
+                    seek_seconds: None,
+                    duration_seconds: None,
+                    external_audio_path: None,
+                    subtitles_media_path: None,
+                    logo_fade: LogoFade::default(),
+                },
+            );
+            let result = result.and_then(|result| {
+                if !matches!(result, ClipResult::Stopped | ClipResult::Skipped) {
+                    preview.finish()?;
+                }
+
+                Ok((result, preview.metrics()))
+            });
+
+            (result, timeline)
+        });
+
+        match operation {
+            Ok((result, timeline)) => {
+                self.timeline = timeline;
+
+                result
+            }
+            Err(error) if error.downcast_ref::<PlaybackStopped>().is_some() => {
+                Ok((ClipResult::Stopped, LiveLoudnessMetrics::default()))
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub fn play_with_seek(&mut self, path: &str, seek_seconds: Option<f64>) -> Result<ClipResult> {
@@ -655,55 +755,43 @@ impl Playout {
             let mut timeline = self.timeline;
             let path = path.to_string();
             let mut live_for_worker = live.take();
+            let mut program_audio = std::mem::take(&mut self.program_audio);
             let benchmark = benchmark::start(config.channel_id);
+
             if let Some(live) = live_for_worker.as_ref() {
                 live.set_benchmark(Some(benchmark.clone()));
             }
+
             let operation = self.output.run_desktop(benchmark, move |output| {
-                let result = if let Some(live) = live_for_worker.as_mut() {
-                    let mut output = LiveOverrideOutput::new(output, live, &playback_control);
-                    play_to_output(
-                        &path,
-                        &config,
-                        &mut timeline,
-                        &mut output,
-                        fallback_duration,
-                        &playback_control,
-                        PlayOptions {
-                            seek_seconds,
-                            duration_seconds,
-                            external_audio_path: external_audio_path.as_deref(),
-                            subtitles_media_path: subtitles_media_path.as_deref(),
-                            logo_fade,
-                        },
-                    )
-                } else {
-                    play_to_output(
-                        &path,
-                        &config,
-                        &mut timeline,
-                        output,
-                        fallback_duration,
-                        &playback_control,
-                        PlayOptions {
-                            seek_seconds,
-                            duration_seconds,
-                            external_audio_path: external_audio_path.as_deref(),
-                            subtitles_media_path: subtitles_media_path.as_deref(),
-                            logo_fade,
-                        },
-                    )
-                };
+                let result = play_program_clip(
+                    output,
+                    &mut program_audio,
+                    &mut live_for_worker,
+                    &path,
+                    &config,
+                    &mut timeline,
+                    fallback_duration,
+                    &playback_control,
+                    PlayOptions {
+                        seek_seconds,
+                        duration_seconds,
+                        external_audio_path: external_audio_path.as_deref(),
+                        subtitles_media_path: subtitles_media_path.as_deref(),
+                        logo_fade,
+                    },
+                );
+
                 if matches!(&result, Ok(ClipResult::LiveEnded))
                     && let Some(live) = live_for_worker.as_ref()
                 {
                     live.reanchor_timeline(&mut timeline);
                 }
-                (result, timeline, live_for_worker)
+                (result, timeline, live_for_worker, program_audio)
             });
 
             return match operation {
-                Ok((result, timeline, live_for_worker)) => {
+                Ok((result, timeline, live_for_worker, program_audio)) => {
+                    self.program_audio = program_audio;
                     self.timeline = timeline;
                     *live = live_for_worker;
                     result
@@ -715,47 +803,31 @@ impl Playout {
             };
         }
 
-        if let Some(live) = live.as_mut() {
-            let result = {
-                let mut output =
-                    LiveOverrideOutput::new(&mut self.output, live, &self.playback_control);
-                play_to_output(
-                    path,
-                    &self.config,
-                    &mut self.timeline,
-                    &mut output,
-                    self.fallback_duration,
-                    &self.playback_control,
-                    PlayOptions {
-                        seek_seconds,
-                        duration_seconds,
-                        external_audio_path: external_audio_path.as_deref(),
-                        subtitles_media_path: subtitles_media_path.as_deref(),
-                        logo_fade,
-                    },
-                )
-            };
-            if matches!(&result, Ok(ClipResult::LiveEnded)) {
-                live.reanchor_timeline(&mut self.timeline);
-            }
-            result
-        } else {
-            play_to_output(
-                path,
-                &self.config,
-                &mut self.timeline,
-                &mut self.output,
-                self.fallback_duration,
-                &self.playback_control,
-                PlayOptions {
-                    seek_seconds,
-                    duration_seconds,
-                    external_audio_path: external_audio_path.as_deref(),
-                    subtitles_media_path: subtitles_media_path.as_deref(),
-                    logo_fade,
-                },
-            )
+        let result = play_program_clip(
+            &mut self.output,
+            &mut self.program_audio,
+            live,
+            path,
+            &self.config,
+            &mut self.timeline,
+            self.fallback_duration,
+            &self.playback_control,
+            PlayOptions {
+                seek_seconds,
+                duration_seconds,
+                external_audio_path: external_audio_path.as_deref(),
+                subtitles_media_path: subtitles_media_path.as_deref(),
+                logo_fade,
+            },
+        );
+
+        if matches!(&result, Ok(ClipResult::LiveEnded))
+            && let Some(live) = live.as_ref()
+        {
+            live.reanchor_timeline(&mut self.timeline);
         }
+
+        result
     }
 
     pub fn finish(self) -> Result<()> {
@@ -774,7 +846,54 @@ fn init_ffmpeg(config: &OutputConfig) -> Result<()> {
         &config.ffmpeg_ignore_lines,
         config.channel_id,
     );
+
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn play_program_clip<O: FrameOutput>(
+    output: &mut O,
+    state: &mut ProgramAudioState,
+    live: &mut Option<LiveReceiver>,
+    path: &str,
+    config: &OutputConfig,
+    timeline: &mut Timeline,
+    fallback_duration: f64,
+    playback_control: &PlaybackControl,
+    options: PlayOptions<'_>,
+) -> Result<ClipResult> {
+    let mut output = ProgramAudioOutput::new(output, state, config)?;
+    let result = if let Some(live) = live.as_mut() {
+        let mut live_output = LiveOverrideOutput::new(&mut output, live, playback_control);
+        play_to_output(
+            path,
+            config,
+            timeline,
+            &mut live_output,
+            fallback_duration,
+            playback_control,
+            options,
+        )
+    } else {
+        play_to_output(
+            path,
+            config,
+            timeline,
+            &mut output,
+            fallback_duration,
+            playback_control,
+            options,
+        )
+    };
+
+    if result
+        .as_ref()
+        .is_ok_and(|result| !matches!(result, ClipResult::Stopped))
+    {
+        output.finish()?;
+    }
+
+    result
 }
 
 fn play_to_output<O: FrameOutput>(
@@ -812,6 +931,7 @@ fn play_to_output<O: FrameOutput>(
             match write_fallback(path, config, timeline, output, duration, playback_control) {
                 Ok(()) => {
                     timeline.finish_logo_fade(options.logo_fade);
+
                     Ok(ClipResult::Fallback { reason })
                 }
                 Err(error) => classify_fallback_error(error, path),
@@ -836,6 +956,9 @@ fn classify_fallback_error(error: anyhow::Error, path: &str) -> Result<ClipResul
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "tokio")]
+    use std::{env, process};
+
     use super::{
         ClipResult, PlaybackControl, PlaybackRestart, PlaybackSkipped, classify_fallback_error,
     };
@@ -870,8 +993,7 @@ mod tests {
     #[test]
     fn dropping_async_playout_discards_queued_work_and_finishes_worker() {
         use super::*;
-        let directory =
-            std::env::temp_dir().join(format!("ffplayout-drop-worker-{}", std::process::id()));
+        let directory = env::temp_dir().join(format!("ffplayout-drop-worker-{}", process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("output.mkv");
         let playback_control = PlaybackControl::default();
@@ -899,6 +1021,7 @@ mod tests {
             hls_health: None,
         };
         let mut responses = Vec::new();
+
         for _ in 0..2 {
             let (response, result) = oneshot::channel();
             owner
@@ -920,6 +1043,7 @@ mod tests {
         assert!(playback_control.is_shutdown());
         release.send(()).unwrap();
         finished.recv_timeout(Duration::from_secs(5)).unwrap();
+
         for mut response in responses {
             assert!(matches!(
                 response.try_recv(),

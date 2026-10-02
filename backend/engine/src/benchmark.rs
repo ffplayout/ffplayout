@@ -175,6 +175,7 @@ mod enabled {
 
         fn report(&mut self, final_report: bool) {
             let elapsed = self.last_report_at.elapsed();
+
             if !final_report && elapsed < report_interval() {
                 return;
             }
@@ -187,8 +188,10 @@ mod enabled {
                 "\n    <span class=\"log-bold\">stage               total  share      avg      max  calls       size</span>\n",
             );
             let mut has_stages = false;
+
             for &stage in Stage::ALL {
                 let stats = self.stats[stage.index()];
+
                 if stats.calls == 0 {
                     continue;
                 }
@@ -274,10 +277,12 @@ mod enabled {
     fn record(stage: Stage, elapsed: Duration, overlay_size: Option<(u32, u32)>) {
         BENCH.with(|bench| {
             let handle = bench.borrow().as_ref().cloned();
+
             if let Some(handle) = handle
                 && let Ok(mut bench) = handle.lock()
             {
                 bench.record(stage, elapsed, overlay_size);
+
                 if bench.due() {
                     bench.report(false);
                 }
