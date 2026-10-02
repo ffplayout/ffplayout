@@ -33,6 +33,8 @@ use crate::{
 };
 
 use super::delay::LiveDelay;
+use super::diagnostics::{LiveInputDiagnostics, LiveInputStage};
+use super::timestamps::{LateAudioRecovery, LiveTimestampTracker};
 
 pub(crate) use super::playback::LiveOverrideOutput;
 
@@ -61,9 +63,7 @@ pub(super) fn trim_audio_start(input: &frame::Audio, skip: usize) -> Result<fram
 }
 pub(super) const LIVE_IDLE_TIMEOUT: Duration = Duration::from_millis(1500);
 const LIVE_WATCHDOG_INTERVAL: Duration = Duration::from_millis(100);
-/// Maximum PTS discontinuity in the live source that is bridged with filler
-/// frames. Larger jumps (buggy publisher encoders can leap by hours) re-anchor
-/// the session instead, so the output never gets stuck writing filler.
+/// Limit wall-clock gap filling when returning from an interrupted live input.
 pub(super) const MAX_LIVE_GAP_SECONDS: f64 = 5.0;
 /// The live channel carries decoded raw frames (several MB each for video);
 /// it must be bounded so a stalled consumer cannot exhaust memory.
@@ -78,7 +78,7 @@ pub(super) const LIVE_AUDIO_GRACE_SECONDS: f64 = LIVE_CHANNEL_SECONDS as f64 + 0
 // preserving real packet loss and discontinuities.
 pub(super) const LIVE_AUDIO_PTS_JITTER_SECONDS: f64 = 0.005;
 pub(super) const LIVE_SEND_RETRY_INTERVAL: Duration = Duration::from_millis(10);
-const LIVE_BACKPRESSURE_LOG_INTERVAL: Duration = Duration::from_secs(1);
+const LIVE_BACKPRESSURE_LOG_THRESHOLD: Duration = Duration::from_secs(1);
 // FFmpeg may need one network polling cycle to observe the interrupt callback
 // after an idle timeout. Give the reader a bounded chance to close its input
 // and socket before detaching it and starting the next listener.
@@ -181,6 +181,10 @@ pub struct LiveReceiver {
     pub(super) session_id: u64,
     pub(super) session_output_start_seconds: Option<f64>,
     pub(super) session_source_start_seconds: Option<f64>,
+    pub(super) video_timestamps: LiveTimestampTracker,
+    pub(super) audio_timestamps: LiveTimestampTracker,
+    pub(super) audio_recovery: LateAudioRecovery,
+    pub(super) audio_output_offset_pts: i64,
     pub(super) pending_audio: VecDeque<frame::Audio>,
     pub(super) pending_audio_samples: usize,
     pub(super) last_media_at: Option<Instant>,
@@ -591,6 +595,10 @@ impl LiveReceiver {
             session_id: 0,
             session_output_start_seconds: None,
             session_source_start_seconds: None,
+            video_timestamps: LiveTimestampTracker::default(),
+            audio_timestamps: LiveTimestampTracker::default(),
+            audio_recovery: LateAudioRecovery::default(),
+            audio_output_offset_pts: 0,
             pending_audio: VecDeque::new(),
             pending_audio_samples: 0,
             last_media_at: None,
@@ -637,8 +645,7 @@ impl LiveReceiver {
 pub(super) struct LiveFrameSender {
     pub(super) tx: SyncSender<LiveEvent>,
     pub(super) session_id: u64,
-    pub(super) last_frame_ms: Arc<AtomicU64>,
-    pub(super) frame_seen: Arc<AtomicBool>,
+    pub(super) diagnostics: Arc<LiveInputDiagnostics>,
     pub(super) abort: Arc<AtomicBool>,
     pub(super) listener_abort: Arc<AtomicBool>,
     pub(super) channel_id: i32,
@@ -649,16 +656,14 @@ impl LiveFrameSender {
     /// the RTMP reader instead of dropping frames, but the retry loop keeps
     /// checking abort flags so shutdown/restart cannot hang on a blocked send.
     pub(super) fn send_frame(&mut self, event: LiveEvent) -> Result<()> {
-        self.frame_seen.store(true, Ordering::Relaxed);
-        self.last_frame_ms
-            .store(monotonic_millis(), Ordering::Relaxed);
+        self.diagnostics.frame_ready();
         benchmark::measure(Stage::LiveQueue, || {
             send_live_event(
                 &self.tx,
                 event,
                 Some(&self.abort),
                 &self.listener_abort,
-                Some(&self.last_frame_ms),
+                Some(&self.diagnostics),
                 "live frame",
                 self.channel_id,
             )
@@ -667,6 +672,10 @@ impl LiveFrameSender {
 }
 
 impl FrameOutput for LiveFrameSender {
+    fn input_diagnostics(&self) -> Option<&LiveInputDiagnostics> {
+        Some(&self.diagnostics)
+    }
+
     fn audio_frame_size(&self) -> usize {
         LIVE_AUDIO_FRAME_SAMPLES
     }
@@ -741,15 +750,9 @@ fn run_live_listener(
 
                 session_id += 1;
                 info!(channel = channel_id; "Live listener #{id} ({backend}) accepted input");
-                let last_frame_ms = Arc::new(AtomicU64::new(monotonic_millis()));
-                let frame_seen = Arc::new(AtomicBool::new(false));
-                let watchdog = spawn_live_watchdog(
-                    Arc::clone(&last_frame_ms),
-                    Arc::clone(&frame_seen),
-                    Arc::clone(&abort),
-                    channel_id,
-                    id,
-                );
+                let diagnostics = Arc::new(LiveInputDiagnostics::new(id, session_id));
+                let watchdog =
+                    spawn_live_watchdog(Arc::clone(&diagnostics), Arc::clone(&abort), channel_id);
 
                 if send_live_event(
                     &tx,
@@ -761,7 +764,7 @@ fn run_live_listener(
                     Some(&abort),
                     &listener_abort,
                     None,
-                    "live start",
+                    &format!("live start (listener #{id}, session {session_id})"),
                     channel_id,
                 )
                 .is_err()
@@ -776,8 +779,7 @@ fn run_live_listener(
                 let mut output = LiveFrameSender {
                     tx: tx.clone(),
                     session_id,
-                    last_frame_ms,
-                    frame_seen,
+                    diagnostics,
                     abort: Arc::clone(&abort),
                     listener_abort: Arc::clone(&listener_abort),
                     channel_id,
@@ -817,6 +819,7 @@ fn run_live_listener(
                             None,
                         )
                     });
+                    output.diagnostics.set_stage(LiveInputStage::Finishing);
                     let _ = done_tx.send(result.map_err(|error| format!("{error:#}")));
                 });
 
@@ -880,7 +883,7 @@ fn run_live_listener(
                     None,
                     &listener_abort,
                     None,
-                    "live end",
+                    &format!("live end (listener #{id}, session {session_id})"),
                     channel_id,
                 )
                 .is_err()
@@ -920,16 +923,33 @@ pub(super) fn send_live_event(
     mut event: LiveEvent,
     abort: Option<&AtomicBool>,
     listener_abort: &AtomicBool,
-    backpressure_heartbeat: Option<&AtomicU64>,
+    diagnostics: Option<&LiveInputDiagnostics>,
     label: &str,
     channel_id: i32,
 ) -> Result<()> {
     let mut backpressure_since = None;
-    let mut next_log_at = Instant::now() + LIVE_BACKPRESSURE_LOG_INTERVAL;
+    let mut warned = false;
+    let previous_stage = diagnostics.map(LiveInputDiagnostics::stage);
 
     loop {
         match tx.try_send(event) {
-            Ok(()) => return Ok(()),
+            Ok(()) => {
+                if let Some(diagnostics) = diagnostics {
+                    diagnostics.queue_cleared(previous_stage.unwrap_or_default());
+                }
+
+                if warned {
+                    debug!(channel = channel_id;
+                        "live event channel backpressure cleared; {label} sender blocked for {:.3} s{}",
+                        backpressure_since.map_or(0.0, |since: Instant| since.elapsed().as_secs_f64()),
+                        diagnostics.map_or_else(String::new, |diagnostics| format!(
+                            " (listener #{}, session {})", diagnostics.listener_id, diagnostics.session_id
+                        ))
+                    );
+                }
+
+                return Ok(());
+            }
             Err(TrySendError::Disconnected(_)) => {
                 return Err(anyhow::anyhow!("live event channel disconnected"));
             }
@@ -937,8 +957,8 @@ pub(super) fn send_live_event(
                 // A full internal queue means the source reader is alive but
                 // temporarily blocked by the output. Do not let the watchdog
                 // mistake this intentional backpressure for a dead publisher.
-                if let Some(heartbeat) = backpressure_heartbeat {
-                    heartbeat.store(monotonic_millis(), Ordering::Relaxed);
+                if let Some(diagnostics) = diagnostics {
+                    diagnostics.queue_heartbeat();
                 }
 
                 if abort.is_some_and(|abort| abort.load(Ordering::Relaxed))
@@ -953,13 +973,16 @@ pub(super) fn send_live_event(
                 let now = Instant::now();
                 let since = *backpressure_since.get_or_insert(now);
 
-                if now >= next_log_at {
+                if !warned && now.duration_since(since) >= LIVE_BACKPRESSURE_LOG_THRESHOLD {
                     warn!(
                         channel = channel_id;
-                        "live event channel is full; applying backpressure to {label} sender for {:.3} s",
-                        since.elapsed().as_secs_f64()
+                        "live event channel is full; applying backpressure to {label} sender for {:.3} s{}",
+                        since.elapsed().as_secs_f64(),
+                        diagnostics.map_or_else(String::new, |diagnostics| format!(
+                            " (listener #{}, session {})", diagnostics.listener_id, diagnostics.session_id
+                        ))
                     );
-                    next_log_at = now + LIVE_BACKPRESSURE_LOG_INTERVAL;
+                    warned = true;
                 }
                 thread::sleep(LIVE_SEND_RETRY_INTERVAL);
             }
@@ -968,28 +991,44 @@ pub(super) fn send_live_event(
 }
 
 pub(super) fn spawn_live_watchdog(
-    last_frame_ms: Arc<AtomicU64>,
-    frame_seen: Arc<AtomicBool>,
+    diagnostics: Arc<LiveInputDiagnostics>,
     abort: Arc<AtomicBool>,
     channel_id: i32,
-    listener_id: i32,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         while !abort.load(Ordering::Relaxed) {
             thread::sleep(LIVE_WATCHDOG_INTERVAL);
 
-            let last_frame_ms = last_frame_ms.load(Ordering::Relaxed);
-            let timeout = if frame_seen.load(Ordering::Relaxed) {
+            // Shutdown may have started during the sleep. Do not report an
+            // idle disconnect for a reader already being closed intentionally.
+            if abort.load(Ordering::Relaxed) {
+                return;
+            }
+
+            let last_activity_ms = diagnostics.last_activity_ms.load(Ordering::Relaxed);
+            let frame_seen = diagnostics.frame_seen.load(Ordering::Relaxed);
+            let timeout = if frame_seen {
                 LIVE_IDLE_TIMEOUT
             } else {
                 LIVE_STARTUP_TIMEOUT
             };
 
-            if monotonic_millis().saturating_sub(last_frame_ms) >= timeout.as_millis() as u64 {
-                if frame_seen.load(Ordering::Relaxed) {
-                    info!(channel = channel_id; "Live listener #{listener_id} disconnected or idle; restarting listener");
+            let now = monotonic_millis();
+            let idle_ms = now.saturating_sub(last_activity_ms);
+
+            if idle_ms >= timeout.as_millis() as u64 {
+                let listener_id = diagnostics.listener_id;
+
+                if frame_seen {
+                    info!(channel = channel_id;
+                        "Live listener #{listener_id} disconnected or idle; restarting listener (idle={idle_ms} ms, timeout={} ms, {})",
+                        timeout.as_millis(), diagnostics.snapshot(now)
+                    );
                 } else {
-                    info!(channel = channel_id; "Live listener #{listener_id} produced no decodable frames; restarting listener");
+                    warn!(channel = channel_id;
+                        "Live listener #{listener_id} produced no decodable frames; restarting listener (idle={idle_ms} ms, timeout={} ms, {})",
+                        timeout.as_millis(), diagnostics.snapshot(now)
+                    );
                 }
                 abort.store(true, Ordering::Relaxed);
 

@@ -30,6 +30,7 @@ use super::live::{
     LIVE_SEND_RETRY_INTERVAL, LIVE_STARTUP_TIMEOUT, LiveEnded, LiveEvent, LiveReceiver,
     MAX_LIVE_GAP_SECONDS, MAX_PENDING_AUDIO_FRAMES, trim_audio_start,
 };
+use super::timestamps::{AudioRecoveryAction, LateAudioRecovery};
 
 pub(crate) struct LiveOverrideOutput<'a, O: FrameOutput> {
     pub(super) output: &'a mut O,
@@ -426,6 +427,15 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         ));
         self.live.session_output_start_seconds = Some(output_start_seconds);
         self.live.session_source_start_seconds = Some(source_start_seconds);
+        self.live
+            .video_timestamps
+            .seed(seconds_to_video_pts(self.live.fps, source_start_seconds));
+        self.live.audio_timestamps.seed(seconds_to_audio_pts(
+            self.live.sample_rate,
+            source_start_seconds,
+        ));
+        self.live.audio_recovery = LateAudioRecovery::default();
+        self.live.audio_output_offset_pts = 0;
     }
 
     fn common_live_seconds(&self) -> f64 {
@@ -434,7 +444,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         video_seconds.max(audio_seconds)
     }
 
-    fn live_output_seconds(&self, source_seconds: f64) -> f64 {
+    fn live_output_pts(&self, rate: u32, source_pts: i64) -> i64 {
         let output_start = self
             .live
             .session_output_start_seconds
@@ -442,30 +452,33 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         let source_start = self
             .live
             .session_source_start_seconds
-            .unwrap_or(source_seconds);
-        output_start + (source_seconds - source_start)
+            .map(|seconds| seconds_to_pts(rate, seconds))
+            .unwrap_or(source_pts);
+        // Subtract anchors in ticks. Subtracting large floating-point seconds
+        // can otherwise turn audio ending exactly at takeover into one sample
+        // of overlapping audio after rounding.
+        seconds_to_pts(rate, output_start).saturating_add(source_pts.saturating_sub(source_start))
     }
 
     pub(super) fn encode_live_video_frame(&mut self, mut frame: frame::Video) -> Result<()> {
         let source_pts = frame.pts().unwrap_or(0);
-        let source_seconds = video_seconds(self.live.fps, source_pts);
-        let mut pts = seconds_to_video_pts(self.live.fps, self.live_output_seconds(source_seconds));
-        // A buggy publisher can jump its PTS forward by minutes or hours
-        // mid-stream; bridging that with filler frames would stall the output
-        // for the whole gap. Re-anchor the session instead and continue
-        // seamlessly. Backward jumps are already handled by the `.max()`
-        // floor below and need no filler.
-        let max_gap = seconds_to_video_pts(self.live.fps, MAX_LIVE_GAP_SECONDS);
-
-        if pts - self.live.video_pts > max_gap {
-            warn!(
-                channel = self.live.channel_id;
-                "live video pts jumped by {:.3} s; re-anchoring live session",
-                video_seconds(self.live.fps, pts - self.live.video_pts)
-            );
-            self.start_live_session(source_seconds);
-            pts = seconds_to_video_pts(self.live.fps, self.live_output_seconds(source_seconds));
-        }
+        let reference_pts = self.live.audio_timestamps.next_pts().map(|pts| {
+            seconds_to_video_pts(self.live.fps, audio_seconds(self.live.sample_rate, pts))
+        });
+        let update = self.live.video_timestamps.normalize_with_reference(
+            source_pts,
+            1,
+            i64::from(self.live.fps),
+            reference_pts,
+            Instant::now(),
+        );
+        update.log_correction(
+            "video",
+            source_pts,
+            i64::from(self.live.fps),
+            self.live.channel_id,
+        );
+        let pts = self.live_output_pts(self.live.fps, update.pts);
 
         let pts = pts.max(self.live.video_pts);
         self.fill_video_until(pts)?;
@@ -496,25 +509,33 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
     pub(super) fn encode_live_audio_frame(&mut self, mut frame: frame::Audio) -> Result<()> {
         let source_pts = frame.pts().unwrap_or(0);
         let preview_start_pts = source_pts + frame.samples() as i64;
-        let source_seconds = audio_seconds(self.live.sample_rate, source_pts);
-        let mut pts = seconds_to_audio_pts(
-            self.live.sample_rate,
-            self.live_output_seconds(source_seconds),
-        );
-        let max_gap = seconds_to_audio_pts(self.live.sample_rate, MAX_LIVE_GAP_SECONDS);
-
-        if pts - self.live.audio_pts > max_gap {
-            warn!(
-                channel = self.live.channel_id;
-                "live audio pts jumped by {:.3} s; re-anchoring live session",
-                audio_seconds(self.live.sample_rate, pts - self.live.audio_pts)
-            );
-            self.start_live_session(source_seconds);
-            pts = seconds_to_audio_pts(
-                self.live.sample_rate,
-                self.live_output_seconds(source_seconds),
-            );
+        let now = Instant::now();
+        // Establish the audio clock from its first frame. Buffered startup
+        // audio may precede or follow the first video; preserve that offset
+        // on the shared timeline rather than treating it as a clock jump.
+        if !self.live.audio_timestamps.has_received_frame() {
+            self.live.audio_timestamps.seed(source_pts);
         }
+
+        let reference_pts = self.live.video_timestamps.next_pts().map(|pts| {
+            seconds_to_audio_pts(self.live.sample_rate, video_seconds(self.live.fps, pts))
+        });
+        let update = self.live.audio_timestamps.normalize_with_reference(
+            source_pts,
+            frame.samples() as i64,
+            i64::from(self.live.sample_rate),
+            reference_pts,
+            now,
+        );
+        update.log_correction(
+            "audio",
+            source_pts,
+            i64::from(self.live.sample_rate),
+            self.live.channel_id,
+        );
+        let mut pts = self
+            .live_output_pts(self.live.sample_rate, update.pts)
+            .saturating_add(self.live.audio_output_offset_pts);
 
         let jitter_tolerance =
             seconds_to_audio_pts(self.live.sample_rate, LIVE_AUDIO_PTS_JITTER_SECONDS);
@@ -523,10 +544,49 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         }
         // Silence already emitted (or audio preceding the first video) must
         // never shift late samples into the future and introduce A/V drift.
-        let overlap = self.live.audio_pts.saturating_sub(pts).max(0) as usize;
+        let mut overlap = self.live.audio_pts.saturating_sub(pts).max(0) as usize;
 
         if overlap >= frame.samples() {
-            return Ok(());
+            let action = self.live.audio_recovery.observe(
+                update.pts,
+                overlap as i64,
+                self.live.sample_rate,
+                self.live.last_audio_at,
+                now,
+            );
+
+            if action == AudioRecoveryAction::Report {
+                warn!(channel = self.live.channel_id;
+                    "live audio is arriving but remains {:.3} s behind output; tracking timestamp recovery",
+                    audio_seconds(self.live.sample_rate, overlap as i64)
+                );
+            }
+
+            // Recover only a broken output mapping. Real audio delivered far
+            // behind the video source must not be shifted into the future.
+            let source_tolerance =
+                i64::from(self.live.sample_rate) * 2 / i64::from(self.live.fps) + jitter_tolerance;
+            let source_tracks_agree = reference_pts.is_some_and(|video_source_pts| {
+                update.pts.abs_diff(video_source_pts) <= source_tolerance as u64
+            });
+
+            if action != AudioRecoveryAction::Rebase || !source_tracks_agree {
+                return Ok(());
+            }
+
+            let output_seconds = self.common_live_seconds();
+            let target_pts = seconds_to_audio_pts(self.live.sample_rate, output_seconds);
+            self.live.audio_output_offset_pts = self
+                .live
+                .audio_output_offset_pts
+                .saturating_add(target_pts.saturating_sub(pts));
+            warn!(channel = self.live.channel_id;
+                "recovering live audio after {} discarded frames; correcting {:.3} s of persistent timestamp lag",
+                self.live.audio_recovery.discarded_frames,
+                audio_seconds(self.live.sample_rate, overlap as i64)
+            );
+            pts = target_pts;
+            overlap = 0;
         }
 
         if overlap > 0 {
@@ -560,6 +620,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         self.output.encode_live_audio(&frame)?;
         self.remember_audio_frame_end(pts + samples);
         self.live.last_audio_at = Some(Instant::now());
+        self.live.audio_recovery = LateAudioRecovery::default();
 
         Ok(())
     }

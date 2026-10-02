@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, time::Instant};
 
 use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{
@@ -12,6 +12,8 @@ use crate::{
     LogoFade, PlaybackControl,
     benchmark::{self, Stage},
     compositor::{logo::*, text::TextOverlay},
+    input::diagnostics::LiveInputStage,
+    input::timestamps::LiveTimestampTracker,
     output::FrameOutput,
     utils::{
         config::{OutputConfig, TextOverlayState},
@@ -69,6 +71,8 @@ pub(crate) struct Timeline {
     // onto the continuous playout timeline. File playback always uses the
     // normal monotonically increasing timeline values.
     source_timestamp_mode: bool,
+    live_audio_source_us: Option<i64>,
+    live_video_source_us: Option<i64>,
 }
 
 impl Timeline {
@@ -79,6 +83,8 @@ impl Timeline {
             text_pts: 0,
             logo_opacity: 1.0,
             source_timestamp_mode: false,
+            live_audio_source_us: None,
+            live_video_source_us: None,
         }
     }
 
@@ -94,6 +100,8 @@ impl Timeline {
         self.audio_pts = audio_pts;
         self.text_pts = video_pts;
         self.source_timestamp_mode = false;
+        self.live_audio_source_us = None;
+        self.live_video_source_us = None;
     }
 
     pub(crate) fn finish_logo_fade(&mut self, fade: LogoFade) {
@@ -485,6 +493,8 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     mut external_audio: Option<&mut ExternalAudioInput>,
 ) -> Result<()> {
     timeline.source_timestamp_mode = options.preserve_source_timestamps;
+    timeline.live_audio_source_us = None;
+    timeline.live_video_source_us = None;
     let seek_seconds = (!is_live_input(label))
         .then_some(options.seek_seconds)
         .flatten();
@@ -640,11 +650,23 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     }
 
     let result = (|| -> Result<()> {
+        if let Some(diagnostics) = output.input_diagnostics() {
+            diagnostics.set_stage(LiveInputStage::ReadingPacket);
+        }
+
         for (stream, packet) in ictx.packets() {
             check_playback_control(options.playback_control)?;
 
+            if let Some(diagnostics) = output.input_diagnostics() {
+                diagnostics.packet_received();
+            }
+
             if Some(stream.index()) == video_index {
                 if !video_finished && let Some(video) = video.as_mut() {
+                    if let Some(diagnostics) = output.input_diagnostics() {
+                        diagnostics.set_stage(LiveInputStage::ProcessingVideo);
+                    }
+
                     benchmark::measure(Stage::VideoDecode, || video.decoder.send_packet(&packet))?;
                     receive_video_frames(
                         cfg,
@@ -680,6 +702,10 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             } else if Some(stream.index()) == audio_index
                 && let Some(audio) = audio.as_mut()
             {
+                if let Some(diagnostics) = output.input_diagnostics() {
+                    diagnostics.set_stage(LiveInputStage::ProcessingAudio);
+                }
+
                 benchmark::measure(Stage::AudioDecode, || audio.decoder.send_packet(&packet))?;
                 receive_audio_frames(
                     audio,
@@ -718,6 +744,14 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             {
                 break;
             }
+
+            if let Some(diagnostics) = output.input_diagnostics() {
+                diagnostics.set_stage(LiveInputStage::ReadingPacket);
+            }
+        }
+
+        if let Some(diagnostics) = output.input_diagnostics() {
+            diagnostics.set_stage(LiveInputStage::Finishing);
         }
 
         finish_video(
@@ -1044,6 +1078,10 @@ fn receive_video_frames<O: FrameOutput>(
     while benchmark::measure_success(Stage::VideoDecode, || video.decoder.receive_frame(&mut raw))
         .is_ok()
     {
+        if let Some(diagnostics) = output.input_diagnostics() {
+            diagnostics.video_decoded();
+        }
+
         check_playback_control(playback_control)?;
 
         if limit_pts.is_some_and(|limit| timeline.video_pts >= limit) {
@@ -1058,15 +1096,35 @@ fn receive_video_frames<O: FrameOutput>(
             continue;
         }
 
-        let source_pts = raw.timestamp().or_else(|| raw.pts()).map(|pts| {
+        let timestamp = raw.timestamp().or_else(|| raw.pts());
+        // Repair discontinuities before frame-rate conversion can expand one
+        // bad timestamp into seconds of duplicate frames and discard the tail.
+        let timestamp =
+            if timeline.source_timestamp_mode && video.frame_rate_converter.timestamps_reliable {
+                let normalized = video.normalize_live_timestamp(
+                    timestamp,
+                    timeline.live_audio_source_us,
+                    cfg.channel_id.unwrap_or_default(),
+                );
+                timeline.live_video_source_us = normalized.map(|pts| {
+                    pts.rescale(
+                        video.frame_rate_converter.input_time_base,
+                        Rational(1, 1_000_000),
+                    )
+                    .saturating_add(video.source_frame_duration_us)
+                });
+
+                normalized
+            } else {
+                timestamp
+            };
+        let source_pts = timestamp.map(|pts| {
             pts.rescale(
                 video.frame_rate_converter.input_time_base,
                 Rational(1, video.output_fps as i32),
             )
         });
-        let output_frames = video
-            .frame_rate_converter
-            .output_frames(raw.timestamp().or_else(|| raw.pts()));
+        let output_frames = video.frame_rate_converter.output_frames(timestamp);
         if output_frames == 0 {
             continue;
         }
@@ -1305,6 +1363,10 @@ fn receive_audio_frames<O: FrameOutput>(
     while benchmark::measure_success(Stage::AudioDecode, || audio.decoder.receive_frame(&mut raw))
         .is_ok()
     {
+        if let Some(diagnostics) = output.input_diagnostics() {
+            diagnostics.audio_decoded();
+        }
+
         check_playback_control(playback_control)?;
 
         if limit_pts.is_some_and(|limit| timeline.audio_pts >= limit) {
@@ -1331,6 +1393,32 @@ fn receive_audio_frames<O: FrameOutput>(
             .or_else(|| raw.pts())
             .map(|pts| pts.rescale(audio.input_time_base, Rational(1, converted.rate() as i32)));
         let samples = converted.samples() as i64;
+        let source_pts = if timeline.source_timestamp_mode {
+            source_pts.map(|pts| {
+                let rate = i64::from(converted.rate());
+                let reference_pts = timeline.live_video_source_us.map(|pts| {
+                    pts.rescale(Rational(1, 1_000_000), Rational(1, converted.rate() as i32))
+                });
+                let update = audio.live_timestamps.normalize_with_reference(
+                    pts,
+                    samples,
+                    rate,
+                    reference_pts,
+                    Instant::now(),
+                );
+                update.log_correction("audio", pts, i64::from(converted.rate()), audio.channel_id);
+                timeline.live_audio_source_us = Some(
+                    update
+                        .pts
+                        .saturating_add(samples)
+                        .rescale(Rational(1, converted.rate() as i32), Rational(1, 1_000_000)),
+                );
+
+                update.pts
+            })
+        } else {
+            source_pts
+        };
         apply_audio_fade(&mut converted, timeline.audio_pts, media_fade_plan);
         converted.set_pts(Some(if timeline.source_timestamp_mode {
             source_pts
@@ -1564,6 +1652,8 @@ struct VideoDecoder {
     text: Option<TextOverlay>,
     runtime_text: RuntimeTextOverlay,
     frame_rate_converter: FrameRateConverter,
+    live_timestamps: LiveTimestampTracker,
+    source_frame_duration_us: i64,
     output_fps: u32,
     trim_start_us: Option<i64>,
     last_output_frame: Option<frame::Video>,
@@ -1640,6 +1730,13 @@ impl VideoDecoder {
                 cfg.fps,
                 timestamps_reliable,
             ),
+            live_timestamps: LiveTimestampTracker::default(),
+            source_frame_duration_us: 1_i64
+                .rescale(
+                    fallback_video_time_base(stream.avg_frame_rate(), stream.rate(), cfg.fps)?,
+                    Rational(1, 1_000_000),
+                )
+                .max(1),
             output_fps: cfg.fps,
             trim_start_us: timestamps_reliable.then_some(trim_start_us).flatten(),
             last_output_frame: None,
@@ -1652,6 +1749,31 @@ impl VideoDecoder {
             || self.scaled_height != self.output_height
             || self.x_offset != 0
             || self.y_offset != 0
+    }
+
+    fn normalize_live_timestamp(
+        &mut self,
+        timestamp: Option<i64>,
+        reference_us: Option<i64>,
+        channel_id: i32,
+    ) -> Option<i64> {
+        let timestamp = timestamp?;
+        let time_base = self.frame_rate_converter.input_time_base;
+        let source_us = timestamp.rescale(time_base, Rational(1, 1_000_000));
+        let update = self.live_timestamps.normalize_with_reference(
+            source_us,
+            self.source_frame_duration_us,
+            1_000_000,
+            reference_us,
+            Instant::now(),
+        );
+        update.log_correction("video", source_us, 1_000_000, channel_id);
+
+        Some(if update.pts == source_us {
+            timestamp
+        } else {
+            update.pts.rescale(Rational(1, 1_000_000), time_base)
+        })
     }
 }
 
@@ -1751,6 +1873,8 @@ impl FrameRateConverter {
 struct AudioDecoder {
     audio_frame_callback: Option<crate::AudioFrameCallback>,
     source_next_pts: Option<i64>,
+    live_timestamps: LiveTimestampTracker,
+    channel_id: i32,
     decoder: codec::decoder::Audio,
     resampler: resampling::Context,
     input_channel_layout: ChannelLayout,
@@ -1933,6 +2057,8 @@ impl AudioDecoder {
             decoder,
             resampler,
             source_next_pts: None,
+            live_timestamps: LiveTimestampTracker::default(),
+            channel_id: cfg.channel_id.unwrap_or_default(),
             input_channel_layout: channel_layout,
             input_time_base,
             trim_start_us: timestamps_reliable.then_some(trim_start_us).flatten(),
@@ -2392,7 +2518,7 @@ mod tests {
     };
 
     use anyhow::Result;
-    use ffmpeg_next::{codec, frame, media, util::format::pixel::Pixel};
+    use ffmpeg_next::{Rescale, codec, frame, media, util::format::pixel::Pixel};
 
     use crate::{
         AudioFrameCallback,
@@ -2402,7 +2528,7 @@ mod tests {
 
     use super::{
         AudioDecoder, FrameRateConverter, InputPlaybackOptions, LogoFade, LogoFadePlan,
-        MediaFadePlan, PlaybackControl, Rational, Timeline, apply_audio_fade,
+        MediaFadePlan, PlaybackControl, Rational, Timeline, VideoDecoder, apply_audio_fade,
         fallback_video_time_base, fit_dimensions, has_valid_time_base, padding_to_sync,
         parse_duration_us, play_clip, play_clip_with_external_audio, play_opened_input,
         resample_audio_frame, should_loop_input, should_play_loop_iteration,
@@ -2745,6 +2871,50 @@ mod tests {
             "unexpected one-second audio output: {} samples",
             output.audio_samples
         );
+    }
+
+    #[test]
+    fn live_video_outliers_are_repaired_before_frame_rate_conversion() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let input = open_media_input(&media_mix_asset("av_sync.mp4")).unwrap();
+        let stream = input.streams().best(media::Type::Video).unwrap();
+
+        for jump_us in [5_377_000, -5_377_000] {
+            let mut video =
+                VideoDecoder::new(&stream, &cfg, "timestamp test", None, 0, 0, None).unwrap();
+            let source_time_base = video.frame_rate_converter.input_time_base;
+            let duration_us = video.source_frame_duration_us;
+            let mut healthy_conversion = FrameRateConverter::new(source_time_base, cfg.fps, true);
+
+            for index in 0..10 {
+                let source_us = index * duration_us + if index == 1 { jump_us } else { 0 };
+                let source_pts = source_us.rescale(Rational(1, 1_000_000), source_time_base);
+                let healthy_pts =
+                    (index * duration_us).rescale(Rational(1, 1_000_000), source_time_base);
+                let corrected = video.normalize_live_timestamp(Some(source_pts), None, 0);
+                assert_eq!(
+                    video.frame_rate_converter.output_frames(corrected),
+                    healthy_conversion.output_frames(Some(healthy_pts)),
+                    "an isolated timestamp outlier must not duplicate or drop video frames"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn live_video_real_gap_supported_by_audio_still_produces_filler_frames() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let input = open_media_input(&media_mix_asset("av_sync.mp4")).unwrap();
+        let stream = input.streams().best(media::Type::Video).unwrap();
+        let mut video =
+            VideoDecoder::new(&stream, &cfg, "timestamp test", None, 0, 0, None).unwrap();
+        let initial = video.normalize_live_timestamp(Some(0), None, 0);
+        assert_eq!(video.frame_rate_converter.output_frames(initial), 1);
+        let resumed_source =
+            1_i64.rescale(Rational(1, 1), video.frame_rate_converter.input_time_base);
+        let resumed = video.normalize_live_timestamp(Some(resumed_source), Some(1_000_000), 0);
+        assert_eq!(resumed, Some(resumed_source));
+        assert_eq!(video.frame_rate_converter.output_frames(resumed), 25);
     }
 
     #[test]

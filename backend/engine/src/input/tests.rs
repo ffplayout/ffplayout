@@ -1,8 +1,8 @@
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, LazyLock, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
         mpsc::{self, TryRecvError},
     },
     thread,
@@ -11,12 +11,15 @@ use std::{
 
 use anyhow::Result;
 use ffmpeg_next::frame;
+use log::{Level, LevelFilter, Log, Metadata, Record};
 
+use super::diagnostics::LiveInputDiagnostics;
 use super::live::{
     ListenerSlot, LiveEvent, LiveFrameSender, LiveOverrideOutput, LiveReceiver,
     live_channel_capacity, relay_live_listeners,
 };
 use super::playback::resume_pts;
+use super::timestamps::{LateAudioRecovery, LiveTimestampTracker};
 use crate::{
     audio_mixer::{LiveLoudnessConfig, LiveLoudnessControl, LiveLoudnessProcessor},
     output::FrameOutput,
@@ -102,6 +105,10 @@ fn test_live_receiver(rx: mpsc::Receiver<LiveEvent>) -> LiveReceiver {
         session_id: 0,
         session_output_start_seconds: None,
         session_source_start_seconds: None,
+        video_timestamps: LiveTimestampTracker::default(),
+        audio_timestamps: LiveTimestampTracker::default(),
+        audio_recovery: LateAudioRecovery::default(),
+        audio_output_offset_pts: 0,
         pending_audio: VecDeque::new(),
         pending_audio_samples: 0,
         last_media_at: None,
@@ -618,6 +625,303 @@ fn missing_audio_is_padded_and_late_audio_is_trimmed_without_shifting() {
         .encode_live_audio_frame(audio_frame(96_000, 1024))
         .unwrap();
     assert_eq!(wrapper.output.last_audio, Some((96_000, 1024, 0.0)));
+}
+
+#[test]
+fn live_audio_recovers_after_a_transient_forward_timestamp_jump() {
+    assert_live_audio_recovers_after_timestamp_jump(258_096, 0);
+}
+
+#[test]
+fn live_audio_recovers_after_a_transient_video_timestamp_jump() {
+    assert_live_audio_recovers_after_timestamp_jump(0, 135);
+}
+
+#[test]
+fn live_audio_continues_without_a_timestamp_jump() {
+    assert_live_audio_recovers_after_timestamp_jump(0, 0);
+}
+
+#[test]
+fn startup_audio_before_the_first_video_is_discarded_without_retiming() {
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let mut output = CountingOutput::default();
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(10.0);
+    let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+    video.set_pts(Some(250));
+    wrapper.encode_live_video_frame(video).unwrap();
+
+    for index in 0..250 {
+        wrapper
+            .encode_live_audio_frame(audio_frame(index * 1920, 1920))
+            .unwrap();
+    }
+
+    assert_eq!(wrapper.output.audio_frames, 0);
+    wrapper
+        .encode_live_audio_frame(audio_frame(48_000 * 10, 1920))
+        .unwrap();
+    assert_eq!(wrapper.output.audio_frames, 1);
+    assert_eq!(wrapper.output.last_audio.unwrap().0, 0);
+}
+
+#[test]
+fn startup_audio_after_the_first_video_preserves_its_source_offset() {
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let mut output = CountingOutput {
+        virtual_audio_padding: true,
+        ..CountingOutput::default()
+    };
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+    let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+    video.set_pts(Some(0));
+    wrapper.encode_live_video_frame(video).unwrap();
+
+    // These frames may already be buffered when the first video is decoded.
+    // The initial gap must not become a persistent clock correction.
+    for index in 0..10 {
+        let source_pts = 48_000 + index * 1024;
+        wrapper
+            .encode_live_audio_frame(audio_frame(source_pts, 1024))
+            .unwrap();
+        assert_eq!(wrapper.output.last_audio.unwrap().0, source_pts);
+    }
+
+    assert_eq!(wrapper.output.audio_frames, 10);
+    assert_eq!(wrapper.output.padded_audio_samples, 48_000);
+    assert_eq!(wrapper.live.session_source_start_seconds, Some(0.0));
+}
+
+#[test]
+fn live_audio_survives_backward_timestamp_outliers_in_either_track() {
+    assert_live_audio_recovers_after_timestamp_jump(-258_096, 0);
+    assert_live_audio_recovers_after_timestamp_jump(0, -135);
+}
+
+#[test]
+fn live_tracks_stay_synchronized_through_joint_clock_resets() {
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let mut output = CountingOutput::default();
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+
+    for index in 0..100 {
+        let offset = match index / 25 {
+            1 => 750,
+            2 => -750,
+            _ => 0,
+        };
+        let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+        video.set_pts(Some(index + offset));
+        wrapper.encode_live_video_frame(video).unwrap();
+        wrapper
+            .encode_live_audio_frame(audio_frame((index + offset) * 1920, 1920))
+            .unwrap();
+        assert_eq!(wrapper.live.video_pts, index + 1);
+        assert_eq!(wrapper.live.audio_pts, (index + 1) * 1920);
+        assert_eq!(wrapper.output.last_audio.unwrap().0, index * 1920);
+    }
+
+    assert_eq!(wrapper.live.session_source_start_seconds, Some(0.0));
+    assert_eq!(wrapper.output.video_frames, 100);
+    assert_eq!(wrapper.output.audio_frames, 100);
+}
+
+#[test]
+fn persistent_audio_lag_recovers_without_changing_the_video_anchor() {
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let mut output = CountingOutput {
+        virtual_audio_padding: true,
+        ..CountingOutput::default()
+    };
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+    wrapper
+        .encode_live_audio_frame(audio_frame(0, 1024))
+        .unwrap();
+    wrapper.live.last_audio_at = Some(Instant::now() - Duration::from_secs(4));
+    let source_anchor = wrapper.live.session_source_start_seconds;
+    let mut recovered_pts = None;
+
+    for index in 1..100 {
+        let source_pts = index * 1024;
+        // Previously emitted silence keeps pace with video while valid source
+        // audio stays four seconds behind. The lag cannot heal by catching up.
+        wrapper.live.audio_pts = 48_000 * 4 + source_pts;
+        wrapper.live.last_audio_output_end_pts = Some(wrapper.live.audio_pts);
+        wrapper.live.video_pts = wrapper.live.audio_pts * 25 / 48_000;
+        // Audio and video source PTS still agree; only their output mapping
+        // is broken, as after the old shared-session re-anchor.
+        wrapper.live.video_timestamps.seed(source_pts * 25 / 48_000);
+        wrapper
+            .encode_live_audio_frame(audio_frame(source_pts, 1024))
+            .unwrap();
+
+        if wrapper.output.audio_frames > 1 {
+            recovered_pts = Some(source_pts);
+            break;
+        }
+    }
+
+    let recovered_pts = recovered_pts.expect("source audio must recover from persistent lag");
+    assert_eq!(wrapper.live.session_source_start_seconds, source_anchor);
+    assert!(wrapper.output.last_audio.unwrap().0 >= 48_000 * 5);
+    let expected_next = wrapper.live.audio_pts;
+    wrapper
+        .encode_live_audio_frame(audio_frame(recovered_pts + 1024, 1024))
+        .unwrap();
+    assert_eq!(wrapper.output.last_audio.unwrap().0, expected_next);
+    assert_eq!(wrapper.output.audio_frames, 3);
+}
+
+#[test]
+fn late_audio_catching_up_is_not_shifted_into_the_future() {
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let mut output = CountingOutput::default();
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+    wrapper
+        .encode_live_audio_frame(audio_frame(0, 1024))
+        .unwrap();
+    wrapper.live.last_audio_at = Some(Instant::now() - Duration::from_secs(4));
+    wrapper.live.audio_pts = 48_000 * 4;
+    wrapper.live.last_audio_output_end_pts = Some(wrapper.live.audio_pts);
+    wrapper.live.video_pts = 100;
+
+    for index in 1..187 {
+        wrapper
+            .encode_live_audio_frame(audio_frame(index * 1024, 1024))
+            .unwrap();
+    }
+
+    assert_eq!(
+        wrapper.output.audio_frames, 1,
+        "genuinely late audio must be discarded"
+    );
+    wrapper
+        .encode_live_audio_frame(audio_frame(48_000 * 4, 1024))
+        .unwrap();
+    assert_eq!(wrapper.output.last_audio.unwrap().0, 48_000 * 4);
+    assert_eq!(wrapper.output.audio_frames, 2);
+}
+
+#[test]
+fn constant_delivery_lag_in_source_audio_is_not_mistaken_for_a_broken_mapping() {
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let mut output = CountingOutput::default();
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+    wrapper
+        .encode_live_audio_frame(audio_frame(0, 1024))
+        .unwrap();
+    wrapper.live.last_audio_at = Some(Instant::now() - Duration::from_secs(4));
+
+    for index in 1..100 {
+        let source_pts = index * 1024;
+        // Actual audio content is consistently four seconds behind video.
+        // Shifting its timestamps would conceal a real A/V delivery problem.
+        wrapper.live.audio_pts = source_pts + 48_000 * 4;
+        wrapper.live.last_audio_output_end_pts = Some(wrapper.live.audio_pts);
+        wrapper.live.video_pts = wrapper.live.audio_pts * 25 / 48_000;
+        wrapper.live.video_timestamps.seed(wrapper.live.video_pts);
+        wrapper
+            .encode_live_audio_frame(audio_frame(source_pts, 1024))
+            .unwrap();
+    }
+
+    assert_eq!(wrapper.output.audio_frames, 1);
+    assert_eq!(wrapper.live.audio_output_offset_pts, 0);
+}
+
+fn assert_live_audio_recovers_after_timestamp_jump(
+    audio_jump_samples: i64,
+    video_jump_frames: i64,
+) {
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.source_has_audio = true;
+    live.active = true;
+    let mut output = CountingOutput {
+        virtual_audio_padding: true,
+        ..CountingOutput::default()
+    };
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+
+    // Establish normal audio, then inject one timestamp outlier. All following
+    // audio and video timestamps return to the original, continuous timeline.
+    let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+    video.set_pts(Some(0));
+    wrapper.encode_live_video_frame(video).unwrap();
+    wrapper
+        .encode_live_audio_frame(audio_frame(0, 1920))
+        .unwrap();
+    assert_eq!(wrapper.output.audio_frames, 1);
+    let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+    video.set_pts(Some(1 + video_jump_frames));
+    wrapper.encode_live_video_frame(video).unwrap();
+    wrapper
+        .encode_live_audio_frame(audio_frame(1920 + audio_jump_samples, 1920))
+        .unwrap();
+
+    let mut resumed_audio_frames = 0;
+
+    // Simulate one minute at 25 fps without sleeping or running a publisher.
+    // Audio blocks contain 40 ms of non-silent samples, matching each video tick.
+    for video_pts in 2..1502 {
+        // Advance the dropout clock explicitly so the silence-padding path is
+        // exercised independently of how fast the test machine executes.
+        if video_pts >= 65 && resumed_audio_frames == 0 {
+            wrapper.live.last_audio_at = Some(Instant::now() - Duration::from_secs(3));
+        }
+
+        let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+        video.set_pts(Some(video_pts));
+        wrapper.encode_live_video_frame(video).unwrap();
+        wrapper.pad_missing_live_audio().unwrap();
+        let before = wrapper.output.audio_frames;
+        wrapper
+            .encode_live_audio_frame(audio_frame(video_pts * 1920, 1920))
+            .unwrap();
+        resumed_audio_frames += wrapper.output.audio_frames - before;
+    }
+
+    assert!(wrapper.output.video_frames >= 1500, "video must continue");
+    assert_eq!(
+        resumed_audio_frames, 1500,
+        "source audio was lost during 60 seconds after a timestamp outlier \
+         (audio: {audio_jump_samples} samples, video: {video_jump_frames} frames); \
+         video frames: {}, silence samples: {}",
+        wrapper.output.video_frames, wrapper.output.padded_audio_samples
+    );
+    assert_eq!(wrapper.output.padded_audio_samples, 0);
 }
 
 #[test]
@@ -1173,23 +1477,23 @@ fn live_frame_sender_waits_until_full_channel_has_capacity() {
         listener_id: 1,
     })
     .unwrap();
-    let frame_seen = Arc::new(AtomicBool::new(false));
-    let last_frame_ms = Arc::new(AtomicU64::new(u64::MAX));
+    let diagnostics = Arc::new(LiveInputDiagnostics::new(1, 1));
+    diagnostics
+        .last_activity_ms
+        .store(u64::MAX, Ordering::Relaxed);
     let abort = Arc::new(AtomicBool::new(false));
     let listener_abort = Arc::new(AtomicBool::new(false));
     let send_finished = Arc::new(AtomicBool::new(false));
     let worker_finished = Arc::clone(&send_finished);
     let worker = thread::spawn({
-        let frame_seen = Arc::clone(&frame_seen);
-        let last_frame_ms = Arc::clone(&last_frame_ms);
+        let diagnostics = Arc::clone(&diagnostics);
         let abort = Arc::clone(&abort);
         let listener_abort = Arc::clone(&listener_abort);
         move || {
             let mut sender = LiveFrameSender {
                 tx,
                 session_id: 1,
-                last_frame_ms,
-                frame_seen,
+                diagnostics,
                 abort,
                 listener_abort,
                 channel_id: 0,
@@ -1204,8 +1508,11 @@ fn live_frame_sender_waits_until_full_channel_has_capacity() {
     thread::sleep(Duration::from_millis(30));
     assert!(!send_finished.load(Ordering::Relaxed));
 
-    assert!(frame_seen.load(Ordering::Relaxed));
-    assert_ne!(last_frame_ms.load(Ordering::Relaxed), u64::MAX);
+    assert!(diagnostics.frame_seen.load(Ordering::Relaxed));
+    assert_ne!(
+        diagnostics.last_activity_ms.load(Ordering::Relaxed),
+        u64::MAX
+    );
     assert!(matches!(
         rx.try_recv(),
         Ok(LiveEvent::Started { session_id: 1, .. })
@@ -1229,23 +1536,19 @@ fn backpressure_does_not_make_the_live_watchdog_abort_the_reader() {
     })
     .unwrap();
     let abort = Arc::new(AtomicBool::new(false));
-    let heartbeat = Arc::new(AtomicU64::new(super::live::monotonic_millis()));
-    let watchdog = super::live::spawn_live_watchdog(
-        Arc::clone(&heartbeat),
-        Arc::new(AtomicBool::new(true)),
-        Arc::clone(&abort),
-        0,
-        1,
-    );
+    let diagnostics = Arc::new(LiveInputDiagnostics::new(1, 1));
+    diagnostics.frame_ready();
+    let watchdog =
+        super::live::spawn_live_watchdog(Arc::clone(&diagnostics), Arc::clone(&abort), 0);
     let worker_abort = Arc::clone(&abort);
-    let worker_heartbeat = Arc::clone(&heartbeat);
+    let worker_diagnostics = Arc::clone(&diagnostics);
     let worker = thread::spawn(move || {
         super::live::send_live_event(
             &tx,
             LiveEvent::Ended(1),
             Some(&worker_abort),
             &AtomicBool::new(false),
-            Some(&worker_heartbeat),
+            Some(&worker_diagnostics),
             "test",
             0,
         )
@@ -1259,6 +1562,70 @@ fn backpressure_does_not_make_the_live_watchdog_abort_the_reader() {
     abort.store(true, Ordering::Relaxed);
     assert!(worker.join().unwrap().is_err());
     watchdog.join().unwrap();
+}
+
+#[test]
+fn queue_backpressure_logs_once_and_recovers_without_logging_short_waits() {
+    struct ThreadLogs(Mutex<HashMap<thread::ThreadId, Vec<(Level, String)>>>);
+
+    impl Log for ThreadLogs {
+        fn enabled(&self, _: &Metadata<'_>) -> bool {
+            true
+        }
+
+        fn log(&self, record: &Record<'_>) {
+            if let Some(entries) = self.0.lock().unwrap().get_mut(&thread::current().id()) {
+                entries.push((record.level(), record.args().to_string()));
+            }
+        }
+
+        fn flush(&self) {}
+    }
+
+    static LOGS: LazyLock<ThreadLogs> = LazyLock::new(|| ThreadLogs(Mutex::new(HashMap::new())));
+    static INSTALLED: OnceLock<()> = OnceLock::new();
+    INSTALLED.get_or_init(|| {
+        log::set_logger(&*LOGS).unwrap();
+        log::set_max_level(LevelFilter::Debug);
+    });
+    let thread_id = thread::current().id();
+    LOGS.0.lock().unwrap().insert(thread_id, Vec::new());
+
+    for wait in [Duration::from_millis(30), Duration::from_millis(2250)] {
+        let (tx, rx) = mpsc::sync_channel(1);
+        tx.send(LiveEvent::Ended(1)).unwrap();
+        let reader = thread::spawn(move || {
+            thread::sleep(wait);
+            rx.recv().unwrap();
+            rx.recv().unwrap();
+        });
+        let diagnostics = LiveInputDiagnostics::new(7, 19);
+        super::live::send_live_event(
+            &tx,
+            LiveEvent::Ended(1),
+            None,
+            &AtomicBool::new(false),
+            Some(&diagnostics),
+            "test frame",
+            0,
+        )
+        .unwrap();
+        reader.join().unwrap();
+        let entries = LOGS.0.lock().unwrap().get(&thread_id).unwrap().clone();
+
+        if wait < Duration::from_secs(1) {
+            assert!(entries.is_empty(), "brief queue waits must stay silent");
+        } else {
+            assert_eq!(entries.len(), 2, "one warning and one recovery message");
+            assert_eq!(entries[0].0, Level::Warn);
+            assert!(entries[0].1.contains("listener #7, session 19"));
+            assert_eq!(entries[1].0, Level::Debug);
+            assert!(entries[1].1.contains("backpressure cleared"));
+            assert!(entries[1].1.contains("listener #7, session 19"));
+        }
+    }
+
+    LOGS.0.lock().unwrap().remove(&thread_id);
 }
 
 #[test]
@@ -1326,8 +1693,7 @@ fn live_frame_sender_stops_waiting_when_aborted() {
     let mut sender = LiveFrameSender {
         tx,
         session_id: 1,
-        last_frame_ms: Arc::new(AtomicU64::new(0)),
-        frame_seen: Arc::new(AtomicBool::new(false)),
+        diagnostics: Arc::new(LiveInputDiagnostics::new(1, 1)),
         abort,
         listener_abort: Arc::new(AtomicBool::new(false)),
         channel_id: 0,
@@ -1347,8 +1713,7 @@ fn live_frame_sender_reports_disconnected_channel() {
     let mut sender = LiveFrameSender {
         tx,
         session_id: 1,
-        last_frame_ms: Arc::new(AtomicU64::new(0)),
-        frame_seen: Arc::new(AtomicBool::new(false)),
+        diagnostics: Arc::new(LiveInputDiagnostics::new(1, 1)),
         abort: Arc::new(AtomicBool::new(false)),
         listener_abort: Arc::new(AtomicBool::new(false)),
         channel_id: 0,

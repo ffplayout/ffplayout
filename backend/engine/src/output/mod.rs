@@ -17,6 +17,7 @@ use crate::benchmark::BenchHandle;
 use crate::{
     HlsHealth,
     compositor::logo::{LogoOverlay, blend_logo},
+    input::diagnostics::LiveInputDiagnostics,
     utils::config::{HlsSubtitle, HlsVariant, OutputConfig},
 };
 
@@ -37,6 +38,10 @@ impl fmt::Display for PlaybackStopped {
 impl Error for PlaybackStopped {}
 
 pub(crate) trait FrameOutput {
+    fn input_diagnostics(&self) -> Option<&LiveInputDiagnostics> {
+        None
+    }
+
     fn audio_frame_size(&self) -> usize;
 
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()>;
