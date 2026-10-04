@@ -3,6 +3,7 @@
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashMap, VecDeque},
+    env,
     error::Error,
     ffi::{CStr, CString},
     fmt, ptr,
@@ -61,7 +62,45 @@ pub(super) fn trim_audio_start(input: &frame::Audio, skip: usize) -> Result<fram
 
     Ok(result)
 }
-pub(super) const LIVE_IDLE_TIMEOUT: Duration = Duration::from_millis(1500);
+const DEFAULT_LIVE_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
+const LIVE_IDLE_TIMEOUT_ENV: &str = "FFPLAYOUT_LIVE_IDLE_TIMEOUT_MS";
+
+pub(super) fn live_idle_timeout() -> Duration {
+    static TIMEOUT: LazyLock<Duration> = LazyLock::new(|| {
+        let configured = match env::var(LIVE_IDLE_TIMEOUT_ENV) {
+            Ok(value) => parse_live_idle_timeout(Some(&value)),
+            Err(env::VarError::NotPresent) => parse_live_idle_timeout(None),
+            Err(error) => Err(error.into()),
+        };
+        let timeout = configured.unwrap_or_else(|error| {
+            warn!(
+                "Invalid {LIVE_IDLE_TIMEOUT_ENV}: {error}; using {} ms",
+                DEFAULT_LIVE_IDLE_TIMEOUT.as_millis()
+            );
+
+            DEFAULT_LIVE_IDLE_TIMEOUT
+        });
+        debug!("Live input idle timeout: {} ms", timeout.as_millis());
+
+        timeout
+    });
+
+    *TIMEOUT
+}
+
+fn parse_live_idle_timeout(value: Option<&str>) -> Result<Duration> {
+    let Some(value) = value else {
+        return Ok(DEFAULT_LIVE_IDLE_TIMEOUT);
+    };
+    let millis = value
+        .trim()
+        .parse::<u64>()
+        .context("expected a positive integer in milliseconds")?;
+    anyhow::ensure!(millis > 0, "timeout must be greater than zero");
+
+    Ok(Duration::from_millis(millis))
+}
+
 const LIVE_WATCHDOG_INTERVAL: Duration = Duration::from_millis(100);
 /// Limit wall-clock gap filling when returning from an interrupted live input.
 pub(super) const MAX_LIVE_GAP_SECONDS: f64 = 5.0;
@@ -995,6 +1034,8 @@ pub(super) fn spawn_live_watchdog(
     abort: Arc<AtomicBool>,
     channel_id: i32,
 ) -> thread::JoinHandle<()> {
+    let idle_timeout = live_idle_timeout();
+
     thread::spawn(move || {
         while !abort.load(Ordering::Relaxed) {
             thread::sleep(LIVE_WATCHDOG_INTERVAL);
@@ -1008,7 +1049,7 @@ pub(super) fn spawn_live_watchdog(
             let last_activity_ms = diagnostics.last_activity_ms.load(Ordering::Relaxed);
             let frame_seen = diagnostics.frame_seen.load(Ordering::Relaxed);
             let timeout = if frame_seen {
-                LIVE_IDLE_TIMEOUT
+                idle_timeout
             } else {
                 LIVE_STARTUP_TIMEOUT
             };
@@ -1250,4 +1291,36 @@ pub(super) fn monotonic_millis() -> u64 {
     static EPOCH: OnceLock<Instant> = OnceLock::new();
     let epoch = EPOCH.get_or_init(Instant::now);
     epoch.elapsed().as_millis() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::parse_live_idle_timeout;
+
+    #[test]
+    fn live_idle_timeout_defaults_to_two_seconds() {
+        assert_eq!(
+            parse_live_idle_timeout(None).unwrap(),
+            Duration::from_secs(2)
+        );
+    }
+
+    #[test]
+    fn live_idle_timeout_accepts_positive_milliseconds() {
+        for (value, millis) in [("1", 1), ("2000", 2000), (" 5000 ", 5000)] {
+            assert_eq!(
+                parse_live_idle_timeout(Some(value)).unwrap(),
+                Duration::from_millis(millis)
+            );
+        }
+    }
+
+    #[test]
+    fn live_idle_timeout_rejects_invalid_values() {
+        for value in ["", " ", "0", "-1", "1.5", "2s", "18446744073709551616"] {
+            assert!(parse_live_idle_timeout(Some(value)).is_err(), "{value:?}");
+        }
+    }
 }

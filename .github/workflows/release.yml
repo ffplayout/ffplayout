@@ -38,7 +38,7 @@ jobs:
             platform: x86_64-apple-darwin
             variant: desktop
             features: embed_frontend,desktop
-          - os: macos-14
+          - os: macos-15
             platform: aarch64-apple-darwin
             variant: desktop
             features: embed_frontend,desktop

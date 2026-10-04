@@ -40,6 +40,29 @@ content and switches to the live source. The output remains continuous.
 
 In rare cases, it may happen that, for a short moment after switching, the image freezes, but then it will continue. Also, a brief frame flicker might occur.
 
+#### Live idle timeout
+
+After live frames have started arriving, the idle timeout defaults to **2000 ms**.
+Set `FFPLAYOUT_LIVE_IDLE_TIMEOUT_MS` to a positive integer in milliseconds to
+override it for all RTMP/SRT listeners in the process:
+
+```sh
+FFPLAYOUT_LIVE_IDLE_TIMEOUT_MS=5000 ffplayout -l 0.0.0.0:8787
+```
+
+For a systemd installation, add a drop-in with `sudo systemctl edit ffplayout`:
+
+```ini
+[Service]
+Environment="FFPLAYOUT_LIVE_IDLE_TIMEOUT_MS=5000"
+```
+
+Restart ffplayout after changing the variable. It is read once and controls both
+the listener watchdog and the idle fallback to playlist/folder playback. Invalid
+values, including zero, produce a warning and use the 2000 ms default. The initial
+wait for decodable frames remains ten seconds. Longer idle timeouts tolerate longer
+delivery pauses but also delay recovery when a connected publisher stops sending.
+
 #### Delayed tracks and resource limits
 
 Live takeover starts with the first decoded video frame. Until then, the playlist
