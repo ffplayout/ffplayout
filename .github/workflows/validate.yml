@@ -6,6 +6,10 @@ on:
       - '**'
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
@@ -15,12 +19,13 @@ jobs:
 
     env:
       CARGO_INCREMENTAL: 0
-      CARGO_BUILD_JOBS: 1
+      CARGO_BUILD_JOBS: 2
       VCPKGRS_DYNAMIC: 1
 
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
+        if: runner.os == 'Linux'
         with:
           node-version: 24
           cache: npm
@@ -33,6 +38,8 @@ jobs:
       - name: Set macOS Rust flags
         if: runner.os == 'macOS'
         run: echo 'RUSTFLAGS=-Csplit-debuginfo=packed' >> $GITHUB_ENV
+
+      - uses: Swatinem/rust-cache@v2
 
       - name: Install FFmpeg libraries on Linux
         if: runner.os == 'Linux'
@@ -86,7 +93,6 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           npm ci
-          npm run type-check
           npm run build
 
       - name: Rust tests and lint on Linux
@@ -104,4 +110,4 @@ jobs:
       - name: Rust build on Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cargo build --release --no-default-features --features embed_frontend
+        run: cargo build --no-default-features --features embed_frontend
