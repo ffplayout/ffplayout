@@ -1527,6 +1527,65 @@ fn live_frame_sender_waits_until_full_channel_has_capacity() {
 }
 
 #[test]
+fn live_watchdog_tolerates_a_pause_shorter_than_the_configured_timeout() {
+    let diagnostics = Arc::new(LiveInputDiagnostics::new(1, 1));
+    diagnostics.frame_ready();
+    let abort = Arc::new(AtomicBool::new(false));
+    let watchdog =
+        super::live::spawn_live_watchdog(Arc::clone(&diagnostics), Arc::clone(&abort), 0);
+
+    thread::sleep(super::live::live_idle_timeout().mul_f64(0.8));
+    let aborted_during_pause = abort.load(Ordering::Relaxed);
+    abort.store(true, Ordering::Relaxed);
+    watchdog.join().unwrap();
+
+    assert!(
+        !aborted_during_pause,
+        "a short packet gap must preserve the reader"
+    );
+}
+
+#[test]
+fn live_playback_keeps_a_session_during_a_short_idle_pause() {
+    let (_tx, rx) = mpsc::sync_channel(1);
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.last_media_at = Some(Instant::now() - super::live::live_idle_timeout().mul_f64(0.8));
+    let control = crate::PlaybackControl::default();
+    let worker_control = control.clone();
+    let worker = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(30));
+        worker_control.skip_current();
+    });
+    let mut output = CountingOutput::default();
+    let result = LiveOverrideOutput::new(&mut output, &mut live, &control).wait_for_file_playback();
+    worker.join().unwrap();
+
+    assert!(result.unwrap_err().is::<crate::playout::PlaybackSkipped>());
+    assert!(
+        live.active,
+        "a short idle gap must not switch to file playback"
+    );
+}
+
+#[test]
+fn live_playback_returns_to_file_after_the_configured_idle_timeout() {
+    let (_tx, rx) = mpsc::sync_channel(1);
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.last_media_at =
+        Some(Instant::now() - super::live::live_idle_timeout() - Duration::from_millis(100));
+    let mut output = CountingOutput::default();
+    let control = crate::PlaybackControl::default();
+    let error = LiveOverrideOutput::new(&mut output, &mut live, &control)
+        .wait_for_file_playback()
+        .expect_err("expired live input must return to file playback");
+
+    assert!(error.is::<super::live::LiveEnded>());
+    assert!(!live.active);
+}
+
+#[test]
 fn backpressure_does_not_make_the_live_watchdog_abort_the_reader() {
     let (tx, _rx) = mpsc::sync_channel(1);
     tx.try_send(LiveEvent::Started {
@@ -1554,7 +1613,7 @@ fn backpressure_does_not_make_the_live_watchdog_abort_the_reader() {
         )
     });
 
-    thread::sleep(super::live::LIVE_IDLE_TIMEOUT + Duration::from_millis(300));
+    thread::sleep(super::live::live_idle_timeout() + Duration::from_millis(300));
     assert!(
         !abort.load(Ordering::Relaxed),
         "queue backpressure must not look like an idle publisher"

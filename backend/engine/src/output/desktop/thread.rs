@@ -29,7 +29,7 @@ use winit::{
 };
 
 #[cfg(feature = "tokio")]
-type Job = Box<dyn FnOnce(&ActiveEventLoop) + Send>;
+type Job = Box<dyn FnOnce(Result<&ActiveEventLoop, &str>) + Send>;
 
 #[cfg(feature = "tokio")]
 enum HostMessage {
@@ -46,6 +46,23 @@ struct MainThreadHost {
 
 #[cfg(feature = "tokio")]
 impl MainThreadHost {
+    fn call<T: Send + 'static>(
+        &self,
+        operation: impl FnOnce(&ActiveEventLoop) -> T + Send + 'static,
+    ) -> Result<T> {
+        let (result_tx, result_rx) = mpsc::sync_channel(1);
+        self.send(HostMessage::Job(Box::new(move |event_loop| {
+            let result = event_loop
+                .map(operation)
+                .map_err(|error| anyhow!("{error}"));
+            let _ = result_tx.send(result);
+        })))?;
+
+        result_rx
+            .recv()
+            .map_err(|_| anyhow!("desktop main-thread operation stopped"))?
+    }
+
     fn send(&self, message: HostMessage) -> Result<()> {
         if !self.running.load(Ordering::Acquire) {
             return Err(anyhow!("desktop main-thread host stopped"));
@@ -128,6 +145,17 @@ pub fn run_on_main_thread<R: Send + 'static>(
 
 #[cfg(feature = "tokio")]
 fn run_host(receiver: mpsc::Receiver<HostMessage>, host: &MainThreadHost) -> Result<()> {
+    run_host_with_factory(receiver, host, || {
+        EventLoop::new().context("creating desktop window event loop")
+    })
+}
+
+#[cfg(feature = "tokio")]
+fn run_host_with_factory(
+    receiver: mpsc::Receiver<HostMessage>,
+    host: &MainThreadHost,
+    create_event_loop: impl FnOnce() -> Result<EventLoop<()>>,
+) -> Result<()> {
     let first = receiver
         .recv()
         .context("desktop main-thread host disconnected")?;
@@ -136,7 +164,27 @@ fn run_host(receiver: mpsc::Receiver<HostMessage>, host: &MainThreadHost) -> Res
         return Ok(());
     }
 
-    let event_loop = EventLoop::new().context("creating desktop window event loop")?;
+    let event_loop = match create_event_loop() {
+        Ok(event_loop) => event_loop,
+        Err(error) => {
+            // Winit forbids creating another event loop even after a failed
+            // attempt. Keep the runtime alive and report the same failure to
+            // each desktop caller until the application finishes.
+            let error = format!("{error:#}");
+            let mut message = first;
+
+            loop {
+                match message {
+                    HostMessage::Job(job) => job(Err(&error)),
+                    HostMessage::RuntimeFinished => return Ok(()),
+                }
+
+                message = receiver
+                    .recv()
+                    .context("desktop main-thread host disconnected")?;
+            }
+        }
+    };
     *host.proxy.lock().unwrap_or_else(PoisonError::into_inner) = Some(event_loop.create_proxy());
     event_loop.set_control_flow(ControlFlow::Wait);
     let mut app = DesktopHostApp {
@@ -168,7 +216,7 @@ impl DesktopHostApp {
             let message = self.first.take().or_else(|| self.receiver.try_recv().ok());
 
             match message {
-                Some(HostMessage::Job(job)) => job(event_loop),
+                Some(HostMessage::Job(job)) => job(Ok(event_loop)),
                 Some(HostMessage::RuntimeFinished) => {
                     event_loop.exit();
                     return;
@@ -212,21 +260,21 @@ pub(crate) fn spawn(job: impl FnOnce(&ActiveEventLoop) + Send + 'static) -> Resu
     DESKTOP_MAIN_THREAD
         .get()
         .ok_or_else(|| anyhow!("desktop main-thread host is not running"))?
-        .send(HostMessage::Job(Box::new(job)))
+        .send(HostMessage::Job(Box::new(move |event_loop| {
+            if let Ok(event_loop) = event_loop {
+                job(event_loop);
+            }
+        })))
 }
 
 #[cfg(feature = "tokio")]
 pub(crate) fn call<T: Send + 'static>(
     operation: impl FnOnce(&ActiveEventLoop) -> T + Send + 'static,
 ) -> Result<T> {
-    let (result_tx, result_rx) = mpsc::sync_channel(1);
-    spawn(move |event_loop| {
-        let _ = result_tx.send(operation(event_loop));
-    })?;
-
-    result_rx
-        .recv()
-        .map_err(|_| anyhow!("desktop main-thread operation stopped"))
+    DESKTOP_MAIN_THREAD
+        .get()
+        .ok_or_else(|| anyhow!("desktop main-thread host is not running"))?
+        .call(operation)
 }
 
 #[cfg(feature = "tokio")]
@@ -284,6 +332,49 @@ mod tests {
             HostMessage::RuntimeFinished
         ));
         assert!(host.proxy.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn failed_event_loop_reports_desktop_errors_and_waits_for_runtime_completion() {
+        let (host, receiver) = host_channel();
+        let (continued_tx, continued_rx) = mpsc::channel();
+        let (finish_tx, finish_rx) = mpsc::channel();
+
+        thread::scope(|scope| {
+            let host = &host;
+            let runtime = scope.spawn(move || {
+                let _completion = RuntimeCompletion(host);
+
+                for _ in 0..2 {
+                    let error = host
+                        .call::<()>(|_| panic!("desktop operation must not run"))
+                        .unwrap_err();
+                    assert_eq!(
+                        error.to_string(),
+                        "creating desktop window event loop: no display"
+                    );
+                }
+
+                continued_tx.send(()).unwrap();
+                finish_rx.recv().unwrap();
+
+                42
+            });
+            let observer = scope.spawn(move || {
+                continued_rx.recv().unwrap();
+                assert!(host.running.load(Ordering::Acquire));
+                assert!(host.proxy.lock().unwrap().is_none());
+                finish_tx.send(()).unwrap();
+            });
+
+            run_host_with_factory(receiver, host, || {
+                Err(anyhow!("no display")).context("creating desktop window event loop")
+            })
+            .unwrap();
+
+            assert_eq!(runtime.join().unwrap(), 42);
+            observer.join().unwrap();
+        });
     }
 
     #[test]

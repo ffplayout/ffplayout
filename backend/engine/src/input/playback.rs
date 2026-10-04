@@ -26,9 +26,9 @@ use crate::{
 
 use super::delay::collect_audio_preview;
 use super::live::{
-    LIVE_AUDIO_GRACE_SECONDS, LIVE_AUDIO_PTS_JITTER_SECONDS, LIVE_IDLE_TIMEOUT,
-    LIVE_SEND_RETRY_INTERVAL, LIVE_STARTUP_TIMEOUT, LiveEnded, LiveEvent, LiveReceiver,
-    MAX_LIVE_GAP_SECONDS, MAX_PENDING_AUDIO_FRAMES, trim_audio_start,
+    LIVE_AUDIO_GRACE_SECONDS, LIVE_AUDIO_PTS_JITTER_SECONDS, LIVE_SEND_RETRY_INTERVAL,
+    LIVE_STARTUP_TIMEOUT, LiveEnded, LiveEvent, LiveReceiver, MAX_LIVE_GAP_SECONDS,
+    MAX_PENDING_AUDIO_FRAMES, live_idle_timeout, trim_audio_start,
 };
 use super::timestamps::{AudioRecoveryAction, LateAudioRecovery};
 
@@ -200,6 +200,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
     /// playback keeps running so the output never stalls; the switch happens
     /// as soon as the first live video frame arrives.
     pub(super) fn wait_for_file_playback(&mut self) -> Result<()> {
+        let idle_timeout = live_idle_timeout();
         self.pump_live()?;
 
         while self.live.active {
@@ -211,8 +212,8 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 .last_media_at
                 .map(|last_media_at| last_media_at.elapsed())
                 .unwrap_or_default();
-            if self.live.active && self.live.delay.is_empty() && idle_for >= LIVE_IDLE_TIMEOUT {
-                info!(channel = self.live.channel_id; "live listener #{} idle; switching back to file playback", self.live.listener_id);
+            if self.live.active && self.live.delay.is_empty() && idle_for >= idle_timeout {
+                info!(channel = self.live.channel_id; "live listener #{} idle; switching back to file playback (idle={} ms, timeout={} ms)", self.live.listener_id, idle_for.as_millis(), idle_timeout.as_millis());
                 self.fill_live_gap(idle_for)?;
                 self.align_live_pts_to_common_time();
                 self.prepare_file_resume();
