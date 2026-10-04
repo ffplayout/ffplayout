@@ -64,7 +64,7 @@ use graphics::{
 #[cfg(test)]
 use graphics::{SUBTITLE_FONT_SIZE, SUBTITLE_FULLSCREEN_FONT_SIZE, subtitle_font_size};
 use render::{WindowFrame, WindowLogo};
-use timing::{AudioMasterClock, adjusted_volume, video_pts_in_audio_samples};
+use timing::{AudioMasterClock, VideoRedrawTiming, adjusted_volume, video_pts_in_audio_samples};
 use video::{DesktopFrameConverter, VideoSurface};
 
 const AUDIO_CHANNELS: usize = 2;
@@ -1389,7 +1389,7 @@ impl DesktopRenderer {
             if interval < frame_duration.mul_f64(0.5) || interval > frame_duration.mul_f64(1.5) {
                 log::trace!(
                     channel = self.channel_id;
-                    "desktop video presentation interval: {:.3} ms at pts {}",
+                    "desktop video scheduler interval: {:.3} ms at pts {}",
                     interval.as_secs_f64() * 1_000.0,
                     frame.pts().unwrap_or_default()
                 );
@@ -1617,7 +1617,9 @@ impl Drop for DesktopRenderer {
 }
 
 struct DesktopWindow {
-    event_loop: EventLoop<()>,
+    // Synchronous Playout pumps its own loop. The asynchronous host owns
+    // a continuously running loop and supplies ActiveEventLoop to jobs.
+    event_loop: Option<EventLoop<()>>,
     app: Option<DesktopWindowApp>,
 }
 
@@ -1625,12 +1627,14 @@ struct DesktopWindow {
 struct DesktopWindowHandle {
     window: Arc<Window>,
     shared: Arc<Mutex<DesktopWindowShared>>,
+    #[cfg(feature = "tokio")]
     channel_id: i32,
 }
 
 struct DesktopWindowShared {
     actions: Vec<WindowAction>,
     frame: Option<WindowFrame>,
+    video_redraw_timing: VideoRedrawTiming,
     size: (u32, u32),
     fullscreen: bool,
     maximized: bool,
@@ -1670,13 +1674,20 @@ fn prepare_desktop_window(
     fullscreen: bool,
     channel_id: i32,
 ) -> Result<DesktopWindowHandle> {
+    #[cfg(feature = "tokio")]
     if thread::is_running() {
-        thread::call(move || {
-            prepare_desktop_window_on_current_thread(width, height, fullscreen, channel_id)
-        })?
-    } else {
-        prepare_desktop_window_on_current_thread(width, height, fullscreen, channel_id)
+        return thread::call(move |event_loop| {
+            prepare_desktop_window_on_current_thread(
+                width,
+                height,
+                fullscreen,
+                channel_id,
+                Some(event_loop),
+            )
+        })?;
     }
+
+    prepare_desktop_window_on_current_thread(width, height, fullscreen, channel_id, None)
 }
 
 fn prepare_desktop_window_on_current_thread(
@@ -1684,16 +1695,26 @@ fn prepare_desktop_window_on_current_thread(
     height: u32,
     fullscreen: bool,
     channel_id: i32,
+    event_loop: Option<&ActiveEventLoop>,
 ) -> Result<DesktopWindowHandle> {
     DESKTOP_WINDOW.with(|window| {
         let mut window = window.borrow_mut();
 
         if let Some(window) = window.as_mut() {
-            window.reconfigure(width, height, fullscreen, channel_id)?;
+            window.reconfigure(width, height, fullscreen, channel_id, event_loop)?;
 
             Ok(window.handle())
         } else {
-            *window = Some(DesktopWindow::open(width, height, fullscreen, channel_id)?);
+            *window = Some(if let Some(event_loop) = event_loop {
+                DesktopWindow {
+                    event_loop: None,
+                    app: Some(create_desktop_window_app(
+                        event_loop, width, height, fullscreen, channel_id,
+                    )?),
+                }
+            } else {
+                DesktopWindow::open(width, height, fullscreen, channel_id)?
+            });
             Ok(window
                 .as_ref()
                 .expect("desktop window was just initialized")
@@ -1710,17 +1731,34 @@ pub(super) fn pump_desktop_window_events() {
     });
 }
 
+#[cfg(feature = "tokio")]
+pub(super) fn dispatch_desktop_window_event(
+    event_loop: &ActiveEventLoop,
+    window_id: WindowId,
+    event: WindowEvent,
+) {
+    DESKTOP_WINDOW.with(|window| {
+        if let Some(window) = window.borrow_mut().as_mut()
+            && let Some(app) = window.app.as_mut()
+        {
+            app.window_event(event_loop, window_id, event);
+        }
+    });
+}
+
 /// Releases Winit/WGPU resources while their supporting thread-local state is
 /// still alive. Leaving this to TLS destruction can make WGPU access a TLS
 /// value that Rust has already torn down during process exit.
 #[cfg(feature = "tokio")]
 pub(super) fn release_desktop_window() {
     let _ = DESKTOP_WINDOW.try_with(|window| {
-        drop(window.borrow_mut().take());
+        let window = window.borrow_mut().take();
+        drop(window);
     });
 }
 
 fn close_desktop_window(handle: DesktopWindowHandle) {
+    #[cfg(feature = "tokio")]
     let channel_id = handle.channel_id;
     let close = move || {
         DESKTOP_WINDOW.with(|window| {
@@ -1734,16 +1772,18 @@ fn close_desktop_window(handle: DesktopWindowHandle) {
         drop(handle);
     };
 
+    #[cfg(feature = "tokio")]
     if thread::is_running() {
         // Renderer teardown can originate from the playout worker while the
         // host thread is still dispatching window events. Queue the teardown,
         // but do not make the playout worker wait for the host thread.
-        if let Err(error) = thread::spawn(close) {
+        if let Err(error) = thread::spawn(move |_| close()) {
             log::warn!(channel = channel_id; "failed to schedule desktop window close: {error}");
         }
-    } else {
-        close();
+        return;
     }
+
+    close();
 }
 
 enum WindowAction {
@@ -1793,6 +1833,7 @@ fn create_desktop_window_app(
     let shared = Arc::new(Mutex::new(DesktopWindowShared {
         actions: Vec::new(),
         frame: Some(WindowFrame::default()),
+        video_redraw_timing: VideoRedrawTiming::default(),
         size: (size.width, size.height),
         fullscreen,
         maximized: false,
@@ -1817,6 +1858,7 @@ fn create_desktop_window_app(
         channel_id,
     };
     app.window.set_visible(true);
+    app.window.request_redraw();
 
     Ok(app)
 }
@@ -1828,7 +1870,7 @@ impl DesktopWindow {
             .build()
             .context("creating desktop window event loop")?;
         let mut window = Self {
-            event_loop,
+            event_loop: Some(event_loop),
             app: None,
         };
         window.create_app(width, height, fullscreen, channel_id)?;
@@ -1843,6 +1885,10 @@ impl DesktopWindow {
         fullscreen: bool,
         channel_id: i32,
     ) -> Result<()> {
+        let event_loop = self
+            .event_loop
+            .as_mut()
+            .context("synchronous desktop event loop is unavailable")?;
         let mut creator = DesktopWindowCreator {
             width,
             height,
@@ -1852,9 +1898,7 @@ impl DesktopWindow {
         };
 
         for _ in 0..3 {
-            let _ = self
-                .event_loop
-                .pump_app_events(Some(Duration::from_millis(10)), &mut creator);
+            let _ = event_loop.pump_app_events(Some(Duration::from_millis(10)), &mut creator);
             if creator.result.is_some() {
                 break;
             }
@@ -1875,8 +1919,17 @@ impl DesktopWindow {
         height: u32,
         fullscreen: bool,
         channel_id: i32,
+        event_loop: Option<&ActiveEventLoop>,
     ) -> Result<()> {
         if self.app.is_none() {
+            if let Some(event_loop) = event_loop {
+                self.app = Some(create_desktop_window_app(
+                    event_loop, width, height, fullscreen, channel_id,
+                )?);
+
+                return Ok(());
+            }
+
             return self.create_app(width, height, fullscreen, channel_id);
         }
 
@@ -1887,6 +1940,7 @@ impl DesktopWindow {
         {
             let mut shared = app.shared.lock().unwrap_or_else(PoisonError::into_inner);
             shared.frame = Some(WindowFrame::default());
+            shared.video_redraw_timing = VideoRedrawTiming::default();
             shared.actions.clear();
             shared.fullscreen = fullscreen;
             shared.maximized = false;
@@ -1936,16 +1990,18 @@ impl DesktopWindow {
     }
 
     fn pump_events(&mut self) {
+        let Some(event_loop) = self.event_loop.as_mut() else {
+            return;
+        };
+
         if let Some(app) = self.app.as_mut() {
-            let _ = self.event_loop.pump_app_events(Some(Duration::ZERO), app);
+            let _ = event_loop.pump_app_events(Some(Duration::ZERO), app);
         } else {
             // Winit still needs to dispatch lifecycle events after the native
             // window has been dropped. In particular, Wayland may otherwise
             // leave the destroyed surface pending until another window opens.
             let mut idle = DesktopWindowIdle;
-            let _ = self
-                .event_loop
-                .pump_app_events(Some(Duration::ZERO), &mut idle);
+            let _ = event_loop.pump_app_events(Some(Duration::ZERO), &mut idle);
         }
     }
 
@@ -1957,6 +2013,7 @@ impl DesktopWindow {
         DesktopWindowHandle {
             window: Arc::clone(&app.window),
             shared: Arc::clone(&app.shared),
+            #[cfg(feature = "tokio")]
             channel_id: app.channel_id,
         }
     }
@@ -1969,10 +2026,14 @@ impl DesktopWindowHandle {
     }
 
     fn set_frame(&self, frame: WindowFrame) {
-        self.shared
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .frame = Some(frame);
+        {
+            let mut shared = self.shared.lock().unwrap_or_else(PoisonError::into_inner);
+            shared
+                .video_redraw_timing
+                .queue_frame(frame.video.as_ref().map(|video| video.pts), Instant::now());
+            shared.frame = Some(frame);
+        }
+
         self.window.request_redraw();
     }
 
@@ -2114,19 +2175,40 @@ impl ApplicationHandler for DesktopWindowApp {
                 }
             }
             WindowEvent::RedrawRequested => {
-                let frame = self
-                    .shared
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .frame
-                    .clone();
-                if !self.occluded
-                    && let Some(frame) = &frame
-                    && let Err(error) = benchmark::measure_success(Stage::DesktopPresent, || {
+                if self.occluded {
+                    return;
+                }
+
+                let (frame, timing) = {
+                    let mut shared = self.shared.lock().unwrap_or_else(PoisonError::into_inner);
+                    let timing = shared.video_redraw_timing.begin_redraw(Instant::now());
+
+                    (shared.frame.clone(), timing)
+                };
+
+                if let Some(frame) = &frame {
+                    let render_started = Instant::now();
+                    let result = benchmark::measure_success(Stage::DesktopPresent, || {
                         self.renderer.render(frame, self.size)
-                    })
-                {
-                    log::warn!(channel = self.channel_id; "desktop renderer failed: {error}");
+                    });
+                    let render_duration = render_started.elapsed();
+
+                    // This measures CPU-side rendering/submission, not the
+                    // time at which the display actually scans out the frame.
+                    if let Some(timing) = timing {
+                        log::trace!(channel = self.channel_id;
+                            "desktop video redraw: pts {}, queue delay {:.3} ms, redraw interval {:?} ms, render duration {:.3} ms, superseded frames {}, renderer ok {}",
+                            frame.video.as_ref().map_or(0, |video| video.pts),
+                            timing.queue_delay.as_secs_f64() * 1_000.0,
+                            timing.redraw_interval.map(|interval| interval.as_secs_f64() * 1_000.0),
+                            render_duration.as_secs_f64() * 1_000.0,
+                            timing.superseded_frames,
+                            result.is_ok());
+                    }
+
+                    if let Err(error) = result {
+                        log::warn!(channel = self.channel_id; "desktop renderer failed: {error}");
+                    }
                 }
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
