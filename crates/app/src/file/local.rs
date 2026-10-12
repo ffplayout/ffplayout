@@ -1,0 +1,584 @@
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, atomic::AtomicBool},
+};
+
+#[cfg(target_family = "unix")]
+use std::os::unix::fs::MetadataExt;
+
+use async_walkdir::WalkDir;
+use axum::extract::Multipart;
+use lexical_sort::{PathSort, natural_lexical_cmp};
+use log::*;
+use rand::seq::SliceRandom;
+use tokio::{
+    fs,
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
+use tokio_stream::StreamExt;
+
+use crate::file::{
+    MoveObject, PathObject, VideoFile, norm_abs_path,
+    upload::{
+        UploadStatus, UploadStatusQuery, finalize_upload, get_or_create_upload, received_ranges,
+        sanitize_upload_filename, validate_chunk, validate_upload_metadata, write_upload_chunk,
+    },
+    watcher::watch,
+};
+use crate::player::utils::{Media, file_extension, include_file_extension, probe_media};
+use crate::utils::{config::PlayoutConfig, errors::ServiceError};
+
+#[derive(Clone, Debug)]
+pub struct LocalStorage {
+    pub root: Arc<RwLock<PathBuf>>,
+    pub extensions: Arc<RwLock<Vec<String>>>,
+    pub watch_handler: Arc<Mutex<Option<JoinHandle<()>>>>,
+}
+
+impl LocalStorage {
+    pub async fn new(root: PathBuf, extensions: Vec<String>) -> Result<Self, ServiceError> {
+        if !root.is_dir() {
+            fs::create_dir_all(&root).await.map_err(|error| {
+                ServiceError::Conflict(format!(
+                    "Cannot create storage folder {}: {error}",
+                    root.display()
+                ))
+            })?;
+        }
+
+        Ok(Self {
+            root: Arc::new(RwLock::new(root)),
+            extensions: Arc::new(RwLock::new(extensions)),
+            watch_handler: Arc::new(Mutex::new(None)),
+        })
+    }
+}
+
+impl LocalStorage {
+    pub async fn browser(&self, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
+        let (path, parent, path_component) =
+            norm_abs_path(&self.root.read().await, &path_obj.source)?;
+        let mut parent_folders = vec![];
+
+        let parent_path = if path_component.is_empty() {
+            self.root.read().await.clone()
+        } else {
+            path.parent().unwrap().to_path_buf()
+        };
+
+        let mut obj = PathObject::new(path_component, Some(parent));
+        obj.folders_only = path_obj.folders_only;
+
+        if path != parent_path && !path_obj.folders_only {
+            let mut parents = fs::read_dir(&parent_path).await?;
+
+            while let Some(child) = parents.next_entry().await? {
+                if child.metadata().await?.is_dir() {
+                    parent_folders.push(
+                        child
+                            .path()
+                            .file_name()
+                            .unwrap()
+                            .to_string_lossy()
+                            .to_string(),
+                    );
+                }
+            }
+
+            parent_folders.path_sort(natural_lexical_cmp);
+
+            obj.parent_folders = Some(parent_folders);
+        }
+
+        let mut paths_obj = fs::read_dir(path).await?;
+
+        let mut files = vec![];
+        let mut folders = vec![];
+
+        while let Some(child) = paths_obj.next_entry().await? {
+            let f_meta = child.metadata().await?;
+
+            // ignore hidden files/folders on unix
+            if child.path().to_string_lossy().to_string().contains("/.") {
+                continue;
+            }
+
+            if f_meta.is_dir() {
+                folders.push(
+                    child
+                        .path()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string(),
+                );
+            } else if f_meta.is_file()
+                && !path_obj.folders_only
+                && let Some(ext) = file_extension(&child.path())
+                && self
+                    .extensions
+                    .read()
+                    .await
+                    .contains(&ext.to_string().to_lowercase())
+            {
+                files.push(child.path());
+            }
+        }
+
+        folders.path_sort(natural_lexical_cmp);
+        files.path_sort(natural_lexical_cmp);
+        let mut media_files = vec![];
+
+        for file in files {
+            match probe_media(file.to_string_lossy().as_ref()).await {
+                Ok(probe) => {
+                    let duration = probe.format.duration.unwrap_or_default();
+
+                    let video = VideoFile {
+                        name: file.file_name().unwrap().to_string_lossy().to_string(),
+                        duration,
+                    };
+                    media_files.push(video);
+                }
+                Err(e) => error!("{e:?}"),
+            };
+        }
+
+        obj.folders = Some(folders);
+        obj.files = Some(media_files);
+
+        Ok(obj)
+    }
+
+    pub async fn mkdir(&self, path_obj: &PathObject) -> Result<(), ServiceError> {
+        let (path, _, _) = norm_abs_path(&self.root.read().await, &path_obj.source)?;
+
+        if let Err(e) = fs::create_dir_all(&path).await {
+            return Err(ServiceError::BadRequest(e.to_string()));
+        }
+
+        info!(
+            "create folder: <span class=\"log-addr\">{}</span>",
+            path.to_string_lossy()
+        );
+
+        Ok(())
+    }
+
+    pub async fn rename(&self, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
+        let root = self.root.read().await.clone();
+        let (source_path, _, _) = norm_abs_path(&root, &move_object.source)?;
+        let (mut target_path, _, _) = norm_abs_path(&root, &move_object.target)?;
+
+        if !source_path.exists() {
+            return Err(ServiceError::BadRequest("Source does not exist!".into()));
+        }
+
+        if source_path == target_path {
+            return Ok(MoveObject {
+                source: move_object.source.clone(),
+                target: move_object.target.clone(),
+            });
+        }
+
+        if target_path.is_dir() {
+            target_path = target_path.join(source_path.file_name().unwrap());
+        }
+
+        if target_path.exists() {
+            return Err(ServiceError::BadRequest("Target already exists!".into()));
+        }
+
+        if source_path.is_dir() && target_path.starts_with(&source_path) {
+            return Err(ServiceError::BadRequest(
+                "A folder cannot be moved into itself!".into(),
+            ));
+        }
+
+        if !target_path.parent().is_some_and(Path::is_dir) {
+            return Err(ServiceError::BadRequest(
+                "Target folder does not exist!".into(),
+            ));
+        }
+
+        rename_only(&source_path, &target_path).await
+    }
+
+    pub async fn remove(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError> {
+        let (source, _, _) = norm_abs_path(&self.root.read().await, source_path)?;
+
+        if !source.exists() {
+            return Err(ServiceError::BadRequest("Source does not exists!".into()));
+        }
+
+        if source.is_dir() {
+            let res = if recursive {
+                fs::remove_dir_all(source).await
+            } else {
+                fs::remove_dir(source).await
+            };
+
+            match res {
+                Ok(..) => return Ok(()),
+                Err(e) => {
+                    error!("{e}");
+                    return Err(ServiceError::BadRequest(
+                        "Delete folder failed! (Folder must be empty)".into(),
+                    ));
+                }
+            }
+        }
+
+        if source.is_file() {
+            match fs::remove_file(source).await {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    error!("{e}");
+                    return Err(ServiceError::BadRequest("Delete file failed!".into()));
+                }
+            };
+        }
+
+        Err(ServiceError::InternalServerError)
+    }
+
+    async fn upload_output_file(
+        &self,
+        path: &Path,
+        file_name: &str,
+    ) -> Result<PathBuf, ServiceError> {
+        let (target_path, _, _) = norm_abs_path(&self.root.read().await, &path.to_string_lossy())?;
+        let metadata = fs::metadata(&target_path).await.map_err(|error| {
+            ServiceError::BadRequest(format!("Invalid upload directory: {error}"))
+        })?;
+        if !metadata.is_dir() {
+            return Err(ServiceError::BadRequest(
+                "Upload target is not a directory".to_string(),
+            ));
+        }
+
+        Ok(target_path.join(file_name))
+    }
+
+    pub async fn upload_status(
+        &self,
+        query: &UploadStatusQuery,
+        user_id: i32,
+    ) -> Result<UploadStatus, ServiceError> {
+        let file_name = sanitize_upload_filename(&query.file_name)?;
+        validate_upload_metadata(query.size, &query.batch_id)?;
+        let output_file = self.upload_output_file(&query.path, &file_name).await?;
+        let upload =
+            get_or_create_upload(query.size, &output_file, &query.batch_id, user_id).await?;
+
+        Ok(UploadStatus {
+            received_ranges: received_ranges(&upload).await,
+        })
+    }
+
+    pub async fn upload(
+        &self,
+        mut data: Multipart,
+        path: &Path,
+        user_id: i32,
+    ) -> Result<(), ServiceError> {
+        let mut file_name: Option<String> = None;
+        let mut start: Option<u64> = None;
+        let mut end: Option<u64> = None;
+        let mut size: Option<u64> = None;
+        let mut chunk_data: Option<Vec<u8>> = None;
+        let mut batch_id: Option<String> = None;
+
+        while let Some(field) = data.next_field().await? {
+            match field.name().unwrap_or_default() {
+                "fileName" => file_name = Some(field.text().await?),
+                "start" => start = Some(field.text().await?.parse::<u64>()?),
+                "end" => end = Some(field.text().await?.parse::<u64>()?),
+                "size" => size = Some(field.text().await?.parse::<u64>()?),
+                "chunk" => chunk_data = Some(field.bytes().await?.to_vec()),
+                "batch_id" => batch_id = Some(field.text().await?),
+                _ => {}
+            }
+        }
+
+        let file_name = sanitize_upload_filename(
+            &file_name.ok_or_else(|| ServiceError::BadRequest("Missing filename".into()))?,
+        )?;
+        let start = start.ok_or_else(|| ServiceError::BadRequest("Missing start offset".into()))?;
+        let end = end.ok_or_else(|| ServiceError::BadRequest("Missing end offset".into()))?;
+        let size = size.ok_or_else(|| ServiceError::BadRequest("Missing file size".into()))?;
+        let chunk_data =
+            chunk_data.ok_or_else(|| ServiceError::BadRequest("Missing chunk".into()))?;
+        let batch_id =
+            batch_id.ok_or_else(|| ServiceError::BadRequest("Missing batch id".into()))?;
+
+        validate_upload_metadata(size, &batch_id)?;
+        validate_chunk(start, end, size, chunk_data.len())?;
+
+        let output_file = self.upload_output_file(path, &file_name).await?;
+        let upload = get_or_create_upload(size, &output_file, &batch_id, user_id).await?;
+        if write_upload_chunk(&upload, start, end, &chunk_data).await? {
+            finalize_upload(&output_file, &upload).await?;
+            info!("Upload complete: {file_name}");
+        }
+
+        Ok(())
+    }
+
+    pub async fn watchman(
+        &self,
+        config: PlayoutConfig,
+        is_alive: Arc<AtomicBool>,
+        sources: Arc<Mutex<Vec<Media>>>,
+    ) {
+        if let Some(old_handle) = self.watch_handler.lock().await.take() {
+            old_handle.abort();
+        }
+
+        let channel_id = config.general.channel_id;
+        let handle = tokio::spawn(async move {
+            if let Err(error) = watch(config, is_alive, sources).await {
+                error!(channel = channel_id; "File watcher stopped: {error}");
+            }
+        });
+
+        *self.watch_handler.lock().await = Some(handle);
+    }
+
+    pub async fn stop_watch(&self) {
+        if let Some(handle) = self.watch_handler.lock().await.take() {
+            handle.abort();
+        }
+    }
+
+    pub async fn fill_filler_list(
+        &self,
+        config: &PlayoutConfig,
+        fillers: Option<Arc<Mutex<Vec<Media>>>>,
+    ) -> Vec<Media> {
+        let id = config.general.channel_id;
+        let mut filler_list = vec![];
+        let filler_path = &config.storage.filler_path;
+
+        if filler_path.is_dir() {
+            let config_clone = config.clone();
+            let mut index = 0;
+            let mut entries = WalkDir::new(&config_clone.storage.filler_path);
+
+            while let Some(Ok(entry)) = entries.next().await {
+                if entry.path().is_file() && include_file_extension(config, &entry.path()) {
+                    let mut media = Media::new(index, &entry.path().to_string_lossy(), false).await;
+
+                    if fillers.is_none()
+                        && let Err(e) = media.add_probe(false).await
+                    {
+                        error!(channel = id; "{e:?}");
+                    };
+
+                    filler_list.push(media);
+                    index += 1;
+                }
+            }
+
+            if config.storage.shuffle {
+                let mut rng = rand::rng();
+
+                filler_list.shuffle(&mut rng);
+            } else {
+                filler_list.sort_by(|d1, d2| natural_lexical_cmp(&d1.source, &d2.source));
+            }
+
+            for (index, item) in filler_list.iter_mut().enumerate() {
+                item.index = Some(index);
+            }
+
+            if let Some(f) = fillers.as_ref() {
+                f.lock().await.clone_from(&filler_list);
+            }
+        } else if filler_path.is_file() {
+            let mut media =
+                Media::new(0, &config.storage.filler_path.to_string_lossy(), false).await;
+
+            if fillers.is_none()
+                && let Err(e) = media.add_probe(false).await
+            {
+                error!(channel = id; "{e:?}");
+            };
+
+            filler_list.push(media);
+
+            if let Some(f) = fillers.as_ref() {
+                f.lock().await.clone_from(&filler_list);
+            }
+        }
+
+        filler_list
+    }
+
+    pub async fn copy_assets(&self) -> Result<(), std::io::Error> {
+        let root = self.root.read().await.clone();
+        if root.is_dir() {
+            let target = root.join("00-assets");
+            let mut dummy_source = Path::new("/usr/share/ffplayout/dummy.vtt");
+            let mut logo_source = Path::new("/usr/share/ffplayout/logo.png");
+
+            if !dummy_source.is_file() {
+                dummy_source = Path::new("./assets/dummy.vtt");
+            }
+            if !logo_source.is_file() {
+                logo_source = Path::new("./assets/logo.png");
+            }
+
+            if !target.is_dir() {
+                let dummy_target = target.join("dummy.vtt");
+                let logo_target = target.join("logo.png");
+
+                fs::create_dir_all(&target).await?;
+                fs::copy(&dummy_source, &dummy_target).await?;
+                fs::copy(&logo_source, &logo_target).await?;
+
+                #[cfg(target_family = "unix")]
+                {
+                    let uid = nix::unistd::Uid::current();
+                    let parent_owner = root.metadata()?.uid();
+
+                    if uid.is_root() && uid.to_string() != parent_owner.to_string() {
+                        // Gracefully skip ownership fixup if the parent UID has
+                        // no matching passwd entry instead of panicking.
+                        match nix::unistd::User::from_uid(parent_owner.into()) {
+                            Ok(Some(user)) => {
+                                nix::unistd::chown(&target, Some(user.uid), Some(user.gid))?;
+
+                                if dummy_target.is_file() {
+                                    nix::unistd::chown(
+                                        &dummy_target,
+                                        Some(user.uid),
+                                        Some(user.gid),
+                                    )?;
+                                }
+                                if logo_target.is_file() {
+                                    nix::unistd::chown(
+                                        &logo_target,
+                                        Some(user.uid),
+                                        Some(user.gid),
+                                    )?;
+                                }
+                            }
+                            Ok(None) => {
+                                error!(
+                                    "No passwd entry for uid {parent_owner}; skipping asset ownership fixup"
+                                );
+                            }
+                            Err(e) => {
+                                error!("Failed to look up uid {parent_owner}: {e}");
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            error!("Storage path {:?} not exists!", self.root);
+        }
+
+        Ok(())
+    }
+}
+
+async fn rename_only(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError> {
+    match fs::rename(source, target).await {
+        Ok(_) => Ok(MoveObject {
+            source: source
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            target: target
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+        }),
+        Err(e) => {
+            error!("{e}");
+            if source.is_file() {
+                copy_and_delete(source, target).await
+            } else {
+                Err(ServiceError::BadRequest("Renaming folder failed!".into()))
+            }
+        }
+    }
+}
+
+async fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError> {
+    match fs::copy(&source, &target).await {
+        Ok(_) => {
+            if let Err(e) = fs::remove_file(source).await {
+                error!("{e}");
+                return Err(ServiceError::BadRequest(
+                    "Removing File not possible!".into(),
+                ));
+            };
+
+            Ok(MoveObject {
+                source: source
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                target: target
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+            })
+        }
+        Err(e) => {
+            error!("{e}");
+            Err(ServiceError::BadRequest("Error in file copy!".into()))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn renames_directory_within_storage() {
+        let base = std::env::temp_dir().join(format!(
+            "ffplayout-storage-rename-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let storage = LocalStorage::new(base.clone(), Vec::new()).await.unwrap();
+        fs::create_dir(base.join("old-name")).await.unwrap();
+
+        storage
+            .rename(&MoveObject {
+                source: "old-name".to_string(),
+                target: "new-name".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert!(!base.join("old-name").exists());
+        assert!(base.join("new-name").is_dir());
+        fs::remove_dir_all(base).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn storage_creation_returns_error_instead_of_panicking() {
+        let base = std::env::temp_dir().join(format!(
+            "ffplayout-storage-error-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        fs::write(&base, b"not a directory").await.unwrap();
+
+        let result = LocalStorage::new(base.join("child"), Vec::new()).await;
+
+        assert!(matches!(result, Err(ServiceError::Conflict(_))));
+        fs::remove_file(base).await.unwrap();
+    }
+}

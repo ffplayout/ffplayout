@@ -1,0 +1,1853 @@
+use std::{
+    collections::BTreeMap,
+    ffi::CString,
+    fmt, ptr,
+    str::FromStr,
+    sync::{Arc, PoisonError, RwLock},
+};
+
+use ffmpeg_next::{
+    Rational, codec,
+    util::{
+        channel_layout::ChannelLayout,
+        format::{Sample, sample::Type as SampleType},
+        log::Level as FfmpegLevel,
+    },
+};
+
+use crate::{
+    AudioEffectsControl, AudioFrameCallback, AudioLevelCallback, LiveLoudnessConfig,
+    LiveLoudnessControl, LoudnessMeterControl,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HlsVariant {
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub video_bitrate: u64,
+    pub audio_bitrate: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HlsSubtitle {
+    pub name: String,
+    pub language: String,
+    pub default: bool,
+}
+
+impl HlsSubtitle {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_stream_map_value("subtitle name", &self.name)?;
+        validate_stream_map_value("subtitle language", &self.language)
+    }
+}
+
+fn validate_stream_map_value(label: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Err(format!("{label} must not be empty"));
+    }
+
+    if value.chars().any(|ch| ch.is_whitespace() || ch == ',') {
+        return Err(format!("{label} must not contain whitespace or ','"));
+    }
+
+    Ok(())
+}
+
+impl FromStr for HlsVariant {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let mut parts = value.split(':');
+        let name = parts
+            .next()
+            .filter(|part| !part.is_empty())
+            .ok_or_else(|| "missing variant name".to_string())?;
+        if !name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+        {
+            return Err(
+                "variant name may only contain ASCII letters, numbers, '_' and '-'".to_string(),
+            );
+        }
+
+        let resolution = parts
+            .next()
+            .ok_or_else(|| "missing variant resolution".to_string())?;
+        let video_bitrate = parts
+            .next()
+            .ok_or_else(|| "missing variant video bitrate".to_string())?;
+        let audio_bitrate = parts.next().unwrap_or("128k");
+
+        if parts.next().is_some() {
+            return Err("expected NAME:WIDTHxHEIGHT:VIDEO_BITRATE[:AUDIO_BITRATE]".to_string());
+        }
+
+        let (width, height) = resolution
+            .split_once('x')
+            .ok_or_else(|| "resolution must use WIDTHxHEIGHT".to_string())?;
+        let width = width
+            .parse::<u32>()
+            .map_err(|_| "width must be a positive integer".to_string())?;
+        let height = height
+            .parse::<u32>()
+            .map_err(|_| "height must be a positive integer".to_string())?;
+        if width == 0 || height == 0 {
+            return Err("width and height must be greater than zero".to_string());
+        }
+
+        Ok(Self {
+            name: name.to_string(),
+            width,
+            height,
+            video_bitrate: parse_bitrate(video_bitrate)?,
+            audio_bitrate: parse_bitrate(audio_bitrate)?,
+        })
+    }
+}
+
+/// Validate untrusted global container tags before they reach libavformat.
+/// Tag names are intentionally not format-specific: muxers decide which tags
+/// they can represent.
+pub fn validate_output_metadata(metadata: &BTreeMap<String, String>) -> Result<(), String> {
+    if metadata.len() > 64 {
+        return Err("output metadata must contain at most 64 entries".to_string());
+    }
+
+    let mut total_bytes = 0usize;
+
+    for (key, value) in metadata {
+        if key.trim().is_empty() || key.len() > 128 || key.chars().any(char::is_control) {
+            return Err(format!("invalid output metadata key {key:?}"));
+        }
+
+        if value.is_empty() || value.len() > 4096 || value.chars().any(char::is_control) {
+            return Err(format!("invalid output metadata value for {key:?}"));
+        }
+
+        total_bytes += key.len() + value.len();
+
+        if total_bytes > 16_384 {
+            return Err("output metadata exceeds 16 KiB".to_string());
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod output_metadata_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_generic_container_tags() {
+        let tags = BTreeMap::from([
+            ("copyright".to_string(), "© 2026 Example".to_string()),
+            ("service_name".to_string(), "Channel One".to_string()),
+            ("WM/Year".to_string(), "2026".to_string()),
+        ]);
+        assert!(validate_output_metadata(&tags).is_ok());
+        assert!(validate_output_metadata(&BTreeMap::new()).is_ok());
+    }
+
+    #[test]
+    fn rejects_unsafe_or_excessive_tags() {
+        for (key, value) in [
+            ("", "value"),
+            ("bad\nkey", "value"),
+            ("title", ""),
+            ("title", "line\nbreak"),
+            ("title", "nul\0byte"),
+        ] {
+            assert!(
+                validate_output_metadata(&BTreeMap::from([(key.into(), value.into())])).is_err()
+            );
+        }
+        assert!(
+            validate_output_metadata(&BTreeMap::from([("title".into(), "x".repeat(4097))]))
+                .is_err()
+        );
+    }
+}
+
+fn parse_bitrate(value: &str) -> Result<u64, String> {
+    let value = value.trim();
+
+    if value.is_empty() {
+        return Err("bitrate must not be empty".to_string());
+    }
+
+    let (number, multiplier) = match value.as_bytes().last().copied() {
+        Some(b'k') | Some(b'K') => (&value[..value.len() - 1], 1_000),
+        Some(b'm') | Some(b'M') => (&value[..value.len() - 1], 1_000_000),
+        _ => (value, 1),
+    };
+    let number = number
+        .parse::<u64>()
+        .map_err(|_| format!("invalid bitrate {value:?}"))?;
+    if number == 0 {
+        return Err("bitrate must be greater than zero".to_string());
+    }
+
+    Ok(number * multiplier)
+}
+
+#[cfg(test)]
+mod hls_subtitle_tests {
+    use super::HlsSubtitle;
+
+    #[test]
+    fn accepts_stream_map_safe_metadata() {
+        assert!(
+            HlsSubtitle {
+                name: "Deutsch".to_string(),
+                language: "de-DE".to_string(),
+                default: false,
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_values_that_break_stream_map() {
+        for name in ["", "Deutsch SD", "Deutsch,SD"] {
+            assert!(
+                HlsSubtitle {
+                    name: name.to_string(),
+                    language: "de-DE".to_string(),
+                    default: false,
+                }
+                .validate()
+                .is_err()
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod log_level_tests {
+    use super::LogLevel;
+
+    #[test]
+    fn parses_ui_log_levels() {
+        assert_eq!("INFO".parse::<LogLevel>(), Ok(LogLevel::Info));
+        assert_eq!("WARNING".parse::<LogLevel>(), Ok(LogLevel::Warning));
+        assert_eq!("ERROR".parse::<LogLevel>(), Ok(LogLevel::Error));
+    }
+
+    #[test]
+    fn rejects_unknown_log_levels() {
+        assert!("everything".parse::<LogLevel>().is_err());
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OutputConfig {
+    pub width: u32,
+    pub height: u32,
+    pub desktop_window_size: Option<(u32, u32)>,
+    pub desktop_fullscreen: bool,
+    pub fps: u32,
+    pub sample_rate: u32,
+    pub video_time_base: Rational,
+    pub audio_time_base: Rational,
+    pub audio_effects: AudioEffectsControl,
+    /// Live-ingest-only EBU R128 gain rider and ceiling limiter settings.
+    pub loudness_scope: crate::LoudnessScope,
+    pub live_loudness: LiveLoudnessConfig,
+    pub live_loudness_control: LiveLoudnessControl,
+    pub audio_level_callback: Option<AudioLevelCallback>,
+    pub audio_frame_callback: Option<AudioFrameCallback>,
+    pub loudness_meter_control: LoudnessMeterControl,
+    pub logo: Option<LogoConfig>,
+    pub text: Option<TextConfig>,
+    pub text_overlay_state: TextOverlayState,
+    pub stream_type: StreamType,
+    pub stream_format: String,
+    pub video_codec: String,
+    pub video_options: VideoOptions,
+    /// Validated AVIO/protocol options used only while opening network output.
+    pub protocol_options: BTreeMap<String, String>,
+    pub muxer_options: BTreeMap<String, String>,
+    pub metadata_options: BTreeMap<String, String>,
+    pub audio_codec: String,
+    pub audio_options: AudioOptions,
+    pub audio_bitrate: u64,
+    pub ffmpeg_log_level: LogLevel,
+    pub ingest_log_level: LogLevel,
+    pub ffmpeg_ignore_lines: Vec<String>,
+    pub channel_id: Option<i32>,
+    pub desktop_control_callback: Option<DesktopControlCallback>,
+    pub recording: Option<RecordingConfig>,
+}
+
+/// Settings for a segmented Matroska recording derived from an encoded output.
+/// `video_stream_index` selects the HLS rendition to copy; ordinary stream
+/// outputs always use index zero.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordingConfig {
+    pub path: String,
+    pub segment_duration: u32,
+    pub retention_days: u32,
+    pub minimum_free_space_gb: u32,
+    pub video_stream_index: usize,
+    pub encode: Option<RecordingEncodeConfig>,
+    pub channel_id: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordingEncodeConfig {
+    pub width: u32,
+    pub height: u32,
+    pub video_codec: String,
+    pub video_options: VideoOptions,
+    pub audio_codec: String,
+    pub audio_options: AudioOptions,
+    pub audio_bitrate: u64,
+}
+
+impl RecordingConfig {
+    pub fn new(path: impl Into<String>, segment_duration: u32) -> Self {
+        Self {
+            path: path.into(),
+            segment_duration,
+            retention_days: 0,
+            minimum_free_space_gb: 0,
+            video_stream_index: 0,
+            encode: None,
+            channel_id: None,
+        }
+    }
+
+    pub fn with_video_stream_index(mut self, video_stream_index: usize) -> Self {
+        self.video_stream_index = video_stream_index;
+        self
+    }
+
+    pub fn with_retention_days(mut self, retention_days: u32) -> Self {
+        self.retention_days = retention_days;
+        self
+    }
+
+    pub fn with_minimum_free_space_gb(mut self, minimum_free_space_gb: u32) -> Self {
+        self.minimum_free_space_gb = minimum_free_space_gb;
+        self
+    }
+
+    pub fn with_encode(mut self, encode: RecordingEncodeConfig) -> Self {
+        self.encode = Some(encode);
+        self
+    }
+
+    pub fn with_channel_id(mut self, channel_id: Option<i32>) -> Self {
+        self.channel_id = channel_id;
+        self
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DesktopControlCommand {
+    Back,
+    Next,
+    Reset,
+}
+
+#[derive(Clone)]
+pub struct DesktopControlCallback(Arc<dyn Fn(DesktopControlCommand) + Send + Sync>);
+
+impl fmt::Debug for DesktopControlCallback {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("DesktopControlCallback(..)")
+    }
+}
+
+impl DesktopControlCallback {
+    pub fn new(callback: impl Fn(DesktopControlCommand) + Send + Sync + 'static) -> Self {
+        Self(Arc::new(callback))
+    }
+
+    pub fn invoke(&self, command: DesktopControlCommand) {
+        (self.0)(command);
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum StreamType {
+    #[default]
+    Rtmp,
+    Srt,
+    Udp,
+    Custom,
+}
+
+impl StreamType {
+    pub fn muxer(self, custom_format: &str) -> &str {
+        match self {
+            Self::Rtmp => "flv",
+            Self::Srt | Self::Udp => "mpegts",
+            Self::Custom => custom_format,
+        }
+    }
+}
+pub use super::protocol::{
+    validate_input_protocol_options, validate_live_demuxer_options,
+    validate_output_protocol_options,
+};
+
+pub type VideoOptions = BTreeMap<String, String>;
+pub type AudioOptions = BTreeMap<String, String>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VideoOptionKind {
+    Select,
+    Number,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VideoOptionChoice {
+    pub value: &'static str,
+    pub label: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VideoOptionVisibility {
+    pub key: &'static str,
+    pub value: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VideoOptionSpec {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub kind: VideoOptionKind,
+    pub default: &'static str,
+    pub choices: &'static [VideoOptionChoice],
+    pub minimum: Option<f64>,
+    pub maximum: Option<f64>,
+    pub visible_when: Option<VideoOptionVisibility>,
+}
+
+const X264_PRESETS: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "ultrafast",
+        label: "ultrafast",
+    },
+    VideoOptionChoice {
+        value: "superfast",
+        label: "superfast",
+    },
+    VideoOptionChoice {
+        value: "veryfast",
+        label: "veryfast",
+    },
+    VideoOptionChoice {
+        value: "faster",
+        label: "faster",
+    },
+    VideoOptionChoice {
+        value: "fast",
+        label: "fast",
+    },
+    VideoOptionChoice {
+        value: "medium",
+        label: "medium",
+    },
+    VideoOptionChoice {
+        value: "slow",
+        label: "slow",
+    },
+    VideoOptionChoice {
+        value: "slower",
+        label: "slower",
+    },
+    VideoOptionChoice {
+        value: "veryslow",
+        label: "veryslow",
+    },
+    VideoOptionChoice {
+        value: "placebo",
+        label: "placebo",
+    },
+];
+const NVENC_PRESETS: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "p1",
+        label: "P1 (fastest)",
+    },
+    VideoOptionChoice {
+        value: "p2",
+        label: "P2",
+    },
+    VideoOptionChoice {
+        value: "p3",
+        label: "P3",
+    },
+    VideoOptionChoice {
+        value: "p4",
+        label: "P4 (default)",
+    },
+    VideoOptionChoice {
+        value: "p5",
+        label: "P5",
+    },
+    VideoOptionChoice {
+        value: "p6",
+        label: "P6",
+    },
+    VideoOptionChoice {
+        value: "p7",
+        label: "P7 (best quality)",
+    },
+];
+const QSV_PRESETS: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "veryfast",
+        label: "veryfast",
+    },
+    VideoOptionChoice {
+        value: "faster",
+        label: "faster",
+    },
+    VideoOptionChoice {
+        value: "fast",
+        label: "fast",
+    },
+    VideoOptionChoice {
+        value: "medium",
+        label: "medium",
+    },
+    VideoOptionChoice {
+        value: "slow",
+        label: "slow",
+    },
+    VideoOptionChoice {
+        value: "slower",
+        label: "slower",
+    },
+    VideoOptionChoice {
+        value: "veryslow",
+        label: "veryslow",
+    },
+];
+const VP9_DEADLINES: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "good",
+        label: "Good quality",
+    },
+    VideoOptionChoice {
+        value: "realtime",
+        label: "Realtime",
+    },
+];
+const ROW_MT: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "auto",
+        label: "Automatic",
+    },
+    VideoOptionChoice {
+        value: "1",
+        label: "Enabled",
+    },
+    VideoOptionChoice {
+        value: "0",
+        label: "Disabled",
+    },
+];
+const X264_RATE_CONTROLS: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "crf",
+        label: "CRF",
+    },
+    VideoOptionChoice {
+        value: "cbr",
+        label: "CBR",
+    },
+];
+const VBR_CBR: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "vbr",
+        label: "VBR",
+    },
+    VideoOptionChoice {
+        value: "cbr",
+        label: "CBR",
+    },
+];
+const QSV_RATE_CONTROLS: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "vbr",
+        label: "VBR",
+    },
+    VideoOptionChoice {
+        value: "cbr",
+        label: "CBR",
+    },
+    VideoOptionChoice {
+        value: "icq",
+        label: "ICQ",
+    },
+];
+const VAAPI_RATE_CONTROLS: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "vbr",
+        label: "VBR",
+    },
+    VideoOptionChoice {
+        value: "cbr",
+        label: "CBR",
+    },
+    VideoOptionChoice {
+        value: "cqp",
+        label: "CQP",
+    },
+];
+
+const MAXRATE: VideoOptionSpec = VideoOptionSpec {
+    key: "maxrate",
+    label: "Maximum bitrate (kbit/s)",
+    kind: VideoOptionKind::Number,
+    default: "2400",
+    choices: &[],
+    minimum: Some(1.0),
+    maximum: None,
+    visible_when: None,
+};
+const X264_SETTINGS: &[VideoOptionSpec] = &[
+    VideoOptionSpec {
+        key: "preset",
+        label: "Preset",
+        kind: VideoOptionKind::Select,
+        default: "faster",
+        choices: X264_PRESETS,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "rate_control",
+        label: "Rate control",
+        kind: VideoOptionKind::Select,
+        default: "crf",
+        choices: X264_RATE_CONTROLS,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "quality",
+        label: "Quality",
+        kind: VideoOptionKind::Number,
+        default: "23",
+        choices: &[],
+        minimum: Some(0.0),
+        maximum: Some(51.0),
+        visible_when: Some(VideoOptionVisibility {
+            key: "rate_control",
+            value: "crf",
+        }),
+    },
+    MAXRATE,
+];
+const NVENC_SETTINGS: &[VideoOptionSpec] = &[
+    VideoOptionSpec {
+        key: "preset",
+        label: "Preset",
+        kind: VideoOptionKind::Select,
+        default: "p4",
+        choices: NVENC_PRESETS,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "rate_control",
+        label: "Rate control",
+        kind: VideoOptionKind::Select,
+        default: "vbr",
+        choices: VBR_CBR,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "quality",
+        label: "Constant quality",
+        kind: VideoOptionKind::Number,
+        default: "23",
+        choices: &[],
+        minimum: Some(0.0),
+        maximum: Some(51.0),
+        visible_when: Some(VideoOptionVisibility {
+            key: "rate_control",
+            value: "vbr",
+        }),
+    },
+    MAXRATE,
+];
+const QSV_SETTINGS: &[VideoOptionSpec] = &[
+    VideoOptionSpec {
+        key: "preset",
+        label: "Preset",
+        kind: VideoOptionKind::Select,
+        default: "faster",
+        choices: QSV_PRESETS,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "rate_control",
+        label: "Rate control",
+        kind: VideoOptionKind::Select,
+        default: "vbr",
+        choices: QSV_RATE_CONTROLS,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "global_quality",
+        label: "Global quality",
+        kind: VideoOptionKind::Number,
+        default: "23",
+        choices: &[],
+        minimum: Some(1.0),
+        maximum: Some(51.0),
+        visible_when: Some(VideoOptionVisibility {
+            key: "rate_control",
+            value: "icq",
+        }),
+    },
+    MAXRATE,
+];
+const VAAPI_SETTINGS: &[VideoOptionSpec] = &[
+    VideoOptionSpec {
+        key: "rate_control",
+        label: "Rate control",
+        kind: VideoOptionKind::Select,
+        default: "vbr",
+        choices: VAAPI_RATE_CONTROLS,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "quality",
+        label: "Constant QP",
+        kind: VideoOptionKind::Number,
+        default: "23",
+        choices: &[],
+        minimum: Some(0.0),
+        maximum: Some(52.0),
+        visible_when: Some(VideoOptionVisibility {
+            key: "rate_control",
+            value: "cqp",
+        }),
+    },
+    VideoOptionSpec {
+        key: "maxrate",
+        label: "Maximum bitrate (kbit/s)",
+        kind: VideoOptionKind::Number,
+        default: "2400",
+        choices: &[],
+        minimum: Some(1.0),
+        maximum: None,
+        // CBR and VBR use this value. It remains visible for CQP as well so
+        // switching rate-control modes does not discard the user's value.
+        visible_when: None,
+    },
+];
+const VP9_SETTINGS: &[VideoOptionSpec] = &[
+    VideoOptionSpec {
+        key: "rate_control",
+        label: "Rate control",
+        kind: VideoOptionKind::Select,
+        default: "crf",
+        choices: X264_RATE_CONTROLS,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "quality",
+        label: "Quality",
+        kind: VideoOptionKind::Number,
+        default: "31",
+        choices: &[],
+        minimum: Some(0.0),
+        maximum: Some(63.0),
+        visible_when: Some(VideoOptionVisibility {
+            key: "rate_control",
+            value: "crf",
+        }),
+    },
+    VideoOptionSpec {
+        key: "deadline",
+        label: "Encoding mode",
+        kind: VideoOptionKind::Select,
+        default: "good",
+        choices: VP9_DEADLINES,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "cpu-used",
+        label: "Speed",
+        kind: VideoOptionKind::Number,
+        default: "4",
+        choices: &[],
+        minimum: Some(0.0),
+        maximum: Some(8.0),
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "row-mt",
+        label: "Row multithreading",
+        kind: VideoOptionKind::Select,
+        default: "auto",
+        choices: ROW_MT,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    MAXRATE,
+];
+const SVT_AV1_PRESETS: &[VideoOptionChoice] = &[
+    VideoOptionChoice {
+        value: "0",
+        label: "0 (slowest)",
+    },
+    VideoOptionChoice {
+        value: "1",
+        label: "1",
+    },
+    VideoOptionChoice {
+        value: "2",
+        label: "2",
+    },
+    VideoOptionChoice {
+        value: "3",
+        label: "3",
+    },
+    VideoOptionChoice {
+        value: "4",
+        label: "4",
+    },
+    VideoOptionChoice {
+        value: "5",
+        label: "5",
+    },
+    VideoOptionChoice {
+        value: "6",
+        label: "6",
+    },
+    VideoOptionChoice {
+        value: "7",
+        label: "7",
+    },
+    VideoOptionChoice {
+        value: "8",
+        label: "8 (default)",
+    },
+    VideoOptionChoice {
+        value: "9",
+        label: "9",
+    },
+    VideoOptionChoice {
+        value: "10",
+        label: "10",
+    },
+    VideoOptionChoice {
+        value: "11",
+        label: "11",
+    },
+    VideoOptionChoice {
+        value: "12",
+        label: "12",
+    },
+    VideoOptionChoice {
+        value: "13",
+        label: "13 (fastest)",
+    },
+];
+const SVT_AV1_SETTINGS: &[VideoOptionSpec] = &[
+    VideoOptionSpec {
+        key: "preset",
+        label: "Preset",
+        kind: VideoOptionKind::Select,
+        default: "8",
+        choices: SVT_AV1_PRESETS,
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
+    VideoOptionSpec {
+        key: "quality",
+        label: "Quality",
+        kind: VideoOptionKind::Number,
+        default: "30",
+        choices: &[],
+        minimum: Some(0.0),
+        maximum: Some(63.0),
+        visible_when: None,
+    },
+    MAXRATE,
+];
+const UNCOMPRESSED_VIDEO_SETTINGS: &[VideoOptionSpec] = &[];
+const GENERIC_SETTINGS: &[VideoOptionSpec] = &[MAXRATE];
+
+pub fn video_option_specs(codec: &str) -> &'static [VideoOptionSpec] {
+    if !video_codec_uses_bitrate(codec) {
+        UNCOMPRESSED_VIDEO_SETTINGS
+    } else if codec.contains("x264") || codec.contains("x265") {
+        X264_SETTINGS
+    } else if codec.ends_with("_nvenc") {
+        NVENC_SETTINGS
+    } else if codec.ends_with("_qsv") {
+        QSV_SETTINGS
+    } else if codec.ends_with("_vaapi") {
+        VAAPI_SETTINGS
+    } else if codec == "libvpx-vp9" {
+        VP9_SETTINGS
+    } else if codec == "libsvtav1" {
+        SVT_AV1_SETTINGS
+    } else {
+        GENERIC_SETTINGS
+    }
+}
+
+pub fn video_codec_uses_bitrate(codec: &str) -> bool {
+    !matches!(
+        codec,
+        "rawvideo" | "v210" | "r210" | "v308" | "v408" | "v410"
+    )
+}
+
+pub fn audio_codec_uses_bitrate(codec: &str) -> bool {
+    !codec.starts_with("pcm_") && !matches!(codec, "alac" | "flac" | "truehd")
+}
+
+const MANAGED_AUDIO_OPTIONS: &[&str] = &[
+    "ab",
+    "ac",
+    "ar",
+    "b",
+    "channel_layout",
+    "ch_layout",
+    "flags",
+    "request_sample_fmt",
+    "sample_fmt",
+    "time_base",
+];
+
+/// Applies FFmpeg AVOptions directly to an audio encoder context.
+/// Setting options this way makes it impossible for an unrecognised entry to
+/// be silently left behind in a dictionary by `avcodec_open2`.
+pub(crate) fn apply_audio_encoder_options(
+    context: &mut codec::encoder::audio::Audio,
+    codec: codec::codec::Codec,
+    options: &AudioOptions,
+) -> Result<(), String> {
+    for (key, value) in options {
+        if key.trim().is_empty() || value.trim().is_empty() {
+            return Err("audio option names and values must not be empty".to_string());
+        }
+
+        if MANAGED_AUDIO_OPTIONS.contains(&key.as_str()) {
+            return Err(format!(
+                "audio option {key:?} is managed by ffplayout and cannot be overridden"
+            ));
+        }
+
+        let key_c = CString::new(key.as_str())
+            .map_err(|_| format!("audio option name {key:?} contains a NUL byte"))?;
+        let value_c = CString::new(value.as_str())
+            .map_err(|_| format!("audio option {key:?} contains a NUL byte"))?;
+
+        let result = unsafe {
+            let context_ptr = context.as_mut_ptr().cast();
+            let option_flags = ffmpeg_next::ffi::AV_OPT_FLAG_ENCODING_PARAM
+                | ffmpeg_next::ffi::AV_OPT_FLAG_AUDIO_PARAM;
+            if ffmpeg_next::ffi::av_opt_find(
+                context_ptr,
+                key_c.as_ptr(),
+                ptr::null(),
+                option_flags,
+                ffmpeg_next::ffi::AV_OPT_SEARCH_CHILDREN,
+            )
+            .is_null()
+            {
+                return Err(format!(
+                    "unsupported audio option {key:?} for codec {:?}",
+                    codec.name()
+                ));
+            }
+            ffmpeg_next::ffi::av_opt_set(
+                context_ptr,
+                key_c.as_ptr(),
+                value_c.as_ptr(),
+                ffmpeg_next::ffi::AV_OPT_SEARCH_CHILDREN,
+            )
+        };
+
+        if result < 0 {
+            return Err(format!(
+                "invalid value {value:?} for audio option {key:?}: {}",
+                ffmpeg_next::Error::from(result)
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+pub fn validate_audio_options(
+    codec_name: &str,
+    options: &AudioOptions,
+    sample_rate: u32,
+    bit_rate: u64,
+) -> Result<(), String> {
+    if options.is_empty() {
+        return Ok(());
+    }
+
+    let codec = codec::encoder::find_by_name(codec_name)
+        .ok_or_else(|| format!("audio encoder {codec_name:?} not found"))?;
+    if codec.medium() != ffmpeg_next::media::Type::Audio {
+        return Err(format!("encoder {codec_name:?} is not an audio encoder"));
+    }
+
+    let context = audio_encoder_context(
+        codec,
+        options,
+        sample_rate,
+        bit_rate,
+        Rational(1, sample_rate as i32),
+        false,
+    )?;
+    context
+        .open_as(codec)
+        .map_err(|error| format!("invalid audio encoder options for {codec_name:?}: {error}"))?;
+    Ok(())
+}
+
+/// Shared by validation and output creation, including sample-format selection.
+pub(crate) fn audio_encoder_context(
+    codec: codec::codec::Codec,
+    options: &AudioOptions,
+    sample_rate: u32,
+    bit_rate: u64,
+    time_base: Rational,
+    global_header: bool,
+) -> Result<codec::encoder::audio::Audio, String> {
+    if sample_rate == 0 || sample_rate > i32::MAX as u32 {
+        return Err("audio sample rate must be a positive FFmpeg sample rate".to_string());
+    }
+
+    let mut context = codec::context::Context::new_with_codec(codec)
+        .encoder()
+        .audio()
+        .map_err(|error| error.to_string())?;
+    let input_format = engine_audio_sample_format();
+    let sample_format = match codec.audio().map_err(|error| error.to_string())?.formats() {
+        Some(formats) => {
+            let formats: Vec<_> = formats.collect();
+            formats
+                .iter()
+                .copied()
+                .find(|format| *format == input_format)
+                .or_else(|| formats.first().copied())
+                .ok_or_else(|| {
+                    format!("audio encoder {:?} reports no sample formats", codec.name())
+                })?
+        }
+        None => input_format,
+    };
+    context.set_rate(sample_rate as i32);
+    context.set_channel_layout(ChannelLayout::STEREO);
+    context.set_format(sample_format);
+    context.set_time_base(time_base);
+
+    if audio_codec_uses_bitrate(codec.name()) {
+        context.set_bit_rate(
+            usize::try_from(bit_rate)
+                .map_err(|_| "audio bitrate exceeds platform limits".to_string())?,
+        );
+    }
+
+    if global_header {
+        context.set_flags(codec::flag::Flags::GLOBAL_HEADER);
+    }
+    apply_audio_encoder_options(&mut context, codec, options)?;
+
+    Ok(context)
+}
+
+pub(crate) fn engine_audio_sample_format() -> Sample {
+    Sample::F32(SampleType::Planar)
+}
+
+pub fn video_option_defaults(codec: &str) -> VideoOptions {
+    video_option_specs(codec)
+        .iter()
+        .map(|setting| (setting.key.to_string(), setting.default.to_string()))
+        .collect()
+}
+
+pub fn validate_video_options(codec: &str, options: &VideoOptions) -> Result<(), String> {
+    let specs = video_option_specs(codec);
+
+    for (key, value) in options {
+        let Some(spec) = specs.iter().find(|spec| spec.key == key) else {
+            return Err(format!(
+                "unsupported video option {key:?} for codec {codec:?}"
+            ));
+        };
+
+        if !video_option_is_visible(spec, options) {
+            continue;
+        }
+
+        if spec.kind == VideoOptionKind::Select
+            && !spec.choices.iter().any(|choice| choice.value == value)
+        {
+            return Err(format!(
+                "unsupported value {value:?} for video option {key:?}"
+            ));
+        }
+
+        if spec.kind == VideoOptionKind::Number {
+            let number = value
+                .parse::<f64>()
+                .map_err(|_| format!("video option {key:?} must be a number"))?;
+            if !number.is_finite()
+                || spec.minimum.is_some_and(|minimum| number < minimum)
+                || spec.maximum.is_some_and(|maximum| number > maximum)
+            {
+                return Err(format!("video option {key:?} is outside its allowed range"));
+            }
+        }
+    }
+
+    for spec in specs {
+        if video_option_is_visible(spec, options) && !options.contains_key(spec.key) {
+            return Err(format!(
+                "missing video option {:?} for codec {codec:?}",
+                spec.key
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn video_option_is_visible(spec: &VideoOptionSpec, options: &VideoOptions) -> bool {
+    spec.visible_when.is_none_or(|condition| {
+        options
+            .get(condition.key)
+            .is_some_and(|value| value == condition.value)
+    })
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Quiet,
+    Panic,
+    Fatal,
+    Error,
+    #[default]
+    Warning,
+    Info,
+    Verbose,
+    Debug,
+    Trace,
+}
+
+impl LogLevel {
+    pub(crate) fn as_ffmpeg_level(self) -> FfmpegLevel {
+        match self {
+            Self::Quiet => FfmpegLevel::Quiet,
+            Self::Panic => FfmpegLevel::Panic,
+            Self::Fatal => FfmpegLevel::Fatal,
+            Self::Error => FfmpegLevel::Error,
+            Self::Warning => FfmpegLevel::Warning,
+            Self::Info => FfmpegLevel::Info,
+            Self::Verbose => FfmpegLevel::Verbose,
+            Self::Debug => FfmpegLevel::Debug,
+            Self::Trace => FfmpegLevel::Trace,
+        }
+    }
+}
+
+impl FromStr for LogLevel {
+    type Err = String;
+
+    fn from_str(level: &str) -> Result<Self, Self::Err> {
+        match level.to_ascii_lowercase().as_str() {
+            "quiet" | "off" => Ok(Self::Quiet),
+            "panic" => Ok(Self::Panic),
+            "fatal" => Ok(Self::Fatal),
+            "error" => Ok(Self::Error),
+            "warn" | "warning" => Ok(Self::Warning),
+            "info" => Ok(Self::Info),
+            "verbose" => Ok(Self::Verbose),
+            "debug" => Ok(Self::Debug),
+            "trace" => Ok(Self::Trace),
+            _ => Err(format!("unsupported log level {level:?}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogoConfig {
+    pub path: String,
+    pub scale: Option<String>,
+    pub opacity: f64,
+    pub position: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextConfig {
+    pub text: Option<String>,
+    pub use_filename: bool,
+    pub filename_regex: Option<String>,
+    pub font_family: Option<String>,
+    pub font_weight: TextWeight,
+    pub font_size: f32,
+    pub line_spacing: f32,
+    pub text_color: RgbaColor,
+    pub opacity: f64,
+    pub position_x: TextPosition,
+    pub position_y: TextPosition,
+    pub background: Option<TextBackgroundConfig>,
+    pub scroll: TextScroll,
+    pub scroll_repeat: i32,
+    pub fade_in_seconds: f64,
+    pub fade_out_seconds: f64,
+}
+
+impl Default for TextConfig {
+    fn default() -> Self {
+        Self {
+            text: None,
+            use_filename: false,
+            filename_regex: None,
+            font_family: None,
+            font_weight: TextWeight::Normal,
+            font_size: 48.0,
+            line_spacing: 0.0,
+            text_color: RgbaColor::opaque(255, 255, 255),
+            opacity: 1.0,
+            position_x: TextPosition::Pixels(32),
+            position_y: TextPosition::Pixels(32),
+            background: None,
+            scroll: TextScroll::None,
+            scroll_repeat: -1,
+            fade_in_seconds: 0.0,
+            fade_out_seconds: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TextWeight {
+    #[default]
+    Normal,
+    Semibold,
+    Bold,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RgbaColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+impl RgbaColor {
+    pub const fn opaque(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b, a: 255 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextPosition {
+    Pixels(i32),
+    Center,
+    End(i32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextBackgroundConfig {
+    pub color: RgbaColor,
+    pub padding: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextScroll {
+    None,
+    LeftToRight { pixels_per_second: u32 },
+    RightToLeft { pixels_per_second: u32 },
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TextOverlayState {
+    inner: Arc<RwLock<TextOverlayStateInner>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TextOverlayStateInner {
+    revision: u64,
+    config: Option<TextConfig>,
+    start_pts: Option<i64>,
+}
+
+impl TextOverlayState {
+    pub fn set(&self, config: Option<TextConfig>) {
+        let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+        inner.revision = inner.revision.wrapping_add(1);
+        inner.config = config;
+        inner.start_pts = None;
+    }
+
+    pub fn clear(&self) {
+        self.set(None);
+    }
+
+    pub(crate) fn snapshot_at(&self, pts: i64) -> TextOverlaySnapshot {
+        // Fast path with a read lock: this is called once per rendered frame,
+        // the write lock is only needed right after a new config was set.
+        {
+            let inner = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+
+            if inner.config.is_none() || inner.start_pts.is_some() {
+                return TextOverlaySnapshot {
+                    revision: inner.revision,
+                    config: inner.config.clone(),
+                    start_pts: inner.start_pts,
+                };
+            }
+        }
+
+        let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+
+        if inner.config.is_some() && inner.start_pts.is_none() {
+            inner.start_pts = Some(pts);
+        }
+        TextOverlaySnapshot {
+            revision: inner.revision,
+            config: inner.config.clone(),
+            start_pts: inner.start_pts,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TextOverlaySnapshot {
+    pub revision: u64,
+    pub config: Option<TextConfig>,
+    pub start_pts: Option<i64>,
+}
+
+impl OutputConfig {
+    pub fn new(width: u32, height: u32, fps: u32, sample_rate: u32) -> Self {
+        Self {
+            width,
+            height,
+            desktop_window_size: None,
+            desktop_fullscreen: false,
+            fps,
+            sample_rate,
+            video_time_base: Rational(1, fps as i32),
+            audio_time_base: Rational(1, sample_rate as i32),
+            audio_effects: AudioEffectsControl::default(),
+            loudness_scope: crate::LoudnessScope::Off,
+            live_loudness: LiveLoudnessConfig::default(),
+            live_loudness_control: LiveLoudnessControl::new(false, LiveLoudnessConfig::default()),
+            audio_level_callback: None,
+            audio_frame_callback: None,
+            loudness_meter_control: LoudnessMeterControl::default(),
+            logo: None,
+            text: None,
+            text_overlay_state: TextOverlayState::default(),
+            stream_type: StreamType::Rtmp,
+            stream_format: String::new(),
+            video_codec: "libx264".to_string(),
+            video_options: video_option_defaults("libx264"),
+            protocol_options: BTreeMap::new(),
+            muxer_options: BTreeMap::new(),
+            metadata_options: BTreeMap::new(),
+            audio_codec: "aac".to_string(),
+            audio_options: AudioOptions::new(),
+            audio_bitrate: 128_000,
+            ffmpeg_log_level: LogLevel::Warning,
+            ingest_log_level: LogLevel::Warning,
+            ffmpeg_ignore_lines: Vec::new(),
+            channel_id: None,
+            desktop_control_callback: None,
+            recording: None,
+        }
+    }
+
+    pub fn with_volume(mut self, volume: f64) -> anyhow::Result<Self> {
+        self.audio_effects = AudioEffectsControl::new(volume)?;
+
+        Ok(self)
+    }
+
+    pub fn with_audio_effects(mut self, audio_effects: AudioEffectsControl) -> Self {
+        self.audio_effects = audio_effects;
+        self
+    }
+
+    pub fn with_loudness_scope(mut self, scope: crate::LoudnessScope) -> Self {
+        self.loudness_scope = scope;
+
+        self
+    }
+
+    pub fn with_live_loudness(mut self, live_loudness: LiveLoudnessConfig) -> Self {
+        self.live_loudness = live_loudness;
+        self
+    }
+
+    pub fn with_live_loudness_control(mut self, control: LiveLoudnessControl) -> Self {
+        self.live_loudness_control = control;
+        self
+    }
+
+    pub fn with_audio_level_callback(mut self, callback: Option<AudioLevelCallback>) -> Self {
+        self.audio_level_callback = callback;
+        self
+    }
+
+    pub fn with_audio_frame_callback(mut self, callback: Option<AudioFrameCallback>) -> Self {
+        self.audio_frame_callback = callback;
+        self
+    }
+
+    pub fn with_loudness_meter_control(mut self, control: LoudnessMeterControl) -> Self {
+        self.loudness_meter_control = control;
+        self
+    }
+
+    pub fn with_desktop_fullscreen(mut self, fullscreen: bool) -> Self {
+        self.desktop_fullscreen = fullscreen;
+        self
+    }
+
+    pub fn with_desktop_control_callback(mut self, callback: DesktopControlCallback) -> Self {
+        self.desktop_control_callback = Some(callback);
+        self
+    }
+
+    pub fn with_logo(mut self, logo: Option<LogoConfig>) -> Self {
+        self.logo = logo;
+        self
+    }
+
+    pub fn with_text(mut self, text: Option<TextConfig>) -> Self {
+        self.text = text;
+        self
+    }
+
+    pub fn with_text_overlay_state(mut self, text_overlay_state: TextOverlayState) -> Self {
+        self.text_overlay_state = text_overlay_state;
+        self
+    }
+
+    pub fn with_stream_type(mut self, stream_type: StreamType) -> Self {
+        self.stream_type = stream_type;
+        self
+    }
+
+    pub fn with_stream_format(mut self, stream_format: String) -> Self {
+        self.stream_format = stream_format;
+        self
+    }
+
+    pub fn with_encoding(
+        mut self,
+        video_codec: String,
+        video_options: VideoOptions,
+        audio_codec: String,
+        audio_options: AudioOptions,
+        audio_bitrate: u64,
+    ) -> Self {
+        self.video_codec = video_codec;
+        self.video_options = video_options;
+        self.audio_codec = audio_codec;
+        self.audio_options = audio_options;
+        self.audio_bitrate = audio_bitrate;
+        self
+    }
+
+    pub fn with_muxer_options(mut self, muxer_options: BTreeMap<String, String>) -> Self {
+        self.muxer_options = muxer_options;
+        self
+    }
+
+    pub fn with_metadata_options(mut self, metadata_options: BTreeMap<String, String>) -> Self {
+        self.metadata_options = metadata_options;
+        self
+    }
+
+    pub fn with_protocol_options(mut self, protocol_options: BTreeMap<String, String>) -> Self {
+        self.protocol_options = protocol_options;
+        self
+    }
+
+    pub fn with_recording(mut self, recording: Option<RecordingConfig>) -> Self {
+        self.recording = recording;
+        self
+    }
+
+    pub fn video_option(&self, key: &str) -> Option<&str> {
+        self.video_options.get(key).map(String::as_str)
+    }
+
+    pub fn video_maxrate(&self) -> u64 {
+        self.video_option("maxrate")
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(2_400)
+            .saturating_mul(1_000)
+    }
+
+    pub fn with_logging(mut self, ffmpeg_log_level: LogLevel, ingest_log_level: LogLevel) -> Self {
+        self.ffmpeg_log_level = ffmpeg_log_level;
+        self.ingest_log_level = ingest_log_level;
+        self
+    }
+
+    pub fn with_ffmpeg_ignore_lines(mut self, ignore_lines: Vec<String>) -> Self {
+        self.ffmpeg_ignore_lines = ignore_lines;
+        self
+    }
+
+    pub fn with_channel_id(mut self, channel_id: i32) -> Self {
+        self.channel_id = Some(channel_id);
+        self
+    }
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        Self::new(1024, 576, 25, 48_000)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OutputSize {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl FromStr for OutputSize {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let (width, height) = value
+            .split_once(':')
+            .or_else(|| value.split_once('x'))
+            .ok_or_else(|| "size must use WIDTH:HEIGHT or WIDTHxHEIGHT".to_string())?;
+        let width = width
+            .parse::<u32>()
+            .map_err(|_| "width must be a positive integer".to_string())?;
+        let height = height
+            .parse::<u32>()
+            .map_err(|_| "height must be a positive integer".to_string())?;
+        if width == 0 || height == 0 {
+            return Err("width and height must be greater than zero".to_string());
+        }
+
+        if width % 2 != 0 || height % 2 != 0 {
+            return Err("width and height must be even for YUV420 output".to_string());
+        }
+
+        Ok(Self { width, height })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::{
+        OutputSize, StreamType, audio_codec_uses_bitrate, validate_audio_options,
+        validate_output_protocol_options, validate_video_options, video_codec_uses_bitrate,
+        video_option_defaults,
+    };
+
+    #[test]
+    fn validates_srt_latency_and_udp_packet_size() {
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Srt,
+                "srt://example.invalid:9000",
+                &BTreeMap::from([("latency".to_string(), "2000000".to_string())]),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Udp,
+                "udp://239.0.0.1:1234",
+                &BTreeMap::from([("pkt_size".to_string(), "1316".to_string())]),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn validates_srt_passphrase_without_logging_or_transforming_it() {
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Srt,
+                "srt://example.invalid:9000",
+                &BTreeMap::from([(
+                    "passphrase".to_string(),
+                    "a sufficiently long secret".to_string(),
+                )]),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_mismatched_and_managed_protocol_options() {
+        let option =
+            |name: &str, value: &str| BTreeMap::from([(name.to_string(), value.to_string())]);
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Srt,
+                "srt://example.invalid:9000",
+                &option("latnecy", "2000000"),
+            )
+            .is_err()
+        );
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Udp,
+                "srt://example.invalid:9000",
+                &option("pkt_size", "1316"),
+            )
+            .is_err()
+        );
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Rtmp,
+                "rtmp://example.invalid/live",
+                &option("rw_timeout", "0"),
+            )
+            .is_err()
+        );
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Srt,
+                "srt://example.invalid:9000",
+                &option("mode", "listener"),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn custom_outputs_use_the_transport_from_the_url() {
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Custom,
+                "udp://239.0.0.1:1234",
+                &BTreeMap::from([("pkt_size".to_string(), "1316".to_string())]),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_output_protocol_options(
+                StreamType::Custom,
+                "rist://example.invalid:9000",
+                &BTreeMap::from([("buffer_size".to_string(), "65536".to_string())]),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn parses_output_size_with_colon() {
+        let size = "1280:720".parse::<OutputSize>().unwrap();
+        assert_eq!(size.width, 1280);
+        assert_eq!(size.height, 720);
+    }
+
+    #[test]
+    fn parses_output_size_with_x() {
+        let size = "1920x1080".parse::<OutputSize>().unwrap();
+        assert_eq!(size.width, 1920);
+        assert_eq!(size.height, 1080);
+    }
+
+    #[test]
+    fn rejects_odd_output_size() {
+        assert!("1023:576".parse::<OutputSize>().is_err());
+        assert!("1024:575".parse::<OutputSize>().is_err());
+    }
+
+    #[test]
+    fn vp9_options_include_realtime_controls() {
+        let options = video_option_defaults("libvpx-vp9");
+
+        assert_eq!(options.get("rate_control").map(String::as_str), Some("crf"));
+        assert_eq!(options.get("deadline").map(String::as_str), Some("good"));
+        assert_eq!(options.get("cpu-used").map(String::as_str), Some("4"));
+        assert_eq!(options.get("row-mt").map(String::as_str), Some("auto"));
+        assert!(validate_video_options("libvpx-vp9", &options).is_ok());
+    }
+
+    #[test]
+    fn svt_av1_options_include_preset_and_quality() {
+        let options = video_option_defaults("libsvtav1");
+
+        assert_eq!(options.get("preset").map(String::as_str), Some("8"));
+        assert_eq!(options.get("quality").map(String::as_str), Some("30"));
+        assert!(validate_video_options("libsvtav1", &options).is_ok());
+    }
+
+    #[test]
+    fn uncompressed_codecs_do_not_use_bitrate_settings() {
+        assert!(video_option_defaults("rawvideo").is_empty());
+        assert!(!video_codec_uses_bitrate("rawvideo"));
+        assert!(!audio_codec_uses_bitrate("pcm_s16le"));
+        assert!(!audio_codec_uses_bitrate("flac"));
+        assert!(audio_codec_uses_bitrate("aac"));
+    }
+
+    #[test]
+    fn audio_validation_uses_actual_sample_rate_and_bitrate() {
+        let options = [("cutoff".to_string(), "0".to_string())]
+            .into_iter()
+            .collect();
+        assert!(validate_audio_options("adpcm_swf", &options, 44_100, 128_000).is_ok());
+        assert!(validate_audio_options("adpcm_swf", &options, 48_000, 128_000).is_err());
+        assert!(validate_audio_options("mp2", &options, 48_000, 128_000).is_ok());
+        assert!(validate_audio_options("mp2", &options, 48_000, 129_000).is_err());
+    }
+
+    #[test]
+    fn audio_context_prefers_the_engine_sample_format() {
+        let codec = ffmpeg_next::codec::encoder::find_by_name("libmp3lame").unwrap();
+        let context = super::audio_encoder_context(
+            codec,
+            &Default::default(),
+            44_100,
+            192_000,
+            ffmpeg_next::Rational(1, 44_100),
+            true,
+        )
+        .unwrap();
+        assert_eq!(context.format(), super::engine_audio_sample_format());
+        assert_eq!(context.rate(), 44_100);
+        assert_eq!(unsafe { (*context.as_ptr()).bit_rate }, 192_000);
+        assert_eq!(context.time_base(), ffmpeg_next::Rational(1, 44_100));
+        assert_ne!(
+            unsafe { (*context.as_ptr()).flags }
+                & ffmpeg_next::codec::flag::Flags::GLOBAL_HEADER.bits() as i32,
+            0
+        );
+    }
+
+    #[test]
+    fn accepts_valid_aac_audio_options() {
+        ffmpeg_next::init().ok();
+        let options = [
+            ("aac_coder".to_string(), "fast".to_string()),
+            ("cutoff".to_string(), "18000".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        assert!(validate_audio_options("aac", &options, 48_000, 128_000).is_ok());
+    }
+
+    #[test]
+    fn accepts_valid_libopus_audio_options_when_available() {
+        ffmpeg_next::init().ok();
+
+        if ffmpeg_next::codec::encoder::find_by_name("libopus").is_none() {
+            return;
+        }
+
+        let options = [("application".to_string(), "lowdelay".to_string())]
+            .into_iter()
+            .collect();
+
+        assert!(validate_audio_options("libopus", &options, 48_000, 128_000).is_ok());
+    }
+
+    #[test]
+    fn rejects_audio_options_managed_by_ffplayout() {
+        ffmpeg_next::init().ok();
+        let options = [("ar".to_string(), "44100".to_string())]
+            .into_iter()
+            .collect();
+
+        assert!(
+            validate_audio_options("aac", &options, 48_000, 128_000)
+                .unwrap_err()
+                .contains("managed by ffplayout")
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_and_invalid_audio_encoder_options() {
+        ffmpeg_next::init().ok();
+
+        assert!(
+            validate_audio_options(
+                "aac",
+                &[("aac_codre".to_string(), "fast".to_string())]
+                    .into_iter()
+                    .collect(),
+                48_000,
+                128_000,
+            )
+            .unwrap_err()
+            .contains("unsupported audio option")
+        );
+        assert!(
+            validate_audio_options(
+                "aac",
+                &[("aac_coder".to_string(), "not-a-coder".to_string())]
+                    .into_iter()
+                    .collect(),
+                48_000,
+                128_000,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn qsv_icq_uses_global_quality() {
+        let mut options = video_option_defaults("h264_qsv");
+        options.insert("rate_control".to_string(), "icq".to_string());
+
+        assert_eq!(
+            options.get("global_quality").map(String::as_str),
+            Some("23")
+        );
+        assert!(validate_video_options("h264_qsv", &options).is_ok());
+    }
+
+    #[test]
+    fn vaapi_cqp_uses_constant_qp() {
+        let mut options = video_option_defaults("h264_vaapi");
+        options.insert("rate_control".to_string(), "cqp".to_string());
+
+        assert_eq!(options.get("quality").map(String::as_str), Some("23"));
+        assert!(validate_video_options("h264_vaapi", &options).is_ok());
+    }
+}
