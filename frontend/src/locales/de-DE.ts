@@ -262,6 +262,9 @@ export default {
         liveListenerBackend: 'Protokoll',
         liveListenerUrl: 'Listen-URL',
         liveListenerPriority: 'Priorität (0–100)',
+        liveListenerIdleTimeout: 'Live-Leerlauf-Timeout (Sekunden)',
+        liveListenerIdleTimeoutHelp:
+            'Nach dieser Zeit ohne eingehende Medien wird zur Playlist zurückgekehrt. Nach dem Speichern wird der Wert sofort ohne Playout-Neustart übernommen. Eine Verkürzung kann eine laufende Paketpause sofort als Timeout werten.',
         liveListenerOptions: 'Protokolloptionen',
         liveListenerOptionsHelp:
             'FFmpeg-Protokolloptionen für diesen Listener. Für verschlüsseltes SRT passphrase und pbkeylen (16, 24 oder 32) hinzufügen. Geheimnisse werden in der authentifizierten Konfiguration unverändert gespeichert und zurückgegeben.',

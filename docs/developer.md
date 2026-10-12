@@ -121,11 +121,11 @@ cargo deb --no-build -p ffplayout
 ```
 
 For RHEL-based systems, build the release binary first, then generate the RPM
-from `backend/app`:
+from `crates/app`:
 
 ```bash
 cargo build --release -p ffplayout
-cd backend/app
+cd crates/app
 cargo generate-rpm
 ```
 

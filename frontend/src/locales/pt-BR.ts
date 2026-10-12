@@ -262,6 +262,9 @@ export default {
         liveListenerBackend: 'Protocolo',
         liveListenerUrl: 'URL de escuta',
         liveListenerPriority: 'Prioridade (0–100)',
+        liveListenerIdleTimeout: 'Tempo limite de inatividade ao vivo (segundos)',
+        liveListenerIdleTimeoutHelp:
+            'Após esse intervalo sem mídia recebida, o ouvinte retorna à playlist. Depois de salvar, o valor é aplicado imediatamente sem reiniciar a reprodução. Reduzir o limite pode encerrar uma conexão já inativa.',
         liveListenerOptions: 'Opções de protocolo',
         liveListenerOptionsHelp:
             'Opções de protocolo FFmpeg para este receptor. Para SRT criptografado, adicione passphrase e pbkeylen (16, 24 ou 32). Os segredos são armazenados e retornados sem alterações na configuração autenticada.',

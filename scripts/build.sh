@@ -1,19 +1,18 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
-set -eu
+set -euo pipefail
 
-"$(dirname "$0")/man_create.sh"
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
 target=${1:-}
 env_file=".env"
 env_names=()
 
 if [[ -f $env_file ]]; then
-    while IFS='=' read -r name _; do
-        [[ $name =~ ^[[:space:]]*# ]] && continue
-        [[ -z ${name//[[:space:]]/} ]] && continue
-
-        name=${name%%[[:space:]]*}
-        env_names+=("$name")
+    while IFS= read -r line || [[ -n $line ]]; do
+        if [[ $line =~ ^[[:space:]]*(export[[:space:]]+)?([a-zA-Z_][a-zA-Z0-9_]*)= ]]; then
+            env_names+=("${BASH_REMATCH[2]}")
+        fi
     done < "$env_file"
 
     set -a
@@ -21,16 +20,17 @@ if [[ -f $env_file ]]; then
     set +a
 fi
 
-docker_run_env() {
+container_run_env() {
     local args=()
 
-    for name in "${env_names[@]}"; do
-        if [[ -v $name ]]; then
+    # Bash 3.2 treats empty arrays as unset under `set -u`.
+    for name in ${env_names[@]+"${env_names[@]}"}; do
+        if [[ -n ${!name+x} ]]; then
             args+=("-e" "$name=${!name}")
         fi
     done
 
-    docker run --rm -it "${args[@]}" "$@"
+    "$container_cli" run --platform linux/amd64 --rm -it ${args[@]+"${args[@]}"} "$@"
 }
 
 select_cargo_features() {
@@ -91,7 +91,7 @@ select_cargo_features() {
 }
 
 if [[ -z $target ]]; then
-    echo "Pass a target, like: ./scrips/build.sh debian"
+    echo "Pass a target: ./scripts/build.sh debian-shared or debian-static"
     exit 1
 fi
 
@@ -103,37 +103,60 @@ case $target in
         ;;
 esac
 
-if [[ ! -v CARGO_FEATURES ]]; then
+if [[ -n ${CONTAINER_CLI:-} ]]; then
+    container_cli=$CONTAINER_CLI
+elif command -v docker >/dev/null 2>&1; then
+    container_cli=docker
+elif command -v podman >/dev/null 2>&1; then
+    container_cli=podman
+else
+    echo "Neither Docker nor Podman was found. Install one or set CONTAINER_CLI." >&2
+    exit 1
+fi
+
+if ! command -v "$container_cli" >/dev/null 2>&1; then
+    echo "Container CLI not found: $container_cli" >&2
+    exit 1
+fi
+
+echo "Using container CLI: $container_cli"
+
+if [[ -z ${CARGO_FEATURES:-} ]]; then
     select_cargo_features
 fi
 
-IFS="= "
-while read -r name value; do
+./scripts/man_create.sh
+
+version=""
+while IFS="= " read -r name value; do
     if [[ $name == "version" ]]; then
         version=${value//\"/}
+        break
     fi
 done < Cargo.toml
+
+if [[ -z $version ]]; then
+    echo "Could not read the version from Cargo.toml." >&2
+    exit 1
+fi
 
 echo "Compile ffplayout \"$version\""
 echo ""
 
 if [[ $target == "debian-shared" ]]; then
-    rm -f ffplayout_${version}-1_amd64.deb
+    rm -f "ffplayout_${version}-1_amd64.deb"
     rm -f "ffplayout-v${version}_debian.tar.gz"
 
-    docker build -t rust-debian -f ./docker/shared.Dockerfile .
-    shared_docker_args=(-v "$(pwd)":/src:z)
-    if [[ -v CARGO_FEATURES ]]; then
-        shared_docker_args+=(-e "CARGO_FEATURES=$CARGO_FEATURES")
-    fi
-    docker_run_env "${shared_docker_args[@]}" rust-debian
+    "$container_cli" build --platform linux/amd64 -t rust-debian -f ./docker/shared.Dockerfile .
+    shared_docker_args=(-v "$(pwd)":/src:z -e "CARGO_FEATURES=$CARGO_FEATURES")
+    container_run_env "${shared_docker_args[@]}" rust-debian
 
-    tar --transform 's/\.\/target\/.*\///g' -czvf "ffplayout-v${version}_debian.tar.gz" --exclude='*.db' --exclude='*.db-shm' \
-        --exclude='*.db-wal' assets docker docs LICENSE README.md ./target/release/ffplayout
+    tar -czvf "ffplayout-v${version}_debian.tar.gz" --exclude='*.db' --exclude='*.db-shm' \
+        --exclude='*.db-wal' assets docker docs LICENSE README.md -C ./target/release ffplayout
 elif [[ $target == "debian-static" ]]; then
-    rm -f ffplayout_${version}-1_amd64.deb
+    rm -f "ffplayout_${version}-1_amd64.deb"
     rm -f ./target/debian-static/ffplayout
-    rm -f ./target/debian-static/ffplayout_${version}-1_amd64.deb
+    rm -f "./target/debian-static/ffplayout_${version}-1_amd64.deb"
     rm -f ./target/release/ffplayout
     mkdir -p ./target/debian-static
 
@@ -146,16 +169,17 @@ elif [[ $target == "debian-static" ]]; then
         ffmpeg_component_args+=(--build-arg FFMPEG_AVFILTER=1)
     fi
 
-    docker build \
+    "$container_cli" build \
+        --platform linux/amd64 \
         --build-arg FFMPEG_VERSION="${FFMPEG_VERSION:-release/9.0}" \
         --build-arg FFMPEG_VAAPI="${FFMPEG_VAAPI:-0}" \
-        "${ffmpeg_component_args[@]}" \
+        ${ffmpeg_component_args[@]+"${ffmpeg_component_args[@]}"} \
         --build-arg CARGO_FEATURES="$static_cargo_features" \
         --target static-builder \
         -t localhost/ffplayout-static-builder:latest \
         -f ./docker/static.Dockerfile .
 
-    docker_run_env \
+    container_run_env \
         -v "$(pwd)":/src:z \
         -v "$(pwd)/target/debian-static":/artifacts:z \
         localhost/ffplayout-static-builder:latest

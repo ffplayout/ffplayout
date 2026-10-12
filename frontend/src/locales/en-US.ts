@@ -259,6 +259,9 @@ export default {
         liveListenerBackend: 'Protocol',
         liveListenerUrl: 'Listen URL',
         liveListenerPriority: 'Priority (0–100)',
+        liveListenerIdleTimeout: 'Live idle timeout (seconds)',
+        liveListenerIdleTimeoutHelp:
+            'After this interval without incoming media, the listener returns to the playlist. After saving, the value takes effect immediately without restarting playout. Reducing the timeout may end a connection whose current media gap already exceeds the new value.',
         liveListenerOptions: 'Protocol options',
         liveListenerOptionsHelp:
             'FFmpeg protocol options for this listener. For encrypted SRT, add passphrase and pbkeylen (16, 24, or 32). Secrets are stored and returned unchanged in the authenticated configuration.',

@@ -54,6 +54,7 @@ function addLiveListener() {
     listeners.push({
         id: 0,
         priority: 0,
+        idle_timeout_ms: 2000,
         enabled: false,
         name: '',
         backend: 'srt',
@@ -849,6 +850,20 @@ async function onSubmitPlayout() {
                         />
                         <div class="collapse-title font-semibold">{{ t('player.advanced') }}</div>
                         <div class="collapse-content">
+                            <label class="fieldset mt-2">
+                                <span class="fieldset-legend">{{ t('config.liveListenerIdleTimeout') }}</span>
+                                <input
+                                    :value="listener.idle_timeout_ms / 1000"
+                                    type="number"
+                                    required
+                                    min="0.001"
+                                    max="4294967.295"
+                                    step="0.001"
+                                    class="input input-sm w-full"
+                                    @input="listener.idle_timeout_ms = Math.round(Number(eventValue($event)) * 1000)"
+                                />
+                                <span class="fieldset-label">{{ t('config.liveListenerIdleTimeoutHelp') }}</span>
+                            </label>
                             <fieldset class="fieldset mt-2">
                                 <legend class="fieldset-legend">{{ t('config.liveListenerOptions') }}</legend>
                                 <p class="fieldset-label mb-2">{{ t('config.liveListenerOptionsHelp') }}</p>

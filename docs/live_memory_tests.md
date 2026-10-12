@@ -72,8 +72,9 @@ stream. All warmup samples remain in the CSV, so early jumps are also visible.
 | `FFPLAYOUT_MEMORY_MAX_GROWTH_MB` | `64` | Allowed checkpoint growth in MiB after warmup |
 | `FFPLAYOUT_MEMORY_REPORT_DIR` | `target/live-memory` | Parent directory for run artifacts |
 
-Numeric settings must be positive integers. The normal
-`FFPLAYOUT_LIVE_IDLE_TIMEOUT_MS` setting also applies to these tests.
+Numeric settings must be positive integers. These standalone engine tests use
+the default two-second live idle timeout; application listener settings are
+configured separately in the frontend.
 
 For a longer reconnect run:
 

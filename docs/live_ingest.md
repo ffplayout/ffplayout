@@ -42,26 +42,23 @@ In rare cases, it may happen that, for a short moment after switching, the image
 
 #### Live idle timeout
 
-After live frames have started arriving, the idle timeout defaults to **2000 ms**.
-Set `FFPLAYOUT_LIVE_IDLE_TIMEOUT_MS` to a positive integer in milliseconds to
-override it for all RTMP/SRT listeners in the process:
+Each RTMP/SRT listener has a **Live idle timeout (seconds)** field in the
+frontend. The default is **2 seconds**; existing listeners receive that value
+when the database migration runs. The API stores positive integer milliseconds
+as `idle_timeout_ms`.
 
-```sh
-FFPLAYOUT_LIVE_IDLE_TIMEOUT_MS=5000 ffplayout -l 0.0.0.0:8787
-```
+After saving with the normal configuration **Save** button, the new timeout takes
+effect immediately without restarting playout or reopening its connection.
+Both the listener watchdog and the return to playlist
+playback read the same atomic value. The watchdog checks approximately every
+100 ms; playlist fallback checks after each iteration with a 10 ms sleep,
+subject to frame-processing time. Reducing the timeout can end a connection on
+the next check if its current media gap already exceeds the new limit.
 
-For a systemd installation, add a drop-in with `sudo systemctl edit ffplayout`:
-
-```ini
-[Service]
-Environment="FFPLAYOUT_LIVE_IDLE_TIMEOUT_MS=5000"
-```
-
-Restart ffplayout after changing the variable. It is read once and controls both
-the listener watchdog and the idle fallback to playlist/folder playback. Invalid
-values, including zero, produce a warning and use the 2000 ms default. The initial
-wait for decodable frames remains ten seconds. Longer idle timeouts tolerate longer
-delivery pauses but also delay recovery when a connected publisher stops sending.
+The initial wait for decodable frames remains ten seconds. Longer idle timeouts
+tolerate longer delivery pauses but also delay recovery when a connected
+publisher stops sending. Other listener changes, such as URL or protocol,
+continue to require a playout restart.
 
 #### Delayed tracks and resource limits
 
