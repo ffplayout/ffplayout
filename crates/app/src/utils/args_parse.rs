@@ -210,6 +210,14 @@ pub struct Args {
 
     #[clap(long, hide = true, help = "Send a test email (for debugging)")]
     pub test_mail: bool,
+
+    #[clap(
+        long,
+        hide = true,
+        env = "FFPLAYOUT_MEMORY_DIAGNOSTICS",
+        help = "Log process memory at clip and live transitions"
+    )]
+    pub memory_diagnostics: bool,
 }
 
 pub fn parse_args() -> Args {
@@ -545,6 +553,36 @@ mod tests {
 
     #[cfg(feature = "processing-bench")]
     use super::Args;
+
+    #[test]
+    fn memory_diagnostics_start_parameter_is_hidden() {
+        use clap::CommandFactory;
+        let args = try_parse_args_from(["ffplayout", "--memory-diagnostics"]).unwrap();
+        assert!(args.memory_diagnostics);
+        assert!(
+            !super::Args::command()
+                .render_long_help()
+                .to_string()
+                .contains("--memory-diagnostics")
+        );
+        let expected = std::env::var("FFPLAYOUT_MEMORY_DIAGNOSTICS")
+            .map(|value| value.parse::<bool>().unwrap())
+            .unwrap_or(false);
+        assert_eq!(
+            try_parse_args_from(["ffplayout"])
+                .unwrap()
+                .memory_diagnostics,
+            expected
+        );
+        assert_eq!(
+            super::Args::command()
+                .get_arguments()
+                .find(|argument| argument.get_id() == "memory_diagnostics")
+                .unwrap()
+                .get_env(),
+            Some(std::ffi::OsStr::new("FFPLAYOUT_MEMORY_DIAGNOSTICS"))
+        );
+    }
 
     #[test]
     fn no_arguments_default_to_local_api_listener() {

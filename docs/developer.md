@@ -195,3 +195,48 @@ Check out the [deployment documentation](https://vuejs.org/guide/quick-start.htm
 4. Complete first-time setup in the frontend.
 
 For an initial setup without the frontend, use `cargo run -- -i` instead.
+
+### Memory diagnostics
+
+Use the hidden startup flag together with DEBUG logging:
+
+```sh
+ffplayout --memory-diagnostics --log-level DEBUG
+```
+
+Alternatively, use the Clap environment variable:
+
+```sh
+FFPLAYOUT_MEMORY_DIAGNOSTICS=true ffplayout --log-level DEBUG
+```
+
+For systemd, add `Environment="FFPLAYOUT_MEMORY_DIAGNOSTICS=true"` to the service
+configuration and restart the service. Both forms enable diagnostics for all
+running channels. The setting defaults to false; an explicit CLI flag enables
+it even if the environment variable is false. This setting is not part of the
+TOML configuration or database and has no frontend field.
+
+`[Memory Diagnostics]` DEBUG records are produced immediately before opening each
+non-skipped clip (after the preceding playback call has returned), and on actual
+live takeover/end events. The first clip establishes the RSS baseline. Clip numbers
+count playback attempts, including filler, repeated sources and post-live attempts.
+A single worker serializes measurements and logging; queued live transitions are
+processed before the next clip boundary. Playback waits for its clip record.
+Each live event requests a measurement asynchronously; this is not a snapshot
+captured inside the decoder at the exact instant of the transition.
+
+Records contain `scope=process`, event, channel metadata, clip number, process
+uptime in seconds, RSS bytes, signed RSS delta since the previous measurement for
+that channel, PSS bytes on Linux, thread count where supported, live status,
+listener ID and source kind (`playlist`, `folder`, `filler`, or `ingest`).
+No media file paths are included in these diagnostic records. Live start uses
+`ingest`; live end uses the preceding program source kind until the next clip
+boundary establishes the newly selected source. Unavailable measurements are marked `unavailable`.
+Linux PSS is read from `/proc/self/smaps_rollup`. RSS/PSS cover the entire process,
+so measurements from different channels cannot attribute growth to one channel.
+The live end retains the listener ID of the ended session.
+
+The feature has no periodic sampling timer. Process inspection runs outside the
+async executor on blocking workers, and no measurements run unless diagnostics
+are enabled and DEBUG logging is active. Existing periodic development metrics
+remain independent.

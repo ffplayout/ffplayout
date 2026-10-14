@@ -12,6 +12,8 @@ struct NavigationState {
     live_listener_id: Option<i32>,
     reserved: bool,
     requested: bool,
+    #[cfg(feature = "tokio")]
+    live_observers: Vec<tokio::sync::mpsc::UnboundedSender<(bool, Option<i32>)>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -23,6 +25,21 @@ pub struct PlaybackControl {
 }
 
 impl PlaybackControl {
+    /// Observe actual live takeover/end transitions without polling.
+    #[cfg(feature = "tokio")]
+    pub fn subscribe_live_status(
+        &self,
+    ) -> tokio::sync::mpsc::UnboundedReceiver<(bool, Option<i32>)> {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        self.navigation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .live_observers
+            .push(sender);
+
+        receiver
+    }
+
     #[cfg(any(feature = "tokio", test))]
     pub(crate) fn request_shutdown(&self) {
         self.shutdown.store(true, Ordering::SeqCst);
@@ -108,6 +125,10 @@ impl PlaybackControl {
 
         state.live_active = true;
         state.live_listener_id = listener_id;
+        #[cfg(feature = "tokio")]
+        state
+            .live_observers
+            .retain(|observer| observer.send((true, listener_id)).is_ok());
 
         Some(LiveSession {
             control: self.clone(),
@@ -179,6 +200,13 @@ impl Drop for LiveSession {
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
 
+        #[cfg(feature = "tokio")]
+        {
+            let listener_id = state.live_listener_id;
+            state
+                .live_observers
+                .retain(|observer| observer.send((false, listener_id)).is_ok());
+        }
         state.live_active = false;
         state.live_listener_id = None;
     }
@@ -189,6 +217,23 @@ mod tests {
     use std::sync::Barrier;
 
     use super::*;
+
+    #[test]
+    #[cfg(feature = "tokio")]
+    fn live_observers_receive_only_actual_takeovers_and_ends() {
+        let control = PlaybackControl::default();
+        let mut events = control.subscribe_live_status();
+        let live = control.try_activate_live_for_listener(42).unwrap();
+        assert_eq!(events.try_recv().unwrap(), (true, Some(42)));
+        assert!(control.try_activate_live_for_listener(7).is_none());
+        assert!(events.try_recv().is_err());
+        drop(live);
+        assert_eq!(events.try_recv().unwrap(), (false, Some(42)));
+        drop(events);
+        let live = control.try_activate_live().unwrap();
+        assert!(control.navigation.lock().unwrap().live_observers.is_empty());
+        drop(live);
+    }
 
     #[test]
     fn live_listener_id_is_visible_only_during_its_session() {
