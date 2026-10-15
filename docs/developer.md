@@ -218,7 +218,9 @@ TOML configuration or database and has no frontend field.
 
 `[Memory Diagnostics]` DEBUG records are produced immediately before opening each
 non-skipped clip (after the preceding playback call has returned), and on actual
-live takeover/end events. The first clip establishes the RSS baseline. Clip numbers
+live takeover/end events. Additional `event=periodic` records are emitted every
+five minutes, starting five minutes after the channel diagnostics worker starts.
+The first clip establishes the RSS baseline. Clip numbers
 count playback attempts, including filler, repeated sources and post-live attempts.
 A single worker serializes measurements and logging; queued live transitions are
 processed before the next clip boundary. Playback waits for its clip record.
@@ -227,16 +229,23 @@ captured inside the decoder at the exact instant of the transition.
 
 Records contain `scope=process`, event, channel metadata, clip number, process
 uptime in seconds, RSS bytes, signed RSS delta since the previous measurement for
-that channel, PSS bytes on Linux, thread count where supported, live status,
+that channel, PSS bytes on Linux (`pss_bytes`, `pss_anon_bytes`, and
+`pss_file_bytes`), thread count where supported, live status,
 listener ID and source kind (`playlist`, `folder`, `filler`, or `ingest`).
 No media file paths are included in these diagnostic records. Live start uses
 `ingest`; live end uses the preceding program source kind until the next clip
 boundary establishes the newly selected source. Unavailable measurements are marked `unavailable`.
+`pss_anon_bytes` represents anonymous memory, including heap and media buffers;
+`pss_file_bytes` represents file-backed memory. Missing fields on older kernels
+remain `unavailable` independently of the other fields.
 Linux PSS is read from `/proc/self/smaps_rollup`. RSS/PSS cover the entire process,
 so measurements from different channels cannot attribute growth to one channel.
 The live end retains the listener ID of the ended session.
 
-The feature has no periodic sampling timer. Process inspection runs outside the
+Periodic measurements use the same worker and RSS baseline as event measurements,
+retain the current clip number and source, and report the current live status.
+Queued live and clip events take priority; missed timer ticks are skipped instead
+of producing catch-up measurements. Process inspection runs outside the
 async executor on blocking workers, and no measurements run unless diagnostics
 are enabled and DEBUG logging is active. Existing periodic development metrics
 remain independent.

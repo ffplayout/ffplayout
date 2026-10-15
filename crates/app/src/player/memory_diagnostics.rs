@@ -1,10 +1,10 @@
-//! Event-driven process measurements for long-running playout investigations.
+//! Process measurements for long-running playout investigations.
 
 use std::{
     collections::HashSet,
     fs,
     sync::{Arc, Mutex, PoisonError},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use ff_engine::PlaybackControl;
@@ -13,6 +13,7 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, get_current_pi
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinHandle,
+    time::{Instant, Interval, MissedTickBehavior, interval_at},
 };
 
 use crate::{player::utils::Media, utils::config::ProcessMode};
@@ -48,6 +49,22 @@ impl SourceKind {
     }
 }
 
+const SAMPLE_INTERVAL: Duration = Duration::from_secs(5 * 60);
+
+fn sampling_interval() -> Interval {
+    let mut interval = interval_at(Instant::now() + SAMPLE_INTERVAL, SAMPLE_INTERVAL);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+    interval
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ProportionalMemory {
+    total: Option<u64>,
+    anonymous: Option<u64>,
+    file: Option<u64>,
+}
+
 #[derive(Default)]
 struct Measurements {
     system: System,
@@ -59,7 +76,7 @@ struct Measurements {
 struct Snapshot {
     rss: u64,
     delta: Option<i128>,
-    pss: Option<u64>,
+    pss: ProportionalMemory,
     threads: Option<usize>,
     uptime: u64,
     clips: u64,
@@ -67,6 +84,7 @@ struct Snapshot {
 }
 
 enum DiagnosticEvent {
+    Periodic,
     Live(bool, Option<i32>),
     Clip(SourceKind, bool, Option<i32>, oneshot::Sender<()>),
 }
@@ -74,12 +92,14 @@ enum DiagnosticEvent {
 async fn next_event(
     live: &mut mpsc::UnboundedReceiver<(bool, Option<i32>)>,
     clips: &mut mpsc::UnboundedReceiver<DiagnosticEvent>,
+    interval: &mut Interval,
 ) -> Option<DiagnosticEvent> {
     // Live transitions already queued by the engine precede the next clip.
     tokio::select! {
         biased;
         event = live.recv() => event.map(|(active, listener)| DiagnosticEvent::Live(active, listener)),
         event = clips.recv() => event,
+        _ = interval.tick() => Some(DiagnosticEvent::Periodic),
     }
 }
 
@@ -94,15 +114,39 @@ impl MemoryDiagnostics {
         let measurements = Arc::new(Mutex::new(Measurements::default()));
         let mut live = control.subscribe_live_status();
         let (clips, mut clip_events) = mpsc::unbounded_channel();
+        let periodic_control = control.clone();
         let live_observer = tokio::spawn(async move {
-            while let Some(event) = next_event(&mut live, &mut clip_events).await {
-                let (source, active, listener, completed) = match event {
-                    DiagnosticEvent::Live(active, listener) => (None, active, listener, None),
-                    DiagnosticEvent::Clip(source, active, listener, completed) => {
-                        (Some(source), active, listener, Some(completed))
+            let mut interval = sampling_interval();
+
+            while let Some(event) = next_event(&mut live, &mut clip_events, &mut interval).await {
+                let (event, source, active, listener, completed) = match event {
+                    DiagnosticEvent::Periodic => {
+                        let (active, listener) = periodic_control.live_status();
+
+                        ("periodic", None, active, listener, None)
                     }
+                    DiagnosticEvent::Live(active, listener) => {
+                        let event = if active { "live_start" } else { "live_end" };
+
+                        (event, None, active, listener, None)
+                    }
+                    DiagnosticEvent::Clip(source, active, listener, completed) => (
+                        "clip_boundary",
+                        Some(source),
+                        active,
+                        listener,
+                        Some(completed),
+                    ),
                 };
-                sample(channel, Arc::clone(&measurements), source, active, listener).await;
+                sample(
+                    channel,
+                    Arc::clone(&measurements),
+                    event,
+                    source,
+                    active,
+                    listener,
+                )
+                .await;
 
                 if let Some(completed) = completed {
                     let _ = completed.send(());
@@ -143,6 +187,7 @@ impl Drop for MemoryDiagnostics {
 async fn sample(
     channel: i32,
     measurements: Arc<Mutex<Measurements>>,
+    event: &'static str,
     next_source: Option<SourceKind>,
     active: bool,
     listener: Option<i32>,
@@ -151,13 +196,6 @@ async fn sample(
         return;
     }
 
-    let event = if next_source.is_some() {
-        "clip_boundary"
-    } else if active {
-        "live_start"
-    } else {
-        "live_end"
-    };
     let result = tokio::task::spawn_blocking(move || {
         let pid = get_current_pid().ok()?;
         let mut state = measurements.lock().unwrap_or_else(PoisonError::into_inner);
@@ -187,9 +225,10 @@ async fn sample(
         let pss = if cfg!(target_os = "linux") {
             fs::read_to_string("/proc/self/smaps_rollup")
                 .ok()
-                .and_then(|text| parse_pss(&text))
+                .map(|text| parse_pss(&text))
+                .unwrap_or_default()
         } else {
-            None
+            ProportionalMemory::default()
         };
 
         Some(Snapshot {
@@ -210,10 +249,12 @@ async fn sample(
 
     match result {
         Ok(Some(snapshot)) => debug!(channel = channel;
-            r#"<span class="log-gray">[Memory Diagnostics]</span> scope=<span class="log-addr">process</span> channel=<span class="log-number">{channel}</span> event=<span class="log-addr">{event}</span> clip=<span class="log-number">{}</span> uptime_s=<span class="log-number">{}</span> rss_bytes=<span class="log-number">{}</span> rss_delta_bytes=<span class="log-number">{}</span> pss_bytes=<span class="log-number">{}</span> threads=<span class="log-number">{}</span> live=<span class="log-addr">{}</span> listener=<span class="log-number">{}</span> source=<span class="log-addr">{}</span>"#,
+            r#"<span class="log-gray">[Memory Diagnostics]</span> scope=<span class="log-addr">process</span> channel=<span class="log-number">{channel}</span> event=<span class="log-addr">{event}</span> clip=<span class="log-number">{}</span> uptime_s=<span class="log-number">{}</span> rss_bytes=<span class="log-number">{}</span> rss_delta_bytes=<span class="log-number">{}</span> pss_bytes=<span class="log-number">{}</span> pss_anon_bytes=<span class="log-number">{}</span> pss_file_bytes=<span class="log-number">{}</span> threads=<span class="log-number">{}</span> live=<span class="log-addr">{}</span> listener=<span class="log-number">{}</span> source=<span class="log-addr">{}</span>"#,
             snapshot.clips, snapshot.uptime, snapshot.rss,
             snapshot.delta.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
-            snapshot.pss.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
+            snapshot.pss.total.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
+            snapshot.pss.anonymous.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
+            snapshot.pss.file.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
             snapshot.threads.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
             active, listener.map_or_else(|| "none".to_string(), |value| value.to_string()), snapshot.source.as_str()),
         _ => {
@@ -226,8 +267,16 @@ fn thread_count(tasks: Option<&HashSet<Pid>>) -> Option<usize> {
     tasks.map(|tasks| tasks.len() + 1)
 }
 
-fn parse_pss(text: &str) -> Option<u64> {
-    let line = text.lines().find(|line| line.starts_with("Pss:"))?;
+fn parse_pss(text: &str) -> ProportionalMemory {
+    ProportionalMemory {
+        total: parse_kib_field(text, "Pss:"),
+        anonymous: parse_kib_field(text, "Pss_Anon:"),
+        file: parse_kib_field(text, "Pss_File:"),
+    }
+}
+
+fn parse_kib_field(text: &str, name: &str) -> Option<u64> {
+    let line = text.lines().find(|line| line.starts_with(name))?;
     let mut fields = line.split_whitespace();
     fields.next()?;
     let value = fields.next()?.parse::<u64>().ok()?;
@@ -241,7 +290,8 @@ fn parse_pss(text: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DiagnosticEvent, Media, ProcessMode, SourceKind, next_event, parse_pss, thread_count,
+        DiagnosticEvent, Media, ProcessMode, ProportionalMemory, SAMPLE_INTERVAL, SourceKind,
+        next_event, parse_pss, sampling_interval, thread_count,
     };
     use tokio::sync::{mpsc, oneshot};
 
@@ -250,6 +300,8 @@ mod tests {
         let (live_sender, mut live) = mpsc::unbounded_channel();
         let (clip_sender, mut clips) = mpsc::unbounded_channel();
         let (completed, mut completion) = oneshot::channel();
+        let mut interval = sampling_interval();
+        interval.reset_immediately();
         clip_sender
             .send(DiagnosticEvent::Clip(
                 SourceKind::Filler,
@@ -262,22 +314,38 @@ mod tests {
         live_sender.send((false, Some(42))).unwrap();
 
         assert!(matches!(
-            next_event(&mut live, &mut clips).await,
+            next_event(&mut live, &mut clips, &mut interval).await,
             Some(DiagnosticEvent::Live(true, Some(42)))
         ));
         assert!(matches!(
-            next_event(&mut live, &mut clips).await,
+            next_event(&mut live, &mut clips, &mut interval).await,
             Some(DiagnosticEvent::Live(false, Some(42)))
         ));
         assert!(completion.try_recv().is_err());
 
         let Some(DiagnosticEvent::Clip(SourceKind::Filler, false, None, completed)) =
-            next_event(&mut live, &mut clips).await
+            next_event(&mut live, &mut clips, &mut interval).await
         else {
             panic!("expected the next clip after both live transitions");
         };
         completed.send(()).unwrap();
         completion.await.unwrap();
+        assert!(matches!(
+            next_event(&mut live, &mut clips, &mut interval).await,
+            Some(DiagnosticEvent::Periodic)
+        ));
+    }
+
+    #[tokio::test]
+    async fn periodic_sampling_waits_five_minutes_before_first_tick() {
+        let mut interval = sampling_interval();
+        assert_eq!(interval.period(), SAMPLE_INTERVAL);
+        assert_eq!(SAMPLE_INTERVAL.as_secs(), 300);
+        tokio::select! {
+            biased;
+            _ = interval.tick() => panic!("periodic sampling must not tick immediately"),
+            () = std::future::ready(()) => {}
+        }
     }
 
     #[test]
@@ -320,10 +388,33 @@ mod tests {
     }
 
     #[test]
+    fn missing_or_invalid_pss_components_do_not_hide_valid_fields() {
+        assert_eq!(parse_pss(""), ProportionalMemory::default());
+        assert_eq!(
+            parse_pss("Pss: 12 kB\nPss_Anon: x kB\nPss_File: 18446744073709551615 kB\n"),
+            ProportionalMemory {
+                total: Some(12288),
+                ..ProportionalMemory::default()
+            }
+        );
+        assert_eq!(
+            parse_pss("Pss_Anon: 0 kB\nPss_File: 2 MB\n"),
+            ProportionalMemory {
+                anonymous: Some(0),
+                ..ProportionalMemory::default()
+            }
+        );
+    }
+
+    #[test]
     fn pss_uses_the_exact_field_and_converts_kib_to_bytes() {
         assert_eq!(
-            parse_pss("Rss: 42 kB\nPss: 123 kB\nPss_Anon: 10 kB\n"),
-            Some(125952)
+            parse_pss("Rss: 42 kB\nPss: 123 kB\nPss_Anon: 10 kB\nPss_File: 2 kB\n"),
+            ProportionalMemory {
+                total: Some(125952),
+                anonymous: Some(10240),
+                file: Some(2048),
+            }
         );
         for invalid in [
             "Pss_Anon: 10 kB",
@@ -331,7 +422,7 @@ mod tests {
             "Pss: 1 MB",
             "Pss: 18446744073709551615 kB",
         ] {
-            assert_eq!(parse_pss(invalid), None);
+            assert_eq!(parse_pss(invalid).total, None);
         }
     }
 }
