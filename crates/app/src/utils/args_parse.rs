@@ -6,7 +6,7 @@ use std::{
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::MetadataExt;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use inquire::{Confirm, CustomType, Password, PasswordDisplayMode, Text};
 use sqlx::{Pool, Sqlite};
 
@@ -26,6 +26,25 @@ use crate::{
 };
 
 const DEFAULT_LISTEN_ADDRESS: &str = "127.0.0.1:8787";
+
+/// Process-local output selection; `null` is deliberately not a stored OutputMode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CliOutput {
+    Desktop,
+    Hls,
+    Stream,
+    Null,
+}
+
+impl CliOutput {
+    pub fn mode(self) -> OutputMode {
+        match self {
+            Self::Desktop => OutputMode::Desktop,
+            Self::Hls => OutputMode::HLS,
+            Self::Stream | Self::Null => OutputMode::Stream,
+        }
+    }
+}
 
 #[derive(Parser, Debug, Default, Clone)]
 #[clap(version,
@@ -196,8 +215,8 @@ pub struct Args {
     #[clap(short, long, help_heading = Some("Playout"), help = "Play folder content")]
     pub folder: Option<PathBuf>,
 
-    #[clap(short, long, help_heading = Some("Playout"), help = "Set output mode: desktop, hls, stream")]
-    pub output: Option<OutputMode>,
+    #[clap(short, long, help_heading = Some("Playout"), value_enum, help = "Override output for this run: desktop, hls, stream, null (encode and discard)")]
+    pub output: Option<CliOutput>,
 
     #[clap(short, long, help_heading = Some("Playout"), help = "Set audio volume")]
     pub volume: Option<f64>,
@@ -218,6 +237,14 @@ pub struct Args {
         help = "Log process memory at clip and live transitions"
     )]
     pub memory_diagnostics: bool,
+
+    #[clap(
+        long,
+        hide = true,
+        env = "FFPLAYOUT_TIMING_DIAGNOSTICS",
+        help = "Log primary video timing even when MoQ output is disabled (requires trace logging)"
+    )]
+    pub timing_diagnostics: bool,
 }
 
 pub fn parse_args() -> Args {
@@ -550,6 +577,46 @@ async fn update_permissions() {
 #[cfg(test)]
 mod tests {
     use super::{DEFAULT_LISTEN_ADDRESS, try_parse_args_from};
+
+    #[test]
+    fn null_output_is_a_cli_only_override() {
+        let args = try_parse_args_from(["ffplayout", "--output", "null"]).unwrap();
+        assert_eq!(args.output, Some(super::CliOutput::Null));
+        assert!("null".parse::<crate::utils::config::OutputMode>().is_err());
+        assert!(try_parse_args_from(["ffplayout", "--output", "invalid"]).is_err());
+        assert!(try_parse_args_from(["ffplayout"]).unwrap().output.is_none());
+    }
+
+    #[test]
+    fn timing_diagnostics_is_hidden_and_supports_env() {
+        use clap::CommandFactory;
+        let args = try_parse_args_from(["ffplayout", "--timing-diagnostics"]).unwrap();
+        assert!(args.timing_diagnostics);
+        let mut command = super::Args::command();
+        assert!(
+            !command
+                .render_long_help()
+                .to_string()
+                .contains("--timing-diagnostics")
+        );
+        assert_eq!(
+            command
+                .get_arguments()
+                .find(|arg| arg.get_id() == "timing_diagnostics")
+                .unwrap()
+                .get_env(),
+            Some(std::ffi::OsStr::new("FFPLAYOUT_TIMING_DIAGNOSTICS"))
+        );
+        let expected = std::env::var("FFPLAYOUT_TIMING_DIAGNOSTICS")
+            .map(|value| value.parse::<bool>().unwrap())
+            .unwrap_or(false);
+        assert_eq!(
+            try_parse_args_from(["ffplayout"])
+                .unwrap()
+                .timing_diagnostics,
+            expected
+        );
+    }
 
     #[cfg(feature = "processing-bench")]
     use super::Args;

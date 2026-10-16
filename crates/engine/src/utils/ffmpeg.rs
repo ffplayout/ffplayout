@@ -58,6 +58,25 @@ pub(crate) fn reference_packet(source: &Packet) -> Result<Packet> {
     Ok(referenced)
 }
 
+pub(crate) fn trim_audio_start(input: &frame::Audio, skip: usize) -> Result<frame::Audio> {
+    anyhow::ensure!(skip < input.samples(), "cannot trim an entire audio frame");
+    let mut result = frame::Audio::new(
+        input.format(),
+        input.samples() - skip,
+        input.channel_layout(),
+    );
+    result.set_rate(input.rate());
+    result.set_pts(input.pts().map(|pts| pts + skip as i64));
+
+    for channel in 0..input.channels() as usize {
+        result
+            .plane_mut::<f32>(channel)
+            .copy_from_slice(&input.plane::<f32>(channel)[skip..]);
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use ffmpeg_next::format::Pixel;

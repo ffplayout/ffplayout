@@ -246,6 +246,16 @@ mod log_level_tests {
 
 #[derive(Debug, Clone)]
 pub struct OutputConfig {
+    /// Independent destinations consuming the same processed program.
+    pub destinations: Vec<crate::OutputDestination>,
+    pub stream_endpoint: Option<std::sync::Arc<dyn crate::OutputEndpoint>>,
+    pub output_status: crate::OutputStatus,
+    /// Resolved owning output and rendition index for compressed packet reuse.
+    pub encoding_source: Option<(i32, usize)>,
+    /// Source frame size when an output encodes a different resolution.
+    pub input_size: Option<(u32, u32)>,
+    /// Collect optional primary video timing measurements when Trace is enabled.
+    pub output_timing_diagnostics: bool,
     pub width: u32,
     pub height: u32,
     pub desktop_window_size: Option<(u32, u32)>,
@@ -294,12 +304,12 @@ pub struct RecordingConfig {
     pub retention_days: u32,
     pub minimum_free_space_gb: u32,
     pub video_stream_index: usize,
-    pub encode: Option<RecordingEncodeConfig>,
+    pub encode: Option<EncodingConfig>,
     pub channel_id: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RecordingEncodeConfig {
+pub struct EncodingConfig {
     pub width: u32,
     pub height: u32,
     pub video_codec: String,
@@ -308,6 +318,9 @@ pub struct RecordingEncodeConfig {
     pub audio_options: AudioOptions,
     pub audio_bitrate: u64,
 }
+
+/// Compatibility name for callers configuring a recording encoding profile.
+pub type RecordingEncodeConfig = EncodingConfig;
 
 impl RecordingConfig {
     pub fn new(path: impl Into<String>, segment_duration: u32) -> Self {
@@ -337,7 +350,7 @@ impl RecordingConfig {
         self
     }
 
-    pub fn with_encode(mut self, encode: RecordingEncodeConfig) -> Self {
+    pub fn with_encode(mut self, encode: EncodingConfig) -> Self {
         self.encode = Some(encode);
         self
     }
@@ -615,6 +628,37 @@ const MAXRATE: VideoOptionSpec = VideoOptionSpec {
     visible_when: None,
 };
 const X264_SETTINGS: &[VideoOptionSpec] = &[
+    VideoOptionSpec {
+        key: "tune",
+        label: "Tune",
+        kind: VideoOptionKind::Select,
+        default: "zerolatency",
+        choices: &[
+            VideoOptionChoice {
+                value: "zerolatency",
+                label: "zerolatency",
+            },
+            VideoOptionChoice {
+                value: "none",
+                label: "Disabled",
+            },
+            VideoOptionChoice {
+                value: "animation",
+                label: "animation",
+            },
+            VideoOptionChoice {
+                value: "grain",
+                label: "grain",
+            },
+            VideoOptionChoice {
+                value: "fastdecode",
+                label: "fastdecode",
+            },
+        ],
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
     VideoOptionSpec {
         key: "preset",
         label: "Preset",
@@ -1133,6 +1177,10 @@ pub fn validate_video_options(codec: &str, options: &VideoOptions) -> Result<(),
     }
 
     for spec in specs {
+        // Tune was added after persisted profiles existed; absence retains zerolatency.
+        if spec.key == "tune" {
+            continue;
+        }
         if video_option_is_visible(spec, options) && !options.contains_key(spec.key) {
             return Err(format!(
                 "missing video option {:?} for codec {codec:?}",
@@ -1356,10 +1404,16 @@ pub(crate) struct TextOverlaySnapshot {
 impl OutputConfig {
     pub fn new(width: u32, height: u32, fps: u32, sample_rate: u32) -> Self {
         Self {
+            destinations: Vec::new(),
+            stream_endpoint: None,
+            output_status: crate::OutputStatus::default(),
+            encoding_source: None,
+            input_size: None,
             width,
             height,
             desktop_window_size: None,
             desktop_fullscreen: false,
+            output_timing_diagnostics: false,
             fps,
             sample_rate,
             video_time_base: Rational(1, fps as i32),
@@ -1849,5 +1903,21 @@ mod tests {
 
         assert_eq!(options.get("quality").map(String::as_str), Some("23"));
         assert!(validate_video_options("h264_vaapi", &options).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod tune_compatibility_tests {
+    use super::*;
+
+    #[test]
+    fn existing_profiles_keep_default_tune_and_new_values_are_validated() {
+        let mut options = video_option_defaults("libx264");
+        options.remove("tune");
+        assert!(validate_video_options("libx264", &options).is_ok());
+        options.insert("tune".into(), "grain".into());
+        assert!(validate_video_options("libx264", &options).is_ok());
+        options.insert("tune".into(), "invalid".into());
+        assert!(validate_video_options("libx264", &options).is_err());
     }
 }

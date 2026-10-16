@@ -55,6 +55,32 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
         .unwrap();
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
 
+    let retry_unauthorized = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/playout/outputs/1/1/retry")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(retry_unauthorized.status(), StatusCode::UNAUTHORIZED);
+    let retry_unavailable = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/playout/outputs/1/999999/retry")
+                .header("authorization", format!("Bearer {admin_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(retry_unavailable.status(), StatusCode::CONFLICT);
+
     let config_response = app
         .clone()
         .oneshot(
@@ -521,6 +547,20 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
         .await
         .unwrap();
     assert_eq!(forbidden_response.status(), StatusCode::FORBIDDEN);
+
+    let retry_forbidden = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/playout/outputs/1/1/retry")
+                .header("authorization", format!("Bearer {user_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(retry_forbidden.status(), StatusCode::FORBIDDEN);
 
     let delete_response = app
         .oneshot(

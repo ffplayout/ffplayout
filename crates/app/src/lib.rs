@@ -10,6 +10,7 @@ pub mod api;
 pub mod db;
 pub mod file;
 pub mod middleware;
+pub mod moq;
 pub mod player;
 pub mod sse;
 pub mod utils;
@@ -17,7 +18,7 @@ pub mod utils;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-#[cfg(not(debug_assertions))]
+#[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 pub mod serve;
 
 use api::auth;

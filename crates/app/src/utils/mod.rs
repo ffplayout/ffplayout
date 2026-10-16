@@ -19,6 +19,7 @@ pub mod errors;
 pub mod generator;
 pub mod logging;
 pub mod mail;
+pub(crate) mod moq_codecs;
 pub mod notification;
 pub mod paths;
 pub mod playlist;

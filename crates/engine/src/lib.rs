@@ -41,6 +41,9 @@ pub use input::live::{
 use input::live::{LiveEnded, LiveOverrideOutput};
 #[cfg(all(feature = "desktop-base", feature = "tokio"))]
 pub use output::desktop::thread::run_on_main_thread as run_desktop_on_main_thread;
+pub use output::parallel::{
+    OutputDestination, OutputEndpoint, OutputState, OutputStatus, OutputTarget,
+};
 pub use output::resolved_variant_playlist_path;
 use output::{FrameOutput, Output, PlaybackStopped};
 pub use playback_control::{LiveSession, NavigationBlocked, PlaybackControl, PlaylistNavigation};
@@ -48,14 +51,14 @@ use playout::{PlaybackRestart, PlaybackSkipped, Timeline, write_fallback};
 pub use utils::{
     clock,
     config::{
-        AudioOptions, DesktopControlCallback, DesktopControlCommand, HlsSubtitle, HlsVariant,
-        LogLevel, LogoConfig, OutputConfig, OutputSize, RecordingConfig, RecordingEncodeConfig,
-        RgbaColor, StreamType, TextBackgroundConfig, TextConfig, TextOverlayState, TextPosition,
-        TextScroll, TextWeight, VideoOptionChoice, VideoOptionKind, VideoOptionSpec,
-        VideoOptionVisibility, VideoOptions, audio_codec_uses_bitrate, validate_audio_options,
-        validate_input_protocol_options, validate_live_demuxer_options, validate_output_metadata,
-        validate_output_protocol_options, validate_video_options, video_codec_uses_bitrate,
-        video_option_defaults, video_option_specs,
+        AudioOptions, DesktopControlCallback, DesktopControlCommand, EncodingConfig, HlsSubtitle,
+        HlsVariant, LogLevel, LogoConfig, OutputConfig, OutputSize, RecordingConfig,
+        RecordingEncodeConfig, RgbaColor, StreamType, TextBackgroundConfig, TextConfig,
+        TextOverlayState, TextPosition, TextScroll, TextWeight, VideoOptionChoice, VideoOptionKind,
+        VideoOptionSpec, VideoOptionVisibility, VideoOptions, audio_codec_uses_bitrate,
+        validate_audio_options, validate_input_protocol_options, validate_live_demuxer_options,
+        validate_output_metadata, validate_output_protocol_options, validate_video_options,
+        video_codec_uses_bitrate, video_option_defaults, video_option_specs,
     },
     ffmpeg_capabilities::{
         FfmpegCapabilities, FfmpegCodec, FfmpegFeatureSet, FfmpegMediaType, FfmpegMuxer,
@@ -156,6 +159,10 @@ enum WorkerCompletion {
 
 #[cfg(feature = "tokio")]
 impl AsyncPlayout {
+    pub async fn open_parallel(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
+        Self::open_with(move || Playout::open_parallel(config, fallback_duration)).await
+    }
+
     pub async fn open(
         output_url: impl Into<String>,
         config: OutputConfig,
@@ -498,6 +505,14 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
 }
 
 impl Playout {
+    pub fn open_parallel(config: OutputConfig, fallback_duration: f64) -> Result<Self> {
+        Self::validate_fallback_duration(fallback_duration)?;
+        init_ffmpeg(&config)?;
+        let output = Output::open_parallel(&config)?;
+
+        Ok(Self::with_output(config, output, fallback_duration))
+    }
+
     pub fn open(output_url: &str, config: OutputConfig, fallback_duration: f64) -> Result<Self> {
         Self::validate_fallback_duration(fallback_duration)?;
         init_ffmpeg(&config)?;

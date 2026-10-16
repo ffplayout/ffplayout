@@ -131,6 +131,7 @@ pub(super) struct DesktopOutput {
     loudness_meter_control: crate::LoudnessMeterControl,
     audio_sample_rate: u32,
     recording: Option<DesktopRecording>,
+    parallel_output: Option<Arc<super::parallel::ParallelOutput>>,
     channel_id: Option<i32>,
 }
 
@@ -170,6 +171,7 @@ struct DesktopSubtitleCue {
 }
 
 pub(crate) struct DesktopFrameSender {
+    audio_sample_rate: u32,
     next_audio_pts: i64,
     video_sender: SyncSender<DesktopVideoMessage>,
     audio_sender: SyncSender<DesktopAudioMessage>,
@@ -180,6 +182,7 @@ pub(crate) struct DesktopFrameSender {
     audio_level_meter: AudioLevelMeter,
     loudness_meter: LoudnessMeter,
     current_logo_opacity: f64,
+    parallel_output: Option<Arc<super::parallel::ParallelOutput>>,
     recording_sender: Option<SyncSender<DesktopRecordingMessage>>,
     recording_active: Option<Arc<AtomicBool>>,
     recording_queue_depth: Option<Arc<AtomicUsize>>,
@@ -429,6 +432,13 @@ impl DesktopOutput {
             loudness_meter_control: cfg.loudness_meter_control.clone(),
             audio_sample_rate: cfg.sample_rate,
             recording,
+            parallel_output: if cfg.destinations.is_empty() {
+                None
+            } else {
+                Some(Arc::new(super::parallel::ParallelOutput::start(
+                    cfg, false,
+                )?))
+            },
             channel_id: cfg.channel_id,
         })
     }
@@ -481,12 +491,14 @@ impl DesktopOutput {
             .recording
             .as_ref()
             .map(|recording| Arc::clone(&recording.queue_depth));
+        let parallel_output = self.parallel_output.clone();
         let channel_id = self.channel_id.unwrap_or_default();
         let worker = std_thread::Builder::new()
             .name("ffplayout-decode".to_string())
             .spawn(move || {
                 benchmark::activate(worker_benchmark);
                 let mut output = DesktopFrameSender {
+                    audio_sample_rate,
                     next_audio_pts,
                     video_sender,
                     audio_sender,
@@ -500,6 +512,7 @@ impl DesktopOutput {
                     ),
                     loudness_meter: LoudnessMeter::new(audio_sample_rate, loudness_meter_control),
                     current_logo_opacity: 0.0,
+                    parallel_output,
                     recording_sender,
                     recording_active,
                     recording_queue_depth,
@@ -564,6 +577,12 @@ impl DesktopOutput {
         if let Some(recording) = recording {
             recording.finish();
         }
+        if let Some(output) = self.parallel_output.take()
+            && let Ok(output) = Arc::try_unwrap(output)
+        {
+            output.finish()?;
+        }
+
         renderer_result
     }
 }
@@ -590,6 +609,8 @@ impl FrameOutput for DesktopFrameSender {
 
             return Err(PlaybackStopped.into());
         }
+
+        self.preview_video(frame);
 
         if recording_slot {
             match reference_video_frame(frame) {
@@ -618,6 +639,8 @@ impl FrameOutput for DesktopFrameSender {
             Err(TrySendError::Disconnected(_)) => return Err(PlaybackStopped.into()),
         }
 
+        self.preview_video(frame);
+
         if self.reserve_recording_slot() {
             match reference_video_frame(frame) {
                 Ok(frame) => self.send_reserved_recording(DesktopRecordingMessage::Video {
@@ -643,7 +666,9 @@ impl FrameOutput for DesktopFrameSender {
     ) {
         self.current_logo_opacity = opacity_factor;
 
-        if self.recording_sender.is_some() && self.recording_logo.is_none() {
+        let needs_logo = self.recording_sender.is_some() || self.parallel_output.is_some();
+
+        if needs_logo && self.recording_logo.is_none() {
             self.recording_logo = Some(Arc::new(logo.clone()));
         }
     }
@@ -690,6 +715,9 @@ impl FrameOutput for DesktopFrameSender {
         output_start_ms: i64,
         source_start_ms: i64,
     ) -> Result<()> {
+        if let Some(output) = &self.parallel_output {
+            output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)?;
+        }
         let vtt_path = vtt::sidecar_path(media_path);
 
         if !vtt_path.exists() {
@@ -712,9 +740,20 @@ impl FrameOutput for DesktopFrameSender {
     }
 
     fn clear_vtt_subtitles(&mut self) -> Result<()> {
+        if let Some(output) = &self.parallel_output {
+            output.clear_vtt_subtitles()?;
+        }
         self.control_sender
             .send(DesktopControlMessage::Subtitles(Vec::new()))
             .map_err(|_| PlaybackStopped.into())
+    }
+
+    fn advance_vtt_subtitles(&mut self, position: i64) -> Result<()> {
+        if let Some(output) = &self.parallel_output {
+            output.advance_vtt_subtitles(position)?;
+        }
+
+        Ok(())
     }
 
     fn video_finished(&mut self) -> Result<()> {
@@ -728,11 +767,18 @@ impl FrameOutput for DesktopFrameSender {
         self.audio_sender
             .send(DesktopAudioMessage::Padding(samples))
             .map_err(|_| PlaybackStopped)?;
+
         if self.reserve_recording_slot() {
             self.send_reserved_recording(DesktopRecordingMessage::AudioPadding {
                 pts: self.next_audio_pts,
                 samples,
             });
+        }
+
+        if let Some(output) = &self.parallel_output {
+            for frame in recording_silence(self.next_audio_pts, samples, self.audio_sample_rate) {
+                output.encode_audio(&frame)?;
+            }
         }
 
         self.next_audio_pts += samples as i64;
@@ -742,6 +788,18 @@ impl FrameOutput for DesktopFrameSender {
 }
 
 impl DesktopFrameSender {
+    fn preview_video(&self, frame: &frame::Video) {
+        if let Some(output) = &self.parallel_output
+            && let Err(error) = output.video_with_logo(
+                frame,
+                self.recording_logo.clone(),
+                self.current_logo_opacity,
+            )
+        {
+            log::warn!(channel = self.channel_id; "Parallel video submission: {error}");
+        }
+    }
+
     fn encode_audio_with_effects(
         &mut self,
         frame: &frame::Audio,
@@ -785,6 +843,10 @@ impl DesktopFrameSender {
                 .map_err(|_| anyhow::Error::new(PlaybackStopped))
         })?;
         self.next_audio_pts = frame.pts().unwrap_or(self.next_audio_pts) + frame.samples() as i64;
+
+        if let Some(output) = &self.parallel_output {
+            output.encode_audio(&recording_frame)?;
+        }
 
         if self.reserve_recording_slot() {
             self.send_reserved_recording(DesktopRecordingMessage::Audio(recording_frame));
@@ -911,8 +973,14 @@ impl DesktopRenderer {
 
     fn open(cfg: &OutputConfig) -> Result<Self> {
         let channel_id = cfg.channel_id.unwrap_or_default();
-        let window =
-            prepare_desktop_window(cfg.width, cfg.height, cfg.desktop_fullscreen, channel_id)?;
+        let (window_width, window_height) =
+            cfg.desktop_window_size.unwrap_or((cfg.width, cfg.height));
+        let window = prepare_desktop_window(
+            window_width,
+            window_height,
+            cfg.desktop_fullscreen,
+            channel_id,
+        )?;
         let audio = DesktopAudio::open(cfg.sample_rate, channel_id)?;
         let device_buffer_samples = audio.device_buffer_samples();
         let logo = cfg
@@ -950,9 +1018,9 @@ impl DesktopRenderer {
             subtitle_bitmap: None,
             logo,
             current_logo_opacity: 0.0,
-            aspect_width: cfg.width.max(1),
-            aspect_height: cfg.height.max(1),
-            last_window_size: (cfg.width, cfg.height),
+            aspect_width: window_width.max(1),
+            aspect_height: window_height.max(1),
+            last_window_size: (window_width, window_height),
             pending_aspect_resize: None,
             volume_overlay_until: None,
             last_video: None,
@@ -2286,6 +2354,8 @@ mod tests {
         let (discontinuity_sender, _discontinuity_rx) = sync_channel(1);
         let (recording_sender, recording_rx) = sync_channel(256);
         let mut sender = DesktopFrameSender {
+            parallel_output: None,
+            audio_sample_rate: 48_000,
             next_audio_pts: 480_000,
             video_sender,
             audio_sender,
@@ -2418,6 +2488,8 @@ mod tests {
         let (discontinuity_sender, _discontinuity_rx) = sync_channel(1);
         let (recording_sender, recording_rx) = sync_channel(256);
         let mut sender = DesktopFrameSender {
+            parallel_output: None,
+            audio_sample_rate: 48_000,
             next_audio_pts: 480_000,
             video_sender,
             audio_sender,

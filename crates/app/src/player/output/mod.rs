@@ -1,3 +1,4 @@
+mod instances;
 mod playout;
 
 use crate::{player::controller::ChannelManager, utils::errors::ServiceError};

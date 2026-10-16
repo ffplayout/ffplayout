@@ -329,20 +329,21 @@ pub fn validate_muxer_options(
     }
 
     let validation = (|| {
-        let private = unsafe { (*context).priv_data };
-
-        if private.is_null() {
-            return Err(format!(
-                "FFmpeg muxer {muxer_name:?} does not support private options"
-            ));
-        }
-
         for (key, value) in options {
             let key_c = CString::new(key.as_str())
                 .map_err(|_| format!("invalid muxer option name {key:?}"))?;
             let value_c = CString::new(value.as_str())
                 .map_err(|_| format!("invalid value for muxer option {key:?}"))?;
-            let result = unsafe { ffi::av_opt_set(private, key_c.as_ptr(), value_c.as_ptr(), 0) };
+            // Generic format options (such as flush_packets) live on the format
+            // context; muxer-specific options live on its private child.
+            let result = unsafe {
+                ffi::av_opt_set(
+                    context.cast(),
+                    key_c.as_ptr(),
+                    value_c.as_ptr(),
+                    ffi::AV_OPT_SEARCH_CHILDREN,
+                )
+            };
 
             if result < 0 {
                 return Err(format!(
@@ -469,6 +470,20 @@ mod tests {
             "not-a-number".to_string(),
         )]);
         assert!(validate_muxer_options("hls", &invalid_value).is_err());
+    }
+
+    #[test]
+    fn validates_generic_and_private_stream_muxer_options() {
+        let mut options = BTreeMap::from([
+            ("flush_packets".to_string(), "1".to_string()),
+            ("mpegts_flags".to_string(), "resend_headers".to_string()),
+        ]);
+        assert!(validate_muxer_options("mpegts", &options).is_ok());
+        options.insert("flush_packets".to_string(), "not-a-number".to_string());
+        assert!(validate_muxer_options("mpegts", &options).is_err());
+        options.remove("flush_packets");
+        options.insert("flush_packet_typo".to_string(), "1".to_string());
+        assert!(validate_muxer_options("mpegts", &options).is_err());
     }
 
     #[test]

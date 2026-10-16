@@ -128,7 +128,7 @@ pub async fn select_configuration(
     JOIN config_storage storage ON storage.config_id = c.id
     LEFT JOIN config_text_presets text ON text.config_id = c.id AND text.persistent = 1
     JOIN config_task task ON task.config_id = c.id
-    JOIN config_output output ON output.config_id = c.id AND output.active = 1
+    JOIN config_output output ON output.id = (SELECT id FROM config_output WHERE config_id = c.id AND active = 1 ORDER BY priority, id LIMIT 1)
     WHERE c.channel_id = $1";
 
     Ok(sqlx::query_as(QUERY).bind(channel).fetch_one(pool).await?)
@@ -233,9 +233,10 @@ fn live_listener_urls_contain_port(urls: &[String], backend: &str, port: u16) ->
 pub async fn update_configuration(
     pool: &SqlitePool,
     id: i32,
-    config: PlayoutConfig,
+    mut config: PlayoutConfig,
 ) -> Result<SqliteQueryResult, ProcessError> {
     let mut transaction = pool.begin().await?;
+    super::save_outputs_on(&mut transaction, id, &mut config).await?;
     let result = update_configuration_on(&mut transaction, id, config).await?;
     transaction.commit().await?;
     Ok(result)
@@ -399,18 +400,18 @@ async fn activate_output(
     config_id: i32,
     output_id: i32,
 ) -> Result<SqliteQueryResult, ProcessError> {
-    // Clear the old selection first. The partial unique index then guarantees
-    // that the second statement can never leave two active outputs behind.
-    sqlx::query("UPDATE config_output SET active = 0 WHERE config_id = $1")
+    // Additional selection is persisted in the same transaction by the caller.
+    sqlx::query("UPDATE config_output SET priority = 1 WHERE config_id = $1")
         .bind(config_id)
         .execute(&mut *connection)
         .await?;
-    let result =
-        sqlx::query("UPDATE config_output SET active = 1 WHERE config_id = $1 AND id = $2")
-            .bind(config_id)
-            .bind(output_id)
-            .execute(&mut *connection)
-            .await?;
+    let result = sqlx::query(
+        "UPDATE config_output SET active = 1, priority = 0 WHERE config_id = $1 AND id = $2",
+    )
+    .bind(config_id)
+    .bind(output_id)
+    .execute(&mut *connection)
+    .await?;
 
     if result.rows_affected() != 1 {
         return Err(ProcessError::Custom(format!(
@@ -680,7 +681,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn migration_preserves_one_active_output_and_enforces_uniqueness() {
+    async fn migration_preserves_selection_and_allows_parallel_outputs() {
         let pool = pool().await;
         let active: Vec<i32> =
             sqlx::query_scalar("SELECT id FROM config_output WHERE config_id = 1 AND active = 1")
@@ -689,12 +690,11 @@ mod tests {
                 .unwrap();
 
         assert_eq!(active, [1]);
-        assert!(
-            sqlx::query("UPDATE config_output SET active = 1 WHERE id = 2")
-                .execute(&pool)
-                .await
-                .is_err()
-        );
+        sqlx::query("UPDATE config_output SET active = 1 WHERE id = 2")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(select_configuration(&pool, 1).await.unwrap().output_id, 1);
     }
 
     #[tokio::test]

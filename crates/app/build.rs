@@ -1,26 +1,26 @@
-#[cfg(not(debug_assertions))]
+#[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use std::{
     io::{BufRead, BufReader},
     path::Path,
     process::{Command, Stdio},
 };
 
-#[cfg(not(debug_assertions))]
+#[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use build_print::info;
 
-#[cfg(all(not(debug_assertions), windows))]
+#[cfg(all(not(debug_assertions), feature = "embed_frontend", windows))]
 const NPM_COMMAND: &str = "npm.cmd";
 
-#[cfg(all(not(debug_assertions), not(windows)))]
+#[cfg(all(not(debug_assertions), feature = "embed_frontend", not(windows)))]
 const NPM_COMMAND: &str = "npm";
 
-#[cfg(all(not(debug_assertions), windows))]
+#[cfg(all(not(debug_assertions), feature = "embed_frontend", windows))]
 const RUN_P_BIN: &str = "../../node_modules/.bin/run-p.cmd";
 
-#[cfg(all(not(debug_assertions), not(windows)))]
+#[cfg(all(not(debug_assertions), feature = "embed_frontend", not(windows)))]
 const RUN_P_BIN: &str = "../../node_modules/.bin/run-p";
 
-#[cfg(not(debug_assertions))]
+#[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 fn run_npm(args: &[&str]) {
     let output = Command::new(NPM_COMMAND)
         .args(args)
@@ -61,7 +61,7 @@ fn embed_windows_resources() {}
 fn main() {
     embed_windows_resources();
 
-    #[cfg(not(debug_assertions))]
+    #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
     {
         // These files live outside the Cargo package. Watch the frontend inputs
         // individually so changes rebuild the embedded assets without watching

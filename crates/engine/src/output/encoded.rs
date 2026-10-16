@@ -1,20 +1,12 @@
+use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
-    ffi::CString,
     fmt, fs,
     path::Path,
-    ptr,
 };
 
 use anyhow::{Context, Result, anyhow};
-use ffmpeg::{
-    Packet, codec, format, frame,
-    software::{resampling, scaling},
-    util::{
-        channel_layout::ChannelLayout, format::pixel::Pixel, format::sample::Sample,
-        rational::Rational,
-    },
-};
+use ffmpeg::{Packet, codec, format, frame, util::rational::Rational};
 use ffmpeg_next as ffmpeg;
 
 use crate::{
@@ -22,12 +14,10 @@ use crate::{
     analysis::{audio_level::AudioLevelMeter, loudness::LoudnessMeter},
     audio_mixer::AudioEffectChain,
     benchmark::{self, Stage},
-    clock::PlayoutClock,
     utils::{
         config::{
-            HlsSubtitle, HlsVariant, OutputConfig, audio_encoder_context,
-            engine_audio_sample_format, validate_output_metadata, validate_output_protocol_options,
-            video_codec_uses_bitrate,
+            HlsSubtitle, HlsVariant, OutputConfig, validate_output_metadata,
+            validate_output_protocol_options,
         },
         ffmpeg_capabilities::validate_muxer_options,
         helper::{is_network_url, open_network_output},
@@ -36,12 +26,22 @@ use crate::{
 
 use super::{
     hls,
+    mux::MuxOutput,
     recording::{self, RecordingMonitor, RecordingMuxer},
     vtt,
 };
 
+use super::encoding::{
+    AudioOutputStream, EncodeFrame, EncodedPacket, EncodingWorkers, VideoOutputStream,
+};
+
 pub(super) struct EncodedOutput {
-    octx: format::context::Output,
+    primary_timing: Option<super::diagnostics::PrimaryTiming>,
+    video_time_base: Rational,
+    mux: MuxOutput,
+    encoding_workers: Option<EncodingWorkers>,
+    video_stream_indices: Vec<usize>,
+    audio_stream_indices: Vec<usize>,
     video_streams: Vec<VideoOutputStream>,
     audio_streams: Vec<AudioOutputStream>,
     subtitle_streams: Vec<SubtitleOutputStream>,
@@ -50,12 +50,7 @@ pub(super) struct EncodedOutput {
     audio_effects: AudioEffectChain,
     audio_level_meter: AudioLevelMeter,
     loudness_meter: LoudnessMeter,
-    audio_buffer: [VecDeque<f32>; 2],
-    audio_buffer_pts: Option<i64>,
-    audio_sample_rate: u32,
-    clock: PlayoutClock,
-    pace_output: bool,
-    hls_health: Option<HlsHealth>,
+    audio_buffer: super::encoding::audio::AudioFrameBuffer,
     recording: Option<RecordingMuxer>,
     recording_video_stream_index: usize,
     transcoded_recording: Option<Box<Self>>,
@@ -80,134 +75,6 @@ pub(super) enum EncodedFormat {
         input_width: u32,
         input_height: u32,
     },
-}
-
-struct VideoOutputStream {
-    stream_index: usize,
-    encoder: codec::encoder::video::Encoder,
-    scaler: Option<scaling::Context>,
-    scaled_frame: Option<frame::Video>,
-    vaapi_upload: Option<VaapiUpload>,
-}
-
-/// Owns the VAAPI frame pool used to upload the CPU-composited NV12 frame
-/// immediately before passing it to a VAAPI encoder.
-struct VaapiUpload {
-    frames_ctx: *mut ffmpeg::ffi::AVBufferRef,
-    frame: frame::Video,
-}
-
-unsafe impl Send for VaapiUpload {}
-
-impl VaapiUpload {
-    fn new(width: u32, height: u32) -> Result<Self> {
-        let device = CString::new("/dev/dri/renderD128").expect("static VAAPI device path");
-        let mut device_ctx = ptr::null_mut();
-        let result = unsafe {
-            ffmpeg::ffi::av_hwdevice_ctx_create(
-                &mut device_ctx,
-                ffmpeg::ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
-                device.as_ptr(),
-                ptr::null_mut(),
-                0,
-            )
-        };
-
-        if result < 0 {
-            return Err(ffmpeg::Error::from(result))
-                .context("failed to create VAAPI device /dev/dri/renderD128");
-        }
-
-        if device_ctx.is_null() {
-            return Err(anyhow!("VAAPI device creation returned no device context"));
-        }
-
-        let frames_ctx = unsafe { ffmpeg::ffi::av_hwframe_ctx_alloc(device_ctx) };
-        unsafe { ffmpeg::ffi::av_buffer_unref(&mut device_ctx) };
-
-        if frames_ctx.is_null() {
-            return Err(anyhow!("failed to allocate VAAPI frame context"));
-        }
-
-        let frames = unsafe { (*frames_ctx).data.cast::<ffmpeg::ffi::AVHWFramesContext>() };
-
-        if frames.is_null() {
-            unsafe { ffmpeg::ffi::av_buffer_unref(&mut (frames_ctx as *mut _)) };
-
-            return Err(anyhow!("VAAPI frame context has no frame pool data"));
-        }
-        unsafe {
-            (*frames).format = ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_VAAPI;
-            (*frames).sw_format = ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_NV12;
-            (*frames).width = width as i32;
-            (*frames).height = height as i32;
-        }
-
-        let result = unsafe { ffmpeg::ffi::av_hwframe_ctx_init(frames_ctx) };
-
-        if result < 0 {
-            unsafe { ffmpeg::ffi::av_buffer_unref(&mut (frames_ctx as *mut _)) };
-
-            return Err(ffmpeg::Error::from(result))
-                .context("failed to initialize VAAPI frame context");
-        }
-
-        Ok(Self {
-            frames_ctx,
-            frame: frame::Video::empty(),
-        })
-    }
-
-    fn attach_to_encoder(&self, video_ctx: &mut codec::encoder::video::Video) -> Result<()> {
-        let frames_ctx = unsafe { ffmpeg::ffi::av_buffer_ref(self.frames_ctx) };
-
-        if frames_ctx.is_null() {
-            return Err(anyhow!("failed to retain VAAPI frame context for encoder"));
-        }
-        unsafe { (*video_ctx.as_mut_ptr()).hw_frames_ctx = frames_ctx };
-
-        Ok(())
-    }
-
-    fn upload(&mut self, source: &frame::Video) -> Result<&frame::Video> {
-        unsafe { ffmpeg::ffi::av_frame_unref(self.frame.as_mut_ptr()) };
-        let result = unsafe {
-            ffmpeg::ffi::av_hwframe_get_buffer(self.frames_ctx, self.frame.as_mut_ptr(), 0)
-        };
-
-        if result < 0 {
-            return Err(ffmpeg::Error::from(result)).context("failed to allocate VAAPI frame");
-        }
-
-        let result = unsafe {
-            ffmpeg::ffi::av_hwframe_transfer_data(self.frame.as_mut_ptr(), source.as_ptr(), 0)
-        };
-
-        if result < 0 {
-            return Err(ffmpeg::Error::from(result)).context("failed to upload frame to VAAPI");
-        }
-
-        let result =
-            unsafe { ffmpeg::ffi::av_frame_copy_props(self.frame.as_mut_ptr(), source.as_ptr()) };
-        if result < 0 {
-            return Err(ffmpeg::Error::from(result))
-                .context("failed to copy VAAPI frame properties");
-        }
-
-        Ok(&self.frame)
-    }
-}
-
-impl Drop for VaapiUpload {
-    fn drop(&mut self) {
-        unsafe { ffmpeg::ffi::av_buffer_unref(&mut self.frames_ctx) };
-    }
-}
-
-struct AudioOutputStream {
-    stream_index: usize,
-    encoder: codec::encoder::audio::Encoder,
-    resampler: Option<resampling::Context>,
 }
 
 struct SubtitleOutputStream {
@@ -239,6 +106,7 @@ impl EncodedOutput {
         recording_cfg.audio_level_callback = None;
         recording_cfg.audio_frame_callback = None;
         recording_cfg.recording = None;
+        recording_cfg.output_timing_diagnostics = false;
         let (pattern, monitor) = recording::prepare_recording(recording_config)?;
         let mut output = Self::open(
             pattern
@@ -269,6 +137,32 @@ impl EncodedOutput {
         cfg: &OutputConfig,
         output_format: EncodedFormat,
         hls_health: Option<HlsHealth>,
+    ) -> Result<Self> {
+        Self::open_internal(path, cfg, output_format, hls_health, true, None)
+    }
+
+    pub(super) fn delivery_state(&self) -> (bool, Option<String>) {
+        self.mux.delivery_state()
+    }
+
+    pub(super) fn open_packets(
+        path: &str,
+        cfg: &OutputConfig,
+        output_format: EncodedFormat,
+        parameters: Vec<(codec::Parameters, codec::Parameters)>,
+    ) -> Result<Self> {
+        let health = matches!(output_format, EncodedFormat::Hls { .. }).then(HlsHealth::new);
+
+        Self::open_internal(path, cfg, output_format, health, true, Some(parameters))
+    }
+
+    fn open_internal(
+        path: &str,
+        cfg: &OutputConfig,
+        output_format: EncodedFormat,
+        hls_health: Option<HlsHealth>,
+        paced: bool,
+        parameters: Option<Vec<(codec::Parameters, codec::Parameters)>>,
     ) -> Result<Self> {
         validate_output_metadata(&cfg.metadata_options).map_err(anyhow::Error::msg)?;
 
@@ -303,7 +197,7 @@ impl EncodedOutput {
             _ => {}
         }
 
-        let pace_output = !matches!(&output_format, EncodedFormat::Recording { .. });
+        let pace_output = paced && !matches!(&output_format, EncodedFormat::Recording { .. });
         let hls_variants = match &output_format {
             EncodedFormat::Auto
             | EncodedFormat::Stream { .. }
@@ -435,6 +329,20 @@ impl EncodedOutput {
 
         for index in 0..stream_count {
             let variant = hls_variants.get(index);
+            if let Some(parameters) = &parameters {
+                anyhow::ensure!(
+                    parameters.len() == stream_count,
+                    "encoding rendition count must match the muxer"
+                );
+                let (video, audio) = &parameters[index];
+                let mut stream = octx.add_stream(codec::Id::None)?;
+                stream.set_parameters(video.clone());
+                stream.set_time_base(cfg.video_time_base);
+                let mut stream = octx.add_stream(codec::Id::None)?;
+                stream.set_parameters(audio.clone());
+                stream.set_time_base(cfg.audio_time_base);
+                continue;
+            }
             video_streams.push(open_video_stream(
                 &mut octx,
                 cfg,
@@ -523,6 +431,16 @@ impl EncodedOutput {
             .filter(|recording| recording.encode.is_none())
         {
             match (|| -> Result<_> {
+                if let Some(parameters) = &parameters {
+                    let (video, audio) = parameters
+                        .get(recording_video_stream_index)
+                        .context("recording source rendition is unavailable")?;
+                    return RecordingMuxer::open_parameters(
+                        recording_config,
+                        (video.clone(), cfg.video_time_base),
+                        (audio.clone(), cfg.audio_time_base),
+                    );
+                }
                 let video_stream = video_streams
                     .get(recording_video_stream_index)
                     .context("recording video stream index is out of range")?;
@@ -559,8 +477,36 @@ impl EncodedOutput {
             None
         };
 
+        let audio_buffer = super::encoding::audio::AudioFrameBuffer::new(
+            cfg.sample_rate,
+            audio_streams
+                .first()
+                .map_or(0, |stream| stream.encoder.frame_size() as usize),
+        );
         Ok(Self {
-            octx,
+            primary_timing: (cfg.output_timing_diagnostics && log::log_enabled!(log::Level::Trace))
+                .then(|| {
+                    super::diagnostics::PrimaryTiming::new(cfg.channel_id.unwrap_or_default())
+                }),
+            video_time_base: cfg.video_time_base,
+            mux: MuxOutput::new(octx, pace_output, hls_health, cfg.channel_id)?,
+            encoding_workers: None,
+            video_stream_indices: if parameters.is_some() {
+                (0..stream_count).map(|index| index * 2).collect()
+            } else {
+                video_streams
+                    .iter()
+                    .map(|stream| stream.stream_index)
+                    .collect()
+            },
+            audio_stream_indices: if parameters.is_some() {
+                (0..stream_count).map(|index| index * 2 + 1).collect()
+            } else {
+                audio_streams
+                    .iter()
+                    .map(|stream| stream.stream_index)
+                    .collect()
+            },
             video_streams,
             audio_streams,
             subtitle_streams,
@@ -572,12 +518,7 @@ impl EncodedOutput {
                 cfg.audio_level_callback.clone(),
             ),
             loudness_meter: LoudnessMeter::new(cfg.sample_rate, cfg.loudness_meter_control.clone()),
-            audio_buffer: [VecDeque::new(), VecDeque::new()],
-            audio_buffer_pts: None,
-            audio_sample_rate: cfg.sample_rate,
-            clock: PlayoutClock::new(),
-            pace_output,
-            hls_health,
+            audio_buffer,
             recording,
             recording_video_stream_index,
             transcoded_recording,
@@ -586,7 +527,62 @@ impl EncodedOutput {
         })
     }
 
+    pub(super) fn threaded(mut self) -> Result<Self> {
+        if let Some(recording) = self.transcoded_recording.take() {
+            self.transcoded_recording = Some(Box::new(recording.threaded()?));
+        }
+        self.encoding_workers = Some(EncodingWorkers::start(
+            std::mem::take(&mut self.video_streams),
+            std::mem::take(&mut self.audio_streams),
+        )?);
+
+        Ok(self)
+    }
+
+    fn submit_encoding(&mut self, frame: EncodeFrame) -> Result<()> {
+        let mut workers = self
+            .encoding_workers
+            .take()
+            .context("encoder workers missing")?;
+        let result = workers.submit(frame, |packet| self.handle_encoded_packet(packet));
+        self.encoding_workers = Some(workers);
+
+        result
+    }
+
+    pub(super) fn handle_encoded_packet(&mut self, mut packet: EncodedPacket) -> Result<()> {
+        let video = self
+            .video_stream_indices
+            .get(self.recording_video_stream_index)
+            == Some(&packet.stream);
+        let audio = self
+            .audio_stream_indices
+            .get(self.recording_video_stream_index)
+            == Some(&packet.stream);
+        if let Some(recording) = &mut self.recording {
+            let result = if video {
+                recording.write_video(&packet.packet, packet.time_base)
+            } else if audio {
+                recording.write_audio(&packet.packet, packet.time_base)
+            } else {
+                Ok(())
+            };
+            if let Err(error) = result {
+                self.disable_copy_recording(error);
+            }
+        }
+
+        self.write_packet(&mut packet.packet, packet.stream, packet.time_base)
+    }
+
+    pub(super) fn playout_clock(&self) -> Option<crate::clock::SharedPlayoutClock> {
+        self.mux.clock()
+    }
+
     pub(super) fn audio_frame_size(&self) -> usize {
+        if let Some(workers) = &self.encoding_workers {
+            return workers.audio_frame_size;
+        }
         self.audio_streams
             .first()
             .map(|stream| stream.encoder.frame_size() as usize)
@@ -594,34 +590,44 @@ impl EncodedOutput {
     }
 
     pub(super) fn set_playout_rate(&mut self, rate: f64) {
-        self.clock.set_rate(rate);
+        self.mux.set_rate(rate);
     }
 
     pub(super) fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+        let entered = self.primary_timing.as_mut().map(|timing| {
+            timing.begin();
+            Instant::now()
+        });
+        let (mut submit, mut drain) = (Duration::ZERO, Duration::ZERO);
         benchmark::measure(Stage::EncodeMux, || {
-            for index in 0..self.video_streams.len() {
-                let stream = &mut self.video_streams[index];
-                let input_frame = if let Some(scaler) = &mut stream.scaler {
-                    // The scaler allocates the destination using its output format.
-                    // QSV and VAAPI need NV12 here, while software encoders use YUV420P.
-                    let scaled_frame = stream.scaled_frame.get_or_insert_with(frame::Video::empty);
-                    scaled_frame.set_pts(frame.pts());
-                    scaler.run(frame, scaled_frame)?;
-                    scaled_frame
-                } else {
-                    frame
-                };
-
-                if let Some(vaapi_upload) = &mut stream.vaapi_upload {
-                    let vaapi_frame = vaapi_upload.upload(input_frame)?;
-                    stream.encoder.send_frame(vaapi_frame)?;
-                } else {
-                    stream.encoder.send_frame(input_frame)?;
+            if self.encoding_workers.is_some() {
+                let submit_started = entered.map(|_| Instant::now());
+                let result = self.submit_encoding(EncodingWorkers::video_frame(frame)?);
+                if let Some(started) = submit_started {
+                    submit += started.elapsed();
                 }
+
+                return result;
+            }
+            for index in 0..self.video_streams.len() {
+                let submit_started = entered.map(|_| Instant::now());
+                self.video_streams[index].submit(frame)?;
+                let drain_started = submit_started.map(|started| {
+                    let now = Instant::now();
+                    submit += now.saturating_duration_since(started);
+                    now
+                });
                 self.write_video_packets(index)?;
+                if let Some(started) = drain_started {
+                    drain += started.elapsed();
+                }
             }
             Ok::<_, anyhow::Error>(())
         })?;
+
+        if let (Some(timing), Some(entered)) = (&mut self.primary_timing, entered) {
+            timing.finish(frame.pts(), self.video_time_base, entered, submit, drain);
+        }
 
         if let Some(error) = self
             .transcoded_recording
@@ -652,31 +658,17 @@ impl EncodedOutput {
         }
 
         let mut frame = frame.clone();
-        benchmark::measure(Stage::AudioProcess, || {
+        let frames = benchmark::measure(Stage::AudioProcess, || {
             if apply_effects {
                 self.audio_effects.process(&mut frame);
             }
-
             self.audio_level_meter.process_frame(&frame);
             self.loudness_meter.process_frame(&frame);
-            self.align_audio_buffer_to_frame_pts(frame.pts())?;
-
-            if self.audio_buffer[0].is_empty() {
-                self.audio_buffer_pts = frame.pts();
-            }
-
-            for channel in 0..self.audio_buffer.len() {
-                self.audio_buffer[channel].extend(
-                    frame
-                        .plane::<f32>(channel)
-                        .iter()
-                        .map(|sample| if sample.is_finite() { *sample } else { 0.0 }),
-                );
-            }
-            Ok::<_, anyhow::Error>(())
+            self.audio_buffer.push(&frame)
         })?;
-
-        self.write_complete_audio_frames()?;
+        for frame in frames {
+            self.send_audio_frame(&frame)?;
+        }
 
         if let Some(error) = self
             .transcoded_recording
@@ -684,31 +676,6 @@ impl EncodedOutput {
             .and_then(|recording| recording.encode_audio(&frame).err())
         {
             self.disable_transcoded_recording(error);
-        }
-
-        Ok(())
-    }
-
-    fn align_audio_buffer_to_frame_pts(&mut self, frame_pts: Option<i64>) -> Result<()> {
-        let Some(frame_pts) = frame_pts else {
-            return Ok(());
-        };
-        let Some(buffer_pts) = self.audio_buffer_pts else {
-            return Ok(());
-        };
-
-        if self.audio_buffer[0].is_empty() {
-            return Ok(());
-        }
-
-        let expected_pts = buffer_pts + self.audio_buffer[0].len() as i64;
-
-        if frame_pts != expected_pts {
-            self.pad_audio_buffer()?;
-
-            if self.audio_buffer[0].is_empty() {
-                self.audio_buffer_pts = Some(frame_pts);
-            }
         }
 
         Ok(())
@@ -768,58 +735,13 @@ impl EncodedOutput {
         Ok(())
     }
 
-    fn write_complete_audio_frames(&mut self) -> Result<()> {
-        let frame_size = self.audio_frame_size();
-
-        if frame_size == 0 {
-            return Err(anyhow!("audio encoder reported a frame size of zero"));
-        }
-
-        while self
-            .audio_buffer
-            .iter()
-            .all(|channel| channel.len() >= frame_size)
-        {
-            let mut frame = frame::Audio::new(
-                Sample::F32(ffmpeg::format::sample::Type::Planar),
-                frame_size,
-                ChannelLayout::STEREO,
-            );
-            frame.set_rate(self.audio_sample_rate);
-            frame.set_pts(self.audio_buffer_pts);
-
-            for channel in 0..self.audio_buffer.len() {
-                let plane = frame.plane_mut::<f32>(channel);
-                let buffer = &mut self.audio_buffer[channel];
-                let (front, back) = buffer.as_slices();
-                let from_front = front.len().min(frame_size);
-                plane[..from_front].copy_from_slice(&front[..from_front]);
-                plane[from_front..frame_size].copy_from_slice(&back[..frame_size - from_front]);
-                buffer.drain(..frame_size);
-            }
-
-            self.audio_buffer_pts = self.audio_buffer_pts.map(|pts| pts + frame_size as i64);
-            self.send_audio_frame(&frame)?;
-        }
-
-        Ok(())
-    }
-
     fn send_audio_frame(&mut self, frame: &frame::Audio) -> Result<()> {
         benchmark::measure(Stage::AudioEncode, || {
+            if self.encoding_workers.is_some() {
+                return self.submit_encoding(EncodingWorkers::audio_frame(frame)?);
+            }
             for index in 0..self.audio_streams.len() {
-                {
-                    let stream = &mut self.audio_streams[index];
-
-                    if let Some(resampler) = &mut stream.resampler {
-                        let mut converted = frame::Audio::empty();
-                        resampler.run(frame, &mut converted)?;
-                        converted.set_pts(frame.pts());
-                        stream.encoder.send_frame(&converted)?;
-                    } else {
-                        stream.encoder.send_frame(frame)?;
-                    }
-                }
+                self.audio_streams[index].submit(frame)?;
                 self.write_audio_packets(index)?;
             }
             Ok::<_, anyhow::Error>(())
@@ -827,16 +749,10 @@ impl EncodedOutput {
     }
 
     fn pad_audio_buffer(&mut self) -> Result<()> {
-        if self.audio_buffer[0].is_empty() {
-            return Ok(());
+        for frame in self.audio_buffer.finish()? {
+            self.send_audio_frame(&frame)?;
         }
-
-        let frame_size = self.audio_frame_size();
-
-        for channel in &mut self.audio_buffer {
-            channel.resize(frame_size, 0.0);
-        }
-        self.write_complete_audio_frames()
+        Ok(())
     }
 
     fn write_packet(
@@ -849,23 +765,15 @@ impl EncodedOutput {
             monitor.check()?;
         }
 
-        let stream_time_base = self
-            .octx
-            .stream(stream_index)
-            .context("output stream is missing")?
-            .time_base();
+        let stream_time_base = self.mux.time_base(stream_index)?;
 
         packet.set_stream(stream_index);
         packet.rescale_ts(encoder_time_base, stream_time_base);
 
-        if self.pace_output {
-            self.clock
-                .wait_until(packet.dts().or_else(|| packet.pts()), stream_time_base);
-        }
-        packet.write_interleaved(&mut self.octx)?;
-
-        if let Some(health) = &self.hls_health {
-            health.mark_muxed();
+        let queued = self.primary_timing.as_ref().map(|_| Instant::now());
+        self.mux.write(packet)?;
+        if let (Some(timing), Some(queued)) = (&mut self.primary_timing, queued) {
+            timing.packet(queued.elapsed());
         }
 
         Ok(())
@@ -874,6 +782,9 @@ impl EncodedOutput {
     pub(super) fn finish(mut self) -> Result<()> {
         benchmark::measure(Stage::AudioEncode, || {
             self.pad_audio_buffer()?;
+            if let Some(mut workers) = self.encoding_workers.take() {
+                workers.finish(|packet| self.handle_encoded_packet(packet))?;
+            }
 
             for index in 0..self.audio_streams.len() {
                 self.flush_audio_resampler(index)?;
@@ -889,7 +800,7 @@ impl EncodedOutput {
                 self.write_video_packets(index)?;
             }
 
-            self.octx.write_trailer()?;
+            self.mux.finish()?;
 
             if let Some(recording) = self.recording.take()
                 && let Err(error) = recording.finish()
@@ -909,32 +820,20 @@ impl EncodedOutput {
     }
 
     fn flush_audio_resampler(&mut self, index: usize) -> Result<()> {
-        loop {
-            let delay = {
-                let stream = &mut self.audio_streams[index];
-                let Some(resampler) = &mut stream.resampler else {
-                    return Ok(());
-                };
-                let output = *resampler.output();
-                let mut converted = frame::Audio::new(
-                    output.format,
-                    stream.encoder.frame_size() as usize,
-                    output.channel_layout,
-                );
-                converted.set_rate(output.rate);
-                let delay = resampler.flush(&mut converted)?;
-
-                if converted.samples() > 0 {
-                    stream.encoder.send_frame(&converted)?;
-                }
-                delay
-            };
-            self.write_audio_packets(index)?;
-
-            if delay.is_none() {
-                return Ok(());
-            }
+        let mut packets = Vec::new();
+        self.audio_streams[index].flush_resampler(|packet, stream, time_base| {
+            packets.push(EncodedPacket {
+                packet,
+                stream,
+                time_base,
+            });
+            Ok(())
+        })?;
+        for packet in packets {
+            self.handle_encoded_packet(packet)?;
         }
+
+        Ok(())
     }
 
     fn write_video_packets(&mut self, index: usize) -> Result<()> {
@@ -1013,15 +912,11 @@ impl EncodedOutput {
             .first()
             .context("subtitle output stream is missing")?
             .stream_index;
-        let stream_time_base = self
-            .octx
-            .stream(stream_index)
-            .context("subtitle output stream is missing")?
-            .time_base();
+        let stream_time_base = self.mux.time_base(stream_index)?;
 
         packet.set_stream(stream_index);
         packet.rescale_ts(Rational(1, 1_000), stream_time_base);
-        packet.write_interleaved(&mut self.octx)?;
+        self.mux.write(packet)?;
 
         Ok(())
     }
@@ -1105,417 +1000,6 @@ fn hls_resume_playlist_paths(
     }
 }
 
-fn open_video_stream(
-    octx: &mut format::context::Output,
-    cfg: &OutputConfig,
-    output_format: EncodedFormat,
-    global_header: bool,
-    variant: Option<&HlsVariant>,
-) -> Result<VideoOutputStream> {
-    let video_codec = if cfg.video_codec.trim().is_empty() {
-        codec::encoder::find(codec::Id::H264)
-    } else {
-        codec::encoder::find_by_name(cfg.video_codec.trim())
-    }
-    .with_context(|| format!("video encoder {:?} not found", cfg.video_codec))?;
-    let mut video_stream = octx.add_stream(video_codec)?;
-    let mut video_ctx = codec::context::Context::new_with_codec(video_codec)
-        .encoder()
-        .video()?;
-    let encoder_backend = VideoEncoderBackend::from_name(video_codec.name());
-    let encoder_format = encoder_backend.encoder_format();
-    let cpu_input_format = encoder_backend.cpu_input_format();
-    let width = variant.map_or(cfg.width, |variant| variant.width);
-    let height = variant.map_or(cfg.height, |variant| variant.height);
-    let (input_width, input_height) = match &output_format {
-        EncodedFormat::Recording {
-            input_width,
-            input_height,
-            ..
-        } => (*input_width, *input_height),
-        _ => (cfg.width, cfg.height),
-    };
-    video_ctx.set_width(width);
-    video_ctx.set_height(height);
-    video_ctx.set_format(encoder_format);
-    video_ctx.set_time_base(cfg.video_time_base);
-    video_ctx.set_frame_rate(Some(Rational(cfg.fps as i32, 1)));
-    let maxrate = variant.map_or(cfg.video_maxrate(), |variant| variant.video_bitrate);
-
-    if encoder_backend.uses_target_bitrate(cfg, video_codec) {
-        video_ctx.set_bit_rate(maxrate as usize);
-    }
-
-    match &output_format {
-        EncodedFormat::Hls {
-            segment_seconds, ..
-        } => video_ctx.set_gop(hls_gop_size(cfg.fps, *segment_seconds)),
-        EncodedFormat::Stream { .. } | EncodedFormat::Recording { .. } => {
-            video_ctx.set_gop(stream_gop_size(cfg.fps));
-        }
-        EncodedFormat::Auto => {}
-    }
-
-    let mut video_flags = codec::flag::Flags::empty();
-
-    if global_header {
-        video_flags |= codec::flag::Flags::GLOBAL_HEADER;
-    }
-
-    if matches!(output_format, EncodedFormat::Hls { .. }) {
-        video_flags |= codec::flag::Flags::CLOSED_GOP;
-    }
-
-    if encoder_backend == VideoEncoderBackend::Qsv && qsv_uses_icq(cfg) {
-        // QSV selects ICQ from AVCodecContext::global_quality. Passing this
-        // through the encoder option dictionary does not reliably update the
-        // context before rate control is selected.
-        let global_quality = qsv_global_quality(cfg);
-        log::debug!(channel = cfg.channel_id.unwrap_or_default(); "QSV encoder rate control: ICQ, global quality: {global_quality}");
-        video_ctx.set_global_quality(global_quality);
-    }
-
-    if !video_flags.is_empty() {
-        video_ctx.set_flags(video_flags);
-    }
-
-    let vaapi_upload = (encoder_backend == VideoEncoderBackend::Vaapi)
-        .then(|| VaapiUpload::new(width, height))
-        .transpose()?;
-    if let Some(vaapi_upload) = &vaapi_upload {
-        vaapi_upload.attach_to_encoder(&mut video_ctx)?;
-    }
-
-    let mut options = ffmpeg::Dictionary::new();
-    encoder_backend.configure_options(&mut options, cfg, maxrate);
-
-    let mut video_encoder = match output_format {
-        EncodedFormat::Auto | EncodedFormat::Stream { .. } | EncodedFormat::Recording { .. } => {
-            video_ctx.open_as_with(video_codec, options)?
-        }
-        EncodedFormat::Hls { .. } => {
-            if encoder_backend == VideoEncoderBackend::X264 {
-                options.set("x264-params", "open-gop=0:repeat-headers=1");
-            }
-            video_ctx.open_as_with(video_codec, options)?
-        }
-    };
-    // Quality-based encoders clear AVCodecContext::bit_rate while opening.
-    // Restore the configured maximum as metadata so the HLS muxer can
-    // calculate BANDWIDTH for master.m3u8. QSV and VAAPI observe a bitrate
-    // change when their quality-only mode begins, which would invalidate it.
-    if video_codec_uses_bitrate(video_codec.name())
-        && restore_video_bitrate_metadata(encoder_backend, cfg)
-    {
-        video_encoder.set_bit_rate(maxrate as usize);
-    }
-    video_stream.set_parameters(&video_encoder);
-    video_stream.set_time_base(cfg.video_time_base);
-    let stream_index = video_stream.index();
-    let scaler =
-        if width == input_width && height == input_height && cpu_input_format == Pixel::YUV420P {
-            None
-        } else {
-            Some(scaling::Context::get(
-                Pixel::YUV420P,
-                input_width,
-                input_height,
-                cpu_input_format,
-                width,
-                height,
-                scaling::flag::Flags::BILINEAR,
-            )?)
-        };
-
-    Ok(VideoOutputStream {
-        stream_index,
-        encoder: video_encoder,
-        scaler,
-        scaled_frame: None,
-        vaapi_upload,
-    })
-}
-
-/// Encoders in this pipeline receive CPU-backed frames. QSV accepts NV12 and
-/// uploads it internally; VAAPI receives an NV12 frame uploaded to a VAAPI
-/// frame pool immediately before encoding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum VideoEncoderBackend {
-    Software,
-    X264,
-    X265,
-    Nvenc,
-    Qsv,
-    Vaapi,
-    VpxVp9,
-    SvtAv1,
-}
-
-impl VideoEncoderBackend {
-    fn from_name(name: &str) -> Self {
-        if name.contains("x264") {
-            Self::X264
-        } else if name.contains("x265") {
-            Self::X265
-        } else if matches!(name, "h264_nvenc" | "hevc_nvenc" | "av1_nvenc") {
-            Self::Nvenc
-        } else if matches!(name, "h264_qsv" | "hevc_qsv" | "av1_qsv") {
-            Self::Qsv
-        } else if matches!(name, "h264_vaapi" | "hevc_vaapi" | "av1_vaapi") {
-            Self::Vaapi
-        } else if name == "libvpx-vp9" {
-            Self::VpxVp9
-        } else if name == "libsvtav1" {
-            Self::SvtAv1
-        } else {
-            Self::Software
-        }
-    }
-
-    const fn encoder_format(self) -> Pixel {
-        match self {
-            Self::Vaapi => Pixel::VAAPI,
-            _ => self.cpu_input_format(),
-        }
-    }
-
-    const fn cpu_input_format(self) -> Pixel {
-        match self {
-            Self::Qsv => Pixel::NV12,
-            Self::Vaapi => Pixel::NV12,
-            Self::Software
-            | Self::X264
-            | Self::X265
-            | Self::Nvenc
-            | Self::VpxVp9
-            | Self::SvtAv1 => Pixel::YUV420P,
-        }
-    }
-
-    fn uses_target_bitrate(self, cfg: &OutputConfig, codec: codec::codec::Codec) -> bool {
-        cfg.video_option("rate_control") == Some("cbr")
-            || self == Self::VpxVp9
-            || (self == Self::Vaapi && cfg.video_option("rate_control") == Some("vbr"))
-            // Encoders that fall through to the generic Software backend and
-            // expose none of the rate-control AVOptions this pipeline sets
-            // (maxrate/bufsize/crf/qp) only understand a plain target
-            // bitrate via AVCodecContext::bit_rate. Detecting this
-            // capability at runtime - instead of matching specific codec
-            // names such as "h264_v4l2m2m" - covers every current and
-            // future encoder with the same limitation (other stateless HW
-            // wrappers included) without growing a per-codec list.
-            || (self == Self::Software && video_encoder_is_bitrate_only(codec))
-    }
-
-    fn configure_options(
-        self,
-        options: &mut ffmpeg::Dictionary<'_>,
-        cfg: &OutputConfig,
-        maxrate: u64,
-    ) {
-        match self {
-            Self::X264 | Self::X265 => {
-                options.set("preset", cfg.video_option("preset").unwrap_or("faster"));
-                options.set("tune", "zerolatency");
-                options.set("maxrate", &maxrate.to_string());
-                options.set("bufsize", &maxrate.saturating_mul(2).to_string());
-
-                match cfg.video_option("rate_control") {
-                    Some("cbr") => options.set("minrate", &maxrate.to_string()),
-                    _ => options.set("crf", cfg.video_option("quality").unwrap_or("23")),
-                }
-            }
-            Self::Nvenc => {
-                options.set("preset", "p4");
-                options.set("tune", "ll");
-                options.set("maxrate", &maxrate.to_string());
-                options.set("bufsize", &maxrate.saturating_mul(2).to_string());
-
-                match cfg.video_option("rate_control") {
-                    Some("cbr") => options.set("rc", "cbr"),
-                    _ => {
-                        options.set("rc", "vbr");
-                        options.set("cq", cfg.video_option("quality").unwrap_or("23"));
-                    }
-                }
-            }
-            Self::Qsv => {
-                options.set("preset", cfg.video_option("preset").unwrap_or("faster"));
-                options.set("async_depth", "4");
-                options.set("low_delay_brc", "1");
-
-                if !qsv_uses_icq(cfg) {
-                    options.set("maxrate", &maxrate.to_string());
-                    options.set("bufsize", &maxrate.saturating_mul(2).to_string());
-
-                    if cfg.video_option("rate_control") == Some("cbr") {
-                        options.set("rdo", "0");
-                    }
-                }
-            }
-            Self::Vaapi => {
-                let rate_control = cfg.video_option("rate_control").unwrap_or("vbr");
-                options.set("async_depth", "4");
-                options.set(
-                    "rc_mode",
-                    match rate_control {
-                        "cqp" => "CQP",
-                        "cbr" => "CBR",
-                        _ => "VBR",
-                    },
-                );
-
-                if rate_control == "cqp" {
-                    options.set("qp", cfg.video_option("quality").unwrap_or("23"));
-                } else {
-                    options.set("maxrate", &maxrate.to_string());
-                    options.set("bufsize", &maxrate.saturating_mul(2).to_string());
-                }
-            }
-            Self::VpxVp9 => {
-                options.set("deadline", cfg.video_option("deadline").unwrap_or("good"));
-                options.set("cpu-used", cfg.video_option("cpu-used").unwrap_or("4"));
-                options.set("row-mt", cfg.video_option("row-mt").unwrap_or("auto"));
-                options.set("maxrate", &maxrate.to_string());
-                options.set("bufsize", &maxrate.saturating_mul(2).to_string());
-
-                match cfg.video_option("rate_control") {
-                    Some("cbr") => options.set("minrate", &maxrate.to_string()),
-                    _ => options.set("crf", cfg.video_option("quality").unwrap_or("31")),
-                }
-            }
-            Self::SvtAv1 => {
-                options.set("preset", cfg.video_option("preset").unwrap_or("8"));
-                options.set("crf", cfg.video_option("quality").unwrap_or("30"));
-                options.set("maxrate", &maxrate.to_string());
-                options.set("bufsize", &maxrate.saturating_mul(2).to_string());
-            }
-            Self::Software => {}
-        }
-    }
-}
-
-/// Checks whether an encoder's private option class (`AVCodec::priv_class`)
-/// declares the given option name, without needing to open/instantiate the
-/// encoder. This mirrors what `ffmpeg -h encoder=<name>` shows under
-/// "AVOptions" and is the generic, ffmpeg-native way to introspect what an
-/// encoder actually supports at runtime.
-fn video_encoder_has_option(codec: codec::codec::Codec, name: &str) -> bool {
-    let Ok(name) = CString::new(name) else {
-        return false;
-    };
-
-    unsafe {
-        let priv_class = (*codec.as_ptr()).priv_class;
-
-        if priv_class.is_null() {
-            return false;
-        }
-
-        !ffmpeg::ffi::av_opt_find(
-            ptr::from_ref(&priv_class).cast_mut().cast(),
-            name.as_ptr(),
-            ptr::null(),
-            0,
-            ffmpeg::ffi::AV_OPT_SEARCH_FAKE_OBJ,
-        )
-        .is_null()
-    }
-}
-
-/// Some encoders (most notably stateless HW wrapper encoders like the V4L2
-/// M2M drivers used on Raspberry Pi / embedded SoCs) expose none of the
-/// rate-control AVOptions this pipeline normally configures (maxrate,
-/// bufsize, crf, qp). They only honor a plain target bitrate set on
-/// `AVCodecContext::bit_rate`, otherwise the underlying driver falls back
-/// to its own default (observed around 300-400kbps on a Raspberry Pi 4).
-/// Detecting this by capability instead of by codec name means any encoder
-/// with the same limitation - present today or added to ffmpeg later - is
-/// handled automatically, without maintaining a per-codec list here.
-fn video_encoder_is_bitrate_only(codec: codec::codec::Codec) -> bool {
-    ["maxrate", "bufsize", "crf", "qp"]
-        .iter()
-        .all(|option| !video_encoder_has_option(codec, option))
-}
-
-fn qsv_uses_icq(cfg: &OutputConfig) -> bool {
-    cfg.video_option("rate_control") == Some("icq")
-}
-
-fn qsv_global_quality(cfg: &OutputConfig) -> i32 {
-    cfg.video_option("global_quality")
-        .and_then(|value| value.parse().ok())
-        .filter(|value| (1..=51).contains(value))
-        .unwrap_or(23)
-}
-
-fn restore_video_bitrate_metadata(backend: VideoEncoderBackend, cfg: &OutputConfig) -> bool {
-    !(backend == VideoEncoderBackend::Qsv && qsv_uses_icq(cfg)
-        || backend == VideoEncoderBackend::Vaapi && cfg.video_option("rate_control") == Some("cqp"))
-}
-
-/// Use a keyframe interval that fits exactly into the requested HLS segment.
-/// Keeping it at two seconds or less balances segment precision and bitrate.
-fn hls_gop_size(fps: u32, segment_seconds: u32) -> u32 {
-    let segment_seconds = segment_seconds.max(1);
-    let gop_seconds = (1..=segment_seconds.min(2))
-        .rev()
-        .find(|seconds| segment_seconds.is_multiple_of(*seconds))
-        .unwrap_or(1);
-
-    fps.saturating_mul(gop_seconds)
-}
-
-fn stream_gop_size(fps: u32) -> u32 {
-    fps.saturating_mul(2)
-}
-
-fn open_audio_stream(
-    octx: &mut format::context::Output,
-    cfg: &OutputConfig,
-    global_header: bool,
-    variant: Option<&HlsVariant>,
-) -> Result<AudioOutputStream> {
-    let audio_codec = if cfg.audio_codec.trim().is_empty() {
-        codec::encoder::find(codec::Id::AAC)
-    } else {
-        codec::encoder::find_by_name(cfg.audio_codec.trim())
-    }
-    .with_context(|| format!("audio encoder {:?} not found", cfg.audio_codec))?;
-    let mut audio_stream = octx.add_stream(audio_codec)?;
-    let audio_ctx = audio_encoder_context(
-        audio_codec,
-        &cfg.audio_options,
-        cfg.sample_rate,
-        variant.map_or(cfg.audio_bitrate, |variant| variant.audio_bitrate),
-        cfg.audio_time_base,
-        global_header,
-    )
-    .map_err(anyhow::Error::msg)?;
-    let input_sample_format = engine_audio_sample_format();
-    let encoder_sample_format = audio_ctx.format();
-    let audio_encoder = audio_ctx.open_as(audio_codec)?;
-    audio_stream.set_parameters(&audio_encoder);
-    audio_stream.set_time_base(cfg.audio_time_base);
-    let resampler = (encoder_sample_format != input_sample_format)
-        .then(|| {
-            resampling::Context::get(
-                input_sample_format,
-                ChannelLayout::STEREO,
-                cfg.sample_rate,
-                encoder_sample_format,
-                ChannelLayout::STEREO,
-                cfg.sample_rate,
-            )
-        })
-        .transpose()?;
-    Ok(AudioOutputStream {
-        stream_index: audio_stream.index(),
-        encoder: audio_encoder,
-        resampler,
-    })
-}
-
 fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOutputStream> {
     let mut stream = octx.add_stream(codec::Id::WEBVTT)?;
     stream.set_time_base(Rational(1, 1_000));
@@ -1527,6 +1011,65 @@ fn open_subtitle_stream(octx: &mut format::context::Output) -> Result<SubtitleOu
     Ok(SubtitleOutputStream {
         stream_index: stream.index(),
     })
+}
+
+fn open_video_stream(
+    octx: &mut format::context::Output,
+    cfg: &OutputConfig,
+    output_format: EncodedFormat,
+    global_header: bool,
+    variant: Option<&HlsVariant>,
+) -> Result<VideoOutputStream> {
+    let input_size = match &output_format {
+        EncodedFormat::Recording {
+            input_width,
+            input_height,
+            ..
+        } => (*input_width, *input_height),
+        _ => cfg.input_size.unwrap_or((cfg.width, cfg.height)),
+    };
+    let gop = match &output_format {
+        EncodedFormat::Hls {
+            segment_seconds, ..
+        } => Some(super::encoding::video::hls_gop_size(
+            cfg.fps,
+            *segment_seconds,
+        )),
+        EncodedFormat::Stream { .. } | EncodedFormat::Recording { .. } => {
+            Some(super::encoding::video::stream_gop_size(cfg.fps))
+        }
+        EncodedFormat::Auto => None,
+    };
+    let encoder = super::encoding::video::open_video_encoder(
+        octx.nb_streams() as usize,
+        cfg,
+        global_header,
+        variant,
+        input_size,
+        gop,
+        matches!(output_format, EncodedFormat::Hls { .. }),
+    )?;
+    let mut stream = octx.add_stream(codec::Id::None)?;
+    stream.set_parameters(&encoder.encoder);
+    stream.set_time_base(cfg.video_time_base);
+    Ok(encoder)
+}
+fn open_audio_stream(
+    octx: &mut format::context::Output,
+    cfg: &OutputConfig,
+    global_header: bool,
+    variant: Option<&HlsVariant>,
+) -> Result<AudioOutputStream> {
+    let encoder = super::encoding::audio::open_audio_encoder(
+        octx.nb_streams() as usize,
+        cfg,
+        global_header,
+        variant,
+    )?;
+    let mut stream = octx.add_stream(codec::Id::None)?;
+    stream.set_parameters(&encoder.encoder);
+    stream.set_time_base(cfg.audio_time_base);
+    Ok(encoder)
 }
 
 #[cfg(test)]
@@ -1542,6 +1085,8 @@ mod open_tests {
     };
 
     use super::*;
+    use ffmpeg::util::format::pixel::Pixel;
+    use ffmpeg::{ChannelLayout, format::Sample};
 
     #[test]
     fn processed_audio_bypasses_volume_but_regular_audio_still_applies_it() {
@@ -1571,8 +1116,8 @@ mod open_tests {
         output.encode_processed_audio(&audio).unwrap();
         audio.set_pts(Some(32));
         output.encode_audio(&audio).unwrap();
-        assert_eq!(output.audio_buffer[0].len(), 64);
-        for (index, &sample) in output.audio_buffer[0].iter().enumerate() {
+        assert_eq!(output.audio_buffer.samples[0].len(), 64);
+        for (index, &sample) in output.audio_buffer.samples[0].iter().enumerate() {
             let expected = if index < 32 { 0.2 } else { 0.3 };
             assert!((sample - expected).abs() < 1e-6);
         }
@@ -1772,166 +1317,6 @@ mod open_tests {
 
         assert_eq!(dictionary.get("hls_time"), None);
         assert_eq!(dictionary.get("hls_start_number_source"), Some("epoch"));
-    }
-
-    #[test]
-    fn selects_nvenc_for_cpu_backed_hardware_encoding() {
-        assert_eq!(
-            VideoEncoderBackend::from_name("h264_nvenc"),
-            VideoEncoderBackend::Nvenc
-        );
-        assert_eq!(
-            VideoEncoderBackend::from_name("hevc_nvenc"),
-            VideoEncoderBackend::Nvenc
-        );
-        assert_eq!(
-            VideoEncoderBackend::from_name("libx264"),
-            VideoEncoderBackend::X264
-        );
-        assert_eq!(
-            VideoEncoderBackend::from_name("libx265"),
-            VideoEncoderBackend::X265
-        );
-        assert_eq!(
-            VideoEncoderBackend::from_name("h264_qsv"),
-            VideoEncoderBackend::Qsv
-        );
-        assert_eq!(VideoEncoderBackend::Qsv.cpu_input_format(), Pixel::NV12);
-        assert_eq!(
-            VideoEncoderBackend::from_name("h264_vaapi"),
-            VideoEncoderBackend::Vaapi
-        );
-        assert_eq!(VideoEncoderBackend::Vaapi.cpu_input_format(), Pixel::NV12);
-        assert_eq!(VideoEncoderBackend::Vaapi.encoder_format(), Pixel::VAAPI);
-        assert_eq!(
-            VideoEncoderBackend::from_name("mpeg4"),
-            VideoEncoderBackend::Software
-        );
-    }
-
-    #[test]
-    fn bitrate_only_encoders_are_detected_without_naming_them() {
-        // h264_v4l2m2m (and other stateless V4L2 M2M wrappers on e.g.
-        // Raspberry Pi) expose no maxrate/bufsize/crf/qp AVOptions - only a
-        // plain AVCodecContext::bit_rate is honored. This must be detected
-        // by capability probing, not by matching "_v4l2m2m" or any other
-        // codec name, so any encoder with the same limitation is covered.
-        let Some(codec) = codec::encoder::find_by_name("h264_v4l2m2m") else {
-            return;
-        };
-
-        assert_eq!(
-            VideoEncoderBackend::from_name(codec.name()),
-            VideoEncoderBackend::Software
-        );
-        assert!(video_encoder_is_bitrate_only(codec));
-
-        let cfg = OutputConfig::new(320, 240, 25, 44_100);
-        assert!(VideoEncoderBackend::Software.uses_target_bitrate(&cfg, codec));
-    }
-
-    #[test]
-    fn encoders_with_rate_control_avoptions_are_not_bitrate_only() {
-        let codec = codec::encoder::find(codec::Id::H264).expect("libx264 is required for tests");
-
-        assert!(!video_encoder_is_bitrate_only(codec));
-
-        let cfg = OutputConfig::new(320, 240, 25, 44_100);
-        assert!(!VideoEncoderBackend::X264.uses_target_bitrate(&cfg, codec));
-    }
-
-    #[test]
-    fn qsv_input_scaler_allocates_nv12_output() {
-        let mut scaler = scaling::Context::get(
-            Pixel::YUV420P,
-            320,
-            240,
-            Pixel::NV12,
-            320,
-            240,
-            scaling::flag::Flags::BILINEAR,
-        )
-        .unwrap();
-        let input = frame::Video::new(Pixel::YUV420P, 320, 240);
-        let mut output = frame::Video::empty();
-
-        scaler.run(&input, &mut output).unwrap();
-
-        assert_eq!(output.format(), Pixel::NV12);
-        assert_eq!((output.width(), output.height()), (320, 240));
-    }
-
-    #[test]
-    fn vaapi_uses_nv12_before_hardware_upload() {
-        let mut scaler = scaling::Context::get(
-            Pixel::YUV420P,
-            320,
-            240,
-            VideoEncoderBackend::Vaapi.cpu_input_format(),
-            320,
-            240,
-            scaling::flag::Flags::BILINEAR,
-        )
-        .unwrap();
-        let input = frame::Video::new(Pixel::YUV420P, 320, 240);
-        let mut output = frame::Video::empty();
-
-        scaler.run(&input, &mut output).unwrap();
-
-        assert_eq!(output.format(), Pixel::NV12);
-    }
-
-    #[test]
-    fn qsv_icq_sets_global_quality_on_the_codec_context() {
-        let mut cfg = OutputConfig::new(320, 240, 25, 44_100);
-        cfg.video_options
-            .insert("rate_control".into(), "icq".into());
-        cfg.video_options
-            .insert("global_quality".into(), "17".into());
-
-        assert!(qsv_uses_icq(&cfg));
-        assert_eq!(qsv_global_quality(&cfg), 17);
-        assert!(!restore_video_bitrate_metadata(
-            VideoEncoderBackend::Qsv,
-            &cfg
-        ));
-
-        cfg.video_options
-            .insert("global_quality".into(), "invalid".into());
-        assert_eq!(qsv_global_quality(&cfg), 23);
-
-        cfg.video_options
-            .insert("rate_control".into(), "vbr".into());
-        assert!(restore_video_bitrate_metadata(
-            VideoEncoderBackend::Qsv,
-            &cfg
-        ));
-    }
-
-    #[test]
-    fn vaapi_cqp_does_not_restore_bitrate_metadata() {
-        let mut cfg = OutputConfig::new(320, 240, 25, 44_100);
-        cfg.video_options
-            .insert("rate_control".into(), "cqp".into());
-
-        assert!(!restore_video_bitrate_metadata(
-            VideoEncoderBackend::Vaapi,
-            &cfg
-        ));
-    }
-
-    #[test]
-    fn hls_gop_is_a_short_divisor_of_the_segment_duration() {
-        assert_eq!(hls_gop_size(25, 6), 50);
-        assert_eq!(hls_gop_size(25, 5), 25);
-        assert_eq!(hls_gop_size(30, 4), 60);
-        assert_eq!(hls_gop_size(50, 1), 50);
-    }
-
-    #[test]
-    fn stream_gop_is_two_seconds() {
-        assert_eq!(stream_gop_size(25), 50);
-        assert_eq!(stream_gop_size(30), 60);
     }
 
     #[test]
@@ -2252,7 +1637,7 @@ mod open_tests {
         fs::create_dir_all(&dir).unwrap();
         let recording_path = dir.join("recording");
         let recording = crate::RecordingConfig::new(recording_path.to_string_lossy(), 300)
-            .with_encode(crate::RecordingEncodeConfig {
+            .with_encode(crate::EncodingConfig {
                 width: 160,
                 height: 120,
                 video_codec: "libx264".to_string(),
@@ -2545,10 +1930,8 @@ mod open_tests {
         )
         .unwrap();
 
-        for stream in output.octx.streams() {
-            let parameters = stream.parameters();
-            let bit_rate = parameters.bit_rate();
-            assert!(bit_rate > 0, "stream {} has no bitrate", stream.index());
+        for bit_rate in &output.mux.stream_bitrates {
+            assert!(*bit_rate > 0, "stream has no bitrate");
         }
 
         for index in 0..16 {

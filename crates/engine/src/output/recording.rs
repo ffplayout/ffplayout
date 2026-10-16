@@ -39,6 +39,24 @@ impl RecordingMuxer {
         video_encoder: &codec::encoder::video::Encoder,
         audio_encoder: &codec::encoder::audio::Encoder,
     ) -> Result<Self> {
+        Self::open_parameters(
+            config,
+            (
+                codec::Parameters::from(video_encoder),
+                video_encoder.time_base(),
+            ),
+            (
+                codec::Parameters::from(audio_encoder),
+                audio_encoder.time_base(),
+            ),
+        )
+    }
+
+    pub(super) fn open_parameters(
+        config: &RecordingConfig,
+        video: (codec::Parameters, Rational),
+        audio: (codec::Parameters, Rational),
+    ) -> Result<Self> {
         if config.path.trim().is_empty() {
             return Err(anyhow!("recording path must not be empty"));
         }
@@ -52,11 +70,13 @@ impl RecordingMuxer {
         let (pattern, monitor) = prepare_recording(config)?;
         let mut octx = segment_output_context(&pattern)?;
 
-        let mut video_stream = octx.add_stream_with(video_encoder)?;
-        video_stream.set_time_base(video_encoder.time_base());
+        let mut video_stream = octx.add_stream(codec::Id::None)?;
+        video_stream.set_parameters(video.0);
+        video_stream.set_time_base(video.1);
         let video_stream_index = video_stream.index();
-        let mut audio_stream = octx.add_stream_with(audio_encoder)?;
-        audio_stream.set_time_base(audio_encoder.time_base());
+        let mut audio_stream = octx.add_stream(codec::Id::None)?;
+        audio_stream.set_parameters(audio.0);
+        audio_stream.set_time_base(audio.1);
         let audio_stream_index = audio_stream.index();
 
         let mut options = ffmpeg::Dictionary::new();

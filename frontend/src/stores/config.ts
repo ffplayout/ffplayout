@@ -20,6 +20,7 @@ export const useConfig = defineStore('config', {
         playoutSaved: {} as PlayoutConfigExt,
         outputs: [] as PlayoutOutput[],
         outputCodecs: {
+            moq: { video: [], audio: [] },
             hls: { video: [], audio: [] },
             rtmp: { video: [], audio: [] },
             srt: { video: [], audio: [] },
@@ -119,6 +120,24 @@ export const useConfig = defineStore('config', {
                     data.playlist.startInSec = timeToSeconds(data.playlist.day_start ?? 0)
                     data.playlist.lengthInSec = timeToSeconds(data.playlist.length ?? this.playlistLength)
 
+                    data.outputs ??= []
+                    for (const output of [data.output, ...data.outputs]) {
+                        output.public_moq ??= false
+                        output.enabled ??= true
+                        output.label ??= ''
+                        output.inherit_resolution ??= false
+                        output.share_encoding ??= true
+                        output.encoding_source_id ??= null
+                        output.encoding_variant ??= ''
+                    }
+                    const previousProgram =
+                        [data.output, ...data.outputs].find((output) => output.enabled && output.mode === 'desktop') ??
+                        data.output
+                    data.program ??= {
+                        width: previousProgram.width,
+                        height: previousProgram.height,
+                        fps: previousProgram.fps,
+                    }
                     this.playout = data
                     this.playoutSaved = cloneDeep(data)
                 })
@@ -137,7 +156,7 @@ export const useConfig = defineStore('config', {
                 headers: authStore.authHeader,
             })
                 .then((data: PlayoutOutput[]) => {
-                    this.outputs = data
+                    if (this.channels[this.i]?.id === id) this.outputs = data
                 })
                 .catch(() => {
                     indexStore.msgAlert('error', i18n.t('config.noPlayoutConfig'), 3)
@@ -169,6 +188,22 @@ export const useConfig = defineStore('config', {
             this.playlistLength = timeToSeconds(obj.playlist.length)
             this.playout.playlist.startInSec = timeToSeconds(obj.playlist.day_start)
             this.playout.playlist.lengthInSec = timeToSeconds(obj.playlist.length)
+
+            const collection = [obj.output, ...(obj.outputs ?? [])] as PlayoutConfigExt['output'][]
+            const firstEnabled = collection.findIndex((output) => output.enabled)
+            if (firstEnabled < 0) throw new Error(i18n.t('config.outputAtLeastOne'))
+            // Preserve the legacy wire format while exposing a collection in the UI.
+            if (firstEnabled > 0) collection.unshift(collection.splice(firstEnabled, 1)[0]!)
+            obj.output = collection[0]
+            obj.outputs = collection.slice(1)
+            for (const output of collection) {
+                output.share_encoding = output.encoding_source_id !== null
+                output.fps = obj.program?.fps ?? obj.output.fps
+                if (output.inherit_resolution && obj.program) {
+                    output.width = obj.program.width
+                    output.height = obj.program.height
+                }
+            }
 
             const update = await authFetch<{ requires_restart: boolean }>(`/api/playout/config/${id}`, {
                 method: 'PUT',

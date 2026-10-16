@@ -130,7 +130,16 @@ pub struct TokenRefreshRequest {
     pub refresh: String,
 }
 
+/// MoQ dependencies enable AWS-LC alongside the application JWT backend.
+/// Select ffplayout's existing JWT backend before either library uses JWT crypto.
+pub fn init_jwt_crypto() {
+    let _ = jsonwebtoken::crypto::rust_crypto::DEFAULT_PROVIDER.install_default();
+}
+
 fn jwt_secret() -> Result<&'static str, ServiceError> {
+    // Also cover library users and tests that do not enter the app's main.
+    init_jwt_crypto();
+
     let config = GLOBAL_SETTINGS.get().ok_or_else(|| {
         error!("JWT configuration has not been initialized");
         ServiceError::InternalServerError
@@ -641,6 +650,36 @@ mod tests {
             token: None,
             two_factor: false,
         }
+    }
+
+    #[test]
+    fn explicit_jwt_provider_signs_and_verifies_with_additive_features() {
+        init_jwt_crypto();
+        // Initialization is idempotent, including before a second JWT operation.
+        init_jwt_crypto();
+        let secret = b"jwt-provider-regression-test-only";
+        let claims = Claims::access(user(), Role::GlobalAdmin);
+        let token = jsonwebtoken::encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret),
+        )
+        .unwrap();
+        let decoded = jsonwebtoken::decode::<Claims>(
+            &token,
+            &DecodingKey::from_secret(secret),
+            &Validation::default(),
+        )
+        .unwrap();
+        assert_eq!(decoded.claims, claims);
+        assert!(
+            jsonwebtoken::decode::<Claims>(
+                &token,
+                &DecodingKey::from_secret(b"wrong-key"),
+                &Validation::default()
+            )
+            .is_err()
+        );
     }
 
     #[test]

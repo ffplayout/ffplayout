@@ -19,7 +19,11 @@ fn auth_routes() -> Router<AppState> {
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
+    let routes = Router::new()
+        .route(
+            "/api/moq/capabilities",
+            get(|| async { axum::Json(serde_json::json!({"available": true})) }),
+        )
         .nest("/auth", auth_routes())
         .nest(
             "/api",
@@ -57,6 +61,10 @@ pub fn routes() -> Router<AppState> {
                     get(get_playout_config).put(update_playout_config),
                 )
                 .route("/playout/outputs/{id}", get(get_playout_outputs))
+                .route(
+                    "/playout/outputs/{id}/{output}/retry",
+                    post(retry_playout_output),
+                )
                 .route("/playout/codecs/{id}", get(get_playout_codecs))
                 .route("/text/fonts", get(get_font_families))
                 .route("/presets/{id}", get(get_presets))
@@ -78,5 +86,7 @@ pub fn routes() -> Router<AppState> {
         )
         .nest("/data", sse::routes::data_routes())
         .route("/file/{id}/{*filename}", get(get_file))
-        .route("/public/{id}/{public}/{*file_stem}", get(get_public))
+        .route("/public/{id}/{public}/{*file_stem}", get(get_public));
+
+    routes.merge(crate::moq::routes())
 }

@@ -245,7 +245,6 @@ mod enabled {
         BENCH.with(|bench| *bench.borrow_mut() = Some(handle));
     }
 
-    #[cfg(feature = "tokio")]
     pub(crate) fn current() -> Option<BenchHandle> {
         BENCH.with(|bench| bench.borrow().as_ref().cloned())
     }
@@ -336,7 +335,7 @@ pub(crate) use enabled::{
     finish, measure, measure_overlay, measure_success, set_report_interval, start,
 };
 
-#[cfg(all(feature = "processing-bench", feature = "tokio"))]
+#[cfg(feature = "processing-bench")]
 pub(crate) use enabled::current;
 
 #[cfg(feature = "processing-bench")]
@@ -359,7 +358,7 @@ pub(crate) fn start(_channel_id: Option<i32>) -> BenchHandle {
 #[inline]
 pub(crate) fn activate(_handle: BenchHandle) {}
 
-#[cfg(all(not(feature = "processing-bench"), feature = "tokio"))]
+#[cfg(not(feature = "processing-bench"))]
 #[inline]
 pub(crate) fn current() -> Option<BenchHandle> {
     None

@@ -6,7 +6,7 @@ use sqlx::{
 use crate::{
     db::models::Recording,
     utils::{
-        config::{Recording as RecordingConfig, RecordingSource},
+        config::{EncodingSource, Recording as RecordingConfig},
         errors::ProcessError,
     },
 };
@@ -58,9 +58,9 @@ pub async fn update_recording_on(
     recording: &RecordingConfig,
 ) -> Result<SqliteQueryResult, ProcessError> {
     let source = match recording.source {
-        RecordingSource::HlsVariant => "hls_variant",
-        RecordingSource::Stream => "stream",
-        RecordingSource::Encode => "encode",
+        EncodingSource::HlsVariant => "hls_variant",
+        EncodingSource::Stream => "stream",
+        EncodingSource::Encode => "encode",
     };
     let video_options = serde_json::to_string(&recording.video_options)?;
     let audio_options = serde_json::to_string(&recording.audio_options)?;
@@ -90,7 +90,7 @@ mod tests {
         db_migrate(&pool).await.unwrap();
         let recording = RecordingConfig {
             enable: true,
-            source: RecordingSource::Encode,
+            source: EncodingSource::Encode,
             source_output_id: None,
             variant: String::new(),
             path: "/srv/recordings/channel-1".to_string(),

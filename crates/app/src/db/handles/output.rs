@@ -9,7 +9,7 @@ pub async fn select_outputs(pool: &SqlitePool, channel: i32) -> Result<Vec<Outpu
     const QUERY: &str = "SELECT output.*, config.channel_id
         FROM config_output output
         JOIN config ON config.id = output.config_id
-        WHERE config.channel_id = $1";
+        WHERE config.channel_id = $1 ORDER BY output.priority, output.id";
 
     let result = sqlx::query_as(QUERY).bind(channel).fetch_all(pool).await?;
 
@@ -165,12 +165,309 @@ pub async fn update_output_on(
     Ok(result)
 }
 
+/// Persist the enabled collection atomically; old disabled presets remain available.
+pub async fn save_outputs_on(
+    connection: &mut SqliteConnection,
+    config_id: i32,
+    config: &mut crate::utils::config::PlayoutConfig,
+) -> Result<(), ProcessError> {
+    sqlx::query("UPDATE config_output SET active = 0, configured = 0 WHERE config_id = $1")
+        .bind(config_id)
+        .execute(&mut *connection)
+        .await?;
+    let channel_id: i32 = sqlx::query_scalar("SELECT channel_id FROM config WHERE id = $1")
+        .bind(config_id)
+        .fetch_one(&mut *connection)
+        .await?;
+
+    for output in std::iter::once(&mut config.output).chain(config.outputs.iter_mut()) {
+        output.share_encoding = output.encoding_source_id.is_some();
+        let record = Output {
+            id: output.id,
+            channel_id,
+            active: output.enabled,
+            label: output.label.clone(),
+            configured: true,
+            inherit_resolution: output.inherit_resolution,
+            share_encoding: output.share_encoding,
+            encoding_source_id: output.encoding_source_id,
+            encoding_variant: output.encoding_variant.clone(),
+            public_moq: output.public_moq,
+            runtime_status: None,
+            runtime_error: None,
+            runtime_retryable: false,
+            name: output.mode.to_string(),
+            hls_variants: output.hls_variants.join(";"),
+            stream_url: output.stream_url.clone(),
+            stream_type: Some(
+                serde_json::to_value(output.stream_type)?
+                    .as_str()
+                    .unwrap_or("rtmp")
+                    .to_string(),
+            ),
+            stream_format: Some(output.stream_format.clone()),
+            hls_playlist_name: Some(output.hls_playlist_name.clone()),
+            hls_segment_duration: Some(i64::from(output.hls_segment_duration)),
+            hls_list_size: Some(i64::from(output.hls_list_size)),
+            desktop_fullscreen: output.desktop_fullscreen,
+            width: i64::from(output.width),
+            height: i64::from(output.height),
+            fps: output.fps,
+            video_codec: Some(output.video_codec.clone()),
+            video_options: serde_json::to_string(&output.video_options)?,
+            protocol_options: serde_json::to_string(&output.protocol_options)?,
+            muxer_options: serde_json::to_string(&output.muxer_options)?,
+            metadata_options: serde_json::to_string(&output.metadata_options)?,
+            audio_codec: Some(output.audio_codec.clone()),
+            audio_options: serde_json::to_string(&output.audio_options)?,
+            audio_bitrate: Some(i64::from(output.audio_bitrate)),
+        };
+
+        if output.id == 0 {
+            output.id = insert_output(&mut *connection, config_id, &record, output.enabled).await?;
+        } else {
+            let result = update_output_on(
+                connection,
+                output.id,
+                channel_id,
+                &record.hls_variants,
+                &record.stream_url,
+                record.stream_type.as_deref(),
+                record.stream_format.as_deref(),
+                record.hls_playlist_name.as_deref(),
+                record.hls_segment_duration,
+                record.hls_list_size,
+                record.desktop_fullscreen,
+                record.width,
+                record.height,
+                record.fps,
+                record.video_codec.as_deref(),
+                &record.video_options,
+                &record.protocol_options,
+                &record.muxer_options,
+                &record.metadata_options,
+                record.audio_codec.as_deref(),
+                &record.audio_options,
+                record.audio_bitrate,
+            )
+            .await?;
+            if result.rows_affected() != 1 {
+                return Err(ProcessError::Custom(format!(
+                    "Output {} does not belong to channel {channel_id}",
+                    output.id
+                )));
+            }
+        }
+        sqlx::query(
+            "UPDATE config_output SET active = $4, name = $3, configured = 1, label = $5, inherit_resolution = $6, share_encoding = $7, encoding_source_id = $8, encoding_variant = $9, public_moq = $10 WHERE id = $1 AND config_id = $2",
+        )
+        .bind(output.id)
+        .bind(config_id)
+        .bind(&record.name)
+        .bind(output.enabled)
+        .bind(&output.label)
+        .bind(output.inherit_resolution)
+        .bind(output.share_encoding)
+        .bind(output.encoding_source_id)
+        .bind(&output.encoding_variant)
+        .bind(output.public_moq)
+        .execute(&mut *connection)
+        .await?;
+    }
+
+    sqlx::query("UPDATE config SET program_format = $2 WHERE id = $1")
+        .bind(config_id)
+        .bind(
+            config
+                .program
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?,
+        )
+        .execute(&mut *connection)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn select_program_format(
+    pool: &SqlitePool,
+    config_id: i32,
+) -> Result<Option<crate::utils::config::ProgramFormat>, ProcessError> {
+    let value: Option<String> =
+        sqlx::query_scalar("SELECT program_format FROM config WHERE id = $1")
+            .bind(config_id)
+            .fetch_one(pool)
+            .await?;
+
+    Ok(value
+        .map(|value| serde_json::from_str(&value))
+        .transpose()?)
+}
+
+/// Public access follows the saved output setting, independently of encoder restarts.
+pub async fn moq_access(pool: &SqlitePool, channel: i32) -> Result<Option<bool>, ProcessError> {
+    Ok(sqlx::query_scalar("SELECT public_moq FROM config_output WHERE config_id = (SELECT id FROM config WHERE channel_id = $1) AND active = 1 AND name = 'moq' LIMIT 1")
+        .bind(channel).fetch_optional(pool).await?)
+}
+
 #[cfg(test)]
 mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
 
     use super::*;
     use crate::{db::handles::db_migrate, utils::config::OutputMode};
+
+    #[tokio::test]
+    async fn moq_uses_output_rows_and_the_schema_accepts_future_codec_names() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        db_migrate(&pool).await.unwrap();
+        let side_tables: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('config_preview', 'config_moq')")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(side_tables, 0);
+        let mut output = Output::new(1, OutputMode::Moq);
+        output.video_codec = Some("future_av1_encoder".into());
+        let id = insert_output(&pool, 1, &output, false).await.unwrap();
+        let stored = select_outputs(&pool, 1)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|output| output.id == id)
+            .unwrap();
+        assert_eq!(stored.video_codec.as_deref(), Some("future_av1_encoder"));
+    }
+
+    #[tokio::test]
+    async fn parallel_instances_round_trip_and_invalid_ids_roll_back_the_selection() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        db_migrate(&pool).await.unwrap();
+        let records = select_outputs(&pool, 1).await.unwrap();
+        let primary = records.iter().find(|output| output.active).unwrap().clone();
+        let mut config = crate::utils::config::PlayoutConfig {
+            output: crate::utils::config::Output::from_record(primary.clone()),
+            ..Default::default()
+        };
+        let mut stream =
+            crate::utils::config::Output::from_record(Output::new(1, OutputMode::Stream));
+        stream.stream_url = "rtmp://example.invalid/one".into();
+        config.outputs.push(stream.clone());
+        stream.stream_url = "rtmp://example.invalid/two".into();
+        config.outputs.push(stream);
+        let mut transaction = pool.begin().await.unwrap();
+        save_outputs_on(&mut transaction, 1, &mut config)
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+        assert_ne!(config.outputs[0].id, config.outputs[1].id);
+        let selected = select_outputs(&pool, 1).await.unwrap();
+        assert_eq!(selected.iter().filter(|output| output.active).count(), 3);
+        for output in &config.outputs {
+            assert!(
+                selected
+                    .iter()
+                    .any(|record| record.id == output.id && record.stream_url == output.stream_url)
+            );
+        }
+        let selected_id = super::super::select_configuration(&pool, 1)
+            .await
+            .unwrap()
+            .output_id;
+        assert_eq!(selected_id, primary.id);
+        config.outputs[0].id = i32::MAX;
+        let mut transaction = pool.begin().await.unwrap();
+        assert!(
+            save_outputs_on(&mut transaction, 1, &mut config)
+                .await
+                .is_err()
+        );
+        transaction.rollback().await.unwrap();
+        assert_eq!(
+            select_outputs(&pool, 1)
+                .await
+                .unwrap()
+                .iter()
+                .filter(|output| output.active)
+                .count(),
+            3
+        );
+    }
+
+    #[tokio::test]
+    async fn disabled_instances_names_and_program_survive_save_without_changing_enabled_outputs() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        db_migrate(&pool).await.unwrap();
+        let primary = select_outputs(&pool, 1)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|output| output.active)
+            .unwrap();
+        let mut config = crate::utils::config::PlayoutConfig {
+            output: crate::utils::config::Output::from_record(primary),
+            program: Some(crate::utils::config::ProgramFormat {
+                width: 1920,
+                height: 1080,
+                fps: 25.0,
+            }),
+            ..Default::default()
+        };
+        let mut additional =
+            crate::utils::config::Output::from_record(Output::new(1, OutputMode::Stream));
+        additional.label = "Streamingplattform".into();
+        additional.public_moq = true;
+        additional.enabled = false;
+        additional.inherit_resolution = true;
+        additional.share_encoding = false;
+        additional.encoding_source_id = Some(config.output.id);
+        additional.encoding_variant = "small".into();
+        config.outputs.push(additional);
+        let mut transaction = pool.begin().await.unwrap();
+        save_outputs_on(&mut transaction, 1, &mut config)
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+        let records = select_outputs(&pool, 1).await.unwrap();
+        let saved = records
+            .iter()
+            .find(|output| output.id == config.outputs[0].id)
+            .unwrap();
+        assert!(!saved.active);
+        assert!(saved.configured);
+        assert!(saved.inherit_resolution);
+        assert!(saved.share_encoding);
+        assert_eq!(saved.encoding_source_id, Some(config.output.id));
+        assert_eq!(saved.encoding_variant, "small");
+        assert_eq!(saved.label, "Streamingplattform");
+        assert!(saved.public_moq);
+        assert!(crate::utils::config::Output::from_record(saved.clone()).public_moq);
+        assert_eq!(records.iter().filter(|output| output.active).count(), 1);
+        assert_eq!(
+            select_program_format(&pool, 1)
+                .await
+                .unwrap()
+                .unwrap()
+                .width,
+            1920
+        );
+        let restored = crate::utils::config::Output::from_record(saved.clone());
+        assert!(!restored.enabled);
+        assert!(restored.inherit_resolution);
+        assert_eq!(restored.encoding_source_id, Some(config.output.id));
+        assert_eq!(restored.encoding_variant, "small");
+        assert_eq!(config.active_outputs().count(), 1);
+    }
 
     #[tokio::test]
     async fn output_insert_select_and_update_are_scoped_to_the_channel() {

@@ -23,6 +23,14 @@ ffmpeg-filter = ["ff-engine/ffmpeg-filter"]
 ffmpeg-device = ["ff-engine/ffmpeg-device"]
 
 [dependencies]
+url = "2"
+moq-auth = "=0.2"
+futures-util = { version = "0.3", features = ["sink"] }
+tokio-tungstenite = { version = "0.30" }
+anyhow = { version = "1" }
+hang = { version = "0.21" }
+moq-mux = { version = "0.10" }
+moq-relay = { version = "0.17", default-features = false, features = ["noq", "websocket"] }
 ff-engine = { path = "../engine", default-features = false, features = [
     "tokio",
 ] }
@@ -37,6 +45,7 @@ axum = { version = "0.8", default-features = false, features = [
     "original-uri",
     "query",
     "tokio",
+    "ws",
     "tracing",
 ] }
 argon2 = "0.6"
@@ -79,7 +88,7 @@ real = { version = "0.1", features = ["axum"] }
 regex = "1"
 relative-path = "2"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "aws_lc_rs"] }
 sanitize-filename = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

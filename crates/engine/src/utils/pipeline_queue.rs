@@ -1,0 +1,345 @@
+use std::{
+    collections::VecDeque,
+    sync::{
+        Arc, Condvar, Mutex, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
+
+use anyhow::{Result, anyhow, bail};
+
+pub(crate) const POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+/// Cancellation belongs to one playback generation. No queue or worker from
+/// that generation is retained when the next clip/seek starts.
+#[derive(Default)]
+pub(crate) struct PipelineControl {
+    cancelled: AtomicBool,
+    error: Mutex<Option<String>>,
+    wake: Condvar,
+}
+
+impl PipelineControl {
+    pub(crate) fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+        self.wake.notify_all();
+    }
+
+    pub(crate) fn cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn fail(&self, error: impl std::fmt::Display) {
+        let mut stored = self.error.lock().unwrap_or_else(PoisonError::into_inner);
+        if stored.is_none() && !self.cancelled() {
+            *stored = Some(error.to_string());
+        }
+        self.cancel();
+    }
+
+    pub(crate) fn check(&self) -> Result<()> {
+        if self.cancelled() {
+            let error = self.error.lock().unwrap_or_else(PoisonError::into_inner);
+            bail!(
+                "{}",
+                error.as_deref().unwrap_or("playback pipeline cancelled")
+            );
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn wait(&self, duration: Duration) -> Result<()> {
+        let error = self.error.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.cancelled() {
+            drop(error);
+        } else {
+            drop(
+                self.wake
+                    .wait_timeout(error, duration)
+                    .unwrap_or_else(PoisonError::into_inner),
+            );
+        }
+
+        self.check()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct QueueLimits {
+    pub(crate) items: usize,
+    pub(crate) bytes: usize,
+    pub(crate) duration_us: i64,
+}
+
+struct Entry<T> {
+    item: T,
+    bytes: usize,
+    timestamp_us: Option<i64>,
+}
+
+struct State<T> {
+    entries: VecDeque<Entry<T>>,
+    bytes: usize,
+    closed: bool,
+}
+
+pub(crate) struct PipelineQueue<T> {
+    state: Mutex<State<T>>,
+    changed: Condvar,
+    limits: QueueLimits,
+    control: Arc<PipelineControl>,
+}
+
+impl<T> PipelineQueue<T> {
+    pub(crate) fn new(limits: QueueLimits, control: Arc<PipelineControl>) -> Arc<Self> {
+        Arc::new(Self {
+            state: Mutex::new(State {
+                entries: VecDeque::new(),
+                bytes: 0,
+                closed: false,
+            }),
+            changed: Condvar::new(),
+            limits,
+            control,
+        })
+    }
+
+    pub(crate) fn send(&self, item: T, bytes: usize, timestamp_us: Option<i64>) -> Result<()> {
+        if bytes > self.limits.bytes {
+            bail!(
+                "media item ({bytes} bytes) exceeds pipeline queue budget ({})",
+                self.limits.bytes
+            );
+        }
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        loop {
+            self.control.check()?;
+            if state.closed {
+                bail!("playback queue closed");
+            }
+            let full = self.full(&state, bytes, timestamp_us);
+            if !full {
+                break;
+            }
+            let (next, _) = self
+                .changed
+                .wait_timeout(state, POLL_INTERVAL)
+                .unwrap_or_else(PoisonError::into_inner);
+            state = next;
+        }
+        state.entries.push_back(Entry {
+            item,
+            bytes,
+            timestamp_us,
+        });
+        state.bytes += bytes;
+        self.changed.notify_all();
+
+        Ok(())
+    }
+
+    fn full(&self, state: &State<T>, bytes: usize, timestamp_us: Option<i64>) -> bool {
+        let range = timestamp_us
+            .into_iter()
+            .chain(state.entries.iter().filter_map(|entry| entry.timestamp_us));
+        let (first, last) = range.fold((i64::MAX, i64::MIN), |(first, last), pts| {
+            (first.min(pts), last.max(pts))
+        });
+
+        state.entries.len() >= self.limits.items
+            || state.bytes.saturating_add(bytes) > self.limits.bytes
+            || (!state.entries.is_empty() && last.saturating_sub(first) > self.limits.duration_us)
+    }
+
+    /// Lets the input scheduler identify cross-track backpressure before a
+    /// demux send sleeps. The send itself still rechecks every queue bound.
+    pub(crate) fn would_block(&self, bytes: usize, timestamp_us: Option<i64>) -> bool {
+        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        self.full(&state, bytes, timestamp_us)
+    }
+
+    pub(crate) fn try_send(
+        &self,
+        item: T,
+        bytes: usize,
+        timestamp_us: Option<i64>,
+    ) -> Result<Option<T>> {
+        self.control.check()?;
+        if bytes > self.limits.bytes {
+            bail!("media item exceeds pipeline queue budget");
+        }
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if state.closed {
+            bail!("playback queue closed");
+        }
+        if self.full(&state, bytes, timestamp_us) {
+            return Ok(Some(item));
+        }
+        state.entries.push_back(Entry {
+            item,
+            bytes,
+            timestamp_us,
+        });
+        state.bytes += bytes;
+        self.changed.notify_all();
+
+        Ok(None)
+    }
+
+    pub(crate) fn try_recv(&self) -> Result<Option<T>> {
+        self.control.check()?;
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let item = state.entries.pop_front().map(|entry| {
+            state.bytes -= entry.bytes;
+            entry.item
+        });
+        self.changed.notify_all();
+
+        Ok(item)
+    }
+
+    pub(crate) fn recv(&self) -> Result<Option<T>> {
+        loop {
+            if let Some(item) = self.try_recv()? {
+                return Ok(Some(item));
+            }
+            let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+            if state.closed && state.entries.is_empty() {
+                return Ok(None);
+            }
+            drop(
+                self.changed
+                    .wait_timeout(state, POLL_INTERVAL)
+                    .unwrap_or_else(PoisonError::into_inner),
+            );
+        }
+    }
+
+    /// Drop stale media without losing queued rate/subtitle control messages.
+    pub(crate) fn discard_where(&self, mut discard: impl FnMut(&T) -> bool) {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        state.entries.retain(|entry| !discard(&entry.item));
+        state.bytes = state.entries.iter().map(|entry| entry.bytes).sum();
+        self.changed.notify_all();
+    }
+
+    pub(crate) fn front_timestamp(&self) -> Option<i64> {
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entries
+            .front()
+            .and_then(|entry| entry.timestamp_us)
+    }
+
+    pub(crate) fn closed(&self) -> bool {
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .closed
+    }
+
+    pub(crate) fn drained(&self) -> bool {
+        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        state.closed && state.entries.is_empty()
+    }
+
+    pub(crate) fn close(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .closed = true;
+        self.changed.notify_all();
+    }
+}
+
+pub(crate) fn run_worker(control: &PipelineControl, operation: impl FnOnce() -> Result<()>) {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation))
+        .unwrap_or_else(|_| Err(anyhow!("playback worker panicked")));
+    if let Err(error) = result {
+        control.fail(format!("{error:#}"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        sync::{Barrier, mpsc},
+        thread,
+    };
+
+    use super::*;
+
+    #[test]
+    fn cancellation_releases_full_senders_and_empty_receivers() {
+        let control = Arc::new(PipelineControl::default());
+        let full = PipelineQueue::new(
+            QueueLimits {
+                items: 1,
+                bytes: 8,
+                duration_us: 100,
+            },
+            control.clone(),
+        );
+        let empty = PipelineQueue::<u8>::new(
+            QueueLimits {
+                items: 1,
+                bytes: 8,
+                duration_us: 100,
+            },
+            control.clone(),
+        );
+        full.send(1_u8, 8, Some(0)).unwrap();
+        let barrier = Arc::new(Barrier::new(3));
+        let (sender, receiver) = mpsc::channel();
+        let workers: Vec<_> = [full.clone(), empty]
+            .into_iter()
+            .enumerate()
+            .map(|(index, queue)| {
+                let barrier = barrier.clone();
+                let sender = sender.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    let failed = if index == 0 {
+                        queue.send(2, 1, Some(1)).is_err()
+                    } else {
+                        queue.recv().is_err()
+                    };
+                    sender.send(failed).unwrap();
+                })
+            })
+            .collect();
+        barrier.wait();
+        control.cancel();
+        for _ in 0..2 {
+            assert!(receiver.recv_timeout(Duration::from_millis(250)).unwrap());
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        assert!(control.wait(Duration::ZERO).is_err());
+    }
+
+    #[test]
+    fn queue_bounds_payload_and_media_span_without_losing_rejected_items() {
+        let control = Arc::new(PipelineControl::default());
+        let queue = PipelineQueue::new(
+            QueueLimits {
+                items: 4,
+                bytes: 8,
+                duration_us: 100,
+            },
+            control,
+        );
+        queue.send(1, 6, Some(0)).unwrap();
+        assert_eq!(queue.try_send(2, 3, Some(1)).unwrap(), Some(2));
+        assert_eq!(queue.try_send(3, 1, Some(101)).unwrap(), Some(3));
+        assert_eq!(queue.try_send(4, 1, Some(100)).unwrap(), None);
+        queue.close();
+        assert_eq!(queue.recv().unwrap(), Some(1));
+        assert_eq!(queue.recv().unwrap(), Some(4));
+        assert_eq!(queue.recv().unwrap(), None);
+    }
+}

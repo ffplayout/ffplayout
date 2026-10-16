@@ -2,22 +2,23 @@ use std::{error::Error, fmt, time::Instant};
 
 use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{
-    Rational, Rescale, codec, format, frame, media,
+    Rational, Rescale, codec, format, frame, media, rescale,
     software::{resampling, scaling},
     util::{channel_layout::ChannelLayout, format::pixel::Pixel, format::sample::Sample},
 };
 use log::{debug, trace, warn};
 
+mod pipeline;
+
 use crate::{
     LogoFade, PlaybackControl,
     benchmark::{self, Stage},
     compositor::{logo::*, text::TextOverlay},
-    input::diagnostics::LiveInputStage,
     input::timestamps::LiveTimestampTracker,
     output::FrameOutput,
     utils::{
         config::{OutputConfig, TextOverlayState},
-        ffmpeg::{make_video_frame_writable, reference_video_frame},
+        ffmpeg::{make_video_frame_writable, reference_video_frame, trim_audio_start},
         helper::{even, is_live_input, open_media_input},
     },
 };
@@ -490,7 +491,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
     timeline: &mut Timeline,
     output: &mut O,
     options: InputPlaybackOptions<'_>,
-    mut external_audio: Option<&mut ExternalAudioInput>,
+    external_audio: Option<&mut ExternalAudioInput>,
 ) -> Result<()> {
     timeline.source_timestamp_mode = options.preserve_source_timestamps;
     timeline.live_audio_source_us = None;
@@ -526,13 +527,31 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         return Err(anyhow!("{label} contains no audio or video stream"));
     }
 
+    let source_origin_us = if timeline.source_timestamp_mode {
+        0
+    } else {
+        ictx.streams()
+            .filter(|stream| {
+                matches!(
+                    stream.parameters().medium(),
+                    media::Type::Video | media::Type::Audio
+                )
+            })
+            .filter(|stream| {
+                external_audio.is_none() || stream.parameters().medium() == media::Type::Video
+            })
+            .filter_map(|stream| pipeline::stream_start_us(&stream))
+            .min()
+            .unwrap_or(0)
+    };
+
     if let Some(seek_seconds) = seek_seconds {
         if has_invalid_time_base {
             return Err(anyhow!(
                 "cannot seek {label}: its selected stream has an invalid time base"
             ));
         }
-        seek_input(&mut ictx, seek_seconds)?;
+        seek_input_at(&mut ictx, seek_seconds, source_origin_us)?;
     }
 
     let video_stream = ictx.streams().best(media::Type::Video);
@@ -551,8 +570,24 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             ) as i64
     });
 
-    let video_duration_us = video_stream.as_ref().and_then(stream_duration_us);
-    let audio_duration_us = audio_stream.as_ref().and_then(stream_duration_us);
+    let video_duration_us = video_stream.as_ref().and_then(|stream| {
+        stream_duration_us(stream).map(|duration| {
+            duration.saturating_add(
+                pipeline::stream_start_us(stream)
+                    .unwrap_or(source_origin_us)
+                    .saturating_sub(source_origin_us),
+            )
+        })
+    });
+    let audio_duration_us = audio_stream.as_ref().and_then(|stream| {
+        stream_duration_us(stream).map(|duration| {
+            duration.saturating_add(
+                pipeline::stream_start_us(stream)
+                    .unwrap_or(source_origin_us)
+                    .saturating_sub(source_origin_us),
+            )
+        })
+    });
     let video_end_pts = video_duration_us.map(|duration_us| {
         let duration_us = duration_us.saturating_sub(seek_us);
         timeline.video_pts
@@ -601,256 +636,52 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
         cfg,
     );
 
-    let trim_start_us = (seek_us > 0).then_some(seek_us);
-    let mut video = match video_stream {
-        Some(ref stream) => Some(VideoDecoder::new(
-            stream,
-            cfg,
-            label,
-            trim_start_us,
-            timeline.video_pts,
-            timeline.text_pts,
-            video_limit_pts.or(video_end_pts),
-        )?),
-        None => None,
-    };
-    let mut audio = if external_audio.is_none() {
-        match audio_stream {
-            Some(ref stream) => Some(AudioDecoder::new(stream, cfg, label, trim_start_us)?),
-            None => None,
-        }
-    } else {
-        None
-    };
-
-    let video_index = video_stream.as_ref().map(format::stream::Stream::index);
-    let audio_index = audio
+    let video = video_stream.as_ref().map(pipeline::StreamSpec::new);
+    let audio = audio_stream
         .as_ref()
-        .and_then(|_| audio_stream.as_ref().map(format::stream::Stream::index));
-    let mut video_finished = video.is_none();
-    let video_finished_notified = video_finished;
-    let mut decoded_video_frames = 0_i64;
-    let mut decoded_audio_samples = 0_i64;
-    output.set_video_end(video_end_pts)?;
-    output.clear_vtt_subtitles()?;
+        .filter(|_| external_audio.is_none())
+        .map(pipeline::StreamSpec::new);
 
-    if let Some(media_path) = options.subtitles_media_path {
-        benchmark::measure(Stage::Vtt, || {
-            output.write_vtt_subtitles(
-                media_path,
-                timeline.video_pts * 1_000 / i64::from(cfg.fps),
-                seek_us / 1_000,
-            )
-        })?;
-    }
-
-    if video_finished {
-        output.video_decoded()?;
-        output.video_finished()?;
-    }
-
-    let result = (|| -> Result<()> {
-        if let Some(diagnostics) = output.input_diagnostics() {
-            diagnostics.set_stage(LiveInputStage::ReadingPacket);
-        }
-
-        for (stream, packet) in ictx.packets() {
-            check_playback_control(options.playback_control)?;
-
-            if let Some(diagnostics) = output.input_diagnostics() {
-                diagnostics.packet_received();
-            }
-
-            if Some(stream.index()) == video_index {
-                if !video_finished && let Some(video) = video.as_mut() {
-                    if let Some(diagnostics) = output.input_diagnostics() {
-                        diagnostics.set_stage(LiveInputStage::ProcessingVideo);
-                    }
-
-                    benchmark::measure(Stage::VideoDecode, || video.decoder.send_packet(&packet))?;
-                    receive_video_frames(
-                        cfg,
-                        audio_padding_end_pts,
-                        video,
-                        timeline,
-                        output,
-                        &mut decoded_video_frames,
-                        video_limit_pts,
-                        logo_fade_plan,
-                        media_fade_plan,
-                        options.playback_control,
-                    )?;
-
-                    if !has_audio && !timeline.source_timestamp_mode {
-                        synchronize_silence_to_video(
-                            cfg,
-                            timeline,
-                            output,
-                            options.playback_control,
-                        )?;
-                    } else if let Some(external_audio) = external_audio.as_deref_mut() {
-                        external_audio.decode_until(
-                            cfg,
-                            timeline,
-                            output,
-                            Some(audio_pts_for_video_position(cfg, timeline, audio_limit_pts)),
-                            &mut decoded_audio_samples,
-                            options.playback_control,
-                        )?;
-                    }
-                }
-            } else if Some(stream.index()) == audio_index
-                && let Some(audio) = audio.as_mut()
-            {
-                if let Some(diagnostics) = output.input_diagnostics() {
-                    diagnostics.set_stage(LiveInputStage::ProcessingAudio);
-                }
-
-                benchmark::measure(Stage::AudioDecode, || audio.decoder.send_packet(&packet))?;
-                receive_audio_frames(
-                    audio,
-                    timeline,
-                    output,
-                    &mut decoded_audio_samples,
-                    audio_limit_pts,
-                    media_fade_plan,
-                    options.playback_control,
-                )?;
-            }
-
-            // av_read_frame reports EOF for the whole input, not for each
-            // stream. Use reliable per-stream durations to start padding as
-            // soon as one embedded track reaches its declared end. Waiting
-            // for container EOF can otherwise enqueue minutes of old audio or
-            // video timestamps after the other stream has already advanced.
-            if external_audio.is_none() && !timeline.source_timestamp_mode {
-                let last_video_frame = video
-                    .as_ref()
-                    .and_then(|video| video.last_composited_frame.as_ref());
-                synchronize_declared_stream_ends(
-                    cfg,
-                    timeline,
-                    output,
-                    video_padding_end_pts,
-                    audio_padding_end_pts,
-                    last_video_frame,
-                    options.playback_control,
-                )?;
-            }
-
-            if duration_us.is_some()
-                && video_limit_pts.is_none_or(|limit| timeline.video_pts >= limit)
-                && audio_limit_pts.is_none_or(|limit| timeline.audio_pts >= limit)
-            {
-                break;
-            }
-
-            if let Some(diagnostics) = output.input_diagnostics() {
-                diagnostics.set_stage(LiveInputStage::ReadingPacket);
-            }
-        }
-
-        if let Some(diagnostics) = output.input_diagnostics() {
-            diagnostics.set_stage(LiveInputStage::Finishing);
-        }
-
-        finish_video(
-            cfg,
-            audio_padding_end_pts,
-            &mut video,
-            timeline,
-            output,
-            &mut decoded_video_frames,
-            &mut decoded_audio_samples,
-            &mut video_finished,
+    pipeline::play(
+        label,
+        ictx,
+        cfg,
+        timeline,
+        output,
+        options,
+        external_audio,
+        pipeline::Plan {
+            video,
+            audio,
+            has_audio,
+            seek_us,
+            source_origin_us,
             video_limit_pts,
+            audio_limit_pts,
+            video_end_pts,
+            audio_end_pts,
+            audio_padding_end_pts,
+            video_padding_end_pts,
             logo_fade_plan,
             media_fade_plan,
-            options.playback_control,
-            !has_audio && !timeline.source_timestamp_mode,
-            external_audio.as_deref_mut(),
-        )?;
-
-        if !has_audio && !timeline.source_timestamp_mode {
-            synchronize_silence_to_video(cfg, timeline, output, options.playback_control)?;
-        }
-
-        if let Some(audio) = audio.as_mut() {
-            benchmark::measure(Stage::AudioDecode, || audio.decoder.send_eof())?;
-            receive_audio_frames(
-                audio,
-                timeline,
-                output,
-                &mut decoded_audio_samples,
-                audio_limit_pts,
-                media_fade_plan,
-                options.playback_control,
-            )?;
-            flush_audio_resampler(
-                audio,
-                timeline,
-                output,
-                &mut decoded_audio_samples,
-                audio_limit_pts,
-                media_fade_plan,
-            )?;
-        } else if let Some(external_audio) = external_audio.as_deref_mut() {
-            let target_audio_pts = if has_video {
-                Some(audio_pts_for_video_position(cfg, timeline, audio_limit_pts))
-            } else {
-                audio_limit_pts
-            };
-            external_audio.decode_until(
-                cfg,
-                timeline,
-                output,
-                target_audio_pts,
-                &mut decoded_audio_samples,
-                options.playback_control,
-            )?;
-        }
-
-        if decoded_video_frames == 0 && decoded_audio_samples == 0 {
-            return Err(anyhow!(
-                "{label} produced no decodable audio or video frames"
-            ));
-        }
-
-        let last_video_frame = video
-            .as_ref()
-            .and_then(|video| video.last_composited_frame.as_ref());
-        // The live receiver aligns the two source tracks when it takes over.
-        // Applying file-style end padding here would reintroduce synthetic
-        // timeline PTS into a stream whose source PTS are intentionally kept.
-        if !timeline.source_timestamp_mode {
-            synchronize_timeline(cfg, timeline, output, last_video_frame)?;
-        }
-
-        if !video_finished_notified {
-            output.video_finished()?;
-        }
-
-        Ok(())
-    })();
-
-    if let Err(error) = &result
-        && error.downcast_ref::<PlaybackSkipped>().is_some()
-    {
-        let last_video_frame = video
-            .as_ref()
-            .and_then(|video| video.last_composited_frame.as_ref());
-        synchronize_after_skip(cfg, timeline, output, last_video_frame)?;
-    }
-
-    result
+        },
+    )
 }
 
 fn seek_input(ictx: &mut format::context::Input, seek_seconds: f64) -> Result<()> {
+    seek_input_at(ictx, seek_seconds, 0)
+}
+
+fn seek_input_at(
+    ictx: &mut format::context::Input,
+    seek_seconds: f64,
+    origin_us: i64,
+) -> Result<()> {
     if !seek_seconds.is_finite() || seek_seconds < 0.0 {
         return Err(anyhow!("seek position must be a non-negative number"));
     }
 
-    let seek_ts = seconds_to_microseconds(seek_seconds);
+    let seek_ts = seconds_to_microseconds(seek_seconds).saturating_add(origin_us);
     ictx.seek(seek_ts, ..seek_ts)
         .or_else(|_| ictx.seek(seek_ts, ..))
         .with_context(|| format!("failed to seek first input to {seek_seconds:.3} seconds"))
@@ -1248,6 +1079,7 @@ fn encode_composited_frame<O: FrameOutput>(
     } else {
         timeline.video_pts
     }));
+    output.set_frame_timeline(timeline);
     output.encode_video(&frame)?;
     let output_position_ms = frame
         .pts()
@@ -1360,39 +1192,56 @@ fn receive_audio_frames<O: FrameOutput>(
 ) -> Result<()> {
     let mut raw = frame::Audio::empty();
 
-    while benchmark::measure_success(Stage::AudioDecode, || audio.decoder.receive_frame(&mut raw))
-        .is_ok()
-    {
-        if let Some(diagnostics) = output.input_diagnostics() {
-            diagnostics.audio_decoded();
-        }
-
+    loop {
         check_playback_control(playback_control)?;
-
         if limit_pts.is_some_and(|limit| timeline.audio_pts >= limit) {
             return Ok(());
         }
-
-        if is_before_trim_start(
-            raw.timestamp().or_else(|| raw.pts()),
-            audio.input_time_base,
-            audio.trim_start_us,
-        ) {
-            continue;
+        let (mut converted, source_pts) = if let Some(pending) = audio.pending_output.take() {
+            pending
+        } else {
+            if benchmark::measure_success(Stage::AudioDecode, || {
+                audio.decoder.receive_frame(&mut raw)
+            })
+            .is_err()
+            {
+                break;
+            }
+            if let Some(diagnostics) = output.input_diagnostics() {
+                diagnostics.audio_decoded();
+            }
+            if raw.channel_layout().is_empty() {
+                raw.set_channel_layout(audio.input_channel_layout);
+            }
+            let buffered = audio.resampler.delay().map_or(0, |delay| delay.output);
+            let converted = benchmark::measure(Stage::AudioProcess, || {
+                resample_audio_frame(&mut audio.resampler, &raw)
+            })?;
+            let source_pts = raw.timestamp().or_else(|| raw.pts()).map(|pts| {
+                pts.rescale(audio.input_time_base, Rational(1, converted.rate() as i32))
+                    .saturating_sub(buffered)
+            });
+            (converted, source_pts)
+        };
+        let mut source_pts = source_pts;
+        if let Some((start_us, pts)) = audio.trim_start_us.zip(source_pts) {
+            let start = start_us.rescale(rescale::TIME_BASE, Rational(1, converted.rate() as i32));
+            let skip = start.saturating_sub(pts).max(0) as usize;
+            if skip >= converted.samples() {
+                continue;
+            }
+            if skip > 0 {
+                converted = trim_audio_start(&converted, skip)?;
+                source_pts = Some(pts.saturating_add(skip as i64));
+            }
         }
-
-        if raw.channel_layout().is_empty() {
-            raw.set_channel_layout(audio.input_channel_layout);
-        }
-
-        let mut converted = benchmark::measure(Stage::AudioProcess, || {
-            resample_audio_frame(&mut audio.resampler, &raw)
-        })?;
-        let source_pts = raw
-            .timestamp()
-            .or_else(|| raw.pts())
-            .map(|pts| pts.rescale(audio.input_time_base, Rational(1, converted.rate() as i32)));
-        let samples = converted.samples() as i64;
+        let samples = retain_audio_tail(
+            audio,
+            &mut converted,
+            timeline.audio_pts,
+            limit_pts,
+            source_pts,
+        )?;
         let source_pts = if timeline.source_timestamp_mode {
             source_pts.map(|pts| {
                 let rate = i64::from(converted.rate());
@@ -1431,6 +1280,7 @@ fn receive_audio_frames<O: FrameOutput>(
         if let Some(callback) = &audio.audio_frame_callback {
             callback.emit(&converted);
         }
+        output.set_frame_timeline(timeline);
         output.encode_audio_with_gain_hold(
             &converted,
             media_fade_plan.audio_gain_at(timeline.audio_pts + samples) < 1.0,
@@ -1441,6 +1291,42 @@ fn receive_audio_frames<O: FrameOutput>(
     }
 
     Ok(())
+}
+
+/// Clip limits are sample positions, not codec frame boundaries. Keeping a
+/// complete final AAC frame here makes the end synchronizer add another video
+/// frame, extending every trimmed playlist clip.
+fn limit_audio_samples(frame: &mut frame::Audio, start_pts: i64, limit_pts: Option<i64>) -> i64 {
+    let samples = frame.samples() as i64;
+    let samples = limit_pts.map_or(samples, |limit| {
+        samples.min(limit.saturating_sub(start_pts).max(0))
+    });
+    frame.set_samples(samples as usize);
+
+    samples
+}
+
+/// Keep a split codec frame for the next request. External audio spans video
+/// loop iterations, so a scheduler boundary must never discard its samples.
+fn retain_audio_tail(
+    audio: &mut AudioDecoder,
+    frame: &mut frame::Audio,
+    start_pts: i64,
+    limit_pts: Option<i64>,
+    source_pts: Option<i64>,
+) -> Result<i64> {
+    let original = frame.samples();
+    let keep = limit_pts.map_or(original, |limit| {
+        original.min(limit.saturating_sub(start_pts).max(0) as usize)
+    });
+    if keep < original {
+        audio.pending_output = Some((
+            trim_audio_start(frame, keep)?,
+            source_pts.map(|pts| pts.saturating_add(keep as i64)),
+        ));
+    }
+
+    Ok(limit_audio_samples(frame, start_pts, limit_pts))
 }
 
 fn resample_audio_frame(
@@ -1493,7 +1379,13 @@ fn flush_audio_resampler<O: FrameOutput>(
         let delay = benchmark::measure(Stage::AudioProcess, || {
             audio.resampler.flush(&mut converted)
         })?;
-        let samples = converted.samples() as i64;
+        let samples = retain_audio_tail(
+            audio,
+            &mut converted,
+            timeline.audio_pts,
+            limit_pts,
+            audio.source_next_pts,
+        )?;
 
         if samples == 0 {
             return Ok(());
@@ -1505,6 +1397,7 @@ fn flush_audio_resampler<O: FrameOutput>(
         } else {
             timeline.audio_pts
         }));
+        output.set_frame_timeline(timeline);
         output.encode_audio_with_gain_hold(
             &converted,
             media_fade_plan.audio_gain_at(timeline.audio_pts + samples) < 1.0,
@@ -1540,6 +1433,19 @@ fn has_valid_time_base(time_base: Rational) -> bool {
 
 fn has_valid_frame_rate(frame_rate: Rational) -> bool {
     frame_rate.numerator() > 0 && frame_rate.denominator() > 0
+}
+
+fn video_decoder_threads(
+    average_frame_rate: Rational,
+    frame_rate: Rational,
+    output_fps: u32,
+) -> usize {
+    let input_fps = [average_frame_rate, frame_rate]
+        .into_iter()
+        .find(|rate| has_valid_frame_rate(*rate))
+        .map_or(f64::from(output_fps), f64::from);
+
+    ((input_fps * 0.16) as usize).clamp(1, 4)
 }
 
 fn fallback_video_time_base(
@@ -1661,6 +1567,7 @@ struct VideoDecoder {
 }
 
 impl VideoDecoder {
+    #[cfg(test)]
     fn new(
         stream: &format::stream::Stream,
         cfg: &OutputConfig,
@@ -1670,10 +1577,34 @@ impl VideoDecoder {
         scroll_pts: i64,
         end_pts: Option<i64>,
     ) -> Result<Self> {
+        Self::from_spec(
+            &pipeline::StreamSpec::new(stream),
+            cfg,
+            label,
+            trim_start_us,
+            start_pts,
+            scroll_pts,
+            end_pts,
+        )
+    }
+
+    fn from_spec(
+        stream: &pipeline::StreamSpec,
+        cfg: &OutputConfig,
+        label: &str,
+        trim_start_us: Option<i64>,
+        start_pts: i64,
+        scroll_pts: i64,
+        end_pts: Option<i64>,
+    ) -> Result<Self> {
         let mut ctx = codec::context::Context::from_parameters(stream.parameters())?;
-        ctx.set_threading(codec::threading::Config::kind(
-            codec::threading::Type::Frame,
-        ));
+        // Automatic frame threading can retain enough video to exhaust the
+        // bounded A/V read-ahead while the demuxer is feeding audio. Keep its
+        // pipeline below roughly 160 ms, including on machines with many cores.
+        let threads = video_decoder_threads(stream.avg_frame_rate(), stream.rate(), cfg.fps);
+        let mut threading = codec::threading::Config::kind(codec::threading::Type::Frame);
+        threading.count = threads;
+        ctx.set_threading(threading);
         let decoder = ctx.decoder().video()?;
         let stream_time_base = stream.time_base();
         let timestamps_reliable = has_valid_time_base(stream_time_base);
@@ -1873,6 +1804,7 @@ impl FrameRateConverter {
 struct AudioDecoder {
     audio_frame_callback: Option<crate::AudioFrameCallback>,
     source_next_pts: Option<i64>,
+    pending_output: Option<(frame::Audio, Option<i64>)>,
     live_timestamps: LiveTimestampTracker,
     channel_id: i32,
     decoder: codec::decoder::Audio,
@@ -1891,6 +1823,11 @@ pub(crate) struct ExternalAudioInput {
     decoder: AudioDecoder,
     eof: bool,
 }
+
+// SAFETY: the input, decoder and resampler are exclusively owned. The cached
+// channel layout borrows decoder-owned storage, which moves with it and is
+// never accessed concurrently. Scoped workers finish before that borrow ends.
+unsafe impl Send for ExternalAudioInput {}
 
 impl ExternalAudioInput {
     fn open(
@@ -1945,6 +1882,25 @@ impl ExternalAudioInput {
         decoded_samples: &mut i64,
         playback_control: &PlaybackControl,
     ) -> Result<()> {
+        receive_audio_frames(
+            &mut self.decoder,
+            timeline,
+            output,
+            decoded_samples,
+            target_audio_pts,
+            self.fade_plan,
+            playback_control,
+        )?;
+        if self.eof {
+            flush_audio_resampler(
+                &mut self.decoder,
+                timeline,
+                output,
+                decoded_samples,
+                target_audio_pts,
+                self.fade_plan,
+            )?;
+        }
         while !self.eof && target_audio_pts.is_none_or(|target| timeline.audio_pts < target) {
             check_playback_control(playback_control)?;
             let packet = {
@@ -2020,6 +1976,20 @@ impl AudioDecoder {
         label: &str,
         trim_start_us: Option<i64>,
     ) -> Result<Self> {
+        Self::from_spec(
+            &pipeline::StreamSpec::new(stream),
+            cfg,
+            label,
+            trim_start_us,
+        )
+    }
+
+    fn from_spec(
+        stream: &pipeline::StreamSpec,
+        cfg: &OutputConfig,
+        label: &str,
+        trim_start_us: Option<i64>,
+    ) -> Result<Self> {
         let ctx = codec::context::Context::from_parameters(stream.parameters())?;
         let mut decoder = ctx.decoder().audio()?;
         let stream_time_base = stream.time_base();
@@ -2057,6 +2027,7 @@ impl AudioDecoder {
             decoder,
             resampler,
             source_next_pts: None,
+            pending_output: None,
             live_timestamps: LiveTimestampTracker::default(),
             channel_id: cfg.channel_id.unwrap_or_default(),
             input_channel_layout: channel_layout,
@@ -2314,6 +2285,7 @@ fn write_black_frames<O: FrameOutput>(
             overlays.apply(&mut black, timeline);
         }
         black.set_pts(Some(timeline.video_pts));
+        output.set_frame_timeline(timeline);
         output.encode_video(&black)?;
         timeline.video_pts += 1;
     }
@@ -2391,6 +2363,7 @@ fn write_padding_video_frames<O: FrameOutput>(
             // header PTS, so all duplicates can safely share the pixel buffer.
             let mut frame = reference_video_frame(last_video_frame)?;
             frame.set_pts(Some(timeline.video_pts));
+            output.set_frame_timeline(timeline);
             output.encode_video(&frame)?;
             timeline.video_pts += 1;
         }
@@ -2478,6 +2451,7 @@ fn write_silence_frame<O: FrameOutput>(
     for plane in 0..frame.planes() {
         frame.plane_mut::<f32>(plane).fill(0.0);
     }
+    output.set_frame_timeline(timeline);
     output.encode_audio(&frame)?;
     timeline.audio_pts += samples as i64;
 
@@ -2795,6 +2769,23 @@ mod tests {
     }
 
     #[test]
+    fn final_audio_frame_stops_at_the_sample_limit() {
+        let mut frame = frame::Audio::new(
+            ffmpeg_next::format::Sample::F32(ffmpeg_next::format::sample::Type::Planar),
+            1024,
+            ffmpeg_next::ChannelLayout::STEREO,
+        );
+        frame.plane_mut::<f32>(0).fill(0.25);
+        assert_eq!(
+            super::limit_audio_samples(&mut frame, 9216, Some(9600)),
+            384
+        );
+        assert_eq!(frame.samples(), 384);
+        assert!(frame.plane::<f32>(0).iter().all(|value| *value == 0.25));
+        assert_eq!(super::limit_audio_samples(&mut frame, 9600, Some(9600)), 0);
+    }
+
+    #[test]
     fn rounds_both_streams_to_a_shared_boundary() {
         assert_eq!(padding_to_sync(30, 44_101, 30, 44_100).unwrap(), (1, 1_469));
     }
@@ -3031,6 +3022,30 @@ mod tests {
         assert!(!has_valid_time_base(Rational(0, 1)));
         assert!(!has_valid_time_base(Rational(1, 0)));
         assert!(has_valid_time_base(Rational(1, 90_000)));
+    }
+
+    #[test]
+    fn decoder_thread_budget_uses_source_rate_before_output_rate() {
+        assert_eq!(
+            super::video_decoder_threads(Rational(1, 1), Rational(25, 1), 25),
+            1
+        );
+        assert_eq!(
+            super::video_decoder_threads(Rational(25, 1), Rational(25, 1), 25),
+            4
+        );
+        assert_eq!(
+            super::video_decoder_threads(Rational(60, 1), Rational(60, 1), 60),
+            4
+        );
+        assert_eq!(
+            super::video_decoder_threads(Rational(0, 0), Rational(1, 1), 25),
+            1
+        );
+        assert_eq!(
+            super::video_decoder_threads(Rational(0, 0), Rational(0, 0), 25),
+            4
+        );
     }
 
     #[test]

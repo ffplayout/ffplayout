@@ -43,8 +43,14 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - During playlist import, all video clips are validated and, if desired, checked to ensure that the audio track is not completely muted.
 - run multiple channels (experimental *)
 - WebVTT [subtitles](/docs/closed_captions.md) in HLS mode (experimental *)
+- multiple simultaneous [outputs](/docs/output.md) per channel, with individual resolutions and a shared program frame rate (experimental *)
+- explicit encoding sharing between compatible outputs, including selection of an HLS rendition as the encoding source (experimental *)
+- built-in [MoQ playback](/docs/moq.md) in the frontend, with an optional public player that is disabled by default (experimental *)
+- independent output reconnection: automatic retries every 15 seconds for up to three minutes, followed by a manual retry option; successful media delivery resets the retry window (experimental *)
 
 **\* Experimental features do not guarantee the same stability and may fail under unusual circumstances. Code and configuration options may change in the future.**
+
+Configure the new output instances in **Settings → Outputs**. Encoding and output activation changes currently require a channel restart. Reconnection uses the running configuration and keeps other outputs running. Multi-output, shared encoding, MoQ playback and reconnection still need sustained testing with real streaming destinations and browser playback before production use.
 
 ### Requirements
 

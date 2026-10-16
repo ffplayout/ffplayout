@@ -6,8 +6,8 @@ use std::{
 };
 
 use ff_engine::{
-    AsyncPlayout, AudioLevelCallback, ClipResult, HlsHealth, LiveInputBackend, LiveListenerConfig,
-    LogLevel, LogoConfig, LogoFade, OutputConfig, RecordingConfig, RecordingEncodeConfig,
+    AsyncPlayout, AudioLevelCallback, ClipResult, EncodingConfig, HlsHealth, LiveInputBackend,
+    LiveListenerConfig, LogLevel, LogoConfig, LogoFade, OutputConfig, RecordingConfig,
     TextOverlayState,
 };
 use log::*;
@@ -23,7 +23,7 @@ use crate::{
         utils::{Media, get_delta, sec_to_time},
     },
     utils::{
-        config::{ENGINE_AUDIO_SAMPLE_RATE, OutputMode, PlayoutConfig, RecordingSource},
+        config::{ENGINE_AUDIO_SAMPLE_RATE, EncodingSource, OutputMode, PlayoutConfig},
         control::{PlayerCtl, control_state},
         errors::ServiceError,
     },
@@ -47,7 +47,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     if let Ok(mut audio_level) = manager.audio_level.lock() {
         *audio_level = None;
     }
-    let output_config = engine_output_config(
+    let mut output_config = engine_output_config(
         &config,
         manager.audio_effects.clone(),
         manager.live_loudness.clone(),
@@ -56,7 +56,18 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         manager.text_overlay.clone(),
         desktop_control_callback(manager.clone()),
     )?;
-    let playout = open_playout(&config, output_config.clone()).await?;
+    output_config.output_timing_diagnostics = crate::ARGS.timing_diagnostics;
+    let mut moq_attachments = Vec::new();
+    manager.output_status.clear();
+    output_config.output_status = manager.output_status.clone();
+    let parallel = !config.output.discard && config.output.mode != OutputMode::Desktop
+        || !config.outputs.is_empty();
+    let playout = if parallel {
+        super::instances::open_parallel_playout(&config, &mut output_config, &mut moq_attachments)
+            .await?
+    } else {
+        open_playout(&config, output_config.clone()).await?
+    };
     *manager.playback_control.lock().await = playout.playback_control();
     if config.output.mode == OutputMode::Desktop {
         #[cfg(feature = "desktop-cpu")]
@@ -102,12 +113,17 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         info!(channel = config.general.channel_id; "Started {count} live listener(s)");
     }
 
-    let result = match config.output.mode {
-        OutputMode::HLS => play_hls(manager.clone(), &config, &playout).await,
+    let result = match (parallel, &config.output.mode) {
+        (false, OutputMode::HLS) => play_hls(manager.clone(), &config, &playout).await,
         _ => play_loop(manager.clone(), &config, &playout, None).await,
     };
 
     let finish_result = playout.finish().await.map_err(engine_error);
+    for attachment in moq_attachments {
+        if let Err(error) = attachment.finish().await {
+            warn!(channel = config.general.channel_id; "MoQ output shutdown: {error}");
+        }
+    }
     result?;
     finish_result
 }
@@ -256,7 +272,13 @@ async fn play_loop(
         }
 
         let duration = playout_duration(&node);
-        let playout_rate = if config.output.mode == OutputMode::HLS {
+        let playout_rate = if config
+            .active_outputs()
+            .any(|output| output.mode == OutputMode::HLS)
+            && !config
+                .active_outputs()
+                .any(|output| output.mode == OutputMode::Desktop)
+        {
             hls_playout_rate(config, &manager, &node, duration).await
         } else {
             1.0
@@ -423,11 +445,14 @@ async fn open_playout(
                 .map_err(engine_error)
         }
         OutputMode::Desktop => open_desktop_playout(output_config, fallback_duration).await,
+        OutputMode::Moq => Err(ServiceError::Conflict(
+            "MoQ requires the parallel output path".into(),
+        )),
     }
 }
 
 #[cfg(any(feature = "desktop", feature = "desktop-cpu"))]
-async fn open_desktop_playout(
+pub(super) async fn open_desktop_playout(
     output_config: OutputConfig,
     fallback_duration: f64,
 ) -> Result<AsyncPlayout, ServiceError> {
@@ -437,7 +462,7 @@ async fn open_desktop_playout(
 }
 
 #[cfg(not(any(feature = "desktop", feature = "desktop-cpu")))]
-async fn open_desktop_playout(
+pub(super) async fn open_desktop_playout(
     _output_config: OutputConfig,
     _fallback_duration: f64,
 ) -> Result<AsyncPlayout, ServiceError> {
@@ -456,19 +481,30 @@ fn engine_output_config(
     text_overlay_state: TextOverlayState,
     desktop_control_callback: ff_engine::DesktopControlCallback,
 ) -> Result<OutputConfig, ServiceError> {
-    let width = config.output.width;
-    let height = config.output.height;
+    let output = config.output.for_playout();
+    let width = config
+        .program
+        .as_ref()
+        .map_or(output.width, |program| program.width);
+    let height = config
+        .program
+        .as_ref()
+        .map_or(output.height, |program| program.height);
     if width == 0 || height == 0 {
         return Err(ServiceError::Conflict(
             "output size must be greater than zero".to_string(),
         ));
     }
-    if !config.output.fps.is_finite() || config.output.fps <= 0.0 {
+    if !output.fps.is_finite() || output.fps <= 0.0 {
         return Err(ServiceError::Conflict(
             "output fps must be a positive number".to_string(),
         ));
     }
-    let fps = config.output.fps.round() as u32;
+    let fps = config
+        .program
+        .as_ref()
+        .map_or(output.fps, |program| program.fps)
+        .round() as u32;
 
     let logo = config.processing.add_logo.then(|| LogoConfig {
         path: config.processing.logo_path.clone(),
@@ -512,36 +548,38 @@ fn engine_output_config(
             })))
             .with_logo(logo)
             .with_text_overlay_state(text_overlay_state)
-            .with_desktop_fullscreen(config.output.desktop_fullscreen)
+            .with_desktop_fullscreen(output.desktop_fullscreen)
             .with_desktop_control_callback(desktop_control_callback)
             .with_logging(ffmpeg_log_level, ingest_log_level)
             .with_ffmpeg_ignore_lines(config.logging.ignore_lines.clone())
             .with_channel_id(config.general.channel_id)
-            .with_stream_type(config.output.stream_type.engine_stream_type())
-            .with_stream_format(config.output.stream_format.clone())
+            .with_stream_type(output.stream_type.engine_stream_type())
+            .with_stream_format(output.stream_format.clone())
             .with_encoding(
-                config.output.video_codec.clone(),
-                config.output.video_options.clone(),
-                config.output.audio_codec.clone(),
-                config.output.audio_options.clone(),
-                u64::from(config.output.audio_bitrate) * 1_000,
+                output.video_codec.clone(),
+                output.video_options.clone(),
+                output.audio_codec.clone(),
+                output.audio_options.clone(),
+                u64::from(output.audio_bitrate) * 1_000,
             )
-            .with_protocol_options(config.output.protocol_options.clone())
-            .with_muxer_options(config.output.muxer_options.clone())
-            .with_metadata_options(config.output.metadata_options.clone())
+            .with_protocol_options(output.protocol_options.clone())
+            .with_muxer_options(output.muxer_options.clone())
+            .with_metadata_options(output.metadata_options.clone())
             .with_recording(recording),
     )
 }
 
-fn recording_config(config: &PlayoutConfig) -> Result<Option<RecordingConfig>, ServiceError> {
+pub(super) fn recording_config(
+    config: &PlayoutConfig,
+) -> Result<Option<RecordingConfig>, ServiceError> {
     let recording = &config.recording;
     if !recording.enable {
         return Ok(None);
     }
 
     match recording.source {
-        RecordingSource::Stream => {
-            if config.output.mode != OutputMode::Stream {
+        EncodingSource::Stream => {
+            if !matches!(config.output.mode, OutputMode::Stream | OutputMode::Moq) {
                 return disable_incompatible_recording(
                     config,
                     "source \"stream\" requires stream output",
@@ -560,7 +598,7 @@ fn recording_config(config: &PlayoutConfig) -> Result<Option<RecordingConfig>, S
                     .with_minimum_free_space_gb(recording.minimum_free_space_gb),
             ))
         }
-        RecordingSource::HlsVariant => {
+        EncodingSource::HlsVariant => {
             if config.output.mode != OutputMode::HLS {
                 return disable_incompatible_recording(
                     config,
@@ -590,19 +628,25 @@ fn recording_config(config: &PlayoutConfig) -> Result<Option<RecordingConfig>, S
                     .with_minimum_free_space_gb(recording.minimum_free_space_gb),
             ))
         }
-        RecordingSource::Encode => Ok(Some(
+        EncodingSource::Encode => Ok(Some(
             RecordingConfig::new(recording.path.clone(), recording.segment_duration)
                 .with_channel_id(Some(config.general.channel_id))
                 .with_retention_days(recording.retention_days)
                 .with_minimum_free_space_gb(recording.minimum_free_space_gb)
-                .with_encode(RecordingEncodeConfig {
+                .with_encode(EncodingConfig {
                     width: if recording.width == 0 {
-                        config.output.width
+                        config
+                            .program
+                            .as_ref()
+                            .map_or(config.output.width, |program| program.width)
                     } else {
                         recording.width
                     },
                     height: if recording.height == 0 {
-                        config.output.height
+                        config
+                            .program
+                            .as_ref()
+                            .map_or(config.output.height, |program| program.height)
                     } else {
                         recording.height
                     },
@@ -654,7 +698,15 @@ fn desktop_control_callback(manager: ChannelManager) -> ff_engine::DesktopContro
 }
 
 fn validate_supported_config(config: &PlayoutConfig) -> Result<(), ServiceError> {
-    config.output.validate().map_err(ServiceError::Conflict)?;
+    if config.output.discard {
+        config
+            .output
+            .for_playout()
+            .validate()
+            .map_err(ServiceError::Conflict)?;
+    } else {
+        config.validate_outputs().map_err(ServiceError::Conflict)?;
+    }
 
     let audio = &config.audio;
     if !audio.volume.is_finite() || !(0.0..=1.5).contains(&audio.volume) {
@@ -683,8 +735,9 @@ fn subtitle_media_path(config: &PlayoutConfig, source: &str) -> Option<String> {
     })
 }
 
-fn output_url(config: &PlayoutConfig) -> Result<String, ServiceError> {
-    let url = config.output.stream_url.trim();
+pub(super) fn output_url(config: &PlayoutConfig) -> Result<String, ServiceError> {
+    let output = config.output.for_playout();
+    let url = output.stream_url.trim();
     if url.is_empty() {
         Err(ServiceError::Conflict(
             "stream output URL must not be empty".to_string(),
@@ -694,7 +747,7 @@ fn output_url(config: &PlayoutConfig) -> Result<String, ServiceError> {
     }
 }
 
-fn hls_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
+pub(super) fn hls_playlist_path(config: &PlayoutConfig) -> Result<PathBuf, ServiceError> {
     let playlist_name = config.output.hls_playlist_name.trim();
     let relative_path = format!("live/{playlist_name}.m3u8");
     let (path, _, _) = norm_abs_path(&config.channel.public, &relative_path)?;
@@ -712,7 +765,7 @@ fn playout_duration(node: &Media) -> Option<f64> {
     (node.out > node.seek).then_some(node.out - node.seek)
 }
 
-fn engine_error(error: impl fmt::Display) -> ServiceError {
+pub(super) fn engine_error(error: impl fmt::Display) -> ServiceError {
     ServiceError::Conflict(error.to_string())
 }
 
@@ -724,10 +777,10 @@ fn request_shutdown(shutdown: &CancellationToken) {
 mod tests {
     use super::{hls_rate_correction, playout_duration, recording_config, request_shutdown};
     use crate::player::utils::Media;
-    use crate::utils::config::{OutputMode, PlayoutConfig, RecordingSource};
+    use crate::utils::config::{EncodingSource, OutputMode, PlayoutConfig};
     use tokio_util::sync::CancellationToken;
 
-    fn recording_test_config(mode: OutputMode, source: RecordingSource) -> PlayoutConfig {
+    fn recording_test_config(mode: OutputMode, source: EncodingSource) -> PlayoutConfig {
         let mut config = PlayoutConfig::default();
         config.general.channel_id = 1;
         config.output.id = 3;
@@ -818,29 +871,36 @@ mod tests {
 
     #[test]
     fn desktop_override_disables_stream_copy_recording() {
-        let config = recording_test_config(OutputMode::Desktop, RecordingSource::Stream);
+        let config = recording_test_config(OutputMode::Desktop, EncodingSource::Stream);
 
         assert!(recording_config(&config).unwrap().is_none());
     }
 
     #[test]
     fn desktop_override_disables_hls_variant_recording() {
-        let config = recording_test_config(OutputMode::Desktop, RecordingSource::HlsVariant);
+        let config = recording_test_config(OutputMode::Desktop, EncodingSource::HlsVariant);
 
         assert!(recording_config(&config).unwrap().is_none());
     }
 
     #[test]
     fn desktop_override_keeps_dedicated_recording_encode() {
-        let config = recording_test_config(OutputMode::Desktop, RecordingSource::Encode);
+        let config = recording_test_config(OutputMode::Desktop, EncodingSource::Encode);
 
         let recording = recording_config(&config).unwrap().unwrap();
         assert!(recording.encode.is_some());
     }
 
     #[test]
+    fn moq_output_can_copy_its_encoded_packets_to_recording() {
+        let config = recording_test_config(OutputMode::Moq, EncodingSource::Stream);
+        let recording = recording_config(&config).unwrap().unwrap();
+        assert!(recording.encode.is_none());
+    }
+
+    #[test]
     fn inactive_copy_source_disables_recording() {
-        let mut config = recording_test_config(OutputMode::Stream, RecordingSource::Stream);
+        let mut config = recording_test_config(OutputMode::Stream, EncodingSource::Stream);
         config.recording.source_output_id = Some(2);
 
         assert!(recording_config(&config).unwrap().is_none());

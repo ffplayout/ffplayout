@@ -215,6 +215,10 @@ impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
 }
 
 impl<O: FrameOutput> FrameOutput for ProgramAudioOutput<'_, O> {
+    fn playout_clock(&self) -> Option<crate::clock::SharedPlayoutClock> {
+        self.output.playout_clock()
+    }
+
     fn audio_frame_size(&self) -> usize {
         self.output.audio_frame_size()
     }

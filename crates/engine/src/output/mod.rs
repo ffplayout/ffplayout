@@ -5,17 +5,24 @@ use anyhow::Result;
 use anyhow::anyhow;
 use ffmpeg_next::frame;
 
+mod delivery;
 #[cfg(feature = "desktop-base")]
 pub(crate) mod desktop;
+mod diagnostics;
 mod encoded;
+mod encoding;
 mod hls;
+mod mux;
+pub(crate) mod parallel;
 mod recording;
+mod shared;
 mod vtt;
 
 #[cfg(feature = "desktop-base")]
 use crate::benchmark::BenchHandle;
 use crate::{
     HlsHealth,
+    clock::SharedPlayoutClock,
     compositor::logo::{LogoOverlay, blend_logo},
     input::diagnostics::LiveInputDiagnostics,
     utils::config::{HlsSubtitle, HlsVariant, OutputConfig},
@@ -38,6 +45,16 @@ impl fmt::Display for PlaybackStopped {
 impl Error for PlaybackStopped {}
 
 pub(crate) trait FrameOutput {
+    fn set_frame_timeline(&mut self, _timeline: &crate::playout::Timeline) {}
+
+    fn playout_clock(&self) -> Option<SharedPlayoutClock> {
+        None
+    }
+
+    fn input_diagnostics_handle(&self) -> Option<std::sync::Arc<LiveInputDiagnostics>> {
+        None
+    }
+
     fn input_diagnostics(&self) -> Option<&LiveInputDiagnostics> {
         None
     }
@@ -141,30 +158,38 @@ pub(crate) struct Output {
 
 enum OutputKind {
     Encoded(Box<EncodedOutput>),
+    Parallel(Box<parallel::ParallelOutput>),
     #[cfg(feature = "desktop-base")]
     Desktop(Box<DesktopOutput>),
 }
 
 impl Output {
+    pub(crate) fn open_parallel(cfg: &OutputConfig) -> Result<Self> {
+        Ok(Self {
+            kind: OutputKind::Parallel(Box::new(parallel::ParallelOutput::new(cfg)?)),
+        })
+    }
+
     pub(crate) fn open(path: &str, cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
-            kind: OutputKind::Encoded(Box::new(EncodedOutput::open(
-                path,
-                cfg,
-                EncodedFormat::Auto,
-            )?)),
+            kind: OutputKind::Encoded(Box::new(
+                EncodedOutput::open(path, cfg, EncodedFormat::Auto)?.threaded()?,
+            )),
         })
     }
 
     pub(crate) fn open_stream(path: &str, cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
-            kind: OutputKind::Encoded(Box::new(EncodedOutput::open(
-                path,
-                cfg,
-                EncodedFormat::Stream {
-                    muxer: cfg.stream_type.muxer(&cfg.stream_format).to_string(),
-                },
-            )?)),
+            kind: OutputKind::Encoded(Box::new(
+                EncodedOutput::open(
+                    path,
+                    cfg,
+                    EncodedFormat::Stream {
+                        muxer: cfg.stream_type.muxer(&cfg.stream_format).to_string(),
+                    },
+                )?
+                .threaded()?,
+            )),
         })
     }
 
@@ -178,17 +203,20 @@ impl Output {
         hls_health: HlsHealth,
     ) -> Result<Self> {
         Ok(Self {
-            kind: OutputKind::Encoded(Box::new(EncodedOutput::open_with_hls_health(
-                path,
-                cfg,
-                EncodedFormat::Hls {
-                    variants: hls_variants.to_vec(),
-                    subtitle: hls_subtitle,
-                    segment_seconds: hls_segment_seconds,
-                    list_size: hls_list_size,
-                },
-                Some(hls_health),
-            )?)),
+            kind: OutputKind::Encoded(Box::new(
+                EncodedOutput::open_with_hls_health(
+                    path,
+                    cfg,
+                    EncodedFormat::Hls {
+                        variants: hls_variants.to_vec(),
+                        subtitle: hls_subtitle,
+                        segment_seconds: hls_segment_seconds,
+                        list_size: hls_list_size,
+                    },
+                    Some(hls_health),
+                )?
+                .threaded()?,
+            )),
         })
     }
 
@@ -202,6 +230,7 @@ impl Output {
     pub(crate) fn audio_frame_size(&self) -> usize {
         match &self.kind {
             OutputKind::Encoded(output) => output.audio_frame_size(),
+            OutputKind::Parallel(_) => 1024,
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.audio_frame_size(),
         }
@@ -210,6 +239,7 @@ impl Output {
     pub(crate) fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
         match &mut self.kind {
             OutputKind::Encoded(output) => output.encode_video(frame),
+            OutputKind::Parallel(output) => output.encode_video(frame),
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.encode_video(frame),
         }
@@ -218,6 +248,7 @@ impl Output {
     pub(crate) fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
         match &mut self.kind {
             OutputKind::Encoded(output) => output.encode_audio(frame),
+            OutputKind::Parallel(output) => output.encode_audio(frame),
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.encode_audio(frame),
         }
@@ -226,6 +257,7 @@ impl Output {
     pub(crate) fn set_playout_rate(&mut self, rate: f64) {
         match &mut self.kind {
             OutputKind::Encoded(output) => output.set_playout_rate(rate),
+            OutputKind::Parallel(output) => output.set_playout_rate(rate),
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => {}
         }
@@ -234,6 +266,7 @@ impl Output {
     pub(crate) fn finish(self) -> Result<()> {
         match self.kind {
             OutputKind::Encoded(output) => output.finish(),
+            OutputKind::Parallel(output) => output.finish(),
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.finish(),
         }
@@ -252,12 +285,23 @@ impl Output {
     {
         match &mut self.kind {
             OutputKind::Desktop(output) => output.run_operation(benchmark, operation),
-            OutputKind::Encoded(_) => Err(anyhow!("output is not in desktop mode")),
+            OutputKind::Encoded(_) | OutputKind::Parallel(_) => {
+                Err(anyhow!("output is not in desktop mode"))
+            }
         }
     }
 }
 
 impl FrameOutput for Output {
+    fn playout_clock(&self) -> Option<SharedPlayoutClock> {
+        match &self.kind {
+            OutputKind::Encoded(output) => output.playout_clock(),
+            OutputKind::Parallel(output) => Some(output.clock()),
+            #[cfg(feature = "desktop-base")]
+            OutputKind::Desktop(_) => None,
+        }
+    }
+
     fn audio_frame_size(&self) -> usize {
         Self::audio_frame_size(self)
     }
@@ -273,6 +317,7 @@ impl FrameOutput for Output {
     fn encode_processed_audio(&mut self, frame: &frame::Audio) -> Result<()> {
         match &mut self.kind {
             OutputKind::Encoded(output) => output.encode_processed_audio(frame),
+            OutputKind::Parallel(output) => output.encode_processed_audio(frame),
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.encode_audio(frame),
         }
@@ -285,7 +330,9 @@ impl FrameOutput for Output {
         opacity_factor: f64,
     ) {
         match &mut self.kind {
-            OutputKind::Encoded(_) => blend_logo(frame, logo, opacity_factor),
+            OutputKind::Encoded(_) | OutputKind::Parallel(_) => {
+                blend_logo(frame, logo, opacity_factor);
+            }
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => {}
         }
@@ -293,7 +340,7 @@ impl FrameOutput for Output {
 
     fn benchmarks_logo_overlay(&self) -> bool {
         match self.kind {
-            OutputKind::Encoded(_) => true,
+            OutputKind::Encoded(_) | OutputKind::Parallel(_) => true,
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => false,
         }
@@ -306,6 +353,9 @@ impl FrameOutput for Output {
         source_start_ms: i64,
     ) -> Result<()> {
         match &mut self.kind {
+            OutputKind::Parallel(output) => {
+                output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
+            }
             OutputKind::Encoded(output) => {
                 output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
             }
@@ -316,6 +366,7 @@ impl FrameOutput for Output {
 
     fn clear_vtt_subtitles(&mut self) -> Result<()> {
         match &mut self.kind {
+            OutputKind::Parallel(output) => output.clear_vtt_subtitles(),
             OutputKind::Encoded(output) => {
                 output.clear_vtt_subtitles();
 
@@ -329,6 +380,7 @@ impl FrameOutput for Output {
     fn advance_vtt_subtitles(&mut self, output_position_ms: i64) -> Result<()> {
         match &mut self.kind {
             OutputKind::Encoded(output) => output.advance_vtt_subtitles(output_position_ms),
+            OutputKind::Parallel(output) => output.advance_vtt_subtitles(output_position_ms),
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => Ok(()),
         }

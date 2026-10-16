@@ -43,12 +43,30 @@ pub fn validate_directory_path(name: &str, value: &str) -> Result<(), String> {
 fn validate_resolved_path(name: &str, path: &Path) -> Result<(), String> {
     let resolved = resolve_existing_ancestor(path)
         .map_err(|error| format!("{name} path could not be resolved: {error}"))?;
-    let is_application_path = APPLICATION_SYSTEM_PATHS
+    // Compare against the filesystem's real system roots as well. For example,
+    // macOS resolves /etc and /var to /private/etc and /private/var.
+    let system_paths = PROTECTED_SYSTEM_PATHS
         .iter()
-        .any(|allowed| resolved.starts_with(allowed));
-    let is_protected_system_path = PROTECTED_SYSTEM_PATHS
+        .map(|system| {
+            let system = Path::new(system);
+            resolve_existing_ancestor(system).map(|resolved| (system, resolved))
+        })
+        .collect::<std::io::Result<Vec<_>>>()
+        .map_err(|error| format!("{name} system paths could not be resolved: {error}"))?;
+    let is_application_path = APPLICATION_SYSTEM_PATHS.iter().any(|allowed| {
+        resolved.starts_with(allowed)
+            || system_paths.iter().any(|(system, canonical)| {
+                // Translate only the trusted system root, not the complete
+                // allowed directory: an application-directory symlink must
+                // not turn its target into another allowed system path.
+                Path::new(allowed)
+                    .strip_prefix(system)
+                    .is_ok_and(|suffix| resolved.starts_with(canonical.join(suffix)))
+            })
+    });
+    let is_protected_system_path = system_paths
         .iter()
-        .any(|protected| resolved.starts_with(protected));
+        .any(|(system, canonical)| resolved.starts_with(system) || resolved.starts_with(canonical));
     if is_protected_system_path && !is_application_path {
         return Err(format!("{name} path must not point to a system directory"));
     }
@@ -111,6 +129,18 @@ mod tests {
     fn accepts_application_paths() {
         assert!(validate_directory_path("Recording", "/var/lib/ffplayout/recordings/1").is_ok());
         assert!(validate_directory_path("Recording", "/srv/recordings").is_ok());
+    }
+
+    #[test]
+    fn validates_canonical_system_and_application_paths() {
+        let system = super::resolve_existing_ancestor(std::path::Path::new("/etc")).unwrap();
+        assert!(validate_directory_path("Recording", system.to_str().unwrap()).is_err());
+
+        let application = super::resolve_existing_ancestor(std::path::Path::new(
+            "/var/lib/ffplayout/recordings/1",
+        ))
+        .unwrap();
+        assert!(validate_directory_path("Recording", application.to_str().unwrap()).is_ok());
     }
 
     #[cfg(unix)]

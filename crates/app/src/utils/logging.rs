@@ -624,6 +624,17 @@ pub fn init_logging(
         .module("wgpu", LevelFilter::Error)
         .module("winit", LevelFilter::Error);
 
+    for module in [
+        "moq_net::lite::publisher",
+        "moq_net::ietf::publisher",
+        "moq_noq",
+        "moq_noq_proto",
+        "moq_noq_udp",
+        "web_transport_moq",
+    ] {
+        builder.module(module, log_level.min(LevelFilter::Info));
+    }
+
     let mut logger = Logger::with(builder.build()).write_mode(WriteMode::Async);
 
     if ARGS.log_to_console {

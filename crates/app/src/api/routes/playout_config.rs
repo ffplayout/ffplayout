@@ -65,6 +65,7 @@ pub struct OutputCodecOptions {
 
 #[derive(Debug, Serialize)]
 pub struct PlayoutCodecOptions {
+    pub moq: OutputCodecOptions,
     pub hls: OutputCodecOptions,
     pub rtmp: OutputCodecOptions,
     pub srt: OutputCodecOptions,
@@ -94,6 +95,29 @@ fn requires_playout_restart(current: &PlayoutConfig, updated: &PlayoutConfig) ->
             return true;
         };
 
+        for key in ["output", "outputs"] {
+            if key == "output" {
+                if let Some(output) = config
+                    .get_mut(key)
+                    .and_then(serde_json::Value::as_object_mut)
+                {
+                    output.remove("public_moq");
+                    // Legacy sharing flags are normalized on save. The explicit
+                    // encoding source below already describes the runtime change.
+                    output.remove("share_encoding");
+                }
+            } else if let Some(outputs) = config
+                .get_mut(key)
+                .and_then(serde_json::Value::as_array_mut)
+            {
+                for output in outputs {
+                    if let Some(output) = output.as_object_mut() {
+                        output.remove("public_moq");
+                        output.remove("share_encoding");
+                    }
+                }
+            }
+        }
         config.remove("mail");
         config.remove("notification");
         if let Some(listeners) = config
@@ -201,6 +225,18 @@ fn output_codec_options(target: ff_engine::FfmpegOutputTarget) -> OutputCodecOpt
             .map(codec_option)
             .collect(),
     }
+}
+
+fn moq_output_codec_options() -> OutputCodecOptions {
+    let mut options = output_codec_options(ff_engine::FfmpegOutputTarget::Srt);
+    options
+        .video
+        .retain(|codec| crate::utils::moq_codecs::supports_video(&codec.codec_id));
+    options
+        .audio
+        .retain(|codec| crate::utils::moq_codecs::supports_audio(&codec.codec_id));
+
+    options
 }
 
 fn custom_output_codec_options() -> OutputCodecOptions {
@@ -378,63 +414,69 @@ pub async fn update_playout_config(
     ff_engine::AudioEffectsControl::new(data.audio.volume)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     validate_loudness(&data.audio)?;
-    data.output.validate().map_err(ServiceError::BadRequest)?;
-    data.recording
-        .validate()
-        .map_err(ServiceError::BadRequest)?;
-    if data.recording.enable {
-        if data.recording.source != crate::utils::config::RecordingSource::Encode
-            && data.recording.source_output_id != Some(data.output.id)
-        {
-            return Err(ServiceError::BadRequest(
-                "recording source must reference the active output".to_string(),
-            ));
+    if !data.output.enabled {
+        let index = data
+            .outputs
+            .iter()
+            .position(|output| output.enabled)
+            .ok_or_else(|| ServiceError::BadRequest("enable at least one output".into()))?;
+        if data.program.is_none() {
+            data.program = Some(crate::utils::config::ProgramFormat {
+                width: data.output.width,
+                height: data.output.height,
+                fps: data.output.fps,
+            });
         }
-        match data.recording.source {
-            crate::utils::config::RecordingSource::Stream
-                if data.output.mode != OutputMode::Stream =>
-            {
-                return Err(ServiceError::BadRequest(
-                    "recording stream source must reference a stream output".to_string(),
-                ));
-            }
-            crate::utils::config::RecordingSource::HlsVariant
-                if data.output.mode != OutputMode::HLS =>
-            {
-                return Err(ServiceError::BadRequest(
-                    "recording HLS source must reference an HLS output".to_string(),
-                ));
-            }
-            _ => {}
-        }
-        if data.recording.source == crate::utils::config::RecordingSource::HlsVariant {
-            let has_variant = data
-                .output
-                .hls_streams()
-                .map_err(ServiceError::BadRequest)?
-                .iter()
-                .any(|variant| variant.name == data.recording.variant);
-            if !has_variant {
-                return Err(ServiceError::BadRequest(format!(
-                    "unknown recording HLS variant {:?}",
-                    data.recording.variant
-                )));
+        std::mem::swap(&mut data.output, &mut data.outputs[index]);
+    }
+    if let Some(program) = &data.program {
+        for output in std::iter::once(&mut data.output).chain(data.outputs.iter_mut()) {
+            output.fps = program.fps;
+            if output.inherit_resolution {
+                output.width = program.width;
+                output.height = program.height;
             }
         }
     }
+    data.validate_outputs().map_err(ServiceError::BadRequest)?;
+    data.recording
+        .validate()
+        .map_err(ServiceError::BadRequest)?;
+    if data.recording.enable
+        && data.recording.source != crate::utils::config::EncodingSource::Encode
+    {
+        let source = data
+            .output_source(data.recording.source_output_id)
+            .ok_or_else(|| {
+                ServiceError::BadRequest("recording source must reference an active output".into())
+            })?;
+        let expected = match data.recording.source {
+            crate::utils::config::EncodingSource::Stream => OutputMode::Stream,
+            crate::utils::config::EncodingSource::HlsVariant => OutputMode::HLS,
+            crate::utils::config::EncodingSource::Encode => unreachable!(),
+        };
+        if source.mode != expected
+            && !(expected == OutputMode::Stream && source.mode == OutputMode::Moq)
+        {
+            return Err(ServiceError::BadRequest(
+                "recording source type does not match output".into(),
+            ));
+        }
+        if expected == OutputMode::HLS
+            && !data
+                .effective_output(source)
+                .map_err(ServiceError::BadRequest)?
+                .hls_streams()
+                .map_err(ServiceError::BadRequest)?
+                .iter()
+                .any(|variant| variant.name == data.recording.variant)
+        {
+            return Err(ServiceError::BadRequest(
+                "unknown recording HLS variant".into(),
+            ));
+        }
+    }
 
-    let is_hls = data.output.mode == OutputMode::HLS;
-    let is_encoded = matches!(data.output.mode, OutputMode::HLS | OutputMode::Stream);
-    let video_options = serde_json::to_string(&data.output.video_options)
-        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
-    let protocol_options = serde_json::to_string(&data.output.protocol_options)
-        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
-    let muxer_options = serde_json::to_string(&data.output.muxer_options)
-        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
-    let metadata_options = serde_json::to_string(&data.output.metadata_options)
-        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
-    let audio_options = serde_json::to_string(&data.output.audio_options)
-        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     // Reserve the SQLite writer before checking other channels. Concurrent
     // saves must not both observe the same listener port as available.
     let mut transaction = state.pool.begin_with("BEGIN IMMEDIATE").await?;
@@ -458,59 +500,7 @@ pub async fn update_playout_config(
         }
     }
 
-    handles::update_output_on(
-        &mut transaction,
-        data.output.id,
-        id,
-        &data.output.hls_variants.join(";"),
-        &data.output.stream_url,
-        (data.output.mode == OutputMode::Stream).then_some(match data.output.stream_type {
-            crate::utils::config::StreamType::Rtmp => "rtmp",
-            crate::utils::config::StreamType::Srt => "srt",
-            crate::utils::config::StreamType::Udp => "udp",
-            crate::utils::config::StreamType::Custom => "custom",
-        }),
-        (data.output.mode == OutputMode::Stream
-            && data.output.stream_type == crate::utils::config::StreamType::Custom)
-            .then_some(data.output.stream_format.as_str()),
-        is_hls.then_some(data.output.hls_playlist_name.as_str()),
-        is_hls.then_some(i64::from(data.output.hls_segment_duration)),
-        is_hls.then_some(i64::from(data.output.hls_list_size)),
-        data.output.desktop_fullscreen,
-        i64::from(data.output.width),
-        i64::from(data.output.height),
-        data.output.fps,
-        is_encoded.then_some(data.output.video_codec.as_str()),
-        if is_encoded {
-            video_options.as_str()
-        } else {
-            "{}"
-        },
-        if data.output.mode == OutputMode::Stream {
-            protocol_options.as_str()
-        } else {
-            "{}"
-        },
-        if is_encoded {
-            muxer_options.as_str()
-        } else {
-            "{}"
-        },
-        if is_encoded {
-            metadata_options.as_str()
-        } else {
-            "{}"
-        },
-        is_encoded.then_some(data.output.audio_codec.as_str()),
-        if is_encoded {
-            audio_options.as_str()
-        } else {
-            "{}"
-        },
-        (is_encoded && ff_engine::audio_codec_uses_bitrate(&data.output.audio_codec))
-            .then_some(i64::from(data.output.audio_bitrate)),
-    )
-    .await?;
+    handles::save_outputs_on(&mut transaction, config_id, &mut data).await?;
     handles::update_recording_on(&mut transaction, id, &data.recording).await?;
     handles::update_configuration_on(&mut transaction, config_id, data).await?;
     transaction.commit().await?;
@@ -635,11 +625,67 @@ pub async fn get_playout_outputs(
     )?;
     user.ensure_channel_or_admin(id)?;
 
-    if let Ok(outputs) = handles::select_outputs(&state.pool, id).await {
+    if let Ok(mut outputs) = handles::select_outputs(&state.pool, id).await {
+        let controller = state.controller.read().await;
+        if let Some(manager) = controller.get(id) {
+            let states = manager.output_status.snapshot();
+            let running = manager.running_config();
+            for output in &mut outputs {
+                output.runtime_retryable = manager.output_status.can_retry(output.id);
+                if let Some(status) = states.get(&output.id) {
+                    output.runtime_status = Some(status.phase.to_string());
+                    output.runtime_error = status.error.clone();
+                } else if running.as_ref().is_some_and(|config| {
+                    config.active_outputs().any(|active| active.id == output.id)
+                }) {
+                    output.runtime_status = Some("running".into());
+                } else {
+                    output.runtime_status = Some("idle".into());
+                }
+                if output.name == "moq"
+                    && running.as_ref().is_some_and(|config| {
+                        config.active_outputs().any(|active| active.id == output.id)
+                    })
+                    && let Some(status) = crate::moq::status(id)
+                {
+                    // Encoder status alone cannot tell whether the MoQ importer is alive.
+                    if matches!(
+                        output.runtime_status.as_deref(),
+                        Some("running" | "starting")
+                    ) {
+                        output.runtime_status = Some(status.phase.into());
+                        output.runtime_error = status.error;
+                    }
+                }
+            }
+        }
         return Ok(Json(outputs));
     }
 
     Err(ServiceError::InternalServerError)
+}
+
+/// Reconnect one running destination without changing saved settings or restarting playout.
+pub async fn retry_playout_output(
+    State(state): State<AppState>,
+    AxumPath((channel, output)): AxumPath<(i32, i32)>,
+    user: AuthUser,
+    details: AuthDetails<Role>,
+) -> Result<Json<bool>, ServiceError> {
+    ensure_any_authority(&details, &[&Role::GlobalAdmin, &Role::ChannelAdmin])?;
+    user.ensure_channel_or_admin(channel)?;
+    let controller = state.controller.read().await;
+    let manager = controller
+        .get(channel)
+        .ok_or_else(|| ServiceError::Conflict("channel is not running".into()))?;
+
+    if !manager.output_status.request_retry(output) {
+        return Err(ServiceError::Conflict(
+            "output has no failed destination to reconnect".into(),
+        ));
+    }
+
+    Ok(Json(true))
 }
 
 pub async fn get_playout_codecs(
@@ -654,6 +700,7 @@ pub async fn get_playout_codecs(
     user.ensure_channel_or_admin(id)?;
 
     Ok(Json(PlayoutCodecOptions {
+        moq: moq_output_codec_options(),
         hls: output_codec_options(ff_engine::FfmpegOutputTarget::Hls),
         rtmp: output_codec_options(ff_engine::FfmpegOutputTarget::Rtmp),
         srt: output_codec_options(ff_engine::FfmpegOutputTarget::Srt),
@@ -669,6 +716,53 @@ mod tests {
 
     use super::{requires_playout_restart, running_listener_port_in_use};
     use crate::utils::config::{LiveInput, PlayoutConfig};
+
+    #[test]
+    fn public_moq_permission_changes_do_not_restart_encoding() {
+        let current = PlayoutConfig::default();
+        let mut updated = current.clone();
+        updated.output.public_moq = true;
+        assert!(!requires_playout_restart(&current, &updated));
+        updated.output.width += 2;
+        assert!(requires_playout_restart(&current, &updated));
+    }
+
+    #[test]
+    fn normalizing_the_legacy_sharing_flag_does_not_require_a_restart() {
+        let mut current = PlayoutConfig::default();
+        current.output.share_encoding = true;
+        current.output.encoding_source_id = None;
+        let mut updated = current.clone();
+        updated.output.share_encoding = false;
+        assert!(!requires_playout_restart(&current, &updated));
+        updated.output.encoding_source_id = Some(42);
+        assert!(requires_playout_restart(&current, &updated));
+    }
+
+    #[test]
+    fn moq_codec_options_follow_importer_support_without_an_encoder_name_whitelist() {
+        let options = super::moq_output_codec_options();
+        let expected =
+            ff_engine::ffmpeg_capabilities().video_codecs_for(ff_engine::FfmpegOutputTarget::Srt);
+        for codec in expected
+            .iter()
+            .filter(|codec| crate::utils::moq_codecs::supports_video(&codec.codec_id))
+        {
+            assert!(options.video.iter().any(|option| option.name == codec.name));
+        }
+        assert!(
+            options
+                .video
+                .iter()
+                .all(|codec| crate::utils::moq_codecs::supports_video(&codec.codec_id))
+        );
+        assert!(
+            options
+                .audio
+                .iter()
+                .all(|codec| crate::utils::moq_codecs::supports_audio(&codec.codec_id))
+        );
+    }
 
     #[test]
     fn changing_only_idle_timeouts_does_not_require_restart() {

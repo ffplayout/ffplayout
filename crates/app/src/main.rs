@@ -47,7 +47,7 @@ use ffplayout::{
     },
 };
 
-#[cfg(not(debug_assertions))]
+#[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use ffplayout::serve::routes::admin_ui_routes;
 
 fn env_parse_or<T>(key: &str, default: T) -> T
@@ -96,6 +96,8 @@ fn run_async_main() -> Result<(), ProcessError> {
 }
 
 async fn async_main() -> Result<(), ProcessError> {
+    ffplayout::api::auth::init_jwt_crypto();
+
     #[cfg(feature = "processing-bench")]
     ff_engine::set_processing_bench_interval(Duration::from_secs(
         ARGS.processing_bench_report_interval(),
@@ -129,6 +131,14 @@ async fn async_main() -> Result<(), ProcessError> {
     let _logger = init_logging(app_state.mail_queues.clone())?;
 
     if let Some(conn) = &ARGS.listen {
+        let moq_server = match ffplayout::moq::Server::start(pool.clone()).await {
+            Ok(server) => Some(server),
+            Err(error) => {
+                warn!(target: Target::Console.as_str(), "MoQ unavailable: {error:#}");
+                None
+            }
+        };
+
         let setup_required = !handles::select_global(&pool).await?.setup_completed;
 
         if !setup_required {
@@ -164,7 +174,7 @@ async fn async_main() -> Result<(), ProcessError> {
             .layer(middleware::from_fn(log_middleware))
             .layer(middleware::from_fn(rate_limit));
 
-        #[cfg(not(debug_assertions))]
+        #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
         let app = app.merge(admin_ui_routes());
 
         info!(target: Target::Console.as_str(), "Running ffplayout, listen on http://{conn}");
@@ -177,6 +187,9 @@ async fn async_main() -> Result<(), ProcessError> {
             _ = shutdown.cancelled() => {
                 info!(target: Target::Console.as_str(), "Shutdown requested by desktop player");
             }
+        }
+        if let Some(server) = moq_server {
+            server.stop().await;
         }
     } else if ARGS.drop_db {
         db_drop().await;

@@ -5,4 +5,5 @@ pub mod ffmpeg_capabilities;
 pub mod helper;
 pub mod logging;
 pub mod media_info;
+pub(crate) mod pipeline_queue;
 mod protocol;

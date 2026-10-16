@@ -31,6 +31,7 @@ pub enum OutputMode {
     #[default]
     HLS,
     Stream,
+    Moq,
 }
 
 impl OutputMode {
@@ -38,6 +39,7 @@ impl OutputMode {
         match s {
             "desktop" => Self::Desktop,
             "stream" => Self::Stream,
+            "moq" => Self::Moq,
             _ => Self::HLS,
         }
     }
@@ -51,6 +53,7 @@ impl FromStr for OutputMode {
             "desktop" => Ok(Self::Desktop),
             "hls" => Ok(Self::HLS),
             "stream" => Ok(Self::Stream),
+            "moq" => Ok(Self::Moq),
             _ => Err("Use 'desktop', 'hls' or 'stream'".to_string()),
         }
     }
@@ -62,6 +65,7 @@ impl fmt::Display for OutputMode {
             OutputMode::Desktop => write!(f, "desktop"),
             OutputMode::HLS => write!(f, "hls"),
             OutputMode::Stream => write!(f, "stream"),
+            OutputMode::Moq => write!(f, "moq"),
         }
     }
 }
@@ -189,12 +193,25 @@ pub struct PlayoutConfig {
     pub recording: Recording,
     #[serde(alias = "out")]
     pub output: Output,
+    #[serde(default)]
+    pub program: Option<ProgramFormat>,
+    // Additional configured instances, including disabled ones.
+    #[serde(default)]
+    pub outputs: Vec<Output>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
+pub struct ProgramFormat {
+    pub width: u32,
+    pub height: u32,
+    pub fps: f64,
 }
 
 #[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, TS, PartialEq, Eq)]
 #[ts(export, export_to = "playout_config.d.ts")]
 #[serde(rename_all = "snake_case")]
-pub enum RecordingSource {
+pub enum EncodingSource {
     HlsVariant,
     #[default]
     Stream,
@@ -205,7 +222,7 @@ pub enum RecordingSource {
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Recording {
     pub enable: bool,
-    pub source: RecordingSource,
+    pub source: EncodingSource,
     pub source_output_id: Option<i32>,
     pub variant: String,
     pub path: String,
@@ -227,9 +244,9 @@ impl Recording {
         Self {
             enable: recording.enabled,
             source: match recording.source.as_str() {
-                "hls_variant" => RecordingSource::HlsVariant,
-                "encode" => RecordingSource::Encode,
-                _ => RecordingSource::Stream,
+                "hls_variant" => EncodingSource::HlsVariant,
+                "encode" => EncodingSource::Encode,
+                _ => EncodingSource::Stream,
             },
             source_output_id: recording.source_output_id,
             variant: recording.hls_variant.clone(),
@@ -259,13 +276,13 @@ impl Recording {
                 "recording segment duration must be between 30 and 3600 seconds".to_string(),
             );
         }
-        if self.source == RecordingSource::HlsVariant && self.variant.trim().is_empty() {
+        if self.source == EncodingSource::HlsVariant && self.variant.trim().is_empty() {
             return Err("recording HLS variant must not be empty".to_string());
         }
-        if self.source != RecordingSource::Encode && self.source_output_id.is_none() {
+        if self.source != EncodingSource::Encode && self.source_output_id.is_none() {
             return Err("recording source output must be selected".to_string());
         }
-        if self.source == RecordingSource::Encode {
+        if self.source == EncodingSource::Encode {
             if (self.width == 0) != (self.height == 0) {
                 return Err(
                     "recording width and height must both be set or both be zero".to_string(),
@@ -929,11 +946,28 @@ impl Task {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Output {
     pub id: i32,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default = "enabled_by_default")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub inherit_resolution: bool,
+    #[serde(default = "enabled_by_default")]
+    pub share_encoding: bool,
+    #[serde(default)]
+    pub encoding_source_id: Option<i32>,
+    #[serde(default)]
+    pub encoding_variant: String,
+    #[serde(default)]
+    pub public_moq: bool,
     pub mode: OutputMode,
+    #[serde(skip)]
+    #[ts(skip)]
+    pub discard: bool,
     #[serde(default)]
     pub stream_url: String,
     #[serde(default)]
@@ -980,6 +1014,10 @@ pub struct Output {
     pub hls_variants: Vec<String>,
 }
 
+const fn enabled_by_default() -> bool {
+    true
+}
+
 fn default_hls_playlist_name() -> String {
     "stream".to_string()
 }
@@ -1004,13 +1042,38 @@ const fn default_audio_bitrate() -> u32 {
     128
 }
 
+impl Default for Output {
+    fn default() -> Self {
+        Self::from_record(models::Output::new(0, OutputMode::default()))
+    }
+}
+
 impl Output {
+    /// Resolve the CLI-only sink without exposing it to config serialization or the DB.
+    pub(crate) fn for_playout(&self) -> Self {
+        let mut output = self.clone();
+        if output.discard {
+            output.mode = OutputMode::Stream;
+            output.stream_type = StreamType::Custom;
+            output.stream_format = "null".into();
+            output.stream_url = if cfg!(windows) { "NUL" } else { "/dev/null" }.into();
+            output.protocol_options.clear();
+            output.muxer_options.clear();
+        }
+
+        output
+    }
+
     fn new(config: &models::Configuration, outputs: Vec<models::Output>) -> Self {
         let output = outputs
             .iter()
             .find(|output| output.id == config.output_id)
             .cloned()
             .unwrap_or_default();
+        Self::from_record(output)
+    }
+
+    pub(crate) fn from_record(output: models::Output) -> Self {
         let video_codec = output.video_codec.unwrap_or_else(default_video_codec);
         let video_options = serde_json::from_str(&output.video_options)
             .unwrap_or_else(|_| ff_engine::video_option_defaults(&video_codec));
@@ -1021,7 +1084,19 @@ impl Output {
 
         Self {
             id: output.id,
+            label: output.label,
+            enabled: output.active || !output.configured,
+            inherit_resolution: output.inherit_resolution,
+            share_encoding: output.share_encoding,
+            encoding_source_id: if output.share_encoding {
+                output.encoding_source_id
+            } else {
+                None
+            },
+            encoding_variant: output.encoding_variant,
+            public_moq: output.public_moq,
             mode: OutputMode::new(&output.name),
+            discard: false,
             stream_url: output.stream_url,
             stream_type: output
                 .stream_type
@@ -1090,7 +1165,11 @@ impl Output {
         };
         validate_hls_name(&base.name)?;
 
-        let additional = self.parsed_hls_variants()?;
+        let additional = if self.encoding_source_id.is_some() {
+            Vec::new()
+        } else {
+            self.parsed_hls_variants()?
+        };
         let mut names = HashSet::new();
 
         names.insert(base.name.as_str());
@@ -1121,6 +1200,32 @@ impl Output {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if self.mode == OutputMode::Moq {
+            let capabilities = ff_engine::ffmpeg_capabilities();
+            let video = capabilities
+                .encoders
+                .iter()
+                .find(|codec| codec.name == self.video_codec);
+            let audio = capabilities
+                .encoders
+                .iter()
+                .find(|codec| codec.name == self.audio_codec);
+            if !video.is_some_and(|codec| super::moq_codecs::supports_video(&codec.codec_id))
+                || !audio.is_some_and(|codec| super::moq_codecs::supports_audio(&codec.codec_id))
+            {
+                return Err(format!(
+                    "MoQ MPEG-TS importer does not support video encoder {:?} with audio encoder {:?}",
+                    self.video_codec, self.audio_codec
+                ));
+            }
+            let mut transport = self.clone();
+            transport.mode = OutputMode::Stream;
+            transport.stream_type = StreamType::Custom;
+            transport.stream_format = "mpegts".into();
+            transport.stream_url = "tcp://127.0.0.1:1".into();
+
+            return transport.validate();
+        }
         if self.width == 0 || self.height == 0 {
             return Err("output size must be greater than zero".to_string());
         }
@@ -1151,7 +1256,9 @@ impl Output {
                     .stream_type
                     .ffmpeg_target()
                     .unwrap_or(ff_engine::FfmpegOutputTarget::Rtmp),
-                OutputMode::Desktop => unreachable!("desktop output is not encoded"),
+                OutputMode::Desktop | OutputMode::Moq => {
+                    unreachable!("nonstandard output is handled separately")
+                }
             };
             let capabilities = ff_engine::ffmpeg_capabilities();
             let custom_format = self.stream_format.trim();
@@ -1172,7 +1279,9 @@ impl Output {
                     StreamType::Srt | StreamType::Udp => "mpegts",
                     StreamType::Custom => custom_format,
                 },
-                OutputMode::Desktop => unreachable!("desktop output is not encoded"),
+                OutputMode::Desktop | OutputMode::Moq => {
+                    unreachable!("nonstandard output is handled separately")
+                }
             };
             ff_engine::validate_muxer_options(muxer_name, &self.muxer_options)?;
             if self.mode == OutputMode::Stream {
@@ -1279,6 +1388,149 @@ pub fn string_to_log_level(l: String) -> Level {
 }
 
 impl PlayoutConfig {
+    pub fn active_outputs(&self) -> impl Iterator<Item = &Output> {
+        std::iter::once(&self.output)
+            .chain(self.outputs.iter())
+            .filter(|output| output.enabled)
+    }
+
+    pub fn output_source(&self, id: Option<i32>) -> Option<&Output> {
+        self.active_outputs().find(|output| Some(output.id) == id)
+    }
+
+    /// Resolve a selected output/variant to the owning encoder, rejecting dependency cycles.
+    pub fn encoding_source<'a>(
+        &'a self,
+        output: &'a Output,
+    ) -> Result<(&'a Output, usize), String> {
+        let mut current = output;
+        let mut rendition = 0;
+        let mut visited = HashSet::new();
+        visited.insert(output.id);
+        while let Some(id) = current.encoding_source_id {
+            if id <= 0 || !visited.insert(id) {
+                return Err(
+                    "encoding sources must not contain a cycle or reference an unsaved output"
+                        .into(),
+                );
+            }
+            let source = self
+                .output_source(Some(id))
+                .ok_or("encoding source must be an enabled output")?;
+            if source.mode == OutputMode::Desktop || current.mode == OutputMode::Desktop {
+                return Err("desktop output cannot provide or reuse encoded packets".into());
+            }
+            if source.mode == OutputMode::HLS {
+                let names = if source.encoding_source_id.is_some() {
+                    vec![source.hls_playlist_name.clone()]
+                } else {
+                    source
+                        .hls_streams()?
+                        .into_iter()
+                        .map(|variant| variant.name)
+                        .collect()
+                };
+                rendition = names
+                    .iter()
+                    .position(|name| *name == current.encoding_variant)
+                    .ok_or("encoding source HLS variant is unavailable")?;
+            } else if !current.encoding_variant.is_empty() {
+                return Err("only HLS encoding sources have variants".into());
+            }
+            current = source;
+        }
+
+        Ok((current, rendition))
+    }
+
+    /// Apply inherited encoder settings while retaining the destination's transport and muxer.
+    pub fn effective_output(&self, output: &Output) -> Result<Output, String> {
+        if output.encoding_source_id.is_none() {
+            return Ok(output.clone());
+        }
+        let (source, index) = self.encoding_source(output)?;
+        let mut effective = output.clone();
+        effective.width = source.width;
+        effective.height = source.height;
+        effective.inherit_resolution = source.inherit_resolution;
+        effective.video_codec = source.video_codec.clone();
+        effective.video_options = source.video_options.clone();
+        effective.audio_codec = source.audio_codec.clone();
+        effective.audio_options = source.audio_options.clone();
+        effective.audio_bitrate = source.audio_bitrate;
+        effective.hls_variants.clear();
+        if source.mode == OutputMode::HLS {
+            let variants = source.hls_streams()?;
+            let variant = variants
+                .get(index)
+                .ok_or("encoding rendition is unavailable")?;
+            effective.width = variant.width;
+            effective.height = variant.height;
+            effective.inherit_resolution = false;
+            effective
+                .video_options
+                .insert("maxrate".into(), (variant.video_bitrate / 1000).to_string());
+            effective.audio_bitrate = u32::try_from(variant.audio_bitrate / 1000)
+                .map_err(|_| "encoding source audio bitrate is out of range")?;
+        }
+
+        Ok(effective)
+    }
+
+    pub fn validate_outputs(&self) -> Result<(), String> {
+        if self.outputs.len() >= 8 {
+            return Err("at most eight outputs are supported".into());
+        }
+        if !self.output.enabled {
+            return Err("the first output must be enabled".into());
+        }
+        if let Some(program) = &self.program
+            && (program.width == 0
+                || program.height == 0
+                || !program.fps.is_finite()
+                || program.fps < 1.0
+                || program.fps > f64::from(u32::MAX))
+        {
+            return Err("invalid program format".into());
+        }
+        let mut ids = HashSet::new();
+        let mut hls_names = HashSet::new();
+        let mut desktops = 0;
+        let mut moq = 0;
+
+        for output in std::iter::once(&self.output).chain(self.outputs.iter()) {
+            if output.label.chars().count() > 128 {
+                return Err("output name is too long".into());
+            }
+            if output.id < 0 || (output.id != 0 && !ids.insert(output.id)) {
+                return Err("duplicate or invalid output ID".into());
+            }
+            if output.fps
+                != self
+                    .program
+                    .as_ref()
+                    .map_or(self.output.fps, |program| program.fps)
+            {
+                return Err("parallel outputs must use the same frame rate".into());
+            }
+            if !output.enabled {
+                continue;
+            }
+            let effective = self.effective_output(output)?;
+            effective.validate()?;
+            if output.mode == OutputMode::HLS && !hls_names.insert(&output.hls_playlist_name) {
+                return Err("parallel HLS outputs must have distinct playlist names".into());
+            }
+            desktops += usize::from(output.mode == OutputMode::Desktop);
+            moq += usize::from(output.mode == OutputMode::Moq);
+        }
+        if desktops > 1 || moq > 1 {
+            return Err("at most one desktop and one MoQ output per channel are supported".into());
+        }
+
+        Ok(())
+    }
+
     pub async fn new(
         pool: &Pool<Sqlite>,
         channel_id: i32,
@@ -1311,7 +1563,20 @@ impl PlayoutConfig {
         let text = Text::new(&config, text_preset);
         let task = Task::new(&config);
         let recording = Recording::new(&recording_config);
+        let additional_outputs = if output_id.is_some() {
+            Vec::new()
+        } else {
+            outputs
+                .iter()
+                .filter(|output| {
+                    (output.active || output.configured) && output.id != config.output_id
+                })
+                .cloned()
+                .map(Output::from_record)
+                .collect()
+        };
         let output = Output::new(&config, outputs);
+        let program = handles::output::select_program_format(pool, config.id).await?;
         let mut storage = Storage::new(&config, channel.storage.clone(), channel.shared);
 
         if !channel.playlists.is_dir() {
@@ -1359,6 +1624,8 @@ impl PlayoutConfig {
             task,
             recording,
             output,
+            outputs: additional_outputs,
+            program,
         })
     }
 
@@ -1393,18 +1660,57 @@ pub async fn get_config(
     pool: &Pool<Sqlite>,
     channel_id: i32,
 ) -> Result<PlayoutConfig, ServiceError> {
-    let args = ARGS.clone();
-    let output_id = if let Some(output_name) = &args.output {
-        let outputs = handles::select_outputs(pool, channel_id).await?;
-        outputs
-            .iter()
-            .find(|out| out.name == output_name.to_string())
-            .map(|out| out.id)
-    } else {
-        None
-    };
+    get_config_with_args(pool, channel_id, ARGS.clone()).await
+}
 
-    let mut config = PlayoutConfig::new(pool, channel_id, output_id).await?;
+async fn get_config_with_args(
+    pool: &Pool<Sqlite>,
+    channel_id: i32,
+    args: super::args_parse::Args,
+) -> Result<PlayoutConfig, ServiceError> {
+    // Keep the full source graph until a CLI selection's effective encoding
+    // has been resolved. The override changes this run, never persisted rows.
+    let mut config = PlayoutConfig::new(pool, channel_id, None).await?;
+
+    if let Some(selection) = args.output {
+        let selected = if selection == super::args_parse::CliOutput::Null {
+            config.output.clone()
+        } else {
+            let outputs = handles::select_outputs(pool, channel_id).await?;
+            let mode = selection.mode().to_string();
+            let matching = || outputs.iter().filter(|output| output.name == mode);
+            let record = matching()
+                .find(|output| output.active)
+                .or_else(|| matching().find(|output| output.configured))
+                .or_else(|| matching().next());
+
+            record
+                .cloned()
+                .map(Output::from_record)
+                .unwrap_or_else(|| config.output.clone())
+        };
+        let mut output = config
+            .effective_output(&selected)
+            .map_err(ServiceError::Conflict)?;
+        output.enabled = true;
+
+        if let Some(program) = &config.program {
+            output.fps = program.fps;
+
+            if output.inherit_resolution {
+                output.width = program.width;
+                output.height = program.height;
+            }
+        }
+
+        output.encoding_source_id = None;
+        output.encoding_variant.clear();
+        output.share_encoding = false;
+        output.mode = selection.mode();
+        output.discard = selection == super::args_parse::CliOutput::Null;
+        config.output = output;
+        config.outputs.clear();
+    }
 
     config.general.generate = args.generate;
     config.general.validate = args.validate;
@@ -1457,10 +1763,6 @@ pub async fn get_config(
         config.playlist.start_sec = Some(time_to_sec(&start, &config.channel.timezone));
     }
 
-    if let Some(output) = args.output {
-        config.output.mode = output;
-    }
-
     if let Some(volume) = args.volume {
         config.audio.volume = volume;
     }
@@ -1492,12 +1794,20 @@ pub async fn get_config(
 mod output_tests {
     use std::collections::BTreeMap;
 
-    use super::{Output, OutputMode, StreamType};
+    use super::{Output, OutputMode, PlayoutConfig, StreamType};
 
     fn output(mode: OutputMode) -> Output {
         Output {
             id: 1,
+            label: String::new(),
+            enabled: true,
+            inherit_resolution: false,
+            share_encoding: true,
+            encoding_source_id: None,
+            encoding_variant: String::new(),
+            public_moq: false,
             mode,
+            discard: false,
             stream_url: "rtmp://localhost/live/test".to_string(),
             stream_type: StreamType::Rtmp,
             stream_format: String::new(),
@@ -1518,6 +1828,331 @@ mod output_tests {
             audio_bitrate: 128,
             hls_variants: Vec::new(),
         }
+    }
+
+    async fn cli_pool() -> sqlx::SqlitePool {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::handles::db_migrate(&pool).await.unwrap();
+        let dir =
+            std::env::temp_dir().join(format!("ffplayout-cli-config-{}", uuid::Uuid::new_v4()));
+        sqlx::query("UPDATE config_global SET public=$1, logs=$1, playlists=$1, storage=$1; UPDATE channels SET public=$1, playlists=$1, storage=$1; UPDATE config_storage SET filler='';")
+            .bind(dir.to_string_lossy()).execute(&pool).await.unwrap();
+
+        pool
+    }
+
+    async fn cli_config(
+        pool: &sqlx::SqlitePool,
+        selection: super::super::args_parse::CliOutput,
+    ) -> PlayoutConfig {
+        super::get_config_with_args(
+            pool,
+            1,
+            super::super::args_parse::Args {
+                output: Some(selection),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn cli_activates_a_disabled_configured_output_without_writing_it() {
+        use super::super::args_parse::CliOutput;
+        let pool = cli_pool().await;
+        sqlx::query("UPDATE config_output SET active=(name='hls'), configured=1; UPDATE config_output SET width=640,height=360,inherit_resolution=1 WHERE name='stream'; UPDATE config SET program_format='{\"width\":1920,\"height\":1080,\"fps\":30.0}';")
+            .execute(&pool).await.unwrap();
+        let before =
+            serde_json::to_value(crate::db::handles::select_outputs(&pool, 1).await.unwrap())
+                .unwrap();
+        let runtime = cli_config(&pool, CliOutput::Stream).await;
+        runtime.validate_outputs().unwrap();
+        assert!(runtime.output.enabled);
+        assert!(runtime.outputs.is_empty());
+        assert_eq!(
+            (
+                runtime.output.width,
+                runtime.output.height,
+                runtime.output.fps
+            ),
+            (1920, 1080, 30.0)
+        );
+        assert_eq!(
+            before,
+            serde_json::to_value(crate::db::handles::select_outputs(&pool, 1).await.unwrap())
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_resolves_shared_hls_variant_chains_before_removing_other_outputs() {
+        use super::super::args_parse::CliOutput;
+        let pool = cli_pool().await;
+        let records = crate::db::handles::select_outputs(&pool, 1).await.unwrap();
+        let hls = records
+            .iter()
+            .find(|output| output.name == "hls")
+            .unwrap()
+            .id;
+        let stream = records
+            .iter()
+            .find(|output| output.name == "stream")
+            .unwrap()
+            .id;
+        sqlx::query("UPDATE config_output SET active=1,configured=1,share_encoding=0, video_codec='libx264',audio_codec='aac' WHERE id IN ($1,$2)")
+            .bind(hls).bind(stream).execute(&pool).await.unwrap();
+        sqlx::query("UPDATE config_output SET hls_playlist_name='base',hls_variants='small:320x180:450k:64k' WHERE id=$1")
+            .bind(hls).execute(&pool).await.unwrap();
+        // A derived HLS output forwards the original small rendition under its own name.
+        let mut derived = records
+            .iter()
+            .find(|output| output.name == "hls")
+            .unwrap()
+            .clone();
+        derived.hls_playlist_name = Some("derived".into());
+        let derived_id = crate::db::handles::insert_output(&pool, 1, &derived, true)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE config_output SET configured=1,share_encoding=1,encoding_source_id=$1,encoding_variant='small' WHERE id=$2")
+            .bind(hls).bind(derived_id).execute(&pool).await.unwrap();
+        sqlx::query("UPDATE config_output SET priority=0,share_encoding=1,encoding_source_id=$1,encoding_variant='derived' WHERE id=$2")
+            .bind(derived_id).bind(stream).execute(&pool).await.unwrap();
+        sqlx::query("UPDATE config_output SET priority=1 WHERE id!=$1")
+            .bind(stream)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let before =
+            serde_json::to_value(crate::db::handles::select_outputs(&pool, 1).await.unwrap())
+                .unwrap();
+        for selection in [CliOutput::Stream, CliOutput::Null] {
+            let runtime = cli_config(&pool, selection).await;
+            assert_eq!(runtime.output.id, stream);
+            assert!(runtime.outputs.is_empty());
+            assert_eq!((runtime.output.width, runtime.output.height), (320, 180));
+            assert_eq!(runtime.output.audio_bitrate, 64);
+            assert_eq!(runtime.output.video_options["maxrate"], "450");
+            assert!(!runtime.output.share_encoding);
+            assert_eq!(runtime.output.encoding_source_id, None);
+            assert!(runtime.output.encoding_variant.is_empty());
+            assert!(runtime.output.hls_variants.is_empty());
+            if selection == CliOutput::Null {
+                runtime.output.for_playout().validate().unwrap();
+            } else {
+                runtime.validate_outputs().unwrap();
+            }
+        }
+        assert_eq!(
+            before,
+            serde_json::to_value(crate::db::handles::select_outputs(&pool, 1).await.unwrap())
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_prefers_active_then_configured_outputs_over_legacy_presets() {
+        use super::super::args_parse::CliOutput;
+        let pool = cli_pool().await;
+        let preset = crate::db::handles::select_outputs(&pool, 1)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|output| output.name == "stream")
+            .unwrap();
+        let configured = crate::db::handles::insert_output(&pool, 1, &preset, false)
+            .await
+            .unwrap();
+        let active = crate::db::handles::insert_output(&pool, 1, &preset, true)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE config_output SET configured=1 WHERE id IN ($1,$2)")
+            .bind(configured)
+            .bind(active)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(cli_config(&pool, CliOutput::Stream).await.output.id, active);
+        sqlx::query("UPDATE config_output SET active=0 WHERE id=$1")
+            .bind(active)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            cli_config(&pool, CliOutput::Stream).await.output.id,
+            configured
+        );
+        sqlx::query("UPDATE config_output SET configured=0 WHERE id IN ($1,$2)")
+            .bind(configured)
+            .bind(active)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            cli_config(&pool, CliOutput::Stream).await.output.id,
+            preset.id
+        );
+    }
+
+    #[tokio::test]
+    async fn null_override_does_not_persist_or_replace_the_stored_output() {
+        use super::super::args_parse::{Args, CliOutput};
+        use crate::db::handles;
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        handles::db_migrate(&pool).await.unwrap();
+        let dir =
+            std::env::temp_dir().join(format!("ffplayout-null-config-{}", std::process::id()));
+        let storage = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests_assets/storage")
+            .canonicalize()
+            .unwrap();
+        sqlx::query("UPDATE config_global SET public=$1, logs=$1, playlists=$1, storage=$2; UPDATE channels SET public=$1, playlists=$1, storage=$2; UPDATE config_output SET active=(name IN ('hls', 'stream'));")
+            .bind(dir.to_string_lossy()).bind(storage.to_string_lossy()).execute(&pool).await.unwrap();
+        let before = super::get_config_with_args(&pool, 1, Args::default())
+            .await
+            .unwrap();
+        let runtime = super::get_config_with_args(
+            &pool,
+            1,
+            Args {
+                output: Some(CliOutput::Null),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(!before.outputs.is_empty());
+        assert!(runtime.outputs.is_empty());
+        assert!(runtime.output.discard);
+        assert_eq!(runtime.output.mode, OutputMode::Stream);
+        assert_eq!(runtime.output.stream_type, StreamType::Rtmp);
+        assert_eq!(runtime.output.for_playout().stream_format, "null");
+        runtime.output.for_playout().validate().unwrap();
+        assert!(
+            serde_json::to_value(&runtime.output)
+                .unwrap()
+                .get("discard")
+                .is_none()
+        );
+        let after = super::get_config_with_args(&pool, 1, Args::default())
+            .await
+            .unwrap();
+        assert_eq!(before.outputs.len(), after.outputs.len());
+        assert!(!after.output.discard);
+        assert_eq!(after.output.mode, OutputMode::HLS);
+        assert_eq!(
+            serde_json::to_value(&before.output).unwrap(),
+            serde_json::to_value(&after.output).unwrap()
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn moq_reuses_a_named_hls_variant_and_rejects_unavailable_sources() {
+        let mut hls = output(OutputMode::HLS);
+        hls.id = 42;
+        hls.hls_variants = vec!["small:640x360:800k:96k".into()];
+        let mut moq = output(OutputMode::Moq);
+        moq.id = 43;
+        moq.encoding_source_id = Some(42);
+        moq.encoding_variant = "small".into();
+        let mut config = PlayoutConfig {
+            output: hls,
+            outputs: vec![moq],
+            ..Default::default()
+        };
+        assert!(config.validate_outputs().is_ok());
+        assert_eq!(config.encoding_source(&config.outputs[0]).unwrap().1, 1);
+        config.outputs[0].encoding_variant = "missing".into();
+        assert!(config.validate_outputs().is_err());
+        config.outputs[0].encoding_variant = "small".into();
+        config.output.audio_codec = "libopus".into();
+        assert!(config.validate_outputs().is_err());
+        config.output.audio_codec = "aac".into();
+        config.output.enabled = false;
+        assert!(config.encoding_source(&config.outputs[0]).is_err());
+    }
+
+    #[test]
+    fn encoding_sources_resolve_chains_and_reject_cycles_disabled_outputs_and_desktop() {
+        let mut root = output(OutputMode::HLS);
+        root.id = 11;
+        root.hls_variants = vec!["small:640x360:800k:96k".into()];
+        let mut stream = output(OutputMode::Stream);
+        stream.id = 12;
+        stream.encoding_source_id = Some(11);
+        stream.encoding_variant = "small".into();
+        let mut hls = output(OutputMode::HLS);
+        hls.id = 13;
+        hls.hls_playlist_name = "copy".into();
+        hls.encoding_source_id = Some(12);
+        let mut config = PlayoutConfig {
+            output: root,
+            outputs: vec![stream, hls],
+            ..Default::default()
+        };
+        assert!(config.validate_outputs().is_ok());
+        let (owner, index) = config.encoding_source(&config.outputs[1]).unwrap();
+        assert_eq!((owner.id, index), (11, 1));
+        let effective = config.effective_output(&config.outputs[1]).unwrap();
+        assert_eq!(
+            (effective.width, effective.height, effective.audio_bitrate),
+            (640, 360, 96)
+        );
+        assert_eq!(effective.hls_playlist_name, "copy");
+        config.output.encoding_source_id = Some(13);
+        config.output.encoding_variant = "copy".into();
+        assert!(config.validate_outputs().is_err());
+        config.output.encoding_source_id = None;
+        config.outputs[0].enabled = false;
+        assert!(config.validate_outputs().is_err());
+        config.outputs[0].enabled = true;
+        config.output.mode = OutputMode::Desktop;
+        assert!(config.validate_outputs().is_err());
+        config.output.mode = OutputMode::HLS;
+        config.outputs[0].encoding_source_id = Some(12);
+        assert!(config.validate_outputs().is_err());
+    }
+
+    #[test]
+    fn standalone_moq_requires_compatible_codecs() {
+        let mut config = PlayoutConfig {
+            output: output(OutputMode::Moq),
+            ..Default::default()
+        };
+        assert!(config.validate_outputs().is_ok());
+        config.output.audio_codec = "libopus".into();
+        assert!(config.validate_outputs().is_err());
+    }
+
+    #[test]
+    fn parallel_outputs_validate_ids_frame_rates_and_destination_collisions() {
+        let mut config = PlayoutConfig {
+            output: output(OutputMode::Stream),
+            ..Default::default()
+        };
+        config.output.id = 1;
+        let mut additional = output(OutputMode::Stream);
+        additional.id = 2;
+        config.outputs.push(additional);
+        assert!(config.validate_outputs().is_ok());
+        config.outputs[0].id = 1;
+        assert!(config.validate_outputs().is_err());
+        config.outputs[0].id = 2;
+        config.outputs[0].fps = 30.0;
+        assert!(config.validate_outputs().is_err());
+        config.outputs[0].fps = config.output.fps;
+        config.output.mode = OutputMode::Desktop;
+        config.outputs[0].mode = OutputMode::Desktop;
+        assert!(config.validate_outputs().is_err());
     }
 
     #[test]
@@ -1867,7 +2502,7 @@ mod ingest_tests {
 mod recording_tests {
     use std::collections::BTreeMap;
 
-    use super::{Recording, RecordingSource};
+    use super::{EncodingSource, Recording};
 
     #[test]
     fn recording_requires_a_path_and_valid_segment_duration() {
@@ -1906,7 +2541,7 @@ mod recording_tests {
     fn hls_variant_recording_requires_a_variant_name() {
         let recording = Recording {
             enable: true,
-            source: RecordingSource::HlsVariant,
+            source: EncodingSource::HlsVariant,
             source_output_id: Some(1),
             path: "/var/lib/ffplayout/recordings/1".to_string(),
             segment_duration: 300,
@@ -1919,7 +2554,7 @@ mod recording_tests {
     fn recording_audio_validation_uses_recording_bitrate() {
         let mut recording = Recording {
             enable: true,
-            source: RecordingSource::Encode,
+            source: EncodingSource::Encode,
             path: "/var/lib/ffplayout/recordings/1".to_string(),
             segment_duration: 300,
             video_codec: "libx264".to_string(),
@@ -1943,7 +2578,7 @@ mod recording_tests {
     fn recording_rejects_invalid_audio_encoder_options() {
         let recording = Recording {
             enable: true,
-            source: RecordingSource::Encode,
+            source: EncodingSource::Encode,
             source_output_id: None,
             variant: String::new(),
             path: "/var/lib/ffplayout/recordings/1".to_string(),

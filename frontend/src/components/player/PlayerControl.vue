@@ -4,7 +4,6 @@ import customParseFormat from 'dayjs/plugin/customParseFormat.js'
 import LocalizedFormat from 'dayjs/plugin/localizedFormat.js'
 import timezone from 'dayjs/plugin/timezone.js'
 import utc from 'dayjs/plugin/utc.js'
-import mpegts from 'mpegts.js'
 
 import { computed, ref, onMounted, onBeforeUnmount, watch, useTemplateRef } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -31,6 +30,7 @@ dayjs.extend(timezone)
 dayjs.extend(utc)
 
 import VideoPlayer from '@/components/utils/VideoPlayer.vue'
+import MoqPlayer from '@/components/utils/MoqPlayer.vue'
 
 const { t } = useI18n()
 const authStore = useAuth()
@@ -58,17 +58,11 @@ const errorCounter = ref(0)
 const controlsUnlocked = ref(false)
 const lastReportedRunning = ref<boolean | null>(null)
 const volumeLevel = ref(configStore.playout.audio?.volume ?? 1)
-const streamExtension = ref(configStore.channels[configStore.i]?.preview_url.split('.').pop())
-const httpStreamFlv = ref(null)
-const httpFlvSource = ref({
-    type: 'flv',
-    isLive: true,
-    url: configStore.channels[configStore.i]?.preview_url,
-})
-const mpegtsOptions = ref({
-    lazyLoadMaxDuration: 3 * 60,
-    liveBufferLatencyChasing: true,
-})
+const useMoqPreview = computed(() =>
+    [configStore.playoutSaved.output, ...(configStore.playoutSaved.outputs ?? [])].some(
+        (output) => output?.enabled && output.mode === 'moq',
+    ),
+)
 const timeDiv = useTemplateRef('timeDiv')
 const { width } = useElementSize(timeDiv)
 
@@ -159,21 +153,6 @@ const { status, data, error, close } = useEventSource(streamUrl, [], {
 })
 
 onMounted(() => {
-    let player: any = null
-
-    if (streamExtension.value === 'flv' && mpegts.getFeatureList().mseLivePlayback) {
-        if (typeof player !== 'undefined' && player != null) {
-            player.unload()
-            player.detachMediaElement()
-            player.destroy()
-            player = null
-        }
-
-        player = mpegts.createPlayer(httpFlvSource.value, mpegtsOptions.value)
-        player.attachMediaElement(httpStreamFlv.value)
-        player.load()
-    }
-
     clock()
 })
 
@@ -385,7 +364,11 @@ function runControl(button: PlayerControlButton) {
             <div class="order-1 col-span-2 md:col-span-1 p-1">
                 <div class="bg-base-100 w-full h-full rounded-sm shadow-sm flex items-center p-2">
                     <div class="w-full aspect-video">
-                        <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
+                        <MoqPlayer
+                            v-if="useMoqPreview"
+                            :key="configStore.channels[configStore.i]?.id"
+                            :channel="configStore.channels[configStore.i]?.id"
+                        />
                         <VideoPlayer
                             v-else-if="configStore.showPlayer && configStore.channels[configStore.i]"
                             :key="configStore.i"

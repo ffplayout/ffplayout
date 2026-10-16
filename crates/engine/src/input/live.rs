@@ -43,24 +43,8 @@ pub(super) const MAX_PENDING_AUDIO_FRAMES: usize = 512;
 pub(super) const LIVE_AUDIO_FRAME_SAMPLES: usize = 1024;
 
 // The live decoder supplies stereo planar f32 at the configured sample rate.
-pub(super) fn trim_audio_start(input: &frame::Audio, skip: usize) -> Result<frame::Audio> {
-    anyhow::ensure!(skip < input.samples(), "cannot trim an entire audio frame");
-    let mut result = frame::Audio::new(
-        input.format(),
-        input.samples() - skip,
-        input.channel_layout(),
-    );
-    result.set_rate(input.rate());
-    result.set_pts(input.pts().map(|pts| pts + skip as i64));
+pub(super) use crate::utils::ffmpeg::trim_audio_start;
 
-    for channel in 0..input.channels() as usize {
-        result
-            .plane_mut::<f32>(channel)
-            .copy_from_slice(&input.plane::<f32>(channel)[skip..]);
-    }
-
-    Ok(result)
-}
 pub const DEFAULT_LIVE_IDLE_TIMEOUT_MS: u32 = 2000;
 
 /// Shared live timeout; updates take effect on the next watchdog/playback check.
@@ -729,6 +713,10 @@ impl LiveFrameSender {
 }
 
 impl FrameOutput for LiveFrameSender {
+    fn input_diagnostics_handle(&self) -> Option<Arc<LiveInputDiagnostics>> {
+        Some(self.diagnostics.clone())
+    }
+
     fn input_diagnostics(&self) -> Option<&LiveInputDiagnostics> {
         Some(&self.diagnostics)
     }

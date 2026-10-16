@@ -524,6 +524,39 @@ pub struct Recording {
 #[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Output {
     pub id: i32,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub label: String,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub configured: bool,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub inherit_resolution: bool,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub share_encoding: bool,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub encoding_source_id: Option<i32>,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub encoding_variant: String,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub public_moq: bool,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub active: bool,
+    #[sqlx(skip)]
+    #[serde(default)]
+    pub runtime_status: Option<String>,
+    #[sqlx(skip)]
+    #[serde(default)]
+    pub runtime_error: Option<String>,
+    #[sqlx(skip)]
+    #[serde(default)]
+    pub runtime_retryable: bool,
     pub channel_id: i32,
     pub name: String,
     pub hls_variants: String,
@@ -564,6 +597,17 @@ impl Output {
         Self {
             id: 0,
             channel_id,
+            active: false,
+            label: String::new(),
+            configured: false,
+            inherit_resolution: false,
+            share_encoding: true,
+            encoding_source_id: None,
+            encoding_variant: String::new(),
+            public_moq: false,
+            runtime_status: None,
+            runtime_error: None,
+            runtime_retryable: false,
             name: mode.to_string(),
             hls_variants: String::new(),
             stream_url,

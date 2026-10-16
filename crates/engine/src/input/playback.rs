@@ -756,6 +756,10 @@ pub(super) fn seconds_to_pts(rate: u32, seconds: f64) -> i64 {
 }
 
 impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
+    fn playout_clock(&self) -> Option<crate::clock::SharedPlayoutClock> {
+        self.output.playout_clock()
+    }
+
     fn audio_frame_size(&self) -> usize {
         self.output.audio_frame_size()
     }
