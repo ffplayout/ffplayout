@@ -44,9 +44,6 @@ pub(super) async fn open_parallel_playout(
         let output = &effective;
         let mut scoped = config.clone();
         scoped.output = output.clone();
-        if output.mode == OutputMode::HLS && output.id != config.output.id {
-            scoped.channel.public = scoped.channel.public.join(format!("outputs/{}", output.id));
-        }
         scoped.outputs.clear();
         let record_here = config.recording.enable
             && match config.recording.source {

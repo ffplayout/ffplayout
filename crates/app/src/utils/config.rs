@@ -1494,7 +1494,7 @@ impl PlayoutConfig {
             return Err("invalid program format".into());
         }
         let mut ids = HashSet::new();
-        let mut hls_names = HashSet::new();
+        let mut hls_outputs = 0;
         let mut desktops = 0;
         let mut moq = 0;
 
@@ -1518,8 +1518,11 @@ impl PlayoutConfig {
             }
             let effective = self.effective_output(output)?;
             effective.validate()?;
-            if output.mode == OutputMode::HLS && !hls_names.insert(&output.hls_playlist_name) {
-                return Err("parallel HLS outputs must have distinct playlist names".into());
+            if output.mode == OutputMode::HLS {
+                hls_outputs += 1;
+                if hls_outputs > 1 {
+                    return Err("only one HLS output is supported per channel".into());
+                }
             }
             desktops += usize::from(output.mode == OutputMode::Desktop);
             moq += usize::from(output.mode == OutputMode::Moq);
@@ -2090,9 +2093,8 @@ mod output_tests {
         stream.id = 12;
         stream.encoding_source_id = Some(11);
         stream.encoding_variant = "small".into();
-        let mut hls = output(OutputMode::HLS);
+        let mut hls = output(OutputMode::Stream);
         hls.id = 13;
-        hls.hls_playlist_name = "copy".into();
         hls.encoding_source_id = Some(12);
         let mut config = PlayoutConfig {
             output: root,
@@ -2107,9 +2109,8 @@ mod output_tests {
             (effective.width, effective.height, effective.audio_bitrate),
             (640, 360, 96)
         );
-        assert_eq!(effective.hls_playlist_name, "copy");
         config.output.encoding_source_id = Some(13);
-        config.output.encoding_variant = "copy".into();
+        config.output.encoding_variant = "small".into();
         assert!(config.validate_outputs().is_err());
         config.output.encoding_source_id = None;
         config.outputs[0].enabled = false;
@@ -2153,6 +2154,22 @@ mod output_tests {
         config.output.mode = OutputMode::Desktop;
         config.outputs[0].mode = OutputMode::Desktop;
         assert!(config.validate_outputs().is_err());
+    }
+
+    #[test]
+    fn only_one_enabled_hls_output_is_allowed() {
+        let mut config = PlayoutConfig {
+            output: output(OutputMode::HLS),
+            ..Default::default()
+        };
+        let mut additional = output(OutputMode::HLS);
+        additional.id = 2;
+        additional.hls_playlist_name = "secondary".into();
+        config.outputs.push(additional);
+        assert!(config.validate_outputs().is_err());
+
+        config.outputs[0].enabled = false;
+        assert!(config.validate_outputs().is_ok());
     }
 
     #[test]

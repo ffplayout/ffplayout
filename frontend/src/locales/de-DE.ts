@@ -400,7 +400,7 @@ export default {
         outputHelp:
             'Bis zu acht Ausgaben untereinander konfigurieren. Jede Ausgabe hat eine eigene Auflösung, Encoder-Einstellungen und ein Ziel. Ein Desktop- und ein MoQ-Output werden unterstützt. Alle Ausgaben verwenden die Bildrate des Programms.',
         outputParam:
-            'HLS-Playlists entstehen je nach bestehender Kanalstruktur unter live/<name>.m3u8 oder outputs/<ID>/live/<name>.m3u8.',
+            'HLS-Playlists und Segmente werden unter live/<name>.m3u8 gespeichert. Pro Kanal wird vorerst nur ein HLS-Output unterstützt.',
         streamUrl: 'Stream-Ziel-URL',
         hlsSettings: 'HLS-Einstellungen',
         hlsPlaylistName: 'Playlist-Name',

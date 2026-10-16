@@ -389,7 +389,7 @@ export default {
         outputHelp:
             'Configure up to eight outputs below. Each output has its own resolution, encoder settings and destination. One desktop and one MoQ output are supported. All outputs use the program frame rate.',
         outputParam:
-            'HLS playlists are created in live/<name>.m3u8 or outputs/<ID>/live/<name>.m3u8, depending on the existing channel layout.',
+            'HLS playlists and segments are written to live/<name>.m3u8. Only one HLS output per channel is currently supported.',
         streamType: 'Stream type',
         streamUrl: 'Stream target URL',
         streamFormat: 'FFmpeg output format',

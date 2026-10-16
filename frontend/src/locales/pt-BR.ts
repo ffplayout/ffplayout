@@ -399,7 +399,7 @@ export default {
         outputHelp:
             'Configure até oito saídas abaixo. Cada saída tem sua própria resolução, configurações de codificação e destino. São permitidas uma saída desktop e uma MoQ. Todas usam a taxa de quadros do programa.',
         outputParam:
-            'As playlists HLS são criadas em live/<name>.m3u8 ou outputs/<ID>/live/<name>.m3u8, conforme a estrutura existente do canal.',
+            'As playlists e segmentos HLS são gravados em live/<name>.m3u8. No momento, é permitido apenas um output HLS por canal.',
         streamUrl: 'URL de destino do stream',
         hlsSettings: 'Configurações HLS',
         hlsPlaylistName: 'Nome da playlist',

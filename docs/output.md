@@ -230,10 +230,10 @@ rates always match the shared program.
 
 Each encoded output selects **Own encoding** or an **Encoding source**. Choosing
 an enabled Stream, MoQ or HLS output reuses its existing compressed video/audio
-packets. HLS sources expose their base rendition and additional variants. A
-derived HLS output publishes the selected rendition under its own playlist name;
-it does not encode additional variants. Own encoding remains independent even
-when another output happens to use identical settings.
+packets. HLS sources expose their base rendition and additional variants. Only
+one HLS output instance is supported per channel; adaptive renditions belong to
+that output. Own encoding remains independent even when another output happens
+to use identical settings.
 
 Dependencies resolve to the original encoder and rendition. Self references,
 cycles, disabled/missing sources and incompatible container/codec combinations
@@ -242,8 +242,8 @@ metadata and transport settings remain independent. A common closed GOP fits the
 participating HLS segment intervals; codec headers support each container.
 
 Adaptive HLS and WebVTT can supply shared encoded media. Packet-copy recording
-can consume either the original source or a derived output without another
-encoder. Packet-copy recording receives media directly from the encoding group and
+can consume an output source without another encoder. Packet-copy recording
+receives media directly from the encoding group and
 continues through destination failures and reconnections without reopening its
 recording muxer. Dedicated recording encoding remains separate. MoQ uses the same
 `config_output` table as other outputs; no separate preview configuration remains.
@@ -277,11 +277,9 @@ path. Without desktop, the shared program clock permits 100 ms of encoding lead;
 destination pacing and network I/O cannot throttle healthy branches. HLS rate
 correction applies to the shared program only when desktop is absent.
 
-Additional HLS instances use isolated `outputs/ID/live/` directories beneath the
-channel's public directory so adaptive variants and segments cannot collide.
-The primary HLS instance retains its existing `live/` paths. Recording copy
-sources refer to their enabled output instance; dedicated recording remains a
-separate feature.
+HLS playlists and segments retain the `live/` directory beneath the channel's
+public directory. Recording copy sources refer to their enabled output instance;
+dedicated recording remains a separate feature.
 
 MoQ is always available as mode `moq`. It can be the only output and publishes to
 the `/moq/player?channel=ID` browser player. It currently supports one
