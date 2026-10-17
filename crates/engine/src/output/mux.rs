@@ -37,16 +37,20 @@ struct Queue {
     delivered: bool,
     #[cfg(test)]
     emitted: Vec<(usize, i64, Instant)>,
+    #[cfg(test)]
+    first_write_delay: Duration,
 }
 
 struct Shared {
+    pace_packets: bool,
     queue: Mutex<Queue>,
     changed: Condvar,
 }
 
 /// Owns the single destination's mux context. Encoding hands immutable packet
 /// references to a bounded queue; only this worker owns output pacing and I/O.
-/// Recording and the dedicated preview encoder retain their unpaced sink.
+/// HLS drains available packets without per-packet waits; its clock still bounds
+/// file reading. Recording retains its direct, unpaced sink.
 pub(super) struct MuxOutput {
     direct: Option<format::context::Output>,
     time_bases: Vec<Rational>,
@@ -62,7 +66,7 @@ pub(super) struct MuxOutput {
 impl MuxOutput {
     pub(super) fn new(
         output: format::context::Output,
-        paced: bool,
+        threaded: bool,
         health: Option<HlsHealth>,
         channel: Option<i32>,
     ) -> Result<Self> {
@@ -84,8 +88,17 @@ impl MuxOutput {
             clock: Arc::new(Mutex::new(PlayoutClock::new())),
         };
 
-        if paced {
+        if threaded {
             let shared = Arc::new(Shared {
+                // The program/input clock already limits production. HLS files
+                // may catch up immediately; network destinations stay paced.
+                pace_packets: mux
+                    .direct
+                    .as_ref()
+                    .context("mux context missing")?
+                    .format()
+                    .name()
+                    != "hls",
                 queue: Mutex::new(Queue {
                     packets: Vec::new(),
                     bytes: 0,
@@ -96,6 +109,8 @@ impl MuxOutput {
                     delivered: false,
                     #[cfg(test)]
                     emitted: Vec::new(),
+                    #[cfg(test)]
+                    first_write_delay: Duration::ZERO,
                 }),
                 changed: Condvar::new(),
             });
@@ -331,10 +346,19 @@ fn run(
                 queue = next;
             }
         };
-        let delay = {
+        // Sparse subtitle cues are released by the program scheduler. Their
+        // timestamps must not anchor or advance the audio/video pacing clock.
+        let delay = if active_streams.contains(&pending.packet.stream()) {
             let mut clock = clock.lock().unwrap_or_else(PoisonError::into_inner);
             clock.set_rate(pending.rate);
             clock.delay_until(Some(pending.timestamp_us), rescale::TIME_BASE)
+        } else {
+            Duration::ZERO
+        };
+        let delay = if shared.pace_packets {
+            delay
+        } else {
+            Duration::ZERO
         };
         let deadline = Instant::now() + delay;
         {
@@ -352,6 +376,11 @@ fn run(
         }
         let packet = pending.packet;
         let stream_index = packet.stream();
+        #[cfg(test)]
+        {
+            let delay = std::mem::take(&mut shared.queue.lock().unwrap().first_write_delay);
+            thread::sleep(delay);
+        }
         let started = timing.as_ref().map(|_| Instant::now());
         packet
             .write_interleaved(&mut output)
@@ -452,6 +481,10 @@ mod tests {
     use super::*;
 
     fn sink() -> MuxOutput {
+        sink_with_subtitles(false)
+    }
+
+    fn sink_with_subtitles(subtitles: bool) -> MuxOutput {
         ffmpeg_next::init().unwrap();
         let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests_assets/storage/media_filler/filler_0.mp4");
@@ -463,6 +496,15 @@ mod tests {
             stream.set_parameters(source.parameters());
             stream.set_time_base(Rational(1, 1_000_000));
         }
+        if subtitles {
+            let mut stream = output.add_stream(codec::Id::WEBVTT).unwrap();
+            let mut parameters = codec::Parameters::new();
+            parameters.set_medium(ffmpeg_next::media::Type::Subtitle);
+            parameters.set_id(codec::Id::WEBVTT);
+            stream.set_parameters(parameters);
+            stream.set_time_base(Rational(1, 1_000_000));
+        }
+
         output.write_header().unwrap();
 
         MuxOutput::new(output, true, None, None).unwrap()
@@ -475,6 +517,94 @@ mod tests {
         packet.set_pts(Some(timestamp));
         packet.set_dts(Some(timestamp));
         mux.write(&mut packet).unwrap();
+    }
+
+    #[test]
+    fn a_subtitle_before_the_first_video_does_not_anchor_the_media_clock() {
+        let mut mux = sink_with_subtitles(true);
+        let shared = mux.shared.clone().unwrap();
+        send(&mut mux, 2, -5_000_000);
+        let deadline = Instant::now() + Duration::from_secs(1);
+
+        while shared.queue.lock().unwrap().emitted.is_empty() {
+            assert!(Instant::now() < deadline, "subtitle was not released");
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        assert!(mux.clock.lock().unwrap().media_time_us().is_none());
+        let started = Instant::now();
+        send(&mut mux, 0, 10_000_000);
+        send(&mut mux, 1, 10_000_000);
+        mux.finish().unwrap();
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn hls_drains_available_packets_without_waiting_for_media_deadlines() {
+        ffmpeg_next::init().unwrap();
+        let directory = std::env::temp_dir().join(format!(
+            "hls-catchup-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests_assets/storage/media_filler/filler_0.mp4");
+        let mut input = format::input(&fixture).unwrap();
+        let mut output =
+            super::super::hls::output_context(directory.join("index.m3u8").to_str().unwrap())
+                .unwrap();
+        for source in input.streams() {
+            let mut stream = output.add_stream(codec::Id::None).unwrap();
+            stream.set_parameters(source.parameters());
+            stream.set_time_base(source.time_base());
+        }
+        output.write_header().unwrap();
+        let mut packets = [None, None];
+        for (stream, packet) in input.packets() {
+            if stream.index() < 2 && packets[stream.index()].is_none() {
+                packets[stream.index()] = Some(packet);
+            }
+            if packets.iter().all(Option::is_some) {
+                break;
+            }
+        }
+        let mut mux = MuxOutput::new(output, true, None, None).unwrap();
+        assert!(!mux.shared.as_ref().unwrap().pace_packets);
+        mux.shared
+            .as_ref()
+            .unwrap()
+            .queue
+            .lock()
+            .unwrap()
+            .first_write_delay = Duration::from_millis(300);
+        let clock = mux.clock().unwrap();
+        let started = Instant::now();
+        // Simulate a backlog that already exists after a slow write. The HLS
+        // worker must drain it rather than enforce another realtime schedule.
+        for timestamp_us in [0, 10_000_000] {
+            for (index, source) in packets.iter().enumerate() {
+                let mut packet = reference_packet(source.as_ref().unwrap()).unwrap();
+                packet.set_stream(index);
+                let timestamp =
+                    timestamp_us.rescale(rescale::TIME_BASE, mux.time_base(index).unwrap());
+                packet.set_pts(Some(timestamp));
+                packet.set_dts(Some(timestamp));
+                mux.write(&mut packet).unwrap();
+            }
+        }
+        mux.finish().unwrap();
+        assert!(started.elapsed() >= Duration::from_millis(300));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(
+            clock.lock().unwrap().media_time_us().is_some(),
+            "input read governor still needs a continuous realtime clock"
+        );
+        assert!(directory.join("index.m3u8").exists());
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

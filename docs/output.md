@@ -9,8 +9,7 @@ output also use separate audio and video encoder workers. Slow video codec work
 therefore does not directly block audio codec work. Bounded queues apply
 backpressure without dropping program packets.
 
-For paced outputs, file reading follows the same continuous program clock as
-the destination. Like the current FFmpeg CLI `-re` implementation, the input
+File reading follows a continuous realtime program clock across clip boundaries. Like the current FFmpeg CLI `-re` implementation, the input
 governor uses the slowest active stream's normalized DTS, allows an initial
 500 ms lead and catches up at at most 1.05 times real time after falling behind.
 The reference is FFmpeg's
@@ -35,21 +34,24 @@ empty, it releases that constraint until the opposite track resumes. This lets
 containers without a complete per-stream index reach EOF without a circular
 wait between demux, decoding and the coordinator.
 
-A dedicated output worker sorts compressed packets by DTS across tracks, paces
-them against the program clock, and owns the destination's mux context. Its queue
-allows at most one second between its oldest and newest timestamps, 512 queued
+A dedicated output worker sorts compressed packets by DTS across tracks and owns
+its destination's mux context. Stream and MoQ workers pace packets against their
+media clock to smooth encoder bursts. HLS writes available packets without a second
+realtime wait, allowing queued writes to catch up. Its continuous clock still
+bounds file reading; parallel outputs retain the common 100 ms encoding lead. The mux
+queue allows at most one second between its oldest and newest timestamps, 512 queued
 packets and 32 MiB of queued payload, plus the packet currently being written.
-Backpressure limits processing rather than dropping program packets. Mux errors
-propagate back to playback; normal finish drains the queue and writes the trailer.
+Backpressure bounds each destination's delivery work. Parallel outputs isolate
+destination errors and compressed-queue overload as described below. Normal finish
+drains the queue and writes the trailer.
 
 The mux worker releases the earliest packet once every active audio/video track
 has reached its DTS. An idle timeout of 20 ms also releases short tails and live
 input without requiring a fixed media lookahead.
 Frame-threaded file decoding is limited to at most four threads (fewer at low
 frame rates), so decoder-held frames cannot consume the entire read-ahead budget.
-Recording keeps its unpaced muxer. Dedicated auxiliary encoding owns codecs
-without opening a destination or an intermediate null muxer. Auxiliary MPEG-TS
-delivery has independent pacing. Parallel output instances are described below.
+Recording keeps its unpaced muxer. Shared encoding owns codecs without opening
+an intermediate destination. Parallel output instances are described below.
 
 The program clock persists across clip boundaries and preserves the existing
 deadline when its rate changes. Scheduled audio cuts and resampler tails stop
@@ -252,7 +254,7 @@ recording muxer. Dedicated recording encoding remains separate. MoQ uses the sam
 to the encoding groups. Each raw queue is limited to 128 messages, 64 MiB and one
 second of media. Shared profiles reference their compressed packets into separate
 delivery queues, each limited to 512 messages, 32 MiB and one second, followed by
-the existing bounded, paced mux queue. No destination owns the shared encoder.
+the existing bounded mux queue, paced for Stream/MoQ and unpaced for HLS. No destination owns the shared encoder.
 Opening, transport or mux failures disable only the affected destination; other
 destinations keep using the profile. Encoder failure or raw queue overload affects
 the whole encoding group. Compressed queue overload disables that destination
@@ -274,8 +276,11 @@ With desktop enabled, desktop audio drives program timing; at most one desktop
 instance is allowed. Its frame sender distributes accepted program frames to the
 other workers, including the logo, while the renderer retains its existing logo
 path. Without desktop, the shared program clock permits 100 ms of encoding lead;
-destination pacing and network I/O cannot throttle healthy branches. HLS rate
-correction applies to the shared program only when desktop is absent.
+destination pacing and network I/O cannot throttle healthy branches. The application
+keeps the program rate at 1.0; HLS no longer changes it based on playlist delta.
+Short HLS write stalls are absorbed by bounded queues and caught up as data becomes
+available. Sustained overload still exceeds those bounds; the existing configured
+playlist stop threshold remains responsible for excessive schedule drift.
 
 HLS playlists and segments retain the `live/` directory beneath the channel's
 public directory. Recording copy sources refer to their enabled output instance;

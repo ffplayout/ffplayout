@@ -197,7 +197,7 @@ impl EncodedOutput {
             _ => {}
         }
 
-        let pace_output = paced && !matches!(&output_format, EncodedFormat::Recording { .. });
+        let threaded_output = paced && !matches!(&output_format, EncodedFormat::Recording { .. });
         let hls_variants = match &output_format {
             EncodedFormat::Auto
             | EncodedFormat::Stream { .. }
@@ -297,6 +297,17 @@ impl EncodedOutput {
             }
             EncodedFormat::Auto => format::output(path)?,
         };
+
+        if vtt_subtitles {
+            // WebVTT is sparse and can remain empty for an entire clip. FFmpeg's
+            // default interleave window holds A/V for up to ten seconds while
+            // waiting for another cue. Keep live HLS delivery bounded instead.
+            // SAFETY: this output context is exclusively owned before its header
+            // is written or it is handed to the mux worker.
+            unsafe {
+                (*octx.as_mut_ptr()).max_interleave_delta = 100_000;
+            }
+        }
 
         if !cfg.metadata_options.is_empty()
             && !matches!(output_format, EncodedFormat::Recording { .. })
@@ -489,7 +500,7 @@ impl EncodedOutput {
                     super::diagnostics::PrimaryTiming::new(cfg.channel_id.unwrap_or_default())
                 }),
             video_time_base: cfg.video_time_base,
-            mux: MuxOutput::new(octx, pace_output, hls_health, cfg.channel_id)?,
+            mux: MuxOutput::new(octx, threaded_output, hls_health, cfg.channel_id)?,
             encoding_workers: None,
             video_stream_indices: if parameters.is_some() {
                 (0..stream_count).map(|index| index * 2).collect()
@@ -703,7 +714,9 @@ impl EncodedOutput {
             .into_iter()
             .filter(|cue| cue.end_ms > source_start_ms)
             .map(|cue| vtt::VttCue {
-                start_ms: output_start_ms + cue.start_ms.saturating_sub(source_start_ms),
+                // A seek may land inside a cue. Its visible remainder starts at
+                // the new output boundary, never before the program timeline.
+                start_ms: output_start_ms + cue.start_ms.saturating_sub(source_start_ms).max(0),
                 end_ms: output_start_ms + cue.end_ms - source_start_ms,
                 text: cue.text,
             })
@@ -1394,6 +1407,13 @@ mod open_tests {
             .unwrap();
         output.advance_vtt_subtitles(1_001_500).unwrap();
         assert_eq!(output.pending_vtt_cues.len(), 1);
+
+        output
+            .write_vtt_subtitles(media_path.to_str().unwrap(), 1_040_000, 1_500)
+            .unwrap();
+        let resumed = output.pending_vtt_cues.front().unwrap();
+        assert_eq!(resumed.start_ms, 1_040_000);
+        assert_eq!(resumed.end_ms, 1_040_500);
 
         // Forty seconds of live output pass, then the same clip resumes at
         // source second 40. Its remaining cue must keep increasing DTS.

@@ -367,6 +367,122 @@ mod tests {
         attachment.finish().await.unwrap();
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shared_hls_and_moq_write_media_after_seeking_inside_a_subtitle() {
+        use ff_engine::{
+            HlsSubtitle, LogoFade, OutputConfig, OutputDestination, OutputTarget, Playout,
+            StreamType,
+        };
+        use std::path::Path;
+
+        let directory = std::env::temp_dir().join(format!("hls-moq-vtt-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let media = directory.join("clip.mp4");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests_assets/storage/media_mix/av_sync.mp4");
+        std::fs::copy(fixture, &media).unwrap();
+        std::fs::write(
+            media.with_extension("vtt"),
+            "WEBVTT\n\n00:00:00.000 --> 00:00:20.000\nCue spanning the seek point\n",
+        )
+        .unwrap();
+        let (origin, _driver) = moq_net::origin::Producer::new(Default::default());
+        let (url, attachment) = attach_to_origin(-98768, origin).await.unwrap();
+        let mut config = OutputConfig::new(320, 180, 25, 48000);
+        config
+            .video_options
+            .insert("preset".into(), "ultrafast".into());
+        config.stream_type = StreamType::Custom;
+        config.stream_format = "mpegts".into();
+        config.destinations.push(OutputDestination {
+            id: 1,
+            config: config.clone(),
+            target: OutputTarget::Hls {
+                playlist: directory.join("index.m3u8").to_string_lossy().into_owned(),
+                variants: vec![],
+                subtitle: Some(HlsSubtitle {
+                    name: "Subtitles".into(),
+                    language: "en".into(),
+                    default: false,
+                }),
+                segment_seconds: 2,
+                list_size: 6,
+            },
+        });
+        let mut borrowed = config.clone();
+        borrowed.destinations.clear();
+        borrowed.encoding_source = Some((1, 0));
+        config.destinations.push(OutputDestination {
+            id: 5,
+            config: borrowed,
+            target: OutputTarget::Stream { url },
+        });
+        let status = config.output_status.clone();
+        let output_directory = directory.clone();
+        let worker = tokio::task::spawn_blocking(move || {
+            let mut playout = Playout::open_parallel(config, 1.0).unwrap();
+            let result = playout
+                .play_timed_with_live(
+                    media.to_str().unwrap(),
+                    Some(12.0),
+                    Some(6.0),
+                    None,
+                    media.to_str(),
+                    LogoFade::default(),
+                    1.0,
+                    &mut None,
+                )
+                .unwrap();
+            assert_eq!(result, ff_engine::ClipResult::Played);
+            // Check before finish: flushing a broken mux on shutdown can conceal
+            // that the live playlist never received any media during playback.
+            assert!(
+                std::fs::read_dir(&output_directory)
+                    .unwrap()
+                    .flatten()
+                    .any(|entry| {
+                        entry
+                            .path()
+                            .extension()
+                            .is_some_and(|extension| extension == "ts")
+                            && entry.metadata().unwrap().len() > 0
+                    }),
+                "HLS did not write live video segments"
+            );
+            for id in [1, 5] {
+                assert_eq!(status.snapshot()[&id].phase, "running");
+            }
+
+            let playlist = output_directory.join("index.m3u8");
+            let before = std::fs::read_to_string(&playlist).unwrap();
+            std::fs::remove_file(media.with_extension("vtt")).unwrap();
+            assert_eq!(
+                playout
+                    .play_timed_with_live(
+                        media.to_str().unwrap(),
+                        None,
+                        Some(6.0),
+                        None,
+                        media.to_str(),
+                        LogoFade::default(),
+                        1.0,
+                        &mut None,
+                    )
+                    .unwrap(),
+                ff_engine::ClipResult::Played
+            );
+            assert_ne!(std::fs::read_to_string(playlist).unwrap(), before);
+            for id in [1, 5] {
+                assert_eq!(status.snapshot()[&id].phase, "running");
+            }
+
+            playout.finish().unwrap();
+        });
+        worker.await.unwrap();
+        attachment.finish().await.unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
     #[tokio::test]
     async fn importer_accepts_another_connection_after_a_broken_stream() {
         use tokio::{io::AsyncWriteExt, net::TcpStream};
