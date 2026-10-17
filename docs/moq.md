@@ -74,6 +74,31 @@ In Vite development mode, the player always uses the same-origin WebSocket proxy
 are forwarded to the backend at `127.0.0.1:8787`. `/moq/player` stays on the Vue
 dev server at `127.0.0.1:5757`. Direct relay URLs are used only in production builds.
 
+For nginx, add the following location to the existing HTTPS server block, alongside
+the regular frontend/API proxy. This example assumes ffplayout runs on the same
+host at `127.0.0.1:8787`; adjust the upstream address for another host or container.
+Leave `FFPLAYOUT_MOQ_PUBLIC_URL` unset to use the same-origin WebSocket route.
+
+```nginx
+location = /moq/relay {
+    proxy_pass http://127.0.0.1:8787;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+```
+
+The proxy preserves the path and query parameters. With this setup, MoQ uses
+the existing HTTPS port (normally TCP 443); the internal relay port 8089 does
+not need public forwarding. See [nginx WebSocket proxying](https://nginx.org/en/docs/http/websocket.html).
+
 For a deployed WebTransport endpoint, set `FFPLAYOUT_MOQ_PUBLIC_URL` to its public
 MoQ URL ending in `/channels` and provide browser-trusted TLS and HTTP/3/WebTransport forwarding. Both Vue views use the player's fallback audio buffering when cross-origin
 isolation is unavailable.
