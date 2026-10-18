@@ -212,6 +212,71 @@ The frontend uses TypeScript, to generate types for the rust structs run: `cargo
 
 The generated types are written next to the frontend sources that import them.
 
+## Automatic backups before database migrations
+
+Before applying pending migrations to an existing file database, ffplayout creates
+one consistent SQLite snapshot in the same directory. Committed data in the WAL
+is included. Fresh databases, in-memory databases and starts without pending
+migrations do not create backups.
+
+Backups use the database filename, the local date, and the highest successfully applied
+migration version **before** the update:
+
+```text
+ffplayout.db.2026-10-18.schema-6.bak
+```
+
+An existing database without migration history uses `schema-0`. A repeated
+migration attempt with the same schema version and date replaces that day's
+backup only after the new snapshot is complete. Backup creation or publication
+failure aborts migration, preserving any previous backup at that path.
+
+After a successful backup, ffplayout retains that snapshot and the four most
+recently modified older backups matching this database's naming pattern. Other
+files and manually named backups are left untouched. Cleanup failure also aborts
+migration. The backup path and removed old backups are logged.
+
+Restore a backup only while ffplayout is stopped, with the database's WAL and SHM
+sidecars removed or moved aside. Keep a copy of the current database and its
+sidecars before restoring, and use an application version compatible with the
+restored schema.
+
+### Roll back migration 7
+
+Stop ffplayout before using the maintenance script. First validate the rollback
+without committing changes or creating a backup:
+
+```bash
+python3 scripts/rollback_migration_7.py /path/to/ffplayout.db --dry-run
+```
+
+To return to schema 6:
+
+```bash
+python3 scripts/rollback_migration_7.py /path/to/ffplayout.db
+```
+
+This removes migration 7's output-instance settings and `program_format`, but
+retains output rows and their older settings. Schema 6 permits only one active
+output per channel and cannot represent shared encoding; incompatible active
+configurations are rejected. Starting the current application reapplies migration 7.
+
+To reset migration 7 and immediately apply the repository's SQL again while
+preserving its settings, including multiple active outputs, use:
+
+```bash
+python3 scripts/rollback_migration_7.py /path/to/ffplayout.db --reapply --dry-run
+python3 scripts/rollback_migration_7.py /path/to/ffplayout.db --reapply
+```
+
+Both changes occur in one transaction. Reapplication updates SQLx's migration
+checksum. The script supports databases with successful migrations 1 through 7
+and the migration 7 columns currently defined in this repository. It requires
+Python 3 with SQLite 3.35 or newer. Before committing changes, it creates a
+`<database>.<date>.schema-7.bak` snapshot and retains at most five schema backups
+using the same filename pattern as the application. A failed rollback or
+reapplication restores the transaction; its backup remains available.
+
 ## Database migrations on `main`
 
 Database migrations added on the `main` branch are considered unstable until

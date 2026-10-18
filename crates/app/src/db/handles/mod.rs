@@ -1,3 +1,5 @@
+mod migration_backup;
+
 pub mod channel;
 pub mod configuration;
 pub mod global;

@@ -13,7 +13,7 @@ edition = "2024"
 
 [profile.release]
 debug = false
-lto = true
+lto = "thin"
 strip = true
 opt-level = 3
 codegen-units = 1

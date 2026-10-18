@@ -12,7 +12,9 @@ pub async fn db_migrate(pool: &SqlitePool) -> Result<bool, ProcessError> {
     )
     .fetch_one(pool)
     .await?;
-    sqlx::migrate!("../../migrations").run(pool).await?;
+    let migrator = sqlx::migrate!("../../migrations");
+    super::migration_backup::before_migrations(pool, &migrator).await?;
+    migrator.run(pool).await?;
 
     if !existing_schema {
         // Earlier migrations seed the initial channel. It is a new configuration,
