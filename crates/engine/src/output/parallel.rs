@@ -1,7 +1,7 @@
 //! One program clock and bounded, independent destination workers.
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Arc, Mutex, PoisonError, Weak},
     thread::{self, JoinHandle},
     time::Duration,
 };
@@ -28,17 +28,89 @@ pub struct OutputState {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct OutputStatus(Arc<Mutex<OutputRegistry>>);
+#[derive(Clone, Default)]
+pub struct OutputStatus(Arc<Mutex<OutputRegistry>>, Option<u64>);
+
+impl std::fmt::Debug for OutputStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OutputStatus").finish_non_exhaustive()
+    }
+}
 
 #[derive(Debug, Default)]
 struct OutputRegistry {
     states: BTreeMap<i32, OutputState>,
     reconnectable: BTreeSet<i32>,
     retry: BTreeSet<i32>,
+    generations: BTreeMap<i32, u64>,
+    delivery_locks: BTreeMap<i32, Weak<Mutex<()>>>,
+    next_generation: u64,
+    dynamic: bool,
+    update: Option<Vec<OutputDestination>>,
 }
 
 impl OutputStatus {
+    pub fn supports_live_updates(&self) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .dynamic
+    }
+
+    /// Replace the pending update; media threads consume only the latest snapshot.
+    pub fn update_outputs(&self, destinations: Vec<OutputDestination>) -> Result<()> {
+        ensure!(
+            destinations.len() <= 8,
+            "at most eight outputs are supported"
+        );
+        super::shared::groups(&destinations)?;
+        let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        ensure!(
+            registry.dynamic,
+            "output runtime does not support live changes"
+        );
+        registry.update = Some(destinations);
+
+        Ok(())
+    }
+
+    fn take_update(&self) -> Option<Vec<OutputDestination>> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .update
+            .take()
+    }
+
+    pub(super) fn delivery_lock(&self, id: i32) -> Arc<Mutex<()>> {
+        let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        registry
+            .delivery_locks
+            .retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = registry.delivery_locks.get(&id).and_then(Weak::upgrade) {
+            return lock;
+        }
+        let lock = Arc::new(Mutex::new(()));
+        registry.delivery_locks.insert(id, Arc::downgrade(&lock));
+
+        lock
+    }
+
+    pub(super) fn scoped(&self, id: i32) -> Self {
+        let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        registry.next_generation += 1;
+        let generation = registry.next_generation;
+        registry.generations.insert(id, generation);
+        registry.retry.remove(&id);
+
+        Self(self.0.clone(), Some(generation))
+    }
+
+    fn current(&self, registry: &OutputRegistry, id: i32) -> bool {
+        self.1
+            .is_none_or(|generation| registry.generations.get(&id) == Some(&generation))
+    }
+
     pub fn snapshot(&self) -> BTreeMap<i32, OutputState> {
         self.0
             .lock()
@@ -85,6 +157,10 @@ impl OutputStatus {
 
     pub(super) fn reconnectable(&self, id: i32, available: bool) {
         let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if !self.current(&registry, id) {
+            return;
+        }
+
         if available {
             registry.reconnectable.insert(id);
         } else {
@@ -94,11 +170,9 @@ impl OutputStatus {
     }
 
     pub(super) fn take_retry(&self, id: i32) -> bool {
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .retry
-            .remove(&id)
+        let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+
+        self.current(&registry, id) && registry.retry.remove(&id)
     }
 
     pub fn fail(&self, id: i32, error: impl std::fmt::Display) {
@@ -106,11 +180,10 @@ impl OutputStatus {
     }
 
     pub(super) fn set(&self, id: i32, phase: &'static str, error: Option<String>) {
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .states
-            .insert(id, OutputState { phase, error });
+        let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.current(&registry, id) {
+            registry.states.insert(id, OutputState { phase, error });
+        }
     }
 }
 
@@ -118,6 +191,7 @@ impl OutputStatus {
 /// Called only from the destination's blocking delivery worker.
 pub trait OutputEndpoint: std::fmt::Debug + Send + Sync {
     fn connect_url(&self) -> Result<String>;
+    fn disconnect(&self) {}
 }
 
 #[derive(Debug, Clone)]
@@ -145,12 +219,15 @@ pub(super) enum Message {
     Video(frame::Video, Option<Arc<LogoOverlay>>, f64),
     Audio(frame::Audio),
     Rate(f64),
+    Destinations(Vec<OutputDestination>),
     Subtitles(String, i64, i64),
     ClearSubtitles,
     AdvanceSubtitles(i64),
 }
 
 struct DestinationWorker {
+    encoding_revision: String,
+    gop: u32,
     id: i32,
     ids: Vec<i32>,
     queue: Arc<PipelineQueue<Message>>,
@@ -182,6 +259,8 @@ impl DestinationWorker {
             destination.config.loudness_meter_control = crate::LoudnessMeterControl::default();
             destination.config.output_status = program.output_status.clone();
         }
+        let encoding_revision = destinations[0].config.encoding_revision.clone();
+        let gop = super::shared::gop_size(&destinations)?;
         let ids = destinations
             .iter()
             .map(|destination| destination.id)
@@ -203,8 +282,16 @@ impl DestinationWorker {
         let id = ids[0];
         let channel = program.channel_id.unwrap_or_default();
         let status = program.output_status.clone();
-        for id in &ids {
-            status.set(*id, "starting", None);
+        for destination in &destinations {
+            status.set(
+                destination.id,
+                if destination.config.delivery_enabled {
+                    "starting"
+                } else {
+                    "stopped"
+                },
+                None,
+            );
         }
         let worker_status = status.clone();
         let worker = thread::Builder::new()
@@ -229,6 +316,8 @@ impl DestinationWorker {
             })?;
 
         Ok(Self {
+            encoding_revision,
+            gop,
             id,
             ids,
             queue,
@@ -280,8 +369,33 @@ impl Drop for DestinationWorker {
     }
 }
 
+#[derive(Default)]
+struct OutputContext {
+    rate: Option<f64>,
+    subtitles: Option<(String, i64, i64)>,
+    position: Option<i64>,
+}
+
+impl OutputContext {
+    fn restore(&self, worker: &DestinationWorker) {
+        worker.send(Message::Rate(self.rate.unwrap_or(1.0)), 0, None);
+        if let Some((path, start, source)) = &self.subtitles {
+            let position = self.position.unwrap_or(*start).max(*start);
+            let source = source.saturating_add(position.saturating_sub(*start));
+            worker.send(
+                Message::Subtitles(path.clone(), position, source),
+                path.len(),
+                None,
+            );
+        }
+    }
+}
+
 pub(crate) struct ParallelOutput {
-    workers: Vec<DestinationWorker>,
+    workers: Mutex<Vec<DestinationWorker>>,
+    config: OutputConfig,
+    context: Mutex<OutputContext>,
+    retired: Mutex<Vec<JoinHandle<()>>>,
     clock: SharedPlayoutClock,
     video_time_base: ffmpeg_next::Rational,
     audio_time_base: ffmpeg_next::Rational,
@@ -296,10 +410,6 @@ impl ParallelOutput {
 
     pub(crate) fn start(config: &OutputConfig, paced: bool) -> Result<Self> {
         ensure!(
-            !config.destinations.is_empty(),
-            "at least one output is required"
-        );
-        ensure!(
             config.destinations.len() <= 8,
             "at most eight outputs are supported"
         );
@@ -308,8 +418,20 @@ impl ParallelOutput {
             .map(|destinations| DestinationWorker::start_group(destinations, config))
             .collect::<Result<Vec<_>>>()?;
 
+        config
+            .output_status
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .dynamic = true;
+        let mut program = config.clone();
+        program.destinations.clear();
+
         Ok(Self {
-            workers,
+            workers: Mutex::new(workers),
+            config: program,
+            context: Mutex::new(OutputContext::default()),
+            retired: Mutex::new(Vec::new()),
             clock: Arc::new(Mutex::new(PlayoutClock::new())),
             video_time_base: config.video_time_base,
             audio_time_base: config.audio_time_base,
@@ -319,6 +441,65 @@ impl ParallelOutput {
                 LoudnessMeter::new(config.sample_rate, config.loudness_meter_control.clone()),
             )),
         })
+    }
+
+    fn reconcile(&self, workers: &mut Vec<DestinationWorker>) -> Result<()> {
+        self.retired
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|worker| !worker.is_finished());
+        let Some(destinations) = self.config.output_status.take_update() else {
+            return Ok(());
+        };
+        let ids: BTreeSet<_> = destinations
+            .iter()
+            .filter(|destination| destination.config.delivery_enabled)
+            .map(|destination| destination.id)
+            .collect();
+        let groups = super::shared::groups(&destinations)?;
+        let mut previous = std::mem::take(workers);
+        for group in groups {
+            let root = &group[0];
+            let gop = super::shared::gop_size(&group)?;
+            let reusable = previous.iter().position(|worker| {
+                worker.id == root.id
+                    && worker.encoding_revision == root.config.encoding_revision
+                    && gop.is_multiple_of(worker.gop.max(1))
+                    && !worker.control.cancelled()
+            });
+            if let Some(index) = reusable {
+                let mut worker = previous.remove(index);
+                worker.ids = group.iter().map(|destination| destination.id).collect();
+                worker.send(Message::Destinations(group), 0, None);
+                workers.push(worker);
+            } else {
+                let worker = DestinationWorker::start_group(group, &self.config)?;
+                self.context
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .restore(&worker);
+                workers.push(worker);
+            }
+        }
+        for mut worker in previous {
+            for id in &worker.ids {
+                if !ids.contains(id) {
+                    self.config
+                        .output_status
+                        .scoped(*id)
+                        .set(*id, "stopped", None);
+                }
+            }
+            worker.control.cancel();
+            worker.queue.close();
+            // I/O shutdown must never stall the common program clock.
+            let reaper = thread::spawn(move || worker.finish());
+            let mut retired = self.retired.lock().unwrap_or_else(PoisonError::into_inner);
+            retired.retain(|worker| !worker.is_finished());
+            retired.push(reaper);
+        }
+
+        Ok(())
     }
 
     pub(crate) fn clock(&self) -> SharedPlayoutClock {
@@ -341,13 +522,6 @@ impl ParallelOutput {
     }
 
     pub(crate) fn encode_video(&self, frame: &frame::Video) -> Result<()> {
-        ensure!(
-            self.workers
-                .iter()
-                .any(|worker| !worker.control.cancelled()),
-            "all output encoding groups have failed"
-        );
-
         self.video_with_logo(frame, None, 0.0)
     }
 
@@ -365,7 +539,13 @@ impl ParallelOutput {
             ffmpeg_next::Rescale::rescale(&pts, self.video_time_base, rescale::TIME_BASE)
         });
 
-        for worker in &self.workers {
+        let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
+        self.reconcile(&mut workers)?;
+        ensure!(
+            workers.is_empty() || workers.iter().any(|worker| !worker.control.cancelled()),
+            "all output encoding groups have failed"
+        );
+        for worker in workers.iter() {
             worker.send(
                 Message::Video(reference_video_frame(frame)?, logo.clone(), opacity),
                 bytes,
@@ -388,7 +568,9 @@ impl ParallelOutput {
             ffmpeg_next::Rescale::rescale(&pts, self.audio_time_base, rescale::TIME_BASE)
         });
 
-        for worker in &self.workers {
+        let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
+        self.reconcile(&mut workers)?;
+        for worker in workers.iter() {
             worker.send(
                 Message::Audio(reference_audio_frame(frame)?),
                 bytes,
@@ -404,18 +586,33 @@ impl ParallelOutput {
     }
 
     pub(crate) fn set_playout_rate(&self, rate: f64) {
+        self.context
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .rate = Some(rate);
         self.clock
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .set_rate(rate);
 
-        for worker in &self.workers {
+        let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Err(error) = self.reconcile(&mut workers) {
+            log::error!("Output update failed: {error:#}");
+        }
+        for worker in workers.iter() {
             worker.send(Message::Rate(rate), 0, None);
         }
     }
 
     pub(crate) fn write_vtt_subtitles(&self, path: &str, start: i64, source: i64) -> Result<()> {
-        for worker in &self.workers {
+        {
+            let mut context = self.context.lock().unwrap_or_else(PoisonError::into_inner);
+            context.subtitles = Some((path.to_string(), start, source));
+            context.position = Some(start);
+        }
+        let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
+        self.reconcile(&mut workers)?;
+        for worker in workers.iter() {
             worker.send(
                 Message::Subtitles(path.to_string(), start, source),
                 path.len(),
@@ -427,7 +624,14 @@ impl ParallelOutput {
     }
 
     pub(crate) fn clear_vtt_subtitles(&self) -> Result<()> {
-        for worker in &self.workers {
+        {
+            let mut context = self.context.lock().unwrap_or_else(PoisonError::into_inner);
+            context.subtitles = None;
+            context.position = None;
+        }
+        let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
+        self.reconcile(&mut workers)?;
+        for worker in workers.iter() {
             worker.send(Message::ClearSubtitles, 0, None);
         }
 
@@ -435,7 +639,13 @@ impl ParallelOutput {
     }
 
     pub(crate) fn advance_vtt_subtitles(&self, position: i64) -> Result<()> {
-        for worker in &self.workers {
+        self.context
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .position = Some(position);
+        let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
+        self.reconcile(&mut workers)?;
+        for worker in workers.iter() {
             worker.send(Message::AdvanceSubtitles(position), 0, None);
         }
 
@@ -443,15 +653,40 @@ impl ParallelOutput {
     }
 
     pub(crate) fn finish(mut self) -> Result<()> {
-        for worker in &self.workers {
+        let workers = self
+            .workers
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner);
+        for worker in workers.iter() {
             worker.queue.close();
         }
-
-        for worker in &mut self.workers {
+        for worker in workers.iter_mut() {
             worker.finish();
         }
 
         Ok(())
+    }
+}
+
+impl Drop for ParallelOutput {
+    fn drop(&mut self) {
+        let mut registry = self
+            .config
+            .output_status
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        registry.dynamic = false;
+        registry.update = None;
+        drop(registry);
+        for worker in self
+            .retired
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .drain(..)
+        {
+            let _ = worker.join();
+        }
     }
 }
 
@@ -506,6 +741,199 @@ mod tests {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
+    #[test]
+    fn live_destinations_keep_shared_encoder_and_unrelated_stream_continuous() {
+        ffmpeg_next::init().unwrap();
+        let directory = TestDirectory(std::env::temp_dir().join(format!(
+                "live-output-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            )));
+        std::fs::create_dir_all(directory.path()).unwrap();
+        let mut config = OutputConfig::new(160, 90, 25, 48_000);
+        config.stream_type = crate::StreamType::Custom;
+        config.stream_format = "mpegts".into();
+        config
+            .video_options
+            .insert("preset".into(), "ultrafast".into());
+        config
+            .video_options
+            .insert("tune".into(), "zerolatency".into());
+        let destination = |id, name: &str, source| {
+            let mut settings = config.clone();
+            settings.encoding_source = source;
+            settings.encoding_revision = format!("owner-{}", source.map_or(id, |(owner, _)| owner));
+            settings.destination_revision = name.into();
+            OutputDestination {
+                id,
+                config: settings,
+                target: OutputTarget::Stream {
+                    url: directory.path().join(name).to_string_lossy().into_owned(),
+                },
+            }
+        };
+        let root = destination(1, "owner.ts", None);
+        let healthy = destination(5, "healthy.ts", None);
+        let first = destination(2, "shared-first.ts", Some((1, 0)));
+        let second = destination(2, "shared-second.ts", Some((1, 0)));
+        config.destinations = vec![root.clone(), healthy.clone()];
+        let output = ParallelOutput::new(&config).unwrap();
+        let owner_thread = output
+            .workers
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|worker| worker.id == 1)
+            .unwrap()
+            .worker
+            .as_ref()
+            .unwrap()
+            .thread()
+            .id();
+        for index in 0..200 {
+            let update = match index {
+                20 => Some(vec![root.clone(), first.clone(), healthy.clone()]),
+                80 => Some(vec![root.clone(), healthy.clone()]),
+                100 => Some(vec![root.clone(), second.clone(), healthy.clone()]),
+                150 => {
+                    let mut disabled = root.clone();
+                    disabled.config.delivery_enabled = false;
+                    Some(vec![disabled, second.clone(), healthy.clone()])
+                }
+                175 => Some(vec![healthy.clone()]),
+                180 => {
+                    let mut resized = root.clone();
+                    resized.config.width = 80;
+                    resized.config.height = 46;
+                    resized.config.encoding_revision = "resized-owner".into();
+                    resized.config.destination_revision = "owner-resized".into();
+                    resized.target = OutputTarget::Stream {
+                        url: directory
+                            .path()
+                            .join("owner-resized.ts")
+                            .to_string_lossy()
+                            .into_owned(),
+                    };
+                    Some(vec![resized, healthy.clone()])
+                }
+                _ => None,
+            };
+            if let Some(update) = update {
+                config.output_status.update_outputs(update).unwrap();
+            }
+            let mut video = frame::Video::new(Pixel::YUV420P, 160, 90);
+            for plane in 0..video.planes() {
+                video.data_mut(plane).fill(128);
+            }
+            video.set_pts(Some(index));
+            output.encode_video(&video).unwrap();
+            if matches!(index, 25 | 85 | 110 | 160) {
+                let workers = output.workers.lock().unwrap();
+                let worker = workers.iter().find(|worker| worker.id == 1).unwrap();
+                assert_eq!(
+                    worker.worker.as_ref().unwrap().thread().id(),
+                    owner_thread,
+                    "changing a shared delivery restarted the encoder"
+                );
+            }
+            let mut audio =
+                frame::Audio::new(Sample::F32(Type::Planar), 1920, ChannelLayout::STEREO);
+            audio.set_rate(48_000);
+            audio.set_pts(Some(index * 1920));
+            for channel in 0..2 {
+                audio.plane_mut::<f32>(channel).fill(0.0);
+            }
+            output.encode_audio(&audio).unwrap();
+        }
+        output.finish().unwrap();
+        let mut input = ffmpeg_next::format::input(&directory.path().join("healthy.ts")).unwrap();
+        let video = input
+            .streams()
+            .best(ffmpeg_next::media::Type::Video)
+            .unwrap()
+            .index();
+        let pts: Vec<_> = input
+            .packets()
+            .filter(|(stream, _)| stream.index() == video)
+            .map(|(_, packet)| packet.pts().unwrap())
+            .collect();
+        assert_eq!(
+            pts.len(),
+            200,
+            "unrelated destination lost video during live changes"
+        );
+        for pair in pts.windows(2) {
+            assert_eq!(pair[1] - pair[0], 3600);
+        }
+        for name in ["shared-first.ts", "shared-second.ts"] {
+            let mut input = ffmpeg_next::format::input(&directory.path().join(name)).unwrap();
+            assert!(
+                input
+                    .packets()
+                    .any(|(stream, _)| stream.parameters().medium()
+                        == ffmpeg_next::media::Type::Video),
+                "shared output did not resume from a keyframe"
+            );
+        }
+        assert_eq!(config.output_status.snapshot()[&1].phase, "stopped");
+        assert!(!config.output_status.supports_live_updates());
+    }
+
+    #[test]
+    fn an_idle_program_can_enable_its_first_encoding_group() {
+        ffmpeg_next::init().unwrap();
+        let mut config = OutputConfig::new(160, 90, 25, 48_000);
+        config.stream_type = crate::StreamType::Custom;
+        config.stream_format = "null".into();
+        config
+            .video_options
+            .insert("preset".into(), "ultrafast".into());
+        let output = ParallelOutput::start(&config, false).unwrap();
+        assert!(output.workers.lock().unwrap().is_empty());
+        let mut video = frame::Video::new(Pixel::YUV420P, 160, 90);
+        for plane in 0..video.planes() {
+            video.data_mut(plane).fill(128);
+        }
+        video.set_pts(Some(100));
+        output.encode_video(&video).unwrap();
+        config
+            .output_status
+            .update_outputs(vec![OutputDestination {
+                id: 1,
+                config: config.clone(),
+                target: OutputTarget::Stream {
+                    url: if cfg!(windows) { "NUL" } else { "/dev/null" }.into(),
+                },
+            }])
+            .unwrap();
+        video.set_pts(Some(101));
+        output.encode_video(&video).unwrap();
+        assert_eq!(output.workers.lock().unwrap().len(), 1);
+        config.output_status.update_outputs(Vec::new()).unwrap();
+        video.set_pts(Some(102));
+        output.encode_video(&video).unwrap();
+        assert!(output.workers.lock().unwrap().is_empty());
+        output.finish().unwrap();
+    }
+
+    #[test]
+    fn replaced_delivery_cannot_overwrite_new_runtime_status() {
+        let status = OutputStatus::default();
+        let old = status.scoped(7);
+        old.set(7, "running", None);
+        let current = status.scoped(7);
+        current.set(7, "starting", None);
+        old.set(7, "failed", Some("old connection".into()));
+        assert_eq!(status.snapshot()[&7].phase, "starting");
+        current.reconnectable(7, true);
+        current.set(7, "failed", None);
+        old.reconnectable(7, false);
+        assert!(status.can_retry(7));
+    }
+
     #[test]
     fn parallel_streams_and_hls_keep_media_when_another_destination_fails() {
         ffmpeg_next::init().unwrap();
@@ -594,7 +1022,7 @@ mod tests {
         config.destinations.push(flv);
         let output = ParallelOutput::new(&config).unwrap();
         assert_eq!(
-            output.workers.len(),
+            output.workers.lock().unwrap().len(),
             2,
             "selected destinations reuse their owner; independent encoding stays separate"
         );
@@ -863,7 +1291,7 @@ mod tests {
             60,
         ));
         let output = ParallelOutput::new(&config).unwrap();
-        assert_eq!(output.workers.len(), 1);
+        assert_eq!(output.workers.lock().unwrap().len(), 1);
         let mut noise = 7_u32;
 
         for index in 0..450 {
@@ -1033,7 +1461,7 @@ mod tests {
             },
         });
         let output = ParallelOutput::new(&config).unwrap();
-        assert_eq!(output.workers.len(), 1);
+        assert_eq!(output.workers.lock().unwrap().len(), 1);
         let media = dir.path().join("clip.mp4");
         std::fs::write(
             media.with_extension("vtt"),
@@ -1182,6 +1610,8 @@ mod tests {
             control.clone(),
         );
         let blocked = DestinationWorker {
+            encoding_revision: String::new(),
+            gop: 50,
             id: 1,
             ids: vec![1],
             queue,
@@ -1196,6 +1626,8 @@ mod tests {
         assert_eq!(status.snapshot()[&1].phase, "failed");
         let healthy_control = Arc::new(PipelineControl::default());
         let healthy = DestinationWorker {
+            encoding_revision: String::new(),
+            gop: 50,
             id: 2,
             ids: vec![2],
             queue: PipelineQueue::new(

@@ -5,8 +5,7 @@ and [MoQ documentation](../docs/moq.md).
 
 ## Future improvements
 
-- [ ] Allow changing or activating individual outputs without restarting the channel.
-- [ ] Evaluate sharing audio encoding when outputs use different video resolutions.
+- [x] Allow changing or activating the desktop window without restarting the channel.
 
 ## Validation
 

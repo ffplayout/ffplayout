@@ -65,6 +65,7 @@ pub struct OutputCodecOptions {
 
 #[derive(Debug, Serialize)]
 pub struct PlayoutCodecOptions {
+    pub desktop_available: bool,
     pub moq: OutputCodecOptions,
     pub hls: OutputCodecOptions,
     pub rtmp: OutputCodecOptions,
@@ -79,10 +80,36 @@ pub struct PlayoutConfigUpdate {
     pub requires_restart: bool,
 }
 
-/// Audio settings, mail and listener idle timeouts use live runtime controls. The
-/// engine creates input, compositor and output contexts when playout starts,
-/// therefore every other configuration change requires a fresh instance.
+fn recording_encoder_key(config: &PlayoutConfig, id: Option<i32>) -> Option<String> {
+    let output = config.output_source(id)?;
+    let output = config.effective_output(output).ok()?;
+
+    Some(
+        serde_json::json!({
+            "owner": config.encoding_source(&output).ok()?.0.id,
+            "width": output.width, "height": output.height, "fps": output.fps,
+            "video_codec": output.video_codec, "video_options": output.video_options,
+            "audio_codec": output.audio_codec, "audio_options": output.audio_options,
+            "audio_bitrate": output.audio_bitrate, "variants": output.hls_variants,
+            "segment_seconds": output.hls_segment_duration,
+        })
+        .to_string(),
+    )
+}
+
+/// Outputs use independent live workers. Program format, desktop and recording
+/// changes still require a fresh engine; audio/mail/listener controls remain live.
 fn requires_playout_restart(current: &PlayoutConfig, updated: &PlayoutConfig) -> bool {
+    if current.recording.enable {
+        let id = if current.recording.source == crate::utils::config::EncodingSource::Encode {
+            Some(current.output.id)
+        } else {
+            current.recording.source_output_id
+        };
+        if recording_encoder_key(current, id) != recording_encoder_key(updated, id) {
+            return true;
+        }
+    }
     let Ok(mut current) = serde_json::to_value(current) else {
         return true;
     };
@@ -95,29 +122,40 @@ fn requires_playout_restart(current: &PlayoutConfig, updated: &PlayoutConfig) ->
             return true;
         };
 
-        for key in ["output", "outputs"] {
-            if key == "output" {
-                if let Some(output) = config
-                    .get_mut(key)
-                    .and_then(serde_json::Value::as_object_mut)
-                {
-                    output.remove("public_moq");
-                    // Legacy sharing flags are normalized on save. The explicit
-                    // encoding source below already describes the runtime change.
-                    output.remove("share_encoding");
-                }
-            } else if let Some(outputs) = config
-                .get_mut(key)
-                .and_then(serde_json::Value::as_array_mut)
-            {
-                for output in outputs {
-                    if let Some(output) = output.as_object_mut() {
-                        output.remove("public_moq");
-                        output.remove("share_encoding");
-                    }
-                }
-            }
+        let outputs: Vec<_> = config
+            .get("output")
+            .into_iter()
+            .chain(
+                config
+                    .get("outputs")
+                    .and_then(serde_json::Value::as_array)
+                    .into_iter()
+                    .flatten(),
+            )
+            .cloned()
+            .collect();
+        let default_program = outputs.first().map(|output| {
+            serde_json::json!({
+                "width": output["width"], "height": output["height"], "fps": output["fps"],
+            })
+        });
+        if config.get("program").is_none_or(serde_json::Value::is_null) {
+            config.insert("program".into(), default_program.unwrap_or_default());
         }
+        let desktops: Vec<_> = outputs
+            .into_iter()
+            .filter(|output| output["mode"] == "desktop" && output["enabled"] == true)
+            .map(|output| {
+                serde_json::json!({
+                    "id": output["id"], "width": output["width"], "height": output["height"],
+                    "inherit_resolution": output["inherit_resolution"],
+                    "fullscreen": output["desktop_fullscreen"],
+                })
+            })
+            .collect();
+        config.insert("desktop_outputs".into(), serde_json::json!(desktops));
+        config.remove("output");
+        config.remove("outputs");
         config.remove("mail");
         config.remove("notification");
         if let Some(listeners) = config
@@ -414,19 +452,18 @@ pub async fn update_playout_config(
     ff_engine::AudioEffectsControl::new(data.audio.volume)
         .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     validate_loudness(&data.audio)?;
-    if !data.output.enabled {
-        let index = data
-            .outputs
-            .iter()
-            .position(|output| output.enabled)
-            .ok_or_else(|| ServiceError::BadRequest("enable at least one output".into()))?;
-        if data.program.is_none() {
-            data.program = Some(crate::utils::config::ProgramFormat {
-                width: data.output.width,
-                height: data.output.height,
-                fps: data.output.fps,
-            });
-        }
+    if data.program.is_none() {
+        data.program = config.program.clone().or({
+            Some(crate::utils::config::ProgramFormat {
+                width: config.output.width,
+                height: config.output.height,
+                fps: config.output.fps,
+            })
+        });
+    }
+    if !data.output.enabled
+        && let Some(index) = data.outputs.iter().position(|output| output.enabled)
+    {
         std::mem::swap(&mut data.output, &mut data.outputs[index]);
     }
     if let Some(program) = &data.program {
@@ -438,6 +475,15 @@ pub async fn update_playout_config(
             }
         }
     }
+    if !cfg!(any(feature = "desktop", feature = "desktop-cpu"))
+        && data
+            .active_outputs()
+            .any(|output| output.mode == OutputMode::Desktop)
+    {
+        return Err(ServiceError::BadRequest(
+            "desktop output is unavailable in this build".into(),
+        ));
+    }
     data.validate_outputs().map_err(ServiceError::BadRequest)?;
     data.recording
         .validate()
@@ -448,7 +494,9 @@ pub async fn update_playout_config(
         let source = data
             .output_source(data.recording.source_output_id)
             .ok_or_else(|| {
-                ServiceError::BadRequest("recording source must reference an active output".into())
+                ServiceError::BadRequest(
+                    "recording source must reference a configured output".into(),
+                )
             })?;
         let expected = match data.recording.source {
             crate::utils::config::EncodingSource::Stream => OutputMode::Stream,
@@ -522,8 +570,17 @@ pub async fn update_playout_config(
     }
 
     let running_config = manager.running_config();
-    let requires_restart =
-        requires_playout_restart(running_config.as_deref().unwrap_or(&config), &new_config);
+    let baseline = running_config.as_deref().unwrap_or(&config);
+    let mut requires_restart = requires_playout_restart(baseline, &new_config);
+    if running_config.is_some() {
+        if !requires_restart && manager.output_status.supports_live_updates() {
+            crate::player::output::update_outputs(&manager, &new_config)?;
+        } else if serde_json::to_value((&baseline.output, &baseline.outputs)).ok()
+            != serde_json::to_value((&new_config.output, &new_config.outputs)).ok()
+        {
+            requires_restart = true;
+        }
+    }
     manager
         .audio_effects
         .set_volume(new_config.audio.volume)
@@ -643,9 +700,6 @@ pub async fn get_playout_outputs(
                     output.runtime_status = Some("idle".into());
                 }
                 if output.name == "moq"
-                    && running.as_ref().is_some_and(|config| {
-                        config.active_outputs().any(|active| active.id == output.id)
-                    })
                     && let Some(status) = crate::moq::status(id)
                 {
                     // Encoder status alone cannot tell whether the MoQ importer is alive.
@@ -700,6 +754,7 @@ pub async fn get_playout_codecs(
     user.ensure_channel_or_admin(id)?;
 
     Ok(Json(PlayoutCodecOptions {
+        desktop_available: cfg!(any(feature = "desktop", feature = "desktop-cpu")),
         moq: moq_output_codec_options(),
         hls: output_codec_options(ff_engine::FfmpegOutputTarget::Hls),
         rtmp: output_codec_options(ff_engine::FfmpegOutputTarget::Rtmp),
@@ -736,7 +791,7 @@ mod tests {
         updated.output.share_encoding = false;
         assert!(!requires_playout_restart(&current, &updated));
         updated.output.encoding_source_id = Some(42);
-        assert!(requires_playout_restart(&current, &updated));
+        assert!(!requires_playout_restart(&current, &updated));
     }
 
     #[test]
@@ -976,7 +1031,7 @@ mod tests {
     }
 
     #[test]
-    fn output_change_requires_restart() {
+    fn program_changes_require_restart_but_output_options_are_live() {
         let current = PlayoutConfig::default();
         let mut updated = current.clone();
         updated.output.width = 1920;
@@ -988,13 +1043,13 @@ mod tests {
             .output
             .protocol_options
             .insert("latency".to_string(), "2000000".to_string());
-        assert!(requires_playout_restart(&current, &protocol_update));
+        assert!(!requires_playout_restart(&current, &protocol_update));
 
         let mut metadata_update = current.clone();
         metadata_update
             .output
             .metadata_options
             .insert("title".to_string(), "Example Program".to_string());
-        assert!(requires_playout_restart(&current, &metadata_update));
+        assert!(!requires_playout_restart(&current, &metadata_update));
     }
 }

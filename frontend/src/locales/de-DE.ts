@@ -398,7 +398,7 @@ export default {
             'Jede Ausgabe kann selbst encodieren oder das Encoding einer anderen Ausgabe bzw. HLS-Variante übernehmen. Zieladresse und Muxer-Einstellungen bleiben unabhängig.',
         encodingSource: 'Encoding-Quelle',
         outputHelp:
-            'Bis zu acht Ausgaben untereinander konfigurieren. Jede Ausgabe hat eine eigene Auflösung, Encoder-Einstellungen und ein Ziel. Ein Desktop- und ein MoQ-Output werden unterstützt. Alle Ausgaben verwenden die Bildrate des Programms.',
+            'Bis zu acht Ausgaben untereinander konfigurieren. Jede Ausgabe hat eine eigene Auflösung, Encoder-Einstellungen und ein Ziel. HLS-, Stream- und MoQ-Änderungen werden ohne Kanalneustart übernommen. Desktop benötigt einen Build mit Desktop-Unterstützung. Alle Ausgaben verwenden die Bildrate des Programms.',
         outputParam:
             'HLS-Playlists und Segmente werden unter live/<name>.m3u8 gespeichert. Pro Kanal wird vorerst nur ein HLS-Output unterstützt.',
         streamUrl: 'Stream-Ziel-URL',

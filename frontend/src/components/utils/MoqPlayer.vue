@@ -80,7 +80,11 @@ onMounted(async () => {
         if (disposed || !host.value) return
         const ui = document.createElement('moq-watch-ui')
         player = document.createElement('moq-watch')
-        player.append(document.createElement('canvas'))
+        const canvas = document.createElement('canvas')
+        canvas.addEventListener('click', () => {
+            if (player) player.paused = !player.paused
+        })
+        player.append(canvas)
         ui.append(player)
         host.value.append(ui)
         player.paused = true

@@ -1395,7 +1395,9 @@ impl PlayoutConfig {
     }
 
     pub fn output_source(&self, id: Option<i32>) -> Option<&Output> {
-        self.active_outputs().find(|output| Some(output.id) == id)
+        std::iter::once(&self.output)
+            .chain(self.outputs.iter())
+            .find(|output| Some(output.id) == id)
     }
 
     /// Resolve a selected output/variant to the owning encoder, rejecting dependency cycles.
@@ -1414,9 +1416,10 @@ impl PlayoutConfig {
                         .into(),
                 );
             }
-            let source = self
-                .output_source(Some(id))
-                .ok_or("encoding source must be an enabled output")?;
+            let source = std::iter::once(&self.output)
+                .chain(self.outputs.iter())
+                .find(|source| source.id == id)
+                .ok_or("encoding source must be a configured output")?;
             if source.mode == OutputMode::Desktop || current.mode == OutputMode::Desktop {
                 return Err("desktop output cannot provide or reuse encoded packets".into());
             }
@@ -1480,9 +1483,6 @@ impl PlayoutConfig {
     pub fn validate_outputs(&self) -> Result<(), String> {
         if self.outputs.len() >= 8 {
             return Err("at most eight outputs are supported".into());
-        }
-        if !self.output.enabled {
-            return Err("the first output must be enabled".into());
         }
         if let Some(program) = &self.program
             && (program.width == 0
@@ -2081,11 +2081,11 @@ mod output_tests {
         assert!(config.validate_outputs().is_err());
         config.output.audio_codec = "aac".into();
         config.output.enabled = false;
-        assert!(config.encoding_source(&config.outputs[0]).is_err());
+        assert!(config.encoding_source(&config.outputs[0]).is_ok());
     }
 
     #[test]
-    fn encoding_sources_resolve_chains_and_reject_cycles_disabled_outputs_and_desktop() {
+    fn encoding_sources_preserve_disabled_owners_and_reject_cycles_and_desktop() {
         let mut root = output(OutputMode::HLS);
         root.id = 11;
         root.hls_variants = vec!["small:640x360:800k:96k".into()];
@@ -2114,7 +2114,7 @@ mod output_tests {
         assert!(config.validate_outputs().is_err());
         config.output.encoding_source_id = None;
         config.outputs[0].enabled = false;
-        assert!(config.validate_outputs().is_err());
+        assert!(config.validate_outputs().is_ok());
         config.outputs[0].enabled = true;
         config.output.mode = OutputMode::Desktop;
         assert!(config.validate_outputs().is_err());

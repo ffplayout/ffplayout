@@ -50,7 +50,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 
 **\* Experimental features do not guarantee the same stability and may fail under unusual circumstances. Code and configuration options may change in the future.**
 
-Configure the new output instances in **Settings → Outputs**. Encoding and output activation changes currently require a channel restart. Reconnection uses the running configuration and keeps other outputs running. Multi-output, shared encoding, MoQ playback and reconnection still need sustained testing with real streaming destinations and browser playback before production use.
+Configure the new output instances in **Settings → Outputs**. HLS, Stream and MoQ outputs support experimental live configuration and activation changes. Program format, desktop and recording changes still require a channel restart. Reconnection uses the running configuration and keeps other outputs running. Multi-output, shared encoding, MoQ playback and reconnection still need sustained testing with real streaming destinations and browser playback before production use.
 
 ### Requirements
 

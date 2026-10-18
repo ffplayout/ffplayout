@@ -387,7 +387,7 @@ export default {
             'Each output can encode independently or reuse another output or HLS variant. Destination addresses and muxer settings remain independent.',
         encodingSource: 'Encoding source',
         outputHelp:
-            'Configure up to eight outputs below. Each output has its own resolution, encoder settings and destination. One desktop and one MoQ output are supported. All outputs use the program frame rate.',
+            'Configure up to eight outputs below. Each output has its own resolution, encoder settings and destination. HLS, Stream and MoQ changes apply without restarting the channel. Desktop requires build support. All outputs use the program frame rate.',
         outputParam:
             'HLS playlists and segments are written to live/<name>.m3u8. Only one HLS output per channel is currently supported.',
         streamType: 'Stream type',

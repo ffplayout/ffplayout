@@ -18,12 +18,14 @@ const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 
-const activeOutputs = computed(() =>
-    [configStore.playout.output, ...(configStore.playout.outputs ?? [])].filter((output) => output.enabled),
+const configuredOutputs = computed(() =>
+    [configStore.playout.output, ...(configStore.playout.outputs ?? [])].filter((output) => output.id > 0),
 )
 
 const hlsVariants = computed(() => {
-    const output = activeOutputs.value.find((output) => output.id === configStore.playout.recording.source_output_id)
+    const output = configuredOutputs.value.find(
+        (output) => output.id === configStore.playout.recording.source_output_id,
+    )
     if (!output || output.mode !== 'hls' || output.id !== configStore.playout.recording.source_output_id) return []
 
     return outputVariantNames(output)
@@ -31,7 +33,9 @@ const hlsVariants = computed(() => {
 
 const copyOutputs = computed(() => {
     const mode = configStore.playout.recording.source === 'hls_variant' ? 'hls' : 'stream'
-    return activeOutputs.value.filter((output) => output.mode === mode || (mode === 'stream' && output.mode === 'moq'))
+    return configuredOutputs.value.filter(
+        (output) => output.mode === mode || (mode === 'stream' && output.mode === 'moq'),
+    )
 })
 
 const videoCodecs = computed(() => configStore.outputCodecs.recording.video)
@@ -165,12 +169,12 @@ async function saveRecording() {
                         <option
                             value="stream"
                             :disabled="
-                                !activeOutputs.some((output) => output.mode === 'stream' || output.mode === 'moq')
+                                !configuredOutputs.some((output) => output.mode === 'stream' || output.mode === 'moq')
                             "
                         >
                             {{ t('config.recordingCurrentStream') }}
                         </option>
-                        <option value="hls_variant" :disabled="!activeOutputs.some((output) => output.mode === 'hls')">
+                        <option value="hls_variant" :disabled="!configuredOutputs.some((output) => output.mode === 'hls')">
                             {{ t('config.recordingHlsVariant') }}
                         </option>
                         <option value="encode">{{ t('config.recordingEncode') }}</option>

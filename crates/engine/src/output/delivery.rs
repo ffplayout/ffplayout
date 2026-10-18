@@ -95,6 +95,16 @@ pub(super) fn deliver(
     control: &PipelineControl,
     interrupted: &AtomicBool,
 ) -> Result<()> {
+    struct Disconnect(Option<std::sync::Arc<dyn super::parallel::OutputEndpoint>>);
+    impl Drop for Disconnect {
+        fn drop(&mut self) {
+            if let Some(endpoint) = &self.0 {
+                endpoint.disconnect();
+            }
+        }
+    }
+    let _disconnect = Disconnect(destination.config.stream_endpoint.clone());
+
     deliver_with_retry(
         destination,
         parameters,
@@ -236,7 +246,7 @@ fn deliver_with_retry(
                             subtitle_position = None;
                         }
                         Message::AdvanceSubtitles(position) => subtitle_position = Some(position),
-                        Message::Video(..) | Message::Audio(..) => {
+                        Message::Video(..) | Message::Audio(..) | Message::Destinations(..) => {
                             unreachable!("delivery accepts compressed media")
                         }
                     }
@@ -256,7 +266,9 @@ fn deliver_with_retry(
                             Message::AdvanceSubtitles(position) => {
                                 opened.advance_vtt_subtitles(position)
                             }
-                            Message::Video(..) | Message::Audio(..) => unreachable!(),
+                            Message::Video(..) | Message::Audio(..) | Message::Destinations(..) => {
+                                unreachable!()
+                            }
                         }
                     } else {
                         Ok(())

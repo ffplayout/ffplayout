@@ -15,11 +15,29 @@ pub(super) async fn open_parallel_playout(
     program: &mut OutputConfig,
     attachments: &mut Vec<crate::moq::OutputAttachment>,
 ) -> Result<AsyncPlayout, ServiceError> {
+    configure_destinations(config, program, attachments, config.output.id)?;
+    if config
+        .active_outputs()
+        .any(|output| output.mode == OutputMode::Desktop)
+    {
+        open_desktop_playout(program.clone(), 10.0).await
+    } else {
+        AsyncPlayout::open_parallel(program.clone(), 10.0)
+            .await
+            .map_err(engine_error)
+    }
+}
+
+pub(super) fn configure_destinations(
+    config: &PlayoutConfig,
+    program: &mut OutputConfig,
+    attachments: &mut Vec<crate::moq::OutputAttachment>,
+    recording_owner: i32,
+) -> Result<(), ServiceError> {
     let mut destinations = Vec::new();
     let desktop = config
         .active_outputs()
         .find(|output| output.mode == OutputMode::Desktop);
-    // Desktop owns the program's realtime clock when present.
     if let Some(desktop) = desktop {
         if config.program.is_none() {
             program.width = desktop.width;
@@ -32,9 +50,59 @@ pub(super) async fn open_parallel_playout(
         });
         program.desktop_fullscreen = desktop.desktop_fullscreen;
     }
-    let mut dedicated_recording_assigned = false;
-
+    let mut required = std::collections::BTreeSet::new();
     for output in config.active_outputs() {
+        required.insert(output.id);
+        if output.encoding_source_id.is_some() {
+            required.insert(
+                config
+                    .encoding_source(output)
+                    .map_err(ServiceError::Conflict)?
+                    .0
+                    .id,
+            );
+        }
+    }
+    if config.recording.enable
+        && config.recording.source != EncodingSource::Encode
+        && let Some(source) = config.output_source(config.recording.source_output_id)
+    {
+        required.insert(source.id);
+        if source.encoding_source_id.is_some() {
+            required.insert(
+                config
+                    .encoding_source(source)
+                    .map_err(ServiceError::Conflict)?
+                    .0
+                    .id,
+            );
+        }
+    }
+    if config.recording.enable
+        && config.recording.source == EncodingSource::Encode
+        && desktop.is_none()
+    {
+        let source = config.output_source(Some(recording_owner)).ok_or_else(|| {
+            ServiceError::Conflict(
+                "recording encoder owner was removed; restart the channel".into(),
+            )
+        })?;
+        required.insert(source.id);
+        if source.encoding_source_id.is_some() {
+            required.insert(
+                config
+                    .encoding_source(source)
+                    .map_err(ServiceError::Conflict)?
+                    .0
+                    .id,
+            );
+        }
+    }
+
+    for output in std::iter::once(&config.output)
+        .chain(config.outputs.iter())
+        .filter(|output| required.contains(&output.id))
+    {
         if output.mode == OutputMode::Desktop {
             continue;
         }
@@ -47,15 +115,17 @@ pub(super) async fn open_parallel_playout(
         scoped.outputs.clear();
         let record_here = config.recording.enable
             && match config.recording.source {
-                EncodingSource::Encode => {
-                    let assign = desktop.is_none() && !dedicated_recording_assigned;
-                    dedicated_recording_assigned |= assign;
-                    assign
-                }
+                EncodingSource::Encode => desktop.is_none() && output.id == recording_owner,
                 _ => config.recording.source_output_id == Some(output.id),
             };
         scoped.recording.enable = record_here;
         let mut settings = program.clone();
+        settings.delivery_enabled = output.enabled;
+        settings.destination_revision = destination_revision(output)?;
+        let (owner, _) = config
+            .encoding_source(output)
+            .map_err(ServiceError::Conflict)?;
+        settings.encoding_revision = encoding_revision(owner, config);
         settings.destinations.clear();
         settings.encoding_source = if output.encoding_source_id.is_some() {
             let (owner, rendition) = config
@@ -126,11 +196,75 @@ pub(super) async fn open_parallel_playout(
     } else {
         None
     };
-    if desktop.is_some() {
-        open_desktop_playout(program.clone(), 10.0).await
-    } else {
-        AsyncPlayout::open_parallel(program.clone(), 10.0)
-            .await
-            .map_err(engine_error)
+    Ok(())
+}
+
+fn destination_revision(output: &crate::utils::config::Output) -> Result<String, ServiceError> {
+    let mut value = serde_json::to_value(output)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
+    if let Some(value) = value.as_object_mut() {
+        for key in ["enabled", "label", "public_moq", "share_encoding"] {
+            value.remove(key);
+        }
+    }
+
+    Ok(value.to_string())
+}
+
+fn encoding_revision(output: &crate::utils::config::Output, config: &PlayoutConfig) -> String {
+    let value = serde_json::json!({
+        "width": output.width, "height": output.height, "inherit_resolution": output.inherit_resolution,
+        "fps": output.fps, "video_codec": output.video_codec, "video_options": output.video_options,
+        "audio_codec": output.audio_codec, "audio_options": output.audio_options, "audio_bitrate": output.audio_bitrate,
+        "hls": (output.mode == OutputMode::HLS).then_some((&output.hls_variants, output.hls_segment_duration)),
+        "recording": config.recording,
+    });
+
+    value.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::config::Output;
+
+    #[tokio::test]
+    async fn disabled_hls_owner_supplies_moq_until_its_last_consumer_is_disabled() {
+        let hls = Output {
+            id: 1,
+            mode: OutputMode::HLS,
+            enabled: false,
+            hls_playlist_name: "base".into(),
+            hls_variants: vec!["small:320x180:600k:96k".into()],
+            ..Default::default()
+        };
+        let mut moq = hls.clone();
+        moq.id = 2;
+        moq.mode = OutputMode::Moq;
+        moq.enabled = true;
+        moq.encoding_source_id = Some(1);
+        moq.encoding_variant = "small".into();
+        let mut config = PlayoutConfig {
+            output: hls,
+            outputs: vec![moq],
+            ..Default::default()
+        };
+        let directory = std::env::temp_dir().join(format!("output-plan-{}", uuid::Uuid::new_v4()));
+        config.channel.public = directory.clone();
+        let mut program = OutputConfig::new(1280, 720, 25, 48_000);
+        let mut attachments = Vec::new();
+        configure_destinations(&config, &mut program, &mut attachments, 1).unwrap();
+        assert_eq!(program.destinations.len(), 2);
+        assert!(!program.destinations[0].config.delivery_enabled);
+        assert!(program.destinations[1].config.delivery_enabled);
+        assert_eq!(program.destinations[1].config.encoding_source, Some((1, 1)));
+        assert_eq!(
+            program.destinations[0].config.encoding_revision,
+            program.destinations[1].config.encoding_revision
+        );
+        config.outputs[0].enabled = false;
+        configure_destinations(&config, &mut program, &mut attachments, 1).unwrap();
+        assert!(program.destinations.is_empty());
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

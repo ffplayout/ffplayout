@@ -18,7 +18,7 @@ export function encodingOwner(
     const visited = new Set<EncodingOutput>()
     let current: EncodingOutput | undefined = candidate
     while (current) {
-        if (current === destination || visited.has(current) || !current.enabled || current.mode === 'desktop') {
+        if (current === destination || visited.has(current) || current.mode === 'desktop') {
             return undefined
         }
         visited.add(current)

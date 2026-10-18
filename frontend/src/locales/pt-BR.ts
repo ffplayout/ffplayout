@@ -397,7 +397,7 @@ export default {
             'Cada saída pode codificar de forma independente ou reutilizar outra saída ou variante HLS. Endereços de destino e parâmetros do multiplexador permanecem independentes.',
         encodingSource: 'Origem da codificação',
         outputHelp:
-            'Configure até oito saídas abaixo. Cada saída tem sua própria resolução, configurações de codificação e destino. São permitidas uma saída desktop e uma MoQ. Todas usam a taxa de quadros do programa.',
+            'Configure até oito saídas abaixo. Cada saída tem sua própria resolução, configurações de codificação e destino. Alterações de HLS, Stream e MoQ são aplicadas sem reiniciar o canal. Desktop requer suporte na compilação. Todas usam a taxa de quadros do programa.',
         outputParam:
             'As playlists e segmentos HLS são gravados em live/<name>.m3u8. No momento, é permitido apenas um output HLS por canal.',
         streamUrl: 'URL de destino do stream',

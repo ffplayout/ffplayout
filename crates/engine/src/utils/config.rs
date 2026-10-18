@@ -248,6 +248,11 @@ mod log_level_tests {
 pub struct OutputConfig {
     /// Independent destinations consuming the same processed program.
     pub destinations: Vec<crate::OutputDestination>,
+    /// An encoder can remain available while its own destination is disabled.
+    pub delivery_enabled: bool,
+    /// Application-provided stable revisions for independent live updates.
+    pub encoding_revision: String,
+    pub destination_revision: String,
     pub stream_endpoint: Option<std::sync::Arc<dyn crate::OutputEndpoint>>,
     pub output_status: crate::OutputStatus,
     /// Resolved owning output and rendition index for compressed packet reuse.
@@ -1405,6 +1410,9 @@ impl OutputConfig {
     pub fn new(width: u32, height: u32, fps: u32, sample_rate: u32) -> Self {
         Self {
             destinations: Vec::new(),
+            delivery_enabled: true,
+            encoding_revision: String::new(),
+            destination_revision: String::new(),
             stream_endpoint: None,
             output_status: crate::OutputStatus::default(),
             encoding_source: None,

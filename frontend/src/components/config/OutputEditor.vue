@@ -11,7 +11,8 @@ const usesEncodingSource = computed(() => props.item.encoding_source_id !== null
 const allOutputs = computed(() => [configStore.playout.output, ...configStore.playout.outputs])
 const encodingSources = computed(() =>
     allOutputs.value.filter((candidate) => {
-        if (candidate.id <= 0) return false
+        // Borrowed encoding must be selected directly from its owning output.
+        if (candidate.id <= 0 || candidate.encoding_source_id !== null) return false
         const owner = encodingOwner(candidate, allOutputs.value, props.item)
         if (!owner) return false
         return (

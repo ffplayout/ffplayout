@@ -128,7 +128,7 @@ pub async fn select_configuration(
     JOIN config_storage storage ON storage.config_id = c.id
     LEFT JOIN config_text_presets text ON text.config_id = c.id AND text.persistent = 1
     JOIN config_task task ON task.config_id = c.id
-    JOIN config_output output ON output.id = (SELECT id FROM config_output WHERE config_id = c.id AND active = 1 ORDER BY priority, id LIMIT 1)
+    JOIN config_output output ON output.id = (SELECT id FROM config_output WHERE config_id = c.id AND (active = 1 OR configured = 1) ORDER BY active DESC, priority, id LIMIT 1)
     WHERE c.channel_id = $1";
 
     Ok(sqlx::query_as(QUERY).bind(channel).fetch_one(pool).await?)

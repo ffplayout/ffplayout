@@ -20,6 +20,7 @@ export const useConfig = defineStore('config', {
         playoutSaved: {} as PlayoutConfigExt,
         outputs: [] as PlayoutOutput[],
         outputCodecs: {
+            desktop_available: false,
             moq: { video: [], audio: [] },
             hls: { video: [], audio: [] },
             rtmp: { video: [], audio: [] },
@@ -191,7 +192,6 @@ export const useConfig = defineStore('config', {
 
             const collection = [obj.output, ...(obj.outputs ?? [])] as PlayoutConfigExt['output'][]
             const firstEnabled = collection.findIndex((output) => output.enabled)
-            if (firstEnabled < 0) throw new Error(i18n.t('config.outputAtLeastOne'))
             // Preserve the legacy wire format while exposing a collection in the UI.
             if (firstEnabled > 0) collection.unshift(collection.splice(firstEnabled, 1)[0]!)
             obj.output = collection[0]

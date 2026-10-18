@@ -54,7 +54,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let mut moq_attachments = Vec::new();
     manager.output_status.clear();
     output_config.output_status = manager.output_status.clone();
-    let parallel = !config.output.discard && config.output.mode != OutputMode::Desktop
+    let parallel = !config.output.discard
+        && (config.output.mode != OutputMode::Desktop || !config.output.enabled)
         || !config.outputs.is_empty();
     let playout = if parallel {
         super::instances::open_parallel_playout(&config, &mut output_config, &mut moq_attachments)
@@ -404,7 +405,7 @@ pub(super) async fn open_desktop_playout(
     ))
 }
 
-fn engine_output_config(
+pub(super) fn engine_output_config(
     config: &PlayoutConfig,
     audio_effects: ff_engine::AudioEffectsControl,
     live_loudness: ff_engine::LiveLoudnessControl,
@@ -603,7 +604,9 @@ fn disable_incompatible_recording(
     Ok(None)
 }
 
-fn desktop_control_callback(manager: ChannelManager) -> ff_engine::DesktopControlCallback {
+pub(super) fn desktop_control_callback(
+    manager: ChannelManager,
+) -> ff_engine::DesktopControlCallback {
     let runtime = tokio::runtime::Handle::current();
     let pool = manager.db_pool.clone();
 

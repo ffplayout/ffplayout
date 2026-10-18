@@ -104,6 +104,19 @@ impl ff_engine::OutputEndpoint for Endpoint {
     fn connect_url(&self) -> Result<String> {
         self.connect_with(|| self.runtime.block_on(attach_output(self.channel)))
     }
+
+    fn disconnect(&self) {
+        let attachment = self
+            .attached
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some((_, attachment)) = attachment
+            && let Err(error) = self.runtime.block_on(attachment.finish())
+        {
+            log::warn!(channel = self.channel; "MoQ output shutdown: {error}");
+        }
+    }
 }
 
 impl Endpoint {
@@ -337,6 +350,156 @@ mod tests {
         atomic::{AtomicBool, Ordering},
     };
     use tokio::sync::oneshot;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hls_and_moq_can_toggle_independently_with_a_shared_encoder() {
+        use ff_engine::{
+            HlsSubtitle, LogoFade, OutputConfig, OutputDestination, OutputTarget, Playout,
+            StreamType,
+        };
+        use std::sync::atomic::AtomicUsize;
+
+        struct LocalEndpoint {
+            endpoint: Endpoint,
+            origin: moq_net::origin::Producer,
+            connections: AtomicUsize,
+            disconnects: AtomicUsize,
+        }
+        impl std::fmt::Debug for LocalEndpoint {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.debug_struct("LocalEndpoint").finish_non_exhaustive()
+            }
+        }
+        impl ff_engine::OutputEndpoint for LocalEndpoint {
+            fn connect_url(&self) -> Result<String> {
+                self.connections.fetch_add(1, Ordering::SeqCst);
+                self.endpoint.connect_with(|| {
+                    self.endpoint
+                        .runtime
+                        .block_on(attach_to_origin(-98770, self.origin.clone()))
+                })
+            }
+
+            fn disconnect(&self) {
+                self.disconnects.fetch_add(1, Ordering::SeqCst);
+                ff_engine::OutputEndpoint::disconnect(&self.endpoint);
+            }
+        }
+        let directory =
+            std::env::temp_dir().join(format!("moq-live-output-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let media = directory.join("clip.mp4");
+        std::fs::copy(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests_assets/storage/media_mix/av_sync.mp4"),
+            &media,
+        )
+        .unwrap();
+        std::fs::write(
+            media.with_extension("vtt"),
+            "WEBVTT\n\n00:00:00.000 --> 00:00:20.000\nShared encoder remains active\n",
+        )
+        .unwrap();
+        let (origin, _driver) = moq_net::origin::Producer::new(Default::default());
+        let endpoint = Arc::new(LocalEndpoint {
+            endpoint: Endpoint {
+                channel: -98770,
+                runtime: tokio::runtime::Handle::current(),
+                attached: Mutex::new(None),
+            },
+            origin,
+            connections: AtomicUsize::new(0),
+            disconnects: AtomicUsize::new(0),
+        });
+        let mut config = OutputConfig::new(160, 90, 25, 48_000);
+        config.stream_type = StreamType::Custom;
+        config.stream_format = "mpegts".into();
+        config
+            .video_options
+            .insert("preset".into(), "ultrafast".into());
+        config
+            .video_options
+            .insert("tune".into(), "zerolatency".into());
+        config.encoding_revision = "hls-owner".into();
+        let mut hls = OutputDestination {
+            id: 1,
+            config: config.clone(),
+            target: OutputTarget::Hls {
+                playlist: directory.join("index.m3u8").to_string_lossy().into_owned(),
+                variants: vec![],
+                subtitle: Some(HlsSubtitle {
+                    name: "Subtitles".into(),
+                    language: "en".into(),
+                    default: false,
+                }),
+                segment_seconds: 1,
+                list_size: 6,
+            },
+        };
+        hls.config.delivery_enabled = false;
+        let mut borrowed = config.clone();
+        borrowed.encoding_source = Some((1, 0));
+        borrowed.stream_endpoint = Some(endpoint.clone());
+        let moq = OutputDestination {
+            id: 5,
+            config: borrowed,
+            target: OutputTarget::Stream { url: String::new() },
+        };
+        config.destinations = vec![hls.clone(), moq.clone()];
+        let worker_directory = directory.clone();
+        let worker = tokio::task::spawn_blocking(move || {
+            let status = config.output_status.clone();
+            let mut playout = Playout::open_parallel(config, 1.0).unwrap();
+            for round in 0..4 {
+                if round == 1 {
+                    hls.config.delivery_enabled = true;
+                    status
+                        .update_outputs(vec![hls.clone(), moq.clone()])
+                        .unwrap();
+                } else if round == 2 {
+                    status.update_outputs(vec![hls.clone()]).unwrap();
+                } else if round == 3 {
+                    status
+                        .update_outputs(vec![hls.clone(), moq.clone()])
+                        .unwrap();
+                }
+                assert_eq!(
+                    playout
+                        .play_timed_with_live(
+                            media.to_str().unwrap(),
+                            Some(1.0),
+                            Some(2.0),
+                            None,
+                            media.to_str(),
+                            LogoFade::default(),
+                            1.0,
+                            &mut None
+                        )
+                        .unwrap(),
+                    ff_engine::ClipResult::Played
+                );
+                assert_eq!(
+                    endpoint.connections.load(Ordering::SeqCst),
+                    if round == 3 { 2 } else { 1 }
+                );
+                if round >= 2 {
+                    assert_eq!(endpoint.disconnects.load(Ordering::SeqCst), 1);
+                }
+                if round >= 1 {
+                    assert_eq!(status.snapshot()[&1].phase, "running");
+                    assert!(worker_directory.join("index.m3u8").exists());
+                }
+                assert_eq!(
+                    status.snapshot()[&5].phase,
+                    if round == 2 { "stopped" } else { "running" }
+                );
+            }
+            playout.finish().unwrap();
+            assert_eq!(endpoint.disconnects.load(Ordering::SeqCst), 2);
+        });
+        worker.await.unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[tokio::test]
     async fn failed_importer_initialization_can_be_retried_and_recreated() {

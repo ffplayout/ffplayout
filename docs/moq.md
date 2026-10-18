@@ -13,9 +13,10 @@ Under **Settings → Outputs**, add a **MoQ** output and choose its encoding sou
 - **HLS variant** selects the base rendition or a named additional variant.
 
 The same source selection is available for Stream and HLS outputs. Sources must
-be enabled and saved. Cycles and incompatible codec/container combinations are
+be saved and have their own encoding. A source destination can be disabled while
+its encoder continues serving consumers. Cycles and incompatible codec/container combinations are
 rejected. Selecting a source hides private encoding settings; transport, muxer
-and metadata options remain independent. Saving changes requires a channel restart.
+and metadata options remain independent. Saving MoQ changes updates its running output without a channel restart.
 See [output instances](output.md#multiple-output-instances) for queues and failure handling.
 
 MoQ settings are stored as ordinary `config_output` rows with `name = 'moq'`.

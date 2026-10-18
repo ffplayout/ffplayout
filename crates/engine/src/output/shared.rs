@@ -1,5 +1,6 @@
 //! Destination-free encoding shared by compatible outputs, with isolated mux workers.
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     sync::{
         Arc,
@@ -69,12 +70,14 @@ struct Sink {
     status: OutputStatus,
     worker: Option<JoinHandle<()>>,
     interrupted: Arc<AtomicBool>,
+    revision: String,
 }
 
 impl Sink {
     fn start(
-        destination: OutputDestination,
+        mut destination: OutputDestination,
         parameters: Vec<(codec::Parameters, codec::Parameters)>,
+        previous: Option<JoinHandle<()>>,
     ) -> Result<Self> {
         let control = Arc::new(PipelineControl::default());
         let queue = PipelineQueue::new(
@@ -88,7 +91,10 @@ impl Sink {
         let worker_queue = queue.clone();
         let worker_control = control.clone();
         let id = destination.id;
-        let status = destination.config.output_status.clone();
+        let status = destination.config.output_status.scoped(id);
+        destination.config.output_status = status.clone();
+        let revision = destination.config.destination_revision.clone();
+        let delivery_lock = status.delivery_lock(id);
         let worker_status = status.clone();
         let channel = destination.config.channel_id.unwrap_or_default();
         let interrupted = Arc::new(AtomicBool::new(false));
@@ -96,6 +102,18 @@ impl Sink {
         let worker = thread::Builder::new()
             .name(format!("playout-delivery-{id}"))
             .spawn(move || {
+                // Serialize replacements of the same file/network endpoint while
+                // other destinations continue to receive shared encoded packets.
+                if let Some(previous) = previous {
+                    let _ = previous.join();
+                }
+                let _delivery = delivery_lock
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if worker_control.cancelled() {
+                    return;
+                }
+                worker_status.set(id, "starting", None);
                 worker_status.reconnectable(id, true);
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     super::delivery::deliver(
@@ -136,6 +154,7 @@ impl Sink {
             status,
             worker: Some(worker),
             interrupted,
+            revision,
         })
     }
 
@@ -157,6 +176,14 @@ impl Sink {
         }
     }
 
+    fn stop(mut self) -> Option<JoinHandle<()>> {
+        self.status.set(self.id, "stopped", None);
+        self.control.cancel();
+        self.queue.close();
+
+        self.worker.take()
+    }
+
     fn finish(&mut self) {
         self.queue.close();
         if let Some(worker) = self.worker.take() {
@@ -173,8 +200,97 @@ impl Drop for Sink {
     }
 }
 
+#[derive(Default)]
+struct DeliveryContext {
+    rate: Option<f64>,
+    subtitles: Option<(String, i64, i64)>,
+    position: Option<i64>,
+}
+
+impl DeliveryContext {
+    fn restore(&self, sink: &Sink) {
+        sink.send(
+            Delivery::Control(Message::Rate(self.rate.unwrap_or(1.0))),
+            0,
+            None,
+        );
+        if let Some((path, start, source)) = &self.subtitles {
+            let position = self.position.unwrap_or(*start).max(*start);
+            let source = source.saturating_add(position.saturating_sub(*start));
+            sink.send(
+                Delivery::Control(Message::Subtitles(path.clone(), position, source)),
+                path.len(),
+                None,
+            );
+        }
+    }
+}
+
+fn update_sinks(
+    sinks: &mut Vec<(Sink, Option<usize>)>,
+    retired: &mut BTreeMap<i32, JoinHandle<()>>,
+    destinations: Vec<OutputDestination>,
+    parameters: &[(codec::Parameters, codec::Parameters)],
+    context: &DeliveryContext,
+) -> Result<()> {
+    retired.retain(|_, worker| !worker.is_finished());
+    let mut previous = std::mem::take(sinks);
+    for mut destination in destinations {
+        if !destination.config.delivery_enabled {
+            continue;
+        }
+        destination.config.recording = None;
+        let rendition = destination.config.encoding_source.map(|(_, index)| index);
+        let existing = previous
+            .iter()
+            .position(|(sink, _)| sink.id == destination.id);
+        if let Some(index) = existing {
+            let (sink, old_rendition) = previous.remove(index);
+            if sink.revision == destination.config.destination_revision
+                && old_rendition == rendition
+            {
+                sinks.push((sink, rendition));
+                continue;
+            }
+            let id = sink.id;
+            if let Some(worker) = sink.stop() {
+                retired.insert(id, worker);
+            }
+        }
+        let codecs = rendition.map_or_else(
+            || parameters.to_vec(),
+            |index| vec![parameters[index].clone()],
+        );
+        let previous = retired.remove(&destination.id);
+        let sink = Sink::start(destination, codecs, previous)?;
+        context.restore(&sink);
+        sinks.push((sink, rendition));
+    }
+    for (sink, _) in previous {
+        let id = sink.id;
+        if let Some(worker) = sink.stop() {
+            retired.insert(id, worker);
+        }
+    }
+
+    Ok(())
+}
+
+pub(super) fn gop_size(destinations: &[OutputDestination]) -> Result<u32> {
+    destinations
+        .iter()
+        .map(|destination| match &destination.target {
+            OutputTarget::Hls {
+                segment_seconds, ..
+            } => hls_gop_size(destination.config.fps, *segment_seconds),
+            _ => destination.config.fps.saturating_mul(2),
+        })
+        .min()
+        .context("encoding group is empty")
+}
+
 pub(super) fn run(
-    mut destinations: Vec<OutputDestination>,
+    destinations: Vec<OutputDestination>,
     program: &OutputConfig,
     queue: &PipelineQueue<Message>,
     control: &PipelineControl,
@@ -186,16 +302,7 @@ pub(super) fn run(
         OutputTarget::Hls { variants, .. } => variants.as_slice(),
         _ => &[],
     };
-    let gop = destinations
-        .iter()
-        .map(|destination| match destination.target {
-            OutputTarget::Hls {
-                segment_seconds, ..
-            } => hls_gop_size(config.fps, segment_seconds),
-            _ => config.fps.saturating_mul(2),
-        })
-        .min()
-        .context("encoding group is empty")?;
+    let gop = gop_size(&destinations)?;
     let mut profiles = Vec::new();
     let mut parameters = Vec::new();
     for index in 0..variants.len().max(1) {
@@ -254,16 +361,16 @@ pub(super) fn run(
             }
         }
     }
-    let mut sinks = Vec::new();
-    for mut destination in destinations.drain(..) {
-        destination.config.recording = None;
-        let rendition = destination.config.encoding_source.map(|(_, index)| index);
-        let codecs = rendition.map_or_else(
-            || parameters.clone(),
-            |index| vec![parameters[index].clone()],
-        );
-        sinks.push((Sink::start(destination, codecs)?, rendition));
-    }
+    let sinks = RefCell::new(Vec::new());
+    let mut retired = BTreeMap::new();
+    let mut context = DeliveryContext::default();
+    update_sinks(
+        &mut sinks.borrow_mut(),
+        &mut retired,
+        destinations,
+        &parameters,
+        &context,
+    )?;
     let mut emit = |index: usize, packet: EncodedPacket| -> Result<()> {
         for (rendition, recording) in &mut copies {
             if *rendition != index {
@@ -289,7 +396,7 @@ pub(super) fn run(
             .dts()
             .or_else(|| packet.packet.pts())
             .map(|pts| pts.rescale(packet.time_base, rescale::TIME_BASE));
-        for (sink, rendition) in &sinks {
+        for (sink, rendition) in sinks.borrow().iter() {
             if !sink.control.cancelled() && rendition.is_none_or(|rendition| rendition == index) {
                 sink.send(
                     Delivery::Packet(EncodedPacket {
@@ -310,7 +417,17 @@ pub(super) fn run(
     };
     while let Some(message) = queue.recv()? {
         control.check()?;
+        retired.retain(|_, worker| !worker.is_finished());
         match message {
+            Message::Destinations(destinations) => {
+                update_sinks(
+                    &mut sinks.borrow_mut(),
+                    &mut retired,
+                    destinations,
+                    &parameters,
+                    &context,
+                )?;
+            }
             Message::Video(mut frame, logo, opacity) => {
                 if let Some(logo) = logo {
                     make_video_frame_writable(&mut frame)?;
@@ -338,12 +455,15 @@ pub(super) fn run(
                 }
             }
             Message::Rate(rate) => {
-                for (sink, _) in &sinks {
+                context.rate = Some(rate);
+                for (sink, _) in sinks.borrow().iter() {
                     sink.send(Delivery::Control(Message::Rate(rate)), 0, None);
                 }
             }
             Message::Subtitles(path, start, source) => {
-                for (sink, _) in &sinks {
+                context.subtitles = Some((path.clone(), start, source));
+                context.position = Some(start);
+                for (sink, _) in sinks.borrow().iter() {
                     sink.send(
                         Delivery::Control(Message::Subtitles(path.clone(), start, source)),
                         path.len(),
@@ -352,12 +472,15 @@ pub(super) fn run(
                 }
             }
             Message::ClearSubtitles => {
-                for (sink, _) in &sinks {
+                context.subtitles = None;
+                context.position = None;
+                for (sink, _) in sinks.borrow().iter() {
                     sink.send(Delivery::Control(Message::ClearSubtitles), 0, None);
                 }
             }
             Message::AdvanceSubtitles(position) => {
-                for (sink, _) in &sinks {
+                context.position = Some(position);
+                for (sink, _) in sinks.borrow().iter() {
                     sink.send(
                         Delivery::Control(Message::AdvanceSubtitles(position)),
                         0,
@@ -382,11 +505,14 @@ pub(super) fn run(
     {
         log::error!(channel = program.channel_id.unwrap_or_default(); "Recording drain failed: {error:#}");
     }
-    for (sink, _) in &sinks {
+    for (sink, _) in sinks.borrow().iter() {
         sink.queue.close();
     }
-    for (sink, _) in &mut sinks {
+    for (sink, _) in sinks.borrow_mut().iter_mut() {
         sink.finish();
+    }
+    for (_, worker) in retired {
+        let _ = worker.join();
     }
 
     Ok(())
@@ -450,6 +576,7 @@ mod tests {
                 status: status.clone(),
                 worker: None,
                 interrupted: Arc::new(AtomicBool::new(false)),
+                revision: String::new(),
             }
         };
         let blocked = make_sink(1);

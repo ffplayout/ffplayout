@@ -87,7 +87,7 @@ Starting without `--output` restores the stored active output. The null mode is
 not available through the frontend or configuration API.
 
 MoQ is a regular output instance. Add it under **Outputs**, select own encoding or
-an existing output/variant, and restart the channel after saving. CLI null output
+an existing output/variant, and save to apply it to the running parallel pipeline. CLI null output
 remains a temporary override of the entire configured output collection.
 
 ## Stream
@@ -213,7 +213,10 @@ See [Experimental MoQ preview](moq.md) for configuration and transport.
 The **Outputs** configuration tab presents up to eight output instances as
 stacked cards. Each card has a name, an enabled flag, runtime status, encoding
 settings and destination options. Disabled cards retain their configuration.
-Changes take effect after restarting the channel. Migration 00007 preserves
+HLS, Stream and MoQ can be added, edited, enabled, disabled or removed while the
+parallel pipeline runs. Saving changes updates the affected destinations at the
+next processed media frame; a paused pipeline applies them when playback resumes.
+Other encoding groups continue. Migration 00007 preserves
 existing selections and consolidates the new output-instance schema.
 
 **General → Processing** defines the shared program resolution and frame rate.
@@ -231,14 +234,14 @@ volume and loudness processing run once. Output resolutions may differ; frame
 rates always match the shared program.
 
 Each encoded output selects **Own encoding** or an **Encoding source**. Choosing
-an enabled Stream, MoQ or HLS output reuses its existing compressed video/audio
+a saved Stream, MoQ or HLS output with its own encoding reuses its compressed video/audio
 packets. HLS sources expose their base rendition and additional variants. Only
 one HLS output instance is supported per channel; adaptive renditions belong to
 that output. Own encoding remains independent even when another output happens
 to use identical settings.
 
 Dependencies resolve to the original encoder and rendition. Self references,
-cycles, disabled/missing sources and incompatible container/codec combinations
+cycles, missing sources and incompatible container/codec combinations
 are rejected. The UI offers compatible saved sources. Destination URLs, container
 metadata and transport settings remain independent. A common closed GOP fits the
 participating HLS segment intervals; codec headers support each container.
@@ -264,8 +267,9 @@ attempt starts at or after that deadline; blocking network I/O retains its ten-s
 timeout. A successful mux write resets the failure window, so a later outage gets
 a new three-minute window. After exhaustion the output stays failed. **Reconnect**
 starts a fresh round for that destination using its running configuration, without
-restarting the channel or other outputs. Configuration changes still require a
-channel restart. Encoder failures require a channel restart as well; the button is
+restarting the channel or other outputs. Output settings use the live update path.
+Encoder failures require recreating the affected encoding group (for example by
+disabling its consumers and enabling them again) or restarting the channel; the button is
 only available for live destination workers. Even if every destination is offline,
 the program and encoders continue and discard outgoing packets. Reconnected
 outputs discard stale queued media and wait for a fresh keyframe for each rendition;
@@ -306,8 +310,33 @@ encoding settings. `--output null` uses the primary output's effective encoding.
 
 An enabled MoQ output is displayed first in the output editor and supplies the
 program preview in the main Player window. Without an enabled MoQ output, the
-configured HLS preview remains in use. Saving output activation still
-requires a channel restart before the new preview stream is available.
+configured HLS preview remains in use. Saving MoQ activation starts or stops its
+delivery and importer without restarting the channel.
+
+### Live output changes
+
+Disabling a destination stops its delivery worker. Its encoder remains alive if
+another output or packet-copy recording needs it. A configured encoding owner can
+therefore be disabled as a destination while still supplying media to its consumers.
+When the last consumer is removed, its encoding group is stopped. All destinations
+can be disabled while the shared program timeline continues.
+
+Enabling a destination uses the current program position and waits for a keyframe;
+it does not replay media from the period when it was disabled. Changes to destination
+URLs, muxer options or metadata replace only that delivery worker. Changing an
+owner's encoding settings recreates that encoding group and its dependent deliveries;
+unrelated groups continue. Adding HLS to a shared group can also recreate that
+encoder if the new segment interval needs more frequent keyframes. Removing a
+destination retains a compatible shorter keyframe interval. Closing an old connection is isolated from program pacing,
+and replacements of the same destination wait for the old writer to close.
+
+Program resolution/frame rate, desktop window activation/settings and recording
+configuration still require a channel restart. Encoder changes affecting the recording
+owner also require a restart to keep the active recording coherent. Changes combined
+with any restart-required setting are deferred together until that restart. A
+standalone desktop runtime must be restarted once when adding its first encoded
+output. Desktop is selectable only when the backend includes `desktop` or `desktop-cpu`.
+Live output changes remain experimental and need sustained server validation.
 
 ### Choosing an encoding source
 
@@ -315,8 +344,8 @@ MoQ, Stream and HLS each have one **Encoding source** selector; there is no sepa
 sharing checkbox. **Own encoding** shows resolution, codec, bitrate and encoder
 options. Selecting another output hides these private settings and retains them
 for switching back. For HLS sources, select the named rendition as well. Save a
-new output before using it as a source. A source may itself reuse another output;
-the same original encoder continues to serve the chain.
+new output before using it as a source. The UI offers outputs with their own
+encoding; select the original owner directly. Existing source chains remain readable.
 
 MoQ packet reuse requires H.264/H.265 video and AAC audio. Other outputs follow
 the codecs supported by their muxer. Advanced transport, muxer and metadata
@@ -326,7 +355,7 @@ its HLS source selector offers the derived output's single playlist.
 Output settings stay expanded; advanced options are collapsible and initially
 open when custom options are configured. Runtime status refreshes every five
 seconds while the Outputs page is open. Missing status information is shown as
-unknown. MoQ status comes from its media importer. Changes still require a channel restart.
+unknown. MoQ status comes from its media importer.
 
 Existing migration 0007 stores the source output ID and optional HLS variant.
 The former `share_encoding` column is retained for reading old configurations;

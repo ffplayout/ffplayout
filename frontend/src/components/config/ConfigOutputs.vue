@@ -29,7 +29,8 @@ function runtime(output: PlayoutConfigExt['output']) {
     return configStore.outputs.find((item) => item.id === output.id && item.name === output.mode)
 }
 function addOutput() {
-    if (instances.value.length >= 8) return
+    if (instances.value.length >= 8 || (newMode.value === 'desktop' && !configStore.outputCodecs.desktop_available))
+        return
     const item = JSON.parse(JSON.stringify(configStore.playout.output)) as PlayoutConfigExt['output']
     Object.assign(item, {
         id: 0,
@@ -206,7 +207,11 @@ onUnmounted(() => {
                 <select v-model="newMode" :aria-label="t('config.outputNewType')" class="select select-sm">
                     <option value="hls">{{ t('config.outputModes.hls') }}</option>
                     <option value="stream">{{ t('config.outputModes.stream') }}</option>
-                    <option value="desktop" :disabled="instances.some((item) => item.mode === 'desktop')">
+                    <option
+                        v-if="configStore.outputCodecs.desktop_available"
+                        value="desktop"
+                        :disabled="instances.some((item) => item.mode === 'desktop')"
+                    >
                         {{ t('config.outputModes.desktop') }}
                     </option>
                     <option value="moq" :disabled="instances.some((item) => item.mode === 'moq')">

@@ -86,6 +86,7 @@ declare global {
     }
 
     interface PlayoutCodecOptions {
+        desktop_available: boolean
         moq: OutputCodecOptions
         hls: OutputCodecOptions
         rtmp: OutputCodecOptions

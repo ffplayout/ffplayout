@@ -319,6 +319,49 @@ mod tests {
     use crate::{db::handles::db_migrate, utils::config::OutputMode};
 
     #[tokio::test]
+    async fn all_destinations_can_be_disabled_without_losing_configuration() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        db_migrate(&pool).await.unwrap();
+        let primary = select_outputs(&pool, 1)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|output| output.active)
+            .unwrap();
+        let id = primary.id;
+        let mut config = crate::utils::config::PlayoutConfig {
+            output: crate::utils::config::Output::from_record(primary),
+            ..Default::default()
+        };
+        config.output.enabled = false;
+        assert!(config.validate_outputs().is_ok());
+        let mut transaction = pool.begin().await.unwrap();
+        save_outputs_on(&mut transaction, 1, &mut config)
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+        assert_eq!(
+            crate::db::handles::select_configuration(&pool, 1)
+                .await
+                .unwrap()
+                .output_id,
+            id
+        );
+        let stored = select_outputs(&pool, 1)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|output| output.id == id)
+            .unwrap();
+        assert!(stored.configured);
+        assert!(!crate::utils::config::Output::from_record(stored).enabled);
+    }
+
+    #[tokio::test]
     async fn moq_uses_output_rows_and_the_schema_accepts_future_codec_names() {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
