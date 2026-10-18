@@ -369,7 +369,7 @@ export default {
         ingestLogLevel: 'Nível de log da ingestão',
         moqPublicPlayer: 'Permitir player público',
         moqPublicPlayerHelp:
-            'Qualquer pessoa com o link pode assistir sem entrar. O acesso fica desativado por padrão; salvar aplica a permissão imediatamente.',
+            'Qualquer pessoa com o link pode assistir sem entrar. O acesso fica desativado por padrão; salvar aplica a permissão imediatamente. Com o acesso público ativado, a saída MoQ funciona continuamente, mesmo sem espectadores.',
         moqPublicUnavailable: 'O player público não está disponível para este canal.',
         moqLoading: 'Carregando player…',
         moqPaused: 'Pausado',
@@ -379,7 +379,7 @@ export default {
         moqCopyDiagnostics: 'Copiar diagnóstico',
         moqPlayerPreview: 'Prévia MoQ do programa',
         moqPlayerPreviewHelp:
-            'Quando esta saída está ativada, ela é usada como prévia na janela do player. Salve e reinicie o canal para aplicar as alterações.',
+            'Esta saída fornece a prévia do Player. A transmissão privada começa ao abrir o player e termina três minutos após a última conexão. Com o player público ativado, a transmissão é contínua.',
         programFormat: 'Formato do programa',
         programFormatHelp:
             'Esta resolução e taxa de quadros definem o programa comum antes da saída. Todas as saídas usam o mesmo FPS. Em Saídas, cada saída pode usar a resolução do programa ou uma resolução própria.',

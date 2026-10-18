@@ -1,3 +1,5 @@
+use std::sync::PoisonError;
+
 mod instances;
 mod playout;
 
@@ -10,6 +12,34 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
 
 /// Queue an atomic snapshot for the active parallel runtime.
 pub(crate) fn update_outputs(
+    manager: &ChannelManager,
+    config: &crate::utils::config::PlayoutConfig,
+) -> Result<(), ServiceError> {
+    let mut current = manager
+        .live_output_config
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    apply_outputs(manager, config)?;
+    *current = Some(config.clone());
+
+    Ok(())
+}
+
+/// Refresh the last successfully applied runtime configuration, never settings
+/// that were saved for a later channel restart. Serialize with API updates.
+pub(crate) fn refresh_moq_demand(manager: &ChannelManager) -> Result<(), ServiceError> {
+    let current = manager
+        .live_output_config
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if let Some(config) = current.as_ref() {
+        apply_outputs(manager, config)?;
+    }
+
+    Ok(())
+}
+
+fn apply_outputs(
     manager: &ChannelManager,
     config: &crate::utils::config::PlayoutConfig,
 ) -> Result<(), ServiceError> {
@@ -28,7 +58,13 @@ pub(crate) fn update_outputs(
     let recording_owner = manager
         .running_config()
         .map_or(config.output.id, |running| running.output.id);
-    instances::configure_destinations(config, &mut program, &mut attachments, recording_owner)?;
+    instances::configure_destinations(
+        config,
+        &mut program,
+        &mut attachments,
+        recording_owner,
+        manager.moq_demand.active(),
+    )?;
     manager
         .output_status
         .update_outputs(program.destinations)

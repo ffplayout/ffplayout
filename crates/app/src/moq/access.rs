@@ -8,12 +8,14 @@ use std::{
 use moq_auth::{Grant, Patterns, lease};
 use moq_relay::auth::{Admissions, Error};
 use sqlx::SqlitePool;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::{
     api::{auth::decode_jwt, routes::AuthUser},
     db::handles,
+    player::controller::ChannelController,
     utils::errors::ServiceError,
 };
 
@@ -98,6 +100,7 @@ pub(super) fn run(
     pool: SqlitePool,
     tickets: Arc<Tickets>,
     stopped: CancellationToken,
+    controller: Arc<RwLock<ChannelController>>,
 ) {
     tokio::spawn(async move {
         loop {
@@ -105,6 +108,7 @@ pub(super) fn run(
                 _ = stopped.cancelled() => break,
                 admission = admissions.next() => match admission { Some(admission) => admission, None => break },
             };
+            let controller = controller.clone();
             let pool = pool.clone();
             let tickets = tickets.clone();
             let stopped = stopped.clone();
@@ -139,6 +143,13 @@ pub(super) fn run(
                     admission.refuse(Error::Refused);
                     return;
                 }
+                let Some(manager) = controller.read().await.get(channel) else {
+                    admission.refuse(Error::Refused);
+                    return;
+                };
+                // The lease outlives the HTTP handshake and covers every relay
+                // transport, including direct QUIC and WebTransport sessions.
+                let _viewer = manager.moq_demand.connect();
                 let (producer, consumer) = lease::Producer::new(grant(channel));
                 admission.grant(consumer);
                 // Revoke existing anonymous sessions after a public opt-out, including
@@ -188,14 +199,25 @@ mod tests {
         let stopped = CancellationToken::new();
         let tickets = Arc::new(Tickets::default());
         let (auth, admissions) = moq_relay::auth::Auth::embedded("ffplayout-test");
-        run(admissions, pool.clone(), tickets.clone(), stopped.clone());
+        let mut channels = crate::player::controller::ChannelController::new();
+        channels.add(manager.clone());
+        let controller = Arc::new(tokio::sync::RwLock::new(channels));
+        run(
+            admissions,
+            pool.clone(),
+            tickets.clone(),
+            stopped.clone(),
+            controller,
+        );
         let request = |channel| {
             let mut request = auth.request(moq_auth::Transport::WebSocket, "/arbitrary-path");
             request.query = Some(format!("channel={channel}"));
             request
         };
         assert!(auth.admit(request(2)).await.is_err());
+        assert!(!manager.moq_demand.active());
         let lease = auth.admit(request(1)).await.unwrap();
+        assert!(manager.moq_demand.active());
         assert!(lease.token().publish.is_empty());
         assert_eq!(lease.token().root.as_str(), "channels");
         assert_eq!(

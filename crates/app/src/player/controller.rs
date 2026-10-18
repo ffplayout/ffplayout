@@ -119,6 +119,8 @@ pub struct ChannelManager {
     pub task_generation: Arc<AtomicUsize>,
     pub audio_effects: AudioEffectsControl,
     pub output_status: ff_engine::OutputStatus,
+    pub(crate) moq_demand: Arc<crate::moq::Demand>,
+    pub(crate) live_output_config: Arc<StdMutex<Option<PlayoutConfig>>>,
     pub live_loudness: ff_engine::LiveLoudnessControl,
     live_idle_timeouts: Arc<StdMutex<HashMap<i32, LiveIdleTimeout>>>,
     pub loudness_meter: ff_engine::LoudnessMeterControl,
@@ -188,6 +190,8 @@ impl ChannelManager {
 
         Ok(Self {
             id: channel.id,
+            moq_demand: Arc::new(crate::moq::Demand::default()),
+            live_output_config: Arc::new(StdMutex::new(None)),
             db_pool,
             is_alive: Arc::new(AtomicBool::new(false)),
             config: Arc::new(RwLock::new(config)),

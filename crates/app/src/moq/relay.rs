@@ -8,9 +8,10 @@ use std::{
 use anyhow::{Context, Result};
 use hang::moq_net;
 use moq_relay::{Config, Relay};
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
-use crate::utils::logging::Target;
+use crate::{player::controller::ChannelController, utils::logging::Target};
 
 use super::access::{self, Tickets};
 
@@ -30,7 +31,10 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn start(pool: sqlx::SqlitePool) -> Result<Self> {
+    pub async fn start(
+        pool: sqlx::SqlitePool,
+        controller: Arc<RwLock<ChannelController>>,
+    ) -> Result<Self> {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let bind: SocketAddr = env::var("FFPLAYOUT_MOQ_BIND")
             .unwrap_or_else(|_| "0.0.0.0:8089".into())
@@ -48,7 +52,13 @@ impl Server {
         let stopped = CancellationToken::new();
         let tickets = Arc::new(Tickets::default());
         let admissions = relay.admissions().context("MoQ admissions unavailable")?;
-        access::run(admissions, pool, tickets.clone(), stopped.clone());
+        access::run(
+            admissions,
+            pool,
+            tickets.clone(),
+            stopped.clone(),
+            controller,
+        );
         let port = relay
             .web_addrs()
             .http

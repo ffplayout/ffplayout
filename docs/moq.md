@@ -37,8 +37,28 @@ path and browser playback validation; changing a SQL constraint cannot add that
 support. Extending transport capabilities does not require a database migration.
 
 Browser codec support, GOP length, B-frames and encoder buffering affect playback
-and latency. An enabled output encodes or forwards media even when no viewer is
-connected. It does not start another playlist player or ingest listener.
+and latency. MoQ does not start another playlist player or ingest listener.
+
+## Experimental demand-based publication
+
+An enabled private MoQ output starts when the internal Player opens its MoQ
+preview. It stays active while at least one authenticated relay connection exists,
+including paused players and multiple browser tabs. When the last connection
+ends, publication continues for three minutes; reconnecting cancels that deadline.
+An authorized player bootstrap reserves up to 60 seconds for the handshake. If no
+connection follows, that temporary reservation expires automatically.
+
+With **Allow public player** enabled, the MoQ output publishes continuously even
+without viewers. Disabling the output always stops publication. These runtime
+transitions do not change saved settings or restart the channel.
+
+When private publication sleeps, its MPEG-TS delivery and importer stop. Its own
+encoder also stops if no other output or recording needs it; shared HLS/Stream
+encoders and their outputs continue. The relay stays reachable. Opening the
+player again incurs encoder/importer startup and a wait for a usable keyframe;
+the delay depends on the encoder and GOP length. No extra frontend heartbeat or
+periodic HTTP request is required. The Outputs page reports the sleeping output
+as not running.
 
 ## Player and transport
 

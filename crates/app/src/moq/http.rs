@@ -63,7 +63,12 @@ async fn private_bootstrap(
         .and_then(|value| value.strip_prefix("Bearer "))
         .ok_or_else(|| ServiceError::Unauthorized("Missing bearer token".into()))?;
 
-    bootstrap(query.channel, Some(bearer.to_string()))
+    let response = bootstrap(query.channel, Some(bearer.to_string()))?;
+    if let Some(manager) = state.controller.read().await.get(query.channel) {
+        manager.moq_demand.request_start();
+    }
+
+    Ok(response)
 }
 
 fn bootstrap(channel: i32, bearer: Option<String>) -> Result<impl IntoResponse, ServiceError> {

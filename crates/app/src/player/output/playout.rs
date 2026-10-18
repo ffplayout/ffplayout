@@ -1,7 +1,7 @@
 use std::{
     fmt,
     path::{Path, PathBuf},
-    sync::atomic::Ordering,
+    sync::{PoisonError, atomic::Ordering},
     time::Duration,
 };
 
@@ -32,6 +32,10 @@ use crate::{
 pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
     let _running_config = manager.track_running_config(config.clone());
+    *manager
+        .live_output_config
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = None;
     validate_supported_config(&config)?;
 
     manager
@@ -57,12 +61,27 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let parallel = !config.output.discard
         && (config.output.mode != OutputMode::Desktop || !config.output.enabled)
         || !config.outputs.is_empty();
+    let moq_demanded = manager.moq_demand.active();
     let playout = if parallel {
-        super::instances::open_parallel_playout(&config, &mut output_config, &mut moq_attachments)
-            .await?
+        super::instances::open_parallel_playout(
+            &config,
+            &mut output_config,
+            &mut moq_attachments,
+            moq_demanded,
+        )
+        .await?
     } else {
         open_playout(&config, output_config.clone()).await?
     };
+    manager
+        .live_output_config
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get_or_insert_with(|| config.clone());
+    let demand_watcher = manager
+        .output_status
+        .supports_live_updates()
+        .then(|| crate::moq::watch_demand(manager.clone(), moq_demanded));
     *manager.playback_control.lock().await = playout.playback_control();
     if config.output.mode == OutputMode::Desktop {
         #[cfg(feature = "desktop-cpu")]
@@ -113,6 +132,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         _ => play_loop(manager.clone(), &config, &playout, None).await,
     };
 
+    drop(demand_watcher);
     let finish_result = playout.finish().await.map_err(engine_error);
     for attachment in moq_attachments {
         if let Err(error) = attachment.finish().await {

@@ -1,4 +1,8 @@
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::{
+    collections::HashSet,
+    path::Path,
+    sync::{Arc, PoisonError},
+};
 
 use axum::{
     Json,
@@ -698,6 +702,25 @@ pub async fn get_playout_outputs(
                     output.runtime_status = Some("running".into());
                 } else {
                     output.runtime_status = Some("idle".into());
+                }
+                if output.name == "moq"
+                    && !manager.moq_demand.active()
+                    && manager
+                        .live_output_config
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .as_ref()
+                        .is_some_and(|config| {
+                            config.active_outputs().any(|active| {
+                                active.id == output.id
+                                    && active.mode == OutputMode::Moq
+                                    && !active.public_moq
+                            })
+                        })
+                {
+                    output.runtime_status = Some("idle".into());
+                    output.runtime_error = None;
+                    output.runtime_retryable = false;
                 }
                 if output.name == "moq"
                     && let Some(status) = crate::moq::status(id)

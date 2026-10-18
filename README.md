@@ -45,7 +45,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - WebVTT [subtitles](/docs/closed_captions.md) in HLS mode (experimental *)
 - multiple simultaneous [outputs](/docs/output.md) per channel, with individual resolutions and a shared program frame rate (experimental *)
 - explicit encoding sharing between compatible outputs, including selection of an HLS rendition as the encoding source (experimental *)
-- built-in [MoQ playback](/docs/moq.md) in the frontend, with an optional public player that is disabled by default (experimental *)
+- built-in [MoQ playback](/docs/moq.md) in the frontend: private publication starts on demand with a three-minute grace period; the optional public player publishes continuously and is disabled by default (experimental *)
 - independent output reconnection: automatic retries every 15 seconds for up to three minutes, followed by a manual retry option; successful media delivery resets the retry window (experimental *)
 
 **\* Experimental features do not guarantee the same stability and may fail under unusual circumstances. Code and configuration options may change in the future.**

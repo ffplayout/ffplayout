@@ -131,13 +131,14 @@ async fn async_main() -> Result<(), ProcessError> {
     let _logger = init_logging(app_state.mail_queues.clone())?;
 
     if let Some(conn) = &ARGS.listen {
-        let moq_server = match ffplayout::moq::Server::start(pool.clone()).await {
-            Ok(server) => Some(server),
-            Err(error) => {
-                warn!(target: Target::Console.as_str(), "MoQ unavailable: {error:#}");
-                None
-            }
-        };
+        let moq_server =
+            match ffplayout::moq::Server::start(pool.clone(), app_state.controller.clone()).await {
+                Ok(server) => Some(server),
+                Err(error) => {
+                    warn!(target: Target::Console.as_str(), "MoQ unavailable: {error:#}");
+                    None
+                }
+            };
 
         let setup_required = !handles::select_global(&pool).await?.setup_completed;
 

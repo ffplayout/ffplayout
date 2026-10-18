@@ -359,7 +359,7 @@ export default {
         ingestLogLevel: 'Ingest log level',
         moqPublicPlayer: 'Allow public player',
         moqPublicPlayerHelp:
-            'Anyone with the link can watch this channel without signing in. Access is disabled by default; saving applies this permission immediately.',
+            'Anyone with the link can watch this channel without signing in. Access is disabled by default; saving applies this permission immediately. While public access is enabled, the MoQ output runs continuously even without viewers.',
         moqPublicUnavailable: 'The public player is unavailable for this channel.',
         moqLoading: 'Loading player…',
         moqPaused: 'Paused',
@@ -369,7 +369,7 @@ export default {
         moqCopyDiagnostics: 'Copy diagnostics',
         moqPlayerPreview: 'MoQ program preview',
         moqPlayerPreviewHelp:
-            'When this output is enabled, it is used as the preview in the player window. Save and restart the channel to apply changes.',
+            'This output supplies the Player preview. Private publication starts when the player opens and stops three minutes after the last connection. With the public player enabled, publication runs continuously.',
         programFormat: 'Program format',
         programFormatHelp:
             'This resolution and frame rate define the shared program before output. All outputs use the same FPS. Under Outputs, each output can inherit the program resolution or use its own resolution.',

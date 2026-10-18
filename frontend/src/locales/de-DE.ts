@@ -369,7 +369,7 @@ export default {
         ingestLogLevel: 'Ingest-Log-Level',
         moqPublicPlayer: 'Öffentlichen Player erlauben',
         moqPublicPlayerHelp:
-            'Jeder mit dem Link kann diesen Kanal ohne Anmeldung ansehen. Der Zugriff ist standardmäßig aus; Speichern übernimmt die Freigabe sofort.',
+            'Jeder mit dem Link kann diesen Kanal ohne Anmeldung ansehen. Der Zugriff ist standardmäßig aus; Speichern übernimmt die Freigabe sofort. Bei aktivierter Freigabe läuft die MoQ-Ausgabe auch ohne Zuschauer dauerhaft.',
         moqPublicUnavailable: 'Der öffentliche Player ist für diesen Kanal nicht verfügbar.',
         moqLoading: 'Player wird geladen…',
         moqPaused: 'Pausiert',
@@ -379,7 +379,7 @@ export default {
         moqCopyDiagnostics: 'Diagnose kopieren',
         moqPlayerPreview: 'MoQ-Programm-Preview',
         moqPlayerPreviewHelp:
-            'Wenn diese Ausgabe aktiviert ist, wird sie als Preview im Playerfenster verwendet. Änderungen werden nach dem Speichern und einem Kanalneustart wirksam.',
+            'Diese Ausgabe dient als Preview im Playerfenster. Privat startet sie beim Öffnen des Players und endet drei Minuten nach der letzten Verbindung. Mit öffentlichem Player läuft sie dauerhaft.',
         programFormat: 'Programmformat',
         programFormatHelp:
             'Diese Auflösung und Bildrate gelten für das gemeinsame Programm vor der Ausgabe. Alle Outputs verwenden dieselbe FPS. Unter Outputs kann jede Ausgabe die Programmauflösung übernehmen oder eine eigene Auflösung erhalten.',

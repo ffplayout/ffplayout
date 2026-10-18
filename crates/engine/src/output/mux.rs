@@ -237,7 +237,8 @@ impl MuxOutput {
             packet: reference_packet(packet)?,
             timestamp_us,
             rate: self.rate,
-            enqueued: log::log_enabled!(log::Level::Trace).then(Instant::now),
+            enqueued: (shared.pace_packets && log::log_enabled!(log::Level::Trace))
+                .then(Instant::now),
         });
         queue.bytes += bytes;
         queue.last_input = Instant::now();
@@ -301,7 +302,9 @@ fn run(
     clock: SharedPlayoutClock,
     active_streams: Vec<usize>,
 ) -> Result<()> {
-    let mut timing = log::log_enabled!(log::Level::Trace)
+    // HLS write timing is no longer collected. Retain the optional diagnostics
+    // for paced network destinations without adding measurements to HLS.
+    let mut timing = (shared.pace_packets && log::log_enabled!(log::Level::Trace))
         .then(|| MuxTiming::new(output.nb_streams() as usize, channel));
 
     loop {

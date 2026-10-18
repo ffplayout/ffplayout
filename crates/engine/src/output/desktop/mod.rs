@@ -131,7 +131,7 @@ pub(super) struct DesktopOutput {
     loudness_meter_control: crate::LoudnessMeterControl,
     audio_sample_rate: u32,
     recording: Option<DesktopRecording>,
-    parallel_output: Option<Arc<super::parallel::ParallelOutput>>,
+    parallel_output: Arc<super::parallel::ParallelOutput>,
     channel_id: Option<i32>,
 }
 
@@ -432,15 +432,18 @@ impl DesktopOutput {
             loudness_meter_control: cfg.loudness_meter_control.clone(),
             audio_sample_rate: cfg.sample_rate,
             recording,
-            parallel_output: if cfg.destinations.is_empty() {
-                None
-            } else {
-                Some(Arc::new(super::parallel::ParallelOutput::start(
-                    cfg, false,
-                )?))
-            },
+            parallel_output: Self::open_parallel_output(cfg)?,
             channel_id: cfg.channel_id,
         })
+    }
+
+    fn open_parallel_output(cfg: &OutputConfig) -> Result<Arc<super::parallel::ParallelOutput>> {
+        // Keep live updates available when private MoQ is initially asleep.
+        // An empty runtime creates no encoder or delivery workers. Desktop
+        // audio remains the clock, so this branch must not add program pacing.
+        Ok(Arc::new(super::parallel::ParallelOutput::start(
+            cfg, false,
+        )?))
     }
 
     pub(super) fn audio_frame_size(&self) -> usize {
@@ -491,7 +494,7 @@ impl DesktopOutput {
             .recording
             .as_ref()
             .map(|recording| Arc::clone(&recording.queue_depth));
-        let parallel_output = self.parallel_output.clone();
+        let parallel_output = Some(self.parallel_output.clone());
         let channel_id = self.channel_id.unwrap_or_default();
         let worker = std_thread::Builder::new()
             .name("ffplayout-decode".to_string())
@@ -577,9 +580,7 @@ impl DesktopOutput {
         if let Some(recording) = recording {
             recording.finish();
         }
-        if let Some(output) = self.parallel_output.take()
-            && let Ok(output) = Arc::try_unwrap(output)
-        {
+        if let Ok(output) = Arc::try_unwrap(self.parallel_output) {
             output.finish()?;
         }
 
@@ -2340,6 +2341,84 @@ mod tests {
     use super::{cpu::scale_nearest, render::Rect, video::bgrz_to_rgb_pixel};
     #[cfg(feature = "desktop-gpu")]
     use ffmpeg_next::util::color;
+
+    #[test]
+    fn an_idle_desktop_branch_can_activate_its_first_encoded_destination() {
+        use super::super::parallel::{OutputDestination, OutputTarget};
+        use ffmpeg_next::{
+            ChannelLayout,
+            format::{Pixel, Sample, sample::Type},
+        };
+
+        ffmpeg_next::init().unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "desktop-demand-{}-{}.ts",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut config = OutputConfig::new(160, 90, 25, 48_000);
+        config.stream_type = crate::StreamType::Custom;
+        config.stream_format = "mpegts".into();
+        config
+            .video_options
+            .insert("preset".into(), "ultrafast".into());
+        config
+            .video_options
+            .insert("tune".into(), "zerolatency".into());
+        let output = DesktopOutput::open_parallel_output(&config).unwrap();
+        assert!(config.output_status.supports_live_updates());
+        assert!(config.output_status.snapshot().is_empty());
+        let mut video = frame::Video::new(Pixel::YUV420P, 160, 90);
+        for plane in 0..video.planes() {
+            video.data_mut(plane).fill(128);
+        }
+        video.set_pts(Some(0));
+        output.encode_video(&video).unwrap();
+        assert!(!path.exists());
+
+        config
+            .output_status
+            .update_outputs(vec![OutputDestination {
+                id: 7,
+                config: config.clone(),
+                target: OutputTarget::Stream {
+                    url: path.to_string_lossy().into_owned(),
+                },
+            }])
+            .unwrap();
+        for index in 0..25 {
+            video.set_pts(Some(index));
+            output.encode_video(&video).unwrap();
+            let mut audio =
+                frame::Audio::new(Sample::F32(Type::Planar), 1_920, ChannelLayout::STEREO);
+            audio.set_rate(48_000);
+            audio.set_pts(Some(index * 1_920));
+            for channel in 0..2 {
+                audio.plane_mut::<f32>(channel).fill(0.0);
+            }
+            output.encode_audio(&audio).unwrap();
+        }
+        Arc::try_unwrap(output).ok().unwrap().finish().unwrap();
+        assert!(!config.output_status.supports_live_updates());
+        let mut input = ffmpeg_next::format::input(&path).unwrap();
+        let video = input
+            .streams()
+            .best(ffmpeg_next::media::Type::Video)
+            .unwrap()
+            .index();
+        assert_eq!(
+            input
+                .packets()
+                .filter(|(stream, _)| stream.index() == video)
+                .count(),
+            25
+        );
+        drop(input);
+        std::fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn processed_audio_bypasses_desktop_volume_and_reaches_recording() {

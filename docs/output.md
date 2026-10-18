@@ -256,8 +256,9 @@ recording muxer. Dedicated recording encoding remains separate. MoQ uses the sam
 `output/parallel.rs` owns the program clock and sends referenced program frames
 to the encoding groups. Each raw queue is limited to 128 messages, 64 MiB and one
 second of media. Shared profiles reference their compressed packets into separate
-delivery queues, each limited to 512 messages, 32 MiB and one second, followed by
-the existing bounded mux queue, paced for Stream/MoQ and unpaced for HLS. No destination owns the shared encoder.
+delivery queues, each limited to 512 messages, 32 MiB and one second. Stream/MoQ
+then use the bounded paced mux queue. HLS writes directly in its isolated delivery
+worker without another queue or pacing stage. No destination owns the shared encoder.
 Opening, transport or mux failures disable only the affected destination; other
 destinations keep using the profile. Encoder failure or raw queue overload affects
 the whole encoding group. Compressed queue overload disables that destination
@@ -297,6 +298,12 @@ the relay. Encoder names are unrestricted in the database; runtime codec
 capabilities reflect what the current MPEG-TS importer supports. AV1 needs an
 import/container path that supports it before it can be enabled.
 
+Private MoQ publication starts on Player demand and stops three minutes after the
+last authenticated relay connection ends. Public MoQ publishes continuously while
+enabled. Sleeping MoQ releases its delivery/importer and unneeded encoder group;
+other outputs and recording retain any shared encoding they still need. See
+[demand-based publication](moq.md#experimental-demand-based-publication).
+
 The existing outputs API includes `runtime_status` and `runtime_error` per
 instance. The editor displays these separately from persisted settings. A
 process-local `--output null` or another CLI output override replaces the whole
@@ -334,8 +341,10 @@ Program resolution/frame rate, desktop window activation/settings and recording
 configuration still require a channel restart. Encoder changes affecting the recording
 owner also require a restart to keep the active recording coherent. Changes combined
 with any restart-required setting are deferred together until that restart. A
-standalone desktop runtime must be restarted once when adding its first encoded
-output. Desktop is selectable only when the backend includes `desktop` or `desktop-cpu`.
+desktop runtime keeps an empty parallel output branch available, so its first
+encoded output, including demand-based private MoQ, can start without a restart.
+The empty branch creates no encoder or delivery workers. Desktop is selectable
+only when the backend includes `desktop` or `desktop-cpu`.
 Live output changes remain experimental and need sustained server validation.
 
 ### Choosing an encoding source
