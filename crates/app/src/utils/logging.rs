@@ -618,6 +618,10 @@ pub fn init_logging(
         .module("sctk", LevelFilter::Error)
         .module("sqlx", LevelFilter::Error)
         .module("tokio", LevelFilter::Error)
+        .module("moq_auth", LevelFilter::Error)
+        .module("hang", LevelFilter::Error)
+        .module("moq_mux", LevelFilter::Error)
+        .module("moq_relay", LevelFilter::Error)
         // The tracing crate mirrors unannotated spans (such as winit's window
         // operations) into the log facade under this target.
         .module("tracing::span", LevelFilter::Error)

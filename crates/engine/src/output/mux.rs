@@ -53,6 +53,7 @@ struct Shared {
 /// file reading. Recording retains its direct, unpaced sink.
 pub(super) struct MuxOutput {
     direct: Option<format::context::Output>,
+    direct_delivered: bool,
     time_bases: Vec<Rational>,
     #[cfg(test)]
     pub(super) stream_bitrates: Vec<i64>,
@@ -78,6 +79,7 @@ impl MuxOutput {
             .collect();
         let mut mux = Self {
             direct: Some(output),
+            direct_delivered: false,
             time_bases,
             #[cfg(test)]
             stream_bitrates,
@@ -178,6 +180,7 @@ impl MuxOutput {
     pub(super) fn write(&mut self, packet: &mut Packet) -> Result<()> {
         let Some(shared) = &self.shared else {
             packet.write_interleaved(self.direct.as_mut().context("mux context missing")?)?;
+            self.direct_delivered = true;
             if let Some(health) = &self.health {
                 health.mark_muxed();
             }
@@ -245,7 +248,7 @@ impl MuxOutput {
 
     pub(super) fn delivery_state(&self) -> (bool, Option<String>) {
         let Some(shared) = &self.shared else {
-            return (true, None);
+            return (self.direct_delivered, None);
         };
         let queue = shared.queue.lock().unwrap_or_else(PoisonError::into_inner);
 

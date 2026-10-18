@@ -6,6 +6,10 @@ and [MoQ documentation](../docs/moq.md).
 ## Future improvements
 
 - [x] Allow changing or activating the desktop window without restarting the channel.
+- [ ] Profile the remaining paced network delivery/mux boundary before combining
+  those workers; preserve independent reconnects, pacing, and bounded buffering.
+- [ ] Evaluate a direct encoded-packet handoff to MoQ to replace the local
+  MPEG-TS/TCP importer, preserving codec initialization and media timestamps.
 
 ## Validation
 

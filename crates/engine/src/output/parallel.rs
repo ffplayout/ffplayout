@@ -215,6 +215,19 @@ pub struct OutputDestination {
     pub target: OutputTarget,
 }
 
+impl OutputDestination {
+    pub(super) fn writes_subtitles(&self) -> bool {
+        self.config.delivery_enabled
+            && matches!(
+                self.target,
+                OutputTarget::Hls {
+                    subtitle: Some(_),
+                    ..
+                }
+            )
+    }
+}
+
 pub(super) enum Message {
     Video(frame::Video, Option<Arc<LogoOverlay>>, f64),
     Audio(frame::Audio),
@@ -228,6 +241,7 @@ pub(super) enum Message {
 struct DestinationWorker {
     encoding_revision: String,
     gop: u32,
+    subtitles: bool,
     id: i32,
     ids: Vec<i32>,
     queue: Arc<PipelineQueue<Message>>,
@@ -259,6 +273,7 @@ impl DestinationWorker {
             destination.config.loudness_meter_control = crate::LoudnessMeterControl::default();
             destination.config.output_status = program.output_status.clone();
         }
+        let subtitles = destinations.iter().any(OutputDestination::writes_subtitles);
         let encoding_revision = destinations[0].config.encoding_revision.clone();
         let gop = super::shared::gop_size(&destinations)?;
         let ids = destinations
@@ -318,6 +333,7 @@ impl DestinationWorker {
         Ok(Self {
             encoding_revision,
             gop,
+            subtitles,
             id,
             ids,
             queue,
@@ -470,6 +486,7 @@ impl ParallelOutput {
             if let Some(index) = reusable {
                 let mut worker = previous.remove(index);
                 worker.ids = group.iter().map(|destination| destination.id).collect();
+                worker.subtitles = group.iter().any(OutputDestination::writes_subtitles);
                 worker.send(Message::Destinations(group), 0, None);
                 workers.push(worker);
             } else {
@@ -639,14 +656,17 @@ impl ParallelOutput {
     }
 
     pub(crate) fn advance_vtt_subtitles(&self, position: i64) -> Result<()> {
-        self.context
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .position = Some(position);
+        let active = {
+            let mut context = self.context.lock().unwrap_or_else(PoisonError::into_inner);
+            context.position = Some(position);
+            context.subtitles.is_some()
+        };
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         self.reconcile(&mut workers)?;
-        for worker in workers.iter() {
-            worker.send(Message::AdvanceSubtitles(position), 0, None);
+        if active {
+            for worker in workers.iter().filter(|worker| worker.subtitles) {
+                worker.send(Message::AdvanceSubtitles(position), 0, None);
+            }
         }
 
         Ok(())
@@ -741,6 +761,56 @@ mod tests {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
+    #[test]
+    fn subtitle_progress_only_reaches_vtt_destinations_during_an_active_clip() {
+        let config = OutputConfig::new(160, 90, 25, 48_000);
+        let output = ParallelOutput::start(&config, false).unwrap();
+        for (id, subtitles) in [(1, false), (2, true)] {
+            let control = Arc::new(PipelineControl::default());
+            output.workers.lock().unwrap().push(DestinationWorker {
+                encoding_revision: String::new(),
+                gop: 50,
+                subtitles,
+                id,
+                ids: vec![id],
+                queue: PipelineQueue::new(
+                    QueueLimits {
+                        items: 8,
+                        bytes: 1024,
+                        duration_us: 1_000_000,
+                    },
+                    control.clone(),
+                ),
+                control,
+                worker: None,
+                channel: 1,
+                status: config.output_status.clone(),
+            });
+        }
+        output.context.lock().unwrap().subtitles = Some(("clip.mp4".into(), 0, 0));
+        output.advance_vtt_subtitles(500).unwrap();
+        {
+            let workers = output.workers.lock().unwrap();
+            assert!(workers[0].queue.try_recv().unwrap().is_none());
+            assert!(matches!(
+                workers[1].queue.try_recv().unwrap(),
+                Some(Message::AdvanceSubtitles(500))
+            ));
+        }
+        output.clear_vtt_subtitles().unwrap();
+        for worker in output.workers.lock().unwrap().iter() {
+            assert!(matches!(
+                worker.queue.try_recv().unwrap(),
+                Some(Message::ClearSubtitles)
+            ));
+        }
+        output.advance_vtt_subtitles(1_000).unwrap();
+        for worker in output.workers.lock().unwrap().iter() {
+            assert!(worker.queue.try_recv().unwrap().is_none());
+        }
+        assert_eq!(output.context.lock().unwrap().position, Some(1_000));
+    }
+
     #[test]
     fn live_destinations_keep_shared_encoder_and_unrelated_stream_continuous() {
         ffmpeg_next::init().unwrap();
@@ -1612,6 +1682,7 @@ mod tests {
         let blocked = DestinationWorker {
             encoding_revision: String::new(),
             gop: 50,
+            subtitles: false,
             id: 1,
             ids: vec![1],
             queue,
@@ -1628,6 +1699,7 @@ mod tests {
         let healthy = DestinationWorker {
             encoding_revision: String::new(),
             gop: 50,
+            subtitles: false,
             id: 2,
             ids: vec![2],
             queue: PipelineQueue::new(

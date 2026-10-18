@@ -1,10 +1,10 @@
 use std::{
     collections::VecDeque,
     sync::{
-        Arc, Condvar, Mutex, PoisonError,
+        Arc, Condvar, Mutex, PoisonError, Weak,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Result, anyhow, bail};
@@ -18,12 +18,30 @@ pub(crate) struct PipelineControl {
     cancelled: AtomicBool,
     error: Mutex<Option<String>>,
     wake: Condvar,
+    queues: Mutex<Vec<Weak<dyn CancelWake>>>,
+}
+
+trait CancelWake: Send + Sync {
+    fn wake_cancelled(&self);
 }
 
 impl PipelineControl {
     pub(crate) fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Release);
-        self.wake.notify_all();
+        {
+            let _error = self.error.lock().unwrap_or_else(PoisonError::into_inner);
+            self.cancelled.store(true, Ordering::Release);
+            self.wake.notify_all();
+        }
+        let queues: Vec<_> = self
+            .queues
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .filter_map(Weak::upgrade)
+            .collect();
+        for queue in queues {
+            queue.wake_cancelled();
+        }
     }
 
     pub(crate) fn cancelled(&self) -> bool {
@@ -35,6 +53,7 @@ impl PipelineControl {
         if stored.is_none() && !self.cancelled() {
             *stored = Some(error.to_string());
         }
+        drop(stored);
         self.cancel();
     }
 
@@ -93,8 +112,11 @@ pub(crate) struct PipelineQueue<T> {
 }
 
 impl<T> PipelineQueue<T> {
-    pub(crate) fn new(limits: QueueLimits, control: Arc<PipelineControl>) -> Arc<Self> {
-        Arc::new(Self {
+    pub(crate) fn new(limits: QueueLimits, control: Arc<PipelineControl>) -> Arc<Self>
+    where
+        T: Send + 'static,
+    {
+        let queue = Arc::new(Self {
             state: Mutex::new(State {
                 entries: VecDeque::new(),
                 bytes: 0,
@@ -102,8 +124,17 @@ impl<T> PipelineQueue<T> {
             }),
             changed: Condvar::new(),
             limits,
-            control,
-        })
+            control: control.clone(),
+        });
+        let wake: Arc<dyn CancelWake> = queue.clone();
+        let mut queues = control
+            .queues
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        queues.retain(|queue| queue.strong_count() > 0);
+        queues.push(Arc::downgrade(&wake));
+
+        queue
     }
 
     pub(crate) fn send(&self, item: T, bytes: usize, timestamp_us: Option<i64>) -> Result<()> {
@@ -123,11 +154,10 @@ impl<T> PipelineQueue<T> {
             if !full {
                 break;
             }
-            let (next, _) = self
+            state = self
                 .changed
-                .wait_timeout(state, POLL_INTERVAL)
+                .wait(state)
                 .unwrap_or_else(PoisonError::into_inner);
-            state = next;
         }
         state.entries.push_back(Entry {
             item,
@@ -195,25 +225,50 @@ impl<T> PipelineQueue<T> {
             state.bytes -= entry.bytes;
             entry.item
         });
-        self.changed.notify_all();
+        if item.is_some() {
+            self.changed.notify_all();
+        }
 
         Ok(item)
     }
 
     pub(crate) fn recv(&self) -> Result<Option<T>> {
+        self.recv_until(None)
+    }
+
+    /// Delivery workers also have retry/status deadlines. Data and cancellation
+    /// wake them immediately; a timeout only bounds their next status check.
+    pub(crate) fn recv_timeout(&self, timeout: Duration) -> Result<Option<T>> {
+        self.recv_until(Some(Instant::now() + timeout))
+    }
+
+    fn recv_until(&self, deadline: Option<Instant>) -> Result<Option<T>> {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         loop {
-            if let Some(item) = self.try_recv()? {
-                return Ok(Some(item));
+            self.control.check()?;
+            if let Some(entry) = state.entries.pop_front() {
+                state.bytes -= entry.bytes;
+                self.changed.notify_all();
+
+                return Ok(Some(entry.item));
             }
-            let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
-            if state.closed && state.entries.is_empty() {
+            if state.closed {
                 return Ok(None);
             }
-            drop(
+            state = if let Some(deadline) = deadline {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Ok(None);
+                }
                 self.changed
-                    .wait_timeout(state, POLL_INTERVAL)
-                    .unwrap_or_else(PoisonError::into_inner),
-            );
+                    .wait_timeout(state, remaining)
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .0
+            } else {
+                self.changed
+                    .wait(state)
+                    .unwrap_or_else(PoisonError::into_inner)
+            };
         }
     }
 
@@ -251,6 +306,15 @@ impl<T> PipelineQueue<T> {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .closed = true;
+        self.changed.notify_all();
+    }
+}
+
+impl<T: Send> CancelWake for PipelineQueue<T> {
+    fn wake_cancelled(&self) {
+        // Hold the same lock as the predicate check and Condvar::wait. A
+        // cancellation can then never be lost between checking and sleeping.
+        let _state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         self.changed.notify_all();
     }
 }
@@ -320,6 +384,68 @@ mod tests {
             worker.join().unwrap();
         }
         assert!(control.wait(Duration::ZERO).is_err());
+    }
+
+    #[test]
+    fn blocking_queue_delivers_ordered_data_and_close_without_timed_polling() {
+        let queue = PipelineQueue::new(
+            QueueLimits {
+                items: 1,
+                bytes: 8,
+                duration_us: 100,
+            },
+            Arc::new(PipelineControl::default()),
+        );
+        let sending = queue.clone();
+        let worker = thread::spawn(move || {
+            for value in 0..2_000 {
+                sending.send(value, 8, None).unwrap();
+            }
+            sending.close();
+        });
+        for expected in 0..2_000 {
+            assert_eq!(queue.recv().unwrap(), Some(expected));
+        }
+        assert_eq!(queue.recv().unwrap(), None);
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn receive_timeout_does_not_close_the_queue_or_discard_later_data() {
+        let queue = PipelineQueue::new(
+            QueueLimits {
+                items: 1,
+                bytes: 8,
+                duration_us: 100,
+            },
+            Arc::new(PipelineControl::default()),
+        );
+        assert_eq!(queue.recv_timeout(Duration::from_millis(1)).unwrap(), None);
+        queue.send(7, 1, None).unwrap();
+        assert_eq!(queue.recv_timeout(Duration::ZERO).unwrap(), Some(7));
+        assert!(!queue.closed());
+    }
+
+    #[test]
+    fn failure_wakes_a_receiver_and_retains_the_original_error() {
+        let control = Arc::new(PipelineControl::default());
+        let queue = PipelineQueue::<u8>::new(
+            QueueLimits {
+                items: 1,
+                bytes: 8,
+                duration_us: 100,
+            },
+            control.clone(),
+        );
+        let (sender, receiver) = mpsc::channel();
+        let worker =
+            thread::spawn(move || sender.send(queue.recv().unwrap_err().to_string()).unwrap());
+        control.fail("decoder failed");
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "decoder failed"
+        );
+        worker.join().unwrap();
     }
 
     #[test]

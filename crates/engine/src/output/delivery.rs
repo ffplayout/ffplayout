@@ -213,11 +213,10 @@ fn deliver_with_retry(
             log::warn!(channel = channel; "Output {id} disconnected: {reason}");
         }
 
-        let Some(message) = queue.try_recv()? else {
+        let Some(message) = queue.recv_timeout(POLL_INTERVAL)? else {
             if queue.closed() {
                 break;
             }
-            control.wait(POLL_INTERVAL)?;
             continue;
         };
         let result = if interrupted.swap(false, Ordering::AcqRel) && output.is_some() {

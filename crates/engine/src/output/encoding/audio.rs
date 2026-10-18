@@ -5,7 +5,10 @@ use ffmpeg_next::{
 
 use crate::{
     HlsVariant, OutputConfig,
-    utils::config::{audio_encoder_context, engine_audio_sample_format},
+    utils::{
+        config::{audio_encoder_context, engine_audio_sample_format},
+        ffmpeg::reference_audio_frame,
+    },
 };
 
 pub(in crate::output) struct AudioOutputStream {
@@ -150,6 +153,25 @@ impl AudioFrameBuffer {
             self.pts = frame.pts();
         }
 
+        // Processed AAC-sized frames usually already match the encoder. Keep
+        // their FFmpeg buffers rather than copying through a second FIFO.
+        if self.size > 0
+            && self.samples[0].is_empty()
+            && frame.samples() == self.size
+            && frame.rate() == self.rate
+            && (0..2).all(|channel| {
+                frame
+                    .plane::<f32>(channel)
+                    .iter()
+                    .all(|sample| sample.is_finite())
+            })
+        {
+            frames.push(reference_audio_frame(frame)?);
+            self.pts = frame.pts().map(|pts| pts + self.size as i64);
+
+            return Ok(frames);
+        }
+
         for (channel, samples) in self.samples.iter_mut().enumerate() {
             samples.extend(
                 frame
@@ -203,14 +225,92 @@ impl AudioFrameBuffer {
             frame.set_pts(self.pts);
 
             for (channel, samples) in self.samples.iter_mut().enumerate() {
-                for value in frame.plane_mut::<f32>(channel) {
-                    *value = samples.pop_front().unwrap_or(0.0);
-                }
+                let plane = frame.plane_mut::<f32>(channel);
+                let (front, back) = samples.as_slices();
+                let first = front.len().min(self.size);
+                plane[..first].copy_from_slice(&front[..first]);
+                plane[first..self.size].copy_from_slice(&back[..self.size - first]);
+                samples.drain(..self.size);
             }
             self.pts = self.pts.map(|pts| pts + self.size as i64);
             frames.push(frame);
         }
 
         Ok(frames)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn audio(samples: &[f32], pts: i64) -> frame::Audio {
+        let mut frame = frame::Audio::new(
+            engine_audio_sample_format(),
+            samples.len(),
+            ChannelLayout::STEREO,
+        );
+        frame.set_rate(48_000);
+        frame.set_pts(Some(pts));
+        for channel in 0..2 {
+            frame.plane_mut::<f32>(channel).copy_from_slice(samples);
+        }
+
+        frame
+    }
+
+    #[test]
+    fn matching_frames_share_storage_without_changing_samples_or_timestamps() {
+        let input = audio(&[0.1, 0.2, 0.3, 0.4], 123);
+        let mut buffer = AudioFrameBuffer::new(48_000, 4);
+        let output = buffer.push(&input).unwrap();
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0].pts(), input.pts());
+        for channel in 0..2 {
+            assert_eq!(output[0].plane::<f32>(channel), input.plane::<f32>(channel));
+            assert_eq!(
+                output[0].data(channel).as_ptr(),
+                input.data(channel).as_ptr()
+            );
+        }
+        assert!(buffer.finish().unwrap().is_empty());
+    }
+
+    #[test]
+    fn partial_frames_preserve_order_across_fifo_wrap_and_pad_only_the_tail() {
+        let mut buffer = AudioFrameBuffer::new(48_000, 4);
+        assert!(
+            buffer
+                .push(&audio(&[0.0, 1.0, 2.0], 100))
+                .unwrap()
+                .is_empty()
+        );
+        let first = buffer.push(&audio(&[3.0, 4.0, 5.0], 103)).unwrap();
+        let second = buffer.push(&audio(&[6.0, 7.0, 8.0], 106)).unwrap();
+        let tail = buffer.finish().unwrap();
+        for (output, expected, pts) in [
+            (&first[0], [0.0, 1.0, 2.0, 3.0], 100),
+            (&second[0], [4.0, 5.0, 6.0, 7.0], 104),
+            (&tail[0], [8.0, 0.0, 0.0, 0.0], 108),
+        ] {
+            assert_eq!(output.pts(), Some(pts));
+            for channel in 0..2 {
+                assert_eq!(output.plane::<f32>(channel), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn matching_frames_still_sanitize_nonfinite_samples_and_flush_discontinuities() {
+        let mut buffer = AudioFrameBuffer::new(48_000, 4);
+        assert!(buffer.push(&audio(&[1.0, 2.0], 10)).unwrap().is_empty());
+        let output = buffer
+            .push(&audio(&[3.0, f32::NAN, f32::INFINITY, 4.0], 100))
+            .unwrap();
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[0].pts(), Some(10));
+        assert_eq!(output[0].plane::<f32>(0), [1.0, 2.0, 0.0, 0.0]);
+        assert_eq!(output[1].pts(), Some(100));
+        assert_eq!(output[1].plane::<f32>(0), [3.0, 0.0, 0.0, 4.0]);
     }
 }

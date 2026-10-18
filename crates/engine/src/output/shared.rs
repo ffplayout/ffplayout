@@ -71,6 +71,7 @@ struct Sink {
     worker: Option<JoinHandle<()>>,
     interrupted: Arc<AtomicBool>,
     revision: String,
+    subtitles: bool,
 }
 
 impl Sink {
@@ -94,6 +95,7 @@ impl Sink {
         let status = destination.config.output_status.scoped(id);
         destination.config.output_status = status.clone();
         let revision = destination.config.destination_revision.clone();
+        let subtitles = destination.writes_subtitles();
         let delivery_lock = status.delivery_lock(id);
         let worker_status = status.clone();
         let channel = destination.config.channel_id.unwrap_or_default();
@@ -155,6 +157,7 @@ impl Sink {
             worker: Some(worker),
             interrupted,
             revision,
+            subtitles,
         })
     }
 
@@ -214,7 +217,9 @@ impl DeliveryContext {
             0,
             None,
         );
-        if let Some((path, start, source)) = &self.subtitles {
+        if sink.subtitles
+            && let Some((path, start, source)) = &self.subtitles
+        {
             let position = self.position.unwrap_or(*start).max(*start);
             let source = source.saturating_add(position.saturating_sub(*start));
             sink.send(
@@ -396,22 +401,33 @@ pub(super) fn run(
             .dts()
             .or_else(|| packet.packet.pts())
             .map(|pts| pts.rescale(packet.time_base, rescale::TIME_BASE));
-        for (sink, rendition) in sinks.borrow().iter() {
-            if !sink.control.cancelled() && rendition.is_none_or(|rendition| rendition == index) {
-                sink.send(
-                    Delivery::Packet(EncodedPacket {
-                        packet: reference_packet(&packet.packet)?,
-                        stream: if rendition.is_some() {
-                            packet.stream
-                        } else {
-                            index * 2 + packet.stream
-                        },
-                        time_base: packet.time_base,
-                    }),
-                    bytes,
-                    timestamp,
-                );
+        let sinks = sinks.borrow();
+        let mut targets = sinks
+            .iter()
+            .filter(|(sink, rendition)| {
+                !sink.control.cancelled() && rendition.is_none_or(|rendition| rendition == index)
+            })
+            .peekable();
+        let mut packet = Some(packet);
+        while let Some((sink, rendition)) = targets.next() {
+            // Transfer the original packet to the last consumer. Only additional
+            // destinations need another FFmpeg packet header/buffer reference.
+            let mut next = if targets.peek().is_none() {
+                packet.take().context("encoded packet already delivered")?
+            } else {
+                let packet = packet
+                    .as_ref()
+                    .context("encoded packet already delivered")?;
+                EncodedPacket {
+                    packet: reference_packet(&packet.packet)?,
+                    stream: packet.stream,
+                    time_base: packet.time_base,
+                }
+            };
+            if rendition.is_none() {
+                next.stream += index * 2;
             }
+            sink.send(Delivery::Packet(next), bytes, timestamp);
         }
         Ok(())
     };
@@ -429,6 +445,9 @@ pub(super) fn run(
                 )?;
             }
             Message::Video(mut frame, logo, opacity) => {
+                context.position = frame.pts().map(|pts| {
+                    pts.rescale(program.video_time_base, ffmpeg_next::Rational(1, 1_000))
+                });
                 if let Some(logo) = logo {
                     make_video_frame_writable(&mut frame)?;
                     blend_logo(&mut frame, &logo, opacity);
@@ -463,7 +482,7 @@ pub(super) fn run(
             Message::Subtitles(path, start, source) => {
                 context.subtitles = Some((path.clone(), start, source));
                 context.position = Some(start);
-                for (sink, _) in sinks.borrow().iter() {
+                for (sink, _) in sinks.borrow().iter().filter(|(sink, _)| sink.subtitles) {
                     sink.send(
                         Delivery::Control(Message::Subtitles(path.clone(), start, source)),
                         path.len(),
@@ -474,13 +493,13 @@ pub(super) fn run(
             Message::ClearSubtitles => {
                 context.subtitles = None;
                 context.position = None;
-                for (sink, _) in sinks.borrow().iter() {
+                for (sink, _) in sinks.borrow().iter().filter(|(sink, _)| sink.subtitles) {
                     sink.send(Delivery::Control(Message::ClearSubtitles), 0, None);
                 }
             }
             Message::AdvanceSubtitles(position) => {
                 context.position = Some(position);
-                for (sink, _) in sinks.borrow().iter() {
+                for (sink, _) in sinks.borrow().iter().filter(|(sink, _)| sink.subtitles) {
                     sink.send(
                         Delivery::Control(Message::AdvanceSubtitles(position)),
                         0,
@@ -577,6 +596,7 @@ mod tests {
                 worker: None,
                 interrupted: Arc::new(AtomicBool::new(false)),
                 revision: String::new(),
+                subtitles: false,
             }
         };
         let blocked = make_sink(1);

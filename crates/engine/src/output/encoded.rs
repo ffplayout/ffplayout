@@ -197,7 +197,13 @@ impl EncodedOutput {
             _ => {}
         }
 
-        let threaded_output = paced && !matches!(&output_format, EncodedFormat::Recording { .. });
+        // Packet delivery already owns an isolated destination thread. HLS
+        // needs no pacing, so write there instead of adding another queue and
+        // mux thread. Standalone HLS and paced network outputs retain theirs.
+        let packet_hls =
+            parameters.is_some() && matches!(&output_format, EncodedFormat::Hls { .. });
+        let threaded_output =
+            paced && !packet_hls && !matches!(&output_format, EncodedFormat::Recording { .. });
         let hls_variants = match &output_format {
             EncodedFormat::Auto
             | EncodedFormat::Stream { .. }
