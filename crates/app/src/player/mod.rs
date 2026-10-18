@@ -1,5 +1,5 @@
 pub mod controller;
 pub mod input;
-mod memory_diagnostics;
 pub mod output;
+mod process_diagnostics;
 pub mod utils;

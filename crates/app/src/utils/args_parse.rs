@@ -233,10 +233,10 @@ pub struct Args {
     #[clap(
         long,
         hide = true,
-        env = "FFPLAYOUT_MEMORY_DIAGNOSTICS",
-        help = "Log process memory at clip and live transitions"
+        env = "FFPLAYOUT_PROCESS_DIAGNOSTICS",
+        help = "Log process memory and CPU usage at clip and live transitions"
     )]
-    pub memory_diagnostics: bool,
+    pub process_diagnostics: bool,
 
     #[clap(
         long,
@@ -622,32 +622,32 @@ mod tests {
     use super::Args;
 
     #[test]
-    fn memory_diagnostics_start_parameter_is_hidden() {
+    fn process_diagnostics_start_parameter_is_hidden() {
         use clap::CommandFactory;
-        let args = try_parse_args_from(["ffplayout", "--memory-diagnostics"]).unwrap();
-        assert!(args.memory_diagnostics);
+        let args = try_parse_args_from(["ffplayout", "--process-diagnostics"]).unwrap();
+        assert!(args.process_diagnostics);
         assert!(
             !super::Args::command()
                 .render_long_help()
                 .to_string()
-                .contains("--memory-diagnostics")
+                .contains("--process-diagnostics")
         );
-        let expected = std::env::var("FFPLAYOUT_MEMORY_DIAGNOSTICS")
+        let expected = std::env::var("FFPLAYOUT_PROCESS_DIAGNOSTICS")
             .map(|value| value.parse::<bool>().unwrap())
             .unwrap_or(false);
         assert_eq!(
             try_parse_args_from(["ffplayout"])
                 .unwrap()
-                .memory_diagnostics,
+                .process_diagnostics,
             expected
         );
         assert_eq!(
             super::Args::command()
                 .get_arguments()
-                .find(|argument| argument.get_id() == "memory_diagnostics")
+                .find(|argument| argument.get_id() == "process_diagnostics")
                 .unwrap()
                 .get_env(),
-            Some(std::ffi::OsStr::new("FFPLAYOUT_MEMORY_DIAGNOSTICS"))
+            Some(std::ffi::OsStr::new("FFPLAYOUT_PROCESS_DIAGNOSTICS"))
         );
     }
 

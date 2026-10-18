@@ -72,6 +72,81 @@ CARGO_FEATURES=desktop,embed_frontend,ffmpeg-filter,ffmpeg-device \\
     ./scripts/build.sh debian-static
 ```
 
+To retain release debug symbols for CPU profiling, add `--profiling` to either
+container build target:
+
+```bash
+CARGO_FEATURES=embed_frontend ./scripts/build.sh debian-shared --profiling
+# Or: ./scripts/build.sh debian-static --profiling
+```
+
+This sets `CARGO_PROFILE_RELEASE_DEBUG=1` and
+`CARGO_PROFILE_RELEASE_STRIP=false` in the build container. Release optimizations
+remain enabled, and debug symbols are retained in both the binary and Debian
+package. These two environment variables can also be passed directly or set in
+`.env`; `--profiling` overrides their values. Build artifacts will be larger.
+
+## CPU profiling with perf (Linux)
+
+Install your distribution's `perf` package matching the running kernel. Build
+with `--profiling` as described above, install that build on the test server,
+and start it with the normal playout configuration. For a local Cargo build,
+retain symbols with:
+
+```bash
+CARGO_PROFILE_RELEASE_DEBUG=1 CARGO_PROFILE_RELEASE_STRIP=false \
+    cargo build --release -p ffplayout
+```
+
+Use the same Cargo features as the build being investigated. Keep the exact
+binary used for the recording: rebuilding or replacing it can prevent later
+symbol resolution. Debug symbols for system libraries may also be needed to
+resolve internal FFmpeg or codec functions in shared-library builds.
+
+Find the running process and record 60 seconds of CPU samples, replacing `1234`
+with its PID:
+
+```bash
+pgrep -a -x ffplayout
+sudo perf record -F 99 --call-graph dwarf \
+    -p 1234 -o ffplayout-cpu.data -- sleep 60
+```
+
+This attaches to the running process, including its threads, without restarting
+it. Recording stops after 60 seconds; ffplayout continues running. Sampling and
+stack collection add some overhead. `sudo` permits recording on systems with
+restricted perf access without changing global kernel settings.
+
+Open the interactive report or export it as text:
+
+```bash
+sudo perf report -i ffplayout-cpu.data
+sudo perf report -i ffplayout-cpu.data --stdio > ffplayout-cpu-report.txt
+```
+
+Inspect function names and call chains to distinguish encoding, muxing, MoQ
+importing, relay work and other application activity. Report percentages describe
+the distribution of recorded CPU samples, not the process's overall CPU usage.
+Inclusive call-chain percentages overlap and must not be added together. MoQ
+and other asynchronous tasks share Tokio worker threads, so thread names alone
+cannot reliably attribute CPU usage to MoQ.
+
+For a MoQ comparison, record these three configurations separately, using the
+same clip, HLS encoding settings and recording duration after startup settles:
+
+- HLS alone.
+- HLS plus MoQ using shared encoding, without a connected player.
+- HLS plus MoQ using shared encoding, with a player actively playing.
+
+Use distinct `.data` and report filenames for each case, and retain the matching
+binary, build revision, configuration and process CPU measurements. The
+`--process-diagnostics` option described below provides interval-averaged process
+CPU usage alongside memory measurements.
+
+See the upstream documentation for
+[`perf record`](https://github.com/torvalds/linux/blob/master/tools/perf/Documentation/perf-record.txt)
+and [`perf report`](https://github.com/torvalds/linux/blob/master/tools/perf/Documentation/perf-report.txt).
+
 ## Processing Benchmark
 
 The optional `processing-bench` feature prints periodic wall-clock timings for
@@ -196,27 +271,27 @@ Check out the [deployment documentation](https://vuejs.org/guide/quick-start.htm
 
 For an initial setup without the frontend, use `cargo run -- -i` instead.
 
-### Memory diagnostics
+### Process diagnostics
 
 Use the hidden startup flag together with DEBUG logging:
 
 ```sh
-ffplayout --memory-diagnostics --log-level DEBUG
+ffplayout --process-diagnostics --log-level DEBUG
 ```
 
 Alternatively, use the Clap environment variable:
 
 ```sh
-FFPLAYOUT_MEMORY_DIAGNOSTICS=true ffplayout --log-level DEBUG
+FFPLAYOUT_PROCESS_DIAGNOSTICS=true ffplayout --log-level DEBUG
 ```
 
-For systemd, add `Environment="FFPLAYOUT_MEMORY_DIAGNOSTICS=true"` to the service
+For systemd, add `Environment="FFPLAYOUT_PROCESS_DIAGNOSTICS=true"` to the service
 configuration and restart the service. Both forms enable diagnostics for all
 running channels. The setting defaults to false; an explicit CLI flag enables
 it even if the environment variable is false. This setting is not part of the
 TOML configuration or database and has no frontend field.
 
-`[Memory Diagnostics]` DEBUG records are produced immediately before opening each
+`[Process Diagnostics]` DEBUG records are produced immediately before opening each
 non-skipped clip (after the preceding playback call has returned), and on actual
 live takeover/end events. Additional `event=periodic` records are emitted every
 five minutes, starting five minutes after the channel diagnostics worker starts.
@@ -226,6 +301,15 @@ A single worker serializes measurements and logging; queued live transitions are
 processed before the next clip boundary. Playback waits for its clip record.
 Each live event requests a measurement asynchronously; this is not a snapshot
 captured inside the decoder at the exact instant of the transition.
+
+CPU usage is reported as `cpu_percent`, averaged over `cpu_window_s` seconds
+since the preceding measurement for that channel. 100% means one fully occupied
+CPU core; multithreaded usage can exceed 100%. The first measurement establishes
+the CPU baseline and reports `unavailable`. CPU time includes all process threads,
+including encoding, MoQ and the application, but excludes child processes.
+Measurements are event-based and every five minutes; brief peaks may be averaged out.
+Enable these measurements with `--process-diagnostics` or
+`FFPLAYOUT_PROCESS_DIAGNOSTICS=true`.
 
 Records contain `scope=process`, event, channel metadata, clip number, process
 uptime in seconds, RSS bytes, signed RSS delta since the previous measurement for

@@ -19,7 +19,7 @@ use crate::{
     player::{
         controller::{ChannelManager, loudness_config},
         input::source_generator,
-        memory_diagnostics::MemoryDiagnostics,
+        process_diagnostics::ProcessDiagnostics,
         utils::{Media, sec_to_time},
     },
     utils::{
@@ -204,8 +204,8 @@ async fn play_loop(
 ) -> Result<(), ServiceError> {
     let id = config.general.channel_id;
     let diagnostics = crate::ARGS
-        .memory_diagnostics
-        .then(|| MemoryDiagnostics::new(manager.id, playout.playback_control()));
+        .process_diagnostics
+        .then(|| ProcessDiagnostics::new(manager.id, playout.playback_control()));
     let mut node_sources = source_generator(manager.clone()).await;
 
     while let Some(node) = node_sources.next().await {

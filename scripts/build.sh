@@ -4,7 +4,28 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-target=${1:-}
+usage() {
+    echo "Usage: ./scripts/build.sh [--profiling] <debian-shared|debian-static>"
+    echo "  --profiling  Keep release debug symbols for CPU profiling (including .deb)."
+}
+
+target=""
+profiling=false
+for argument in "$@"; do
+    case $argument in
+        --profiling) profiling=true ;;
+        -h | --help) usage; exit 0 ;;
+        -*) echo "Unknown option: $argument" >&2; usage >&2; exit 1 ;;
+        *)
+            if [[ -n $target ]]; then
+                echo "Unexpected argument: $argument" >&2
+                usage >&2
+                exit 1
+            fi
+            target=$argument
+            ;;
+    esac
+done
 env_file=".env"
 env_names=()
 
@@ -19,6 +40,17 @@ if [[ -f $env_file ]]; then
     source "$env_file"
     set +a
 fi
+
+# Apply CLI overrides after .env, and forward profile settings to either builder.
+if [[ $profiling == true ]]; then
+    export CARGO_PROFILE_RELEASE_DEBUG=1
+    export CARGO_PROFILE_RELEASE_STRIP=false
+fi
+for name in CARGO_PROFILE_RELEASE_DEBUG CARGO_PROFILE_RELEASE_STRIP; do
+    if [[ -n ${!name+x} ]]; then
+        env_names+=("$name")
+    fi
+done
 
 container_run_env() {
     local args=()
@@ -91,7 +123,7 @@ select_cargo_features() {
 }
 
 if [[ -z $target ]]; then
-    echo "Pass a target: ./scripts/build.sh debian-shared or debian-static"
+    usage >&2
     exit 1
 fi
 

@@ -70,10 +70,13 @@ struct Measurements {
     system: System,
     clips: u64,
     previous_rss: Option<u64>,
+    previous_cpu: Option<(Instant, u64)>,
     source: SourceKind,
 }
 
 struct Snapshot {
+    cpu_percent: Option<f64>,
+    cpu_window: Option<Duration>,
     rss: u64,
     delta: Option<i128>,
     pss: ProportionalMemory,
@@ -103,13 +106,13 @@ async fn next_event(
     }
 }
 
-pub(super) struct MemoryDiagnostics {
+pub(super) struct ProcessDiagnostics {
     control: PlaybackControl,
     clips: mpsc::UnboundedSender<DiagnosticEvent>,
     live_observer: JoinHandle<()>,
 }
 
-impl MemoryDiagnostics {
+impl ProcessDiagnostics {
     pub(super) fn new(channel: i32, control: PlaybackControl) -> Self {
         let measurements = Arc::new(Mutex::new(Measurements::default()));
         let mut live = control.subscribe_live_status();
@@ -178,7 +181,7 @@ impl MemoryDiagnostics {
     }
 }
 
-impl Drop for MemoryDiagnostics {
+impl Drop for ProcessDiagnostics {
     fn drop(&mut self) {
         self.live_observer.abort();
     }
@@ -202,9 +205,19 @@ async fn sample(
         state.system.refresh_processes_specifics(
             ProcessesToUpdate::Some(&[pid]),
             false,
-            ProcessRefreshKind::nothing().with_memory().with_tasks(),
+            ProcessRefreshKind::nothing()
+                .with_memory()
+                .with_tasks()
+                .with_cpu(),
         );
         let process = state.system.process(pid)?;
+        let sampled_at = Instant::now();
+        let cpu_ms = process.accumulated_cpu_time();
+        let cpu = state.previous_cpu.and_then(|(previous_at, previous_ms)| {
+            let window = sampled_at.saturating_duration_since(previous_at);
+
+            cpu_percent(previous_ms, cpu_ms, window).map(|percent| (percent, window))
+        });
         let rss = process.memory();
         let uptime = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -218,6 +231,7 @@ async fn sample(
             .previous_rss
             .map(|previous| i128::from(rss) - i128::from(previous));
         state.previous_rss = Some(rss);
+        state.previous_cpu = Some((sampled_at, cpu_ms));
         if let Some(source) = next_source {
             state.clips += 1;
             state.source = source;
@@ -232,6 +246,8 @@ async fn sample(
         };
 
         Some(Snapshot {
+            cpu_percent: cpu.map(|(percent, _)| percent),
+            cpu_window: cpu.map(|(_, window)| window),
             rss,
             delta,
             pss,
@@ -249,8 +265,11 @@ async fn sample(
 
     match result {
         Ok(Some(snapshot)) => debug!(channel = channel;
-            r#"<span class="log-gray">[Memory Diagnostics]</span> scope=<span class="log-addr">process</span> channel=<span class="log-number">{channel}</span> event=<span class="log-addr">{event}</span> clip=<span class="log-number">{}</span> uptime_s=<span class="log-number">{}</span> rss_bytes=<span class="log-number">{}</span> rss_delta_bytes=<span class="log-number">{}</span> pss_bytes=<span class="log-number">{}</span> pss_anon_bytes=<span class="log-number">{}</span> pss_file_bytes=<span class="log-number">{}</span> threads=<span class="log-number">{}</span> live=<span class="log-addr">{}</span> listener=<span class="log-number">{}</span> source=<span class="log-addr">{}</span>"#,
-            snapshot.clips, snapshot.uptime, snapshot.rss,
+            r#"<span class="log-gray">[Process Diagnostics]</span> scope=<span class="log-addr">process</span> channel=<span class="log-number">{channel}</span> event=<span class="log-addr">{event}</span> clip=<span class="log-number">{}</span> uptime_s=<span class="log-number">{}</span> cpu_percent=<span class="log-number">{}</span> cpu_window_s=<span class="log-number">{}</span> rss_bytes=<span class="log-number">{}</span> rss_delta_bytes=<span class="log-number">{}</span> pss_bytes=<span class="log-number">{}</span> pss_anon_bytes=<span class="log-number">{}</span> pss_file_bytes=<span class="log-number">{}</span> threads=<span class="log-number">{}</span> live=<span class="log-addr">{}</span> listener=<span class="log-number">{}</span> source=<span class="log-addr">{}</span>"#,
+            snapshot.clips, snapshot.uptime,
+            snapshot.cpu_percent.map_or_else(|| "unavailable".to_string(), |value| format!("{value:.2}")),
+            snapshot.cpu_window.map_or_else(|| "unavailable".to_string(), |value| format!("{:.3}", value.as_secs_f64())),
+            snapshot.rss,
             snapshot.delta.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
             snapshot.pss.total.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
             snapshot.pss.anonymous.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
@@ -258,9 +277,19 @@ async fn sample(
             snapshot.threads.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
             active, listener.map_or_else(|| "none".to_string(), |value| value.to_string()), snapshot.source.as_str()),
         _ => {
-            debug!(channel = channel; r#"<span class="log-gray">[Memory Diagnostics]</span> scope=<span class="log-addr">process</span> channel=<span class="log-number">{channel}</span> event=<span class="log-addr">{event}</span> measurement <span class="log-gray">unavailable</span>"#);
+            debug!(channel = channel; r#"<span class="log-gray">[Process Diagnostics]</span> scope=<span class="log-addr">process</span> channel=<span class="log-number">{channel}</span> event=<span class="log-addr">{event}</span> measurement <span class="log-gray">unavailable</span>"#);
         }
     }
+}
+
+// CPU time includes all process threads; 100% represents one fully occupied core.
+fn cpu_percent(previous_ms: u64, current_ms: u64, window: Duration) -> Option<f64> {
+    let elapsed_cpu_ms = current_ms.checked_sub(previous_ms)?;
+    if window.is_zero() {
+        return None;
+    }
+
+    Some(elapsed_cpu_ms as f64 / (window.as_secs_f64() * 1000.0) * 100.0)
 }
 
 fn thread_count(tasks: Option<&HashSet<Pid>>) -> Option<usize> {
@@ -291,9 +320,19 @@ fn parse_kib_field(text: &str, name: &str) -> Option<u64> {
 mod tests {
     use super::{
         DiagnosticEvent, Media, ProcessMode, ProportionalMemory, SAMPLE_INTERVAL, SourceKind,
-        next_event, parse_pss, sampling_interval, thread_count,
+        cpu_percent, next_event, parse_pss, sampling_interval, thread_count,
     };
+    use std::time::Duration;
+
     use tokio::sync::{mpsc, oneshot};
+
+    #[test]
+    fn cpu_usage_uses_interval_time_and_all_cores() {
+        assert_eq!(cpu_percent(1000, 4000, Duration::from_secs(2)), Some(150.0));
+        assert_eq!(cpu_percent(1000, 1000, Duration::from_secs(2)), Some(0.0));
+        assert_eq!(cpu_percent(1000, 999, Duration::from_secs(2)), None);
+        assert_eq!(cpu_percent(1000, 1001, Duration::ZERO), None);
+    }
 
     #[tokio::test]
     async fn pending_live_events_precede_next_clip_and_its_completion() {
