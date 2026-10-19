@@ -14,9 +14,8 @@ use ffmpeg_next::{Rescale, codec, rescale};
 
 use crate::{
     EncodingConfig, OutputConfig,
-    compositor::logo::blend_logo,
     utils::{
-        ffmpeg::{make_video_frame_writable, reference_packet},
+        ffmpeg::reference_packet,
         pipeline_queue::{PipelineControl, PipelineQueue, QueueLimits},
     },
 };
@@ -444,16 +443,14 @@ pub(super) fn run(
                     &context,
                 )?;
             }
-            Message::Video(mut frame, logo, opacity) => {
-                context.position = frame.pts().map(|pts| {
+            Message::Video(frame) => {
+                context.position = frame.source.pts().map(|pts| {
                     pts.rescale(program.video_time_base, ffmpeg_next::Rational(1, 1_000))
                 });
-                if let Some(logo) = logo {
-                    make_video_frame_writable(&mut frame)?;
-                    blend_logo(&mut frame, &logo, opacity);
-                }
                 if let Some(output) = &mut recording
-                    && let Err(error) = output.encode_video(&frame)
+                    && let Err(error) = frame
+                        .frame(program.width, program.height)
+                        .and_then(|frame| output.encode_video(&frame))
                 {
                     log::error!(channel = program.channel_id.unwrap_or_default(); "Recording disabled: {error:#}");
                     recording = None;

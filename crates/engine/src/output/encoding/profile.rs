@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use ffmpeg_next::{codec, frame};
 
-use crate::{EncodingConfig, OutputConfig};
+use crate::{EncodingConfig, OutputConfig, output::composition::ProgramVideo};
 
 use super::{
     EncodedPacket, EncodingWorkers,
@@ -18,6 +18,7 @@ pub(in crate::output) struct EncodingProfile {
     audio_buffer: AudioFrameBuffer,
     timing: Option<crate::output::diagnostics::PrimaryTiming>,
     video_time_base: ffmpeg_next::Rational,
+    resolution: (u32, u32),
 }
 
 impl EncodingProfile {
@@ -69,6 +70,7 @@ impl EncodingProfile {
                 video_time_base: program.video_time_base,
                 audio_buffer: AudioFrameBuffer::new(cfg.sample_rate, workers.audio_frame_size),
                 workers,
+                resolution: (encode.width, encode.height),
             },
             video_parameters,
             audio_parameters,
@@ -77,9 +79,14 @@ impl EncodingProfile {
 
     pub(in crate::output) fn video(
         &mut self,
-        frame: &frame::Video,
+        program_frame: &ProgramVideo,
         mut emit: impl FnMut(EncodedPacket) -> Result<()>,
     ) -> Result<()> {
+        let prepared = program_frame
+            .has_visible_logo()
+            .then(|| program_frame.frame(self.resolution.0, self.resolution.1))
+            .transpose()?;
+        let frame = prepared.as_ref().unwrap_or(&program_frame.source);
         let entered = self.timing.as_mut().map(|timing| {
             timing.begin();
             Instant::now()

@@ -15,12 +15,15 @@ use crate::{
     clock::{PlayoutClock, SharedPlayoutClock},
     compositor::logo::LogoOverlay,
     utils::{
-        ffmpeg::{reference_audio_frame, reference_video_frame},
-        pipeline_queue::{PipelineControl, PipelineQueue, QueueLimits},
+        ffmpeg::reference_audio_frame,
+        pipeline_queue::{PipelineActivity, PipelineControl, PipelineQueue, QueueLimits},
     },
 };
 
-use super::encoded::EncodedFormat;
+use super::{
+    composition::{ProgramVideo, VideoCompositor},
+    encoded::EncodedFormat,
+};
 
 #[derive(Debug, Clone)]
 pub struct OutputState {
@@ -42,6 +45,7 @@ struct OutputRegistry {
     states: BTreeMap<i32, OutputState>,
     reconnectable: BTreeSet<i32>,
     retry: BTreeSet<i32>,
+    retry_wake: BTreeMap<i32, Weak<PipelineActivity>>,
     generations: BTreeMap<i32, u64>,
     delivery_locks: BTreeMap<i32, Weak<Mutex<()>>>,
     next_generation: u64,
@@ -102,6 +106,7 @@ impl OutputStatus {
         let generation = registry.next_generation;
         registry.generations.insert(id, generation);
         registry.retry.remove(&id);
+        registry.retry_wake.remove(&id);
 
         Self(self.0.clone(), Some(generation))
     }
@@ -142,6 +147,9 @@ impl OutputStatus {
         if let Some(state) = registry.states.get_mut(&id) {
             state.phase = "starting";
         }
+        if let Some(activity) = registry.retry_wake.get(&id).and_then(Weak::upgrade) {
+            activity.notify();
+        }
 
         true
     }
@@ -166,6 +174,7 @@ impl OutputStatus {
         } else {
             registry.reconnectable.remove(&id);
             registry.retry.remove(&id);
+            registry.retry_wake.remove(&id);
         }
     }
 
@@ -173,6 +182,13 @@ impl OutputStatus {
         let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
 
         self.current(&registry, id) && registry.retry.remove(&id)
+    }
+
+    pub(super) fn observe_retry(&self, id: i32, activity: &Arc<PipelineActivity>) {
+        let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.current(&registry, id) {
+            registry.retry_wake.insert(id, Arc::downgrade(activity));
+        }
     }
 
     pub fn fail(&self, id: i32, error: impl std::fmt::Display) {
@@ -231,7 +247,7 @@ impl OutputDestination {
 }
 
 pub(super) enum Message {
-    Video(frame::Video, Option<Arc<LogoOverlay>>, f64),
+    Video(Arc<ProgramVideo>),
     Audio(frame::Audio),
     Rate(f64),
     Destinations(Vec<OutputDestination>),
@@ -246,6 +262,7 @@ struct DestinationWorker {
     subtitles: bool,
     id: i32,
     ids: Vec<i32>,
+    video_resolutions: Vec<(u32, u32)>,
     queue: Arc<PipelineQueue<Message>>,
     control: Arc<PipelineControl>,
     worker: Option<JoinHandle<()>>,
@@ -283,6 +300,23 @@ impl DestinationWorker {
             .map(|destination| destination.id)
             .collect::<Vec<_>>();
         let worker_ids = ids.clone();
+        let root = &destinations[0];
+        let mut video_resolutions = match &root.target {
+            OutputTarget::Hls { variants, .. } if !variants.is_empty() => variants
+                .iter()
+                .map(|variant| (variant.width, variant.height))
+                .collect(),
+            _ => vec![(root.config.width, root.config.height)],
+        };
+        if destinations.iter().any(|destination| {
+            destination
+                .config
+                .recording
+                .as_ref()
+                .is_some_and(|recording| recording.encode.is_some())
+        }) {
+            video_resolutions.push((program.width, program.height));
+        }
         let mut program = program.clone();
         program.destinations.clear();
         let control = Arc::new(PipelineControl::default());
@@ -338,6 +372,7 @@ impl DestinationWorker {
             subtitles,
             id,
             ids,
+            video_resolutions,
             queue,
             control,
             worker: Some(worker),
@@ -419,6 +454,7 @@ pub(crate) struct ParallelOutput {
     audio_time_base: ffmpeg_next::Rational,
     paced: bool,
     meters: Mutex<(AudioLevelMeter, LoudnessMeter)>,
+    compositor: Arc<Mutex<VideoCompositor>>,
 }
 
 impl ParallelOutput {
@@ -458,6 +494,9 @@ impl ParallelOutput {
                 AudioLevelMeter::new(config.sample_rate, config.audio_level_callback.clone()),
                 LoudnessMeter::new(config.sample_rate, config.loudness_meter_control.clone()),
             )),
+            compositor: Arc::new(Mutex::new(VideoCompositor::new(
+                config.logo.as_ref().map(|logo| logo.position.clone()),
+            ))),
         })
     }
 
@@ -469,6 +508,10 @@ impl ParallelOutput {
         let Some(destinations) = self.config.output_status.take_update() else {
             return Ok(());
         };
+        self.compositor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
         let ids: BTreeSet<_> = destinations
             .iter()
             .filter(|destination| destination.config.delivery_enabled)
@@ -564,12 +607,19 @@ impl ParallelOutput {
             workers.is_empty() || workers.iter().any(|worker| !worker.control.cancelled()),
             "all output encoding groups have failed"
         );
+        let mut consumers = BTreeMap::new();
+        if logo.is_some() && opacity > 0.0 {
+            for resolution in workers
+                .iter()
+                .filter(|worker| !worker.control.cancelled())
+                .flat_map(|worker| &worker.video_resolutions)
+            {
+                *consumers.entry(*resolution).or_insert(0) += 1;
+            }
+        }
+        let prepared = ProgramVideo::new(frame, self.compositor.clone(), logo, opacity, consumers)?;
         for worker in workers.iter() {
-            worker.send(
-                Message::Video(reference_video_frame(frame)?, logo.clone(), opacity),
-                bytes,
-                timestamp,
-            );
+            worker.send(Message::Video(prepared.clone()), bytes, timestamp);
         }
 
         Ok(())
@@ -775,6 +825,7 @@ mod tests {
                 subtitles,
                 id,
                 ids: vec![id],
+                video_resolutions: Vec::new(),
                 queue: PipelineQueue::new(
                     QueueLimits {
                         items: 8,
@@ -1687,6 +1738,7 @@ mod tests {
             subtitles: false,
             id: 1,
             ids: vec![1],
+            video_resolutions: Vec::new(),
             queue,
             control,
             worker: None,
@@ -1704,6 +1756,7 @@ mod tests {
             subtitles: false,
             id: 2,
             ids: vec![2],
+            video_resolutions: Vec::new(),
             queue: PipelineQueue::new(
                 QueueLimits {
                     items: 1,

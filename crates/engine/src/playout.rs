@@ -1064,7 +1064,7 @@ fn encode_composited_frame<O: FrameOutput>(
     let video_opacity = media_fade_plan.video_opacity_at(timeline.video_pts);
     let changes_pixels = video_frame_needs_write(
         video_opacity,
-        video.logo.is_some(),
+        video.logo.is_some() && output.benchmarks_logo_overlay(),
         video.text.is_some(),
         video.runtime_text.overlay.is_some(),
     );

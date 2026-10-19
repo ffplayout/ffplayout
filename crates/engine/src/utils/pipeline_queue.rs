@@ -1,7 +1,7 @@
 use std::{
     collections::VecDeque,
     sync::{
-        Arc, Condvar, Mutex, PoisonError, Weak,
+        Arc, Condvar, Mutex, OnceLock, PoisonError, Weak,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -19,6 +19,53 @@ pub(crate) struct PipelineControl {
     error: Mutex<Option<String>>,
     wake: Condvar,
     queues: Mutex<Vec<Weak<dyn CancelWake>>>,
+    activity: OnceLock<Arc<PipelineActivity>>,
+}
+
+/// A generation closes the race between inspecting several queues and sleeping.
+/// Created only for coordinators that need to wait on more than one queue.
+#[derive(Default, Debug)]
+pub(crate) struct PipelineActivity {
+    generation: Mutex<u64>,
+    changed: Condvar,
+}
+
+impl PipelineActivity {
+    pub(crate) fn snapshot(&self) -> u64 {
+        *self
+            .generation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn notify(&self) {
+        let mut generation = self
+            .generation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        *generation = generation.wrapping_add(1);
+        self.changed.notify_all();
+    }
+
+    pub(crate) fn wait(&self, observed: u64, timeout: Option<Duration>) {
+        let generation = self
+            .generation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(timeout) = timeout {
+            drop(
+                self.changed
+                    .wait_timeout_while(generation, timeout, |value| *value == observed)
+                    .unwrap_or_else(PoisonError::into_inner),
+            );
+        } else {
+            drop(
+                self.changed
+                    .wait_while(generation, |value| *value == observed)
+                    .unwrap_or_else(PoisonError::into_inner),
+            );
+        }
+    }
 }
 
 trait CancelWake: Send + Sync {
@@ -26,6 +73,16 @@ trait CancelWake: Send + Sync {
 }
 
 impl PipelineControl {
+    pub(crate) fn activity(&self) -> Arc<PipelineActivity> {
+        self.activity.get_or_init(Default::default).clone()
+    }
+
+    pub(crate) fn notify_activity(&self) {
+        if let Some(activity) = self.activity.get() {
+            activity.notify();
+        }
+    }
+
     pub(crate) fn cancel(&self) {
         {
             let _error = self.error.lock().unwrap_or_else(PoisonError::into_inner);
@@ -42,6 +99,7 @@ impl PipelineControl {
         for queue in queues {
             queue.wake_cancelled();
         }
+        self.notify_activity();
     }
 
     pub(crate) fn cancelled(&self) -> bool {
@@ -166,11 +224,18 @@ impl<T> PipelineQueue<T> {
         });
         state.bytes += bytes;
         self.changed.notify_all();
+        self.control.notify_activity();
 
         Ok(())
     }
 
     fn full(&self, state: &State<T>, bytes: usize, timestamp_us: Option<i64>) -> bool {
+        if state.entries.len() >= self.limits.items
+            || state.bytes.saturating_add(bytes) > self.limits.bytes
+        {
+            return true;
+        }
+
         let range = timestamp_us
             .into_iter()
             .chain(state.entries.iter().filter_map(|entry| entry.timestamp_us));
@@ -178,9 +243,7 @@ impl<T> PipelineQueue<T> {
             (first.min(pts), last.max(pts))
         });
 
-        state.entries.len() >= self.limits.items
-            || state.bytes.saturating_add(bytes) > self.limits.bytes
-            || (!state.entries.is_empty() && last.saturating_sub(first) > self.limits.duration_us)
+        !state.entries.is_empty() && last.saturating_sub(first) > self.limits.duration_us
     }
 
     /// Lets the input scheduler identify cross-track backpressure before a
@@ -214,6 +277,7 @@ impl<T> PipelineQueue<T> {
         });
         state.bytes += bytes;
         self.changed.notify_all();
+        self.control.notify_activity();
 
         Ok(None)
     }
@@ -227,6 +291,7 @@ impl<T> PipelineQueue<T> {
         });
         if item.is_some() {
             self.changed.notify_all();
+            self.control.notify_activity();
         }
 
         Ok(item)
@@ -238,6 +303,7 @@ impl<T> PipelineQueue<T> {
 
     /// Delivery workers also have retry/status deadlines. Data and cancellation
     /// wake them immediately; a timeout only bounds their next status check.
+    #[cfg(test)]
     pub(crate) fn recv_timeout(&self, timeout: Duration) -> Result<Option<T>> {
         self.recv_until(Some(Instant::now() + timeout))
     }
@@ -249,6 +315,7 @@ impl<T> PipelineQueue<T> {
             if let Some(entry) = state.entries.pop_front() {
                 state.bytes -= entry.bytes;
                 self.changed.notify_all();
+                self.control.notify_activity();
 
                 return Ok(Some(entry.item));
             }
@@ -278,6 +345,7 @@ impl<T> PipelineQueue<T> {
         state.entries.retain(|entry| !discard(&entry.item));
         state.bytes = state.entries.iter().map(|entry| entry.bytes).sum();
         self.changed.notify_all();
+        self.control.notify_activity();
     }
 
     pub(crate) fn front_timestamp(&self) -> Option<i64> {
@@ -307,6 +375,7 @@ impl<T> PipelineQueue<T> {
             .unwrap_or_else(PoisonError::into_inner)
             .closed = true;
         self.changed.notify_all();
+        self.control.notify_activity();
     }
 }
 
@@ -335,6 +404,62 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn activity_detects_events_between_queue_inspection_and_waiting() {
+        let control = Arc::new(PipelineControl::default());
+        let activity = control.activity();
+        let queue = PipelineQueue::new(
+            QueueLimits {
+                items: 1,
+                bytes: 8,
+                duration_us: 100,
+            },
+            control.clone(),
+        );
+
+        for event in 0..4 {
+            let observed = activity.snapshot();
+            match event {
+                0 => queue.send(1, 1, Some(0)).unwrap(),
+                1 => {
+                    assert_eq!(queue.try_recv().unwrap(), Some(1));
+                }
+                2 => queue.close(),
+                _ => control.cancel(),
+            }
+            // Notify before waiting: a plain Condvar notification would be lost.
+            let (done, receive) = mpsc::channel();
+            let waiter = activity.clone();
+            let thread = thread::spawn(move || {
+                waiter.wait(observed, None);
+                done.send(()).unwrap();
+            });
+            let result = receive.recv_timeout(Duration::from_secs(1));
+            activity.notify();
+            thread.join().unwrap();
+            assert!(result.is_ok(), "activity event {event} was lost");
+        }
+    }
+
+    #[test]
+    fn cancellation_wakes_a_coordinator_waiting_on_multiple_queues() {
+        let control = Arc::new(PipelineControl::default());
+        let activity = control.activity();
+        let observed = activity.snapshot();
+        let (done, receive) = mpsc::channel();
+        let waiter = activity.clone();
+        let waiting = thread::spawn(move || {
+            waiter.wait(observed, None);
+            done.send(()).unwrap();
+        });
+        control.cancel();
+        let result = receive.recv_timeout(Duration::from_secs(1));
+        activity.notify();
+        waiting.join().unwrap();
+        assert!(result.is_ok());
+        assert!(control.check().is_err());
+    }
 
     #[test]
     fn cancellation_releases_full_senders_and_empty_receivers() {

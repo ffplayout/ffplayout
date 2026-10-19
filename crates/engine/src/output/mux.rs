@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Condvar, Mutex, PoisonError},
+    sync::{Arc, Condvar, Mutex, OnceLock, PoisonError},
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
@@ -11,6 +11,7 @@ use crate::{
     HlsHealth,
     clock::{PlayoutClock, SharedPlayoutClock},
     utils::ffmpeg::reference_packet,
+    utils::pipeline_queue::PipelineActivity,
 };
 
 // Packet storage is compressed, and independent of resolution. The time bound
@@ -45,6 +46,7 @@ struct Shared {
     pace_packets: bool,
     queue: Mutex<Queue>,
     changed: Condvar,
+    activity: OnceLock<Arc<PipelineActivity>>,
 }
 
 /// Owns the single destination's mux context. Encoding hands immutable packet
@@ -92,6 +94,7 @@ impl MuxOutput {
 
         if threaded {
             let shared = Arc::new(Shared {
+                activity: OnceLock::new(),
                 // The program/input clock already limits production. HLS files
                 // may catch up immediately; network destinations stay paced.
                 pace_packets: mux
@@ -151,6 +154,9 @@ impl MuxOutput {
                         }
                         queue.finished = true;
                         worker_shared.changed.notify_all();
+                        if let Some(activity) = worker_shared.activity.get() {
+                            activity.notify();
+                        }
 
                         result
                     })
@@ -164,6 +170,12 @@ impl MuxOutput {
 
     pub(super) fn clock(&self) -> Option<SharedPlayoutClock> {
         self.shared.as_ref().map(|_| self.clock.clone())
+    }
+
+    pub(super) fn observe_delivery(&self, activity: Arc<PipelineActivity>) {
+        if let Some(shared) = &self.shared {
+            let _ = shared.activity.set(activity);
+        }
     }
 
     pub(super) fn time_base(&self, index: usize) -> Result<Rational> {
@@ -406,11 +418,14 @@ fn run(
             .unwrap_or_else(PoisonError::into_inner)
             .emitted
             .push((stream_index, pending.timestamp_us, Instant::now()));
-        shared
-            .queue
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .delivered = true;
+        let mut queue = shared.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        if !queue.delivered {
+            queue.delivered = true;
+            if let Some(activity) = shared.activity.get() {
+                activity.notify();
+            }
+        }
+        drop(queue);
         if let Some(health) = &health {
             health.mark_muxed();
         }

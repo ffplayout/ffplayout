@@ -164,6 +164,17 @@ and [`perf report`](https://github.com/torvalds/linux/blob/master/tools/perf/Doc
 
 ## Processing Benchmark
 
+To compare per-encoder logo copies with resolution-shared composition, run:
+
+```sh
+cargo test -p ff-engine --release --lib benchmark_shared_logo_composition -- --ignored --nocapture
+```
+
+This manual benchmark compares 300 720p program frames with one, two and four
+encoding groups at the same resolution. It reports median elapsed times after
+warmup, alternates old/new order, and makes no timing assertion. It measures
+frame copying/composition only, not codecs, network I/O or total playout CPU.
+
 The optional `processing-bench` feature prints periodic wall-clock timings for
 video and audio decode, audio processing and encoding, scale, overlay,
 subtitle, encoded-output, and desktop presentation stages. It is intended for local CPU

@@ -34,6 +34,13 @@ empty, it releases that constraint until the opposite track resumes. This lets
 containers without a complete per-stream index reach EOF without a circular
 wait between demux, decoding and the coordinator.
 
+The coordinator and encoder handoff wait on queue activity rather than polling
+every 10 ms. Queue changes, cancellation and playlist navigation notify a
+generation-counted wakeup, so events between checking and waiting are retained.
+The input stall deadline remains five seconds. Destination workers likewise wake
+for queued media/control, muxer results, manual reconnect or their retry deadline.
+Queue count/byte limits are checked before scanning timestamp bounds.
+
 A dedicated output worker sorts compressed packets by DTS across tracks and owns
 its destination's mux context. Stream and MoQ workers pace packets against their
 media clock to smooth encoder bursts. HLS writes available packets without a second
@@ -259,6 +266,17 @@ second of media. Shared profiles reference their compressed packets into separat
 delivery queues, each limited to 512 messages, 32 MiB and one second. Stream/MoQ
 then use the bounded paced mux queue. HLS writes directly in its isolated delivery
 worker without another queue or pacing stage. No destination owns the shared encoder.
+
+With a visible logo, video is first scaled to the effective encoding resolution,
+then composited. The decoded logo retains its configured pixel dimensions; its
+position is evaluated against that output's width/height, keeping pixel offsets
+from the edges. Encoders with the same resolution reuse the composited pixels
+for that program frame, including matching HLS renditions. Other resolutions
+have independent scaler/compositor locks. The cache releases each image after
+its last encoder takes a reference and is bounded by the existing frame lifetime;
+live output changes clear unused scaler states. Hidden logos retain the direct
+encoder scaling path. Shared-encoding destinations receive the already composited
+compressed stream and never blend the logo again.
 Opening, transport or mux failures disable only the affected destination; other
 destinations keep using the profile. Encoder failure or raw queue overload affects
 the whole encoding group. Compressed queue overload disables that destination

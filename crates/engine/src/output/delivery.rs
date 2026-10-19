@@ -8,7 +8,7 @@ use std::{
 use anyhow::{Result, anyhow};
 use ffmpeg_next::{Rescale, codec, rescale};
 
-use crate::utils::pipeline_queue::{POLL_INTERVAL, PipelineControl, PipelineQueue};
+use crate::utils::pipeline_queue::{PipelineControl, PipelineQueue};
 
 use super::{
     encoded::EncodedOutput,
@@ -135,8 +135,11 @@ fn deliver_with_retry(
     let mut rate = 1.0;
     let mut subtitles: Option<(String, i64, i64)> = None;
     let mut subtitle_position = None;
+    let activity = control.activity();
+    status.observe_retry(id, &activity);
 
     loop {
+        let observed = activity.snapshot();
         control.check()?;
         if queue.drained() {
             break;
@@ -173,6 +176,7 @@ fn deliver_with_retry(
             })();
             match opened {
                 Ok(opened) => {
+                    opened.observe_delivery(activity.clone());
                     // An open can block on I/O. Resume from current media rather than
                     // replaying the queue accumulated during the connection attempt.
                     if error.is_some() {
@@ -215,10 +219,23 @@ fn deliver_with_retry(
             log::warn!(channel = channel; "Output {id} disconnected: {reason}");
         }
 
-        let Some(message) = queue.recv_timeout(POLL_INTERVAL)? else {
+        let Some(message) = queue.try_recv()? else {
             if queue.closed() {
                 break;
             }
+            let now = Instant::now();
+            let timeout = if output.is_none() && !retry.expired(now) {
+                retry
+                    .next
+                    .into_iter()
+                    .chain(retry.first_failure.map(|first| first + retry.window))
+                    .min()
+                    .map(|deadline| deadline.saturating_duration_since(now))
+            } else {
+                None
+            };
+            control.check()?;
+            activity.wait(observed, timeout);
             continue;
         };
         let result = if interrupted.swap(false, Ordering::AcqRel) && output.is_some() {
@@ -398,8 +415,18 @@ mod tests {
                     video.data_mut(plane).fill(128);
                 }
                 video.set_pts(Some(index));
+                let prepared = crate::output::composition::ProgramVideo::new(
+                    &video,
+                    std::sync::Arc::new(std::sync::Mutex::new(
+                        crate::output::composition::VideoCompositor::default(),
+                    )),
+                    None,
+                    0.0,
+                    BTreeMap::new(),
+                )
+                .unwrap();
                 profile
-                    .video(&video, |packet| {
+                    .video(&prepared, |packet| {
                         packets.push(packet);
                         Ok(())
                     })

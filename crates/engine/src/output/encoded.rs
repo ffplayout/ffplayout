@@ -3,6 +3,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fmt, fs,
     path::Path,
+    sync::Arc,
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -21,6 +22,7 @@ use crate::{
         },
         ffmpeg_capabilities::validate_muxer_options,
         helper::{is_network_url, open_network_output},
+        pipeline_queue::PipelineActivity,
     },
 };
 
@@ -143,6 +145,10 @@ impl EncodedOutput {
 
     pub(super) fn delivery_state(&self) -> (bool, Option<String>) {
         self.mux.delivery_state()
+    }
+
+    pub(super) fn observe_delivery(&self, activity: Arc<PipelineActivity>) {
+        self.mux.observe_delivery(activity);
     }
 
     pub(super) fn open_packets(
