@@ -21,6 +21,10 @@ export default defineConfig({
         host: '127.0.0.1',
         port: 5757,
         proxy: {
+            // /moq/player is a Vue route; proxy only bootstrap and media traffic.
+            // Authenticated bootstrap (/api/moq/config) uses the /api proxy below.
+            '/moq/config': { target: 'http://127.0.0.1:8787', changeOrigin: true },
+            '/moq/relay': { target: 'http://127.0.0.1:8787', changeOrigin: true, ws: true },
             '/api': { target: 'http://127.0.0.1:8787', changeOrigin: true },
             '/auth': { target: 'http://127.0.0.1:8787', changeOrigin: true },
             '/data': { target: 'http://127.0.0.1:8787', changeOrigin: true },

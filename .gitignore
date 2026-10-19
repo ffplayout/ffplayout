@@ -13,6 +13,7 @@
 # exlcude logging
 *.log
 /logs/
+/heap-profiles/
 
 *.exe
 *.zip

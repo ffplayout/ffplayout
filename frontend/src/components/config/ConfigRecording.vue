@@ -2,6 +2,9 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { useOutputLabels } from '@/composables/useOutputLabels'
+import { outputVariantNames } from '@/composables/outputEncoding'
+
 import GenericModal from '@/components/utils/GenericModal.vue'
 
 import { authFetch } from '@/composables/authFetch'
@@ -10,25 +13,29 @@ import { useConfig } from '@/stores/config'
 import { useIndex } from '@/stores/index'
 
 const { t } = useI18n()
+const { outputModeLabel, encoderSettingLabel, encoderChoiceLabel } = useOutputLabels()
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 
-const activeOutput = computed(() => configStore.outputs.find((output) => output.id === configStore.playout.output.id))
+const configuredOutputs = computed(() =>
+    [configStore.playout.output, ...(configStore.playout.outputs ?? [])].filter((output) => output.id > 0),
+)
 
 const hlsVariants = computed(() => {
-    const output = configStore.playout.output
-    if (output.mode !== 'hls' || output.id !== configStore.playout.recording.source_output_id) return []
+    const output = configuredOutputs.value.find(
+        (output) => output.id === configStore.playout.recording.source_output_id,
+    )
+    if (!output || output.mode !== 'hls' || output.id !== configStore.playout.recording.source_output_id) return []
 
-    return [
-        output.hls_playlist_name || 'stream',
-        ...output.hls_variants.map((variant) => variant.split(':')[0]).filter(Boolean),
-    ]
+    return outputVariantNames(output)
 })
 
 const copyOutputs = computed(() => {
     const mode = configStore.playout.recording.source === 'hls_variant' ? 'hls' : 'stream'
-    return activeOutput.value?.name === mode ? [activeOutput.value] : []
+    return configuredOutputs.value.filter(
+        (output) => output.mode === mode || (mode === 'stream' && output.mode === 'moq'),
+    )
 })
 
 const videoCodecs = computed(() => configStore.outputCodecs.recording.video)
@@ -55,11 +62,11 @@ function setRecordingAudioCodec() {
     configStore.playout.recording.audio_options = {}
 }
 
-function setRecordingSource() {
+function setEncodingSource() {
     const recording = configStore.playout.recording
     if (recording.source === 'encode') return
 
-    recording.source_output_id = activeOutput.value?.id ?? null
+    recording.source_output_id = copyOutputs.value[0]?.id ?? null
     if (recording.source === 'hls_variant') {
         recording.variant = hlsVariants.value[0] ?? ''
     }
@@ -157,12 +164,17 @@ async function saveRecording() {
                     <select
                         v-model="configStore.playout.recording.source"
                         class="select select-sm w-full"
-                        @change="setRecordingSource"
+                        @change="setEncodingSource"
                     >
-                        <option value="stream" :disabled="configStore.playout.output.mode !== 'stream'">
+                        <option
+                            value="stream"
+                            :disabled="
+                                !configuredOutputs.some((output) => output.mode === 'stream' || output.mode === 'moq')
+                            "
+                        >
                             {{ t('config.recordingCurrentStream') }}
                         </option>
-                        <option value="hls_variant" :disabled="configStore.playout.output.mode !== 'hls'">
+                        <option value="hls_variant" :disabled="!configuredOutputs.some((output) => output.mode === 'hls')">
                             {{ t('config.recordingHlsVariant') }}
                         </option>
                         <option value="encode">{{ t('config.recordingEncode') }}</option>
@@ -176,7 +188,7 @@ async function saveRecording() {
                     >
                         <option :value="null" disabled>{{ t('config.recordingSelectOutput') }}</option>
                         <option v-for="output in copyOutputs" :key="output.id" :value="output.id">
-                            {{ output.name }}
+                            {{ output.label || outputModeLabel(output.mode) }} #{{ output.id }}
                         </option>
                     </select>
                 </label>
@@ -213,7 +225,7 @@ async function saveRecording() {
                     </label>
                     <template v-for="setting in videoSettings" :key="setting.key">
                         <label v-if="settingIsVisible(setting)" class="fieldset">
-                            <span class="fieldset-legend">{{ setting.label }}</span>
+                            <span class="fieldset-legend">{{ encoderSettingLabel(setting) }}</span>
                             <select
                                 v-if="setting.kind === 'select'"
                                 :value="configStore.playout.recording.video_options[setting.key]"
@@ -221,7 +233,7 @@ async function saveRecording() {
                                 @change="setVideoOption(setting.key, eventValue($event))"
                             >
                                 <option v-for="choice in setting.choices" :key="choice.value" :value="choice.value">
-                                    {{ choice.label }}
+                                    {{ encoderChoiceLabel(choice) }}
                                 </option>
                             </select>
                             <input

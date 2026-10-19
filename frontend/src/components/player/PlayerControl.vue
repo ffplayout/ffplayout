@@ -4,7 +4,6 @@ import customParseFormat from 'dayjs/plugin/customParseFormat.js'
 import LocalizedFormat from 'dayjs/plugin/localizedFormat.js'
 import timezone from 'dayjs/plugin/timezone.js'
 import utc from 'dayjs/plugin/utc.js'
-import mpegts from 'mpegts.js'
 
 import { computed, ref, onMounted, onBeforeUnmount, watch, useTemplateRef } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -31,6 +30,7 @@ dayjs.extend(timezone)
 dayjs.extend(utc)
 
 import VideoPlayer from '@/components/utils/VideoPlayer.vue'
+import MoqPlayer from '@/components/utils/MoqPlayer.vue'
 
 const { t } = useI18n()
 const authStore = useAuth()
@@ -57,18 +57,13 @@ const timer = ref()
 const errorCounter = ref(0)
 const controlsUnlocked = ref(false)
 const lastReportedRunning = ref<boolean | null>(null)
+const moqAudioLevel = ref<AudioLevel | null>(null)
 const volumeLevel = ref(configStore.playout.audio?.volume ?? 1)
-const streamExtension = ref(configStore.channels[configStore.i]?.preview_url.split('.').pop())
-const httpStreamFlv = ref(null)
-const httpFlvSource = ref({
-    type: 'flv',
-    isLive: true,
-    url: configStore.channels[configStore.i]?.preview_url,
-})
-const mpegtsOptions = ref({
-    lazyLoadMaxDuration: 3 * 60,
-    liveBufferLatencyChasing: true,
-})
+const useMoqPreview = computed(() =>
+    [configStore.playoutSaved.output, ...(configStore.playoutSaved.outputs ?? [])].some(
+        (output) => output?.enabled && output.mode === 'moq',
+    ),
+)
 const timeDiv = useTemplateRef('timeDiv')
 const { width } = useElementSize(timeDiv)
 
@@ -159,21 +154,6 @@ const { status, data, error, close } = useEventSource(streamUrl, [], {
 })
 
 onMounted(() => {
-    let player: any = null
-
-    if (streamExtension.value === 'flv' && mpegts.getFeatureList().mseLivePlayback) {
-        if (typeof player !== 'undefined' && player != null) {
-            player.unload()
-            player.detachMediaElement()
-            player.destroy()
-            player = null
-        }
-
-        player = mpegts.createPlayer(httpFlvSource.value, mpegtsOptions.value)
-        player.attachMediaElement(httpStreamFlv.value)
-        player.load()
-    }
-
     clock()
 })
 
@@ -243,7 +223,7 @@ function timeRemaining() {
 }
 
 function audioMeterValue() {
-    const peak = playlistStore.audioLevel?.peak_db ?? -100
+    const peak = (useMoqPreview.value ? moqAudioLevel.value : playlistStore.audioLevel)?.peak_db ?? -100
 
     return Math.min(100, Math.max(0, ((peak + 60) / 60) * 100))
 }
@@ -307,6 +287,7 @@ function resetStatus() {
     playlistStore.elapsedSec = 0
     playlistStore.shift = 0
     playlistStore.audioLevel = null
+    moqAudioLevel.value = null
     playlistStore.current = currentDefault
 }
 
@@ -385,7 +366,13 @@ function runControl(button: PlayerControlButton) {
             <div class="order-1 col-span-2 md:col-span-1 p-1">
                 <div class="bg-base-100 w-full h-full rounded-sm shadow-sm flex items-center p-2">
                     <div class="w-full aspect-video">
-                        <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
+                        <MoqPlayer
+                            v-if="useMoqPreview"
+                            audio-meter
+                            @audio-level="moqAudioLevel = $event"
+                            :key="configStore.channels[configStore.i]?.id"
+                            :channel="configStore.channels[configStore.i]?.id"
+                        />
                         <VideoPlayer
                             v-else-if="configStore.showPlayer && configStore.channels[configStore.i]"
                             :key="configStore.i"
@@ -501,7 +488,8 @@ function runControl(button: PlayerControlButton) {
                         class="relative h-full min-h-20 w-4 rounded-sm overflow-hidden bg-linear-to-t from-success from-70% via-warning via-80% to-error to-100%"
                     >
                         <div
-                            class="absolute top-0 left-0 w-full bg-base-300 transition-[height] duration-300"
+                            class="absolute top-0 left-0 w-full bg-base-300"
+                            :class="useMoqPreview ? '' : 'transition-[height] duration-200'"
                             :style="{ height: `${100 - audioMeterValue()}%` }"
                         />
                     </div>

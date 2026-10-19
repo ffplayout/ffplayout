@@ -1,11 +1,11 @@
 [workspace]
-members = ["backend/app", "backend/engine"]
+members = ["crates/app", "crates/engine"]
 resolver = "2"
 
 [workspace.package]
 description = "24/7 playout based on rust and ffmpeg"
 readme = "README.md"
-version = "2.6.1-rc.1"
+version = "2.7.0-beta.4"
 license = "GPL-3.0"
 repository = "https://github.com/ffplayout/ffplayout"
 authors = ["Jonathan Baecker <jonbae77@gmail.com>"]
@@ -13,7 +13,7 @@ edition = "2024"
 
 [profile.release]
 debug = false
-lto = true
+lto = "thin"
 strip = true
 opt-level = 3
 codegen-units = 1

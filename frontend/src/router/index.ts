@@ -10,6 +10,12 @@ const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
     routes: [
         {
+            path: '/moq/player',
+            name: 'moq-player',
+            component: () => import('@/views/MoqPlayerView.vue'),
+            meta: { public: true, showHeader: false },
+        },
+        {
             path: '/login',
             name: 'login',
             component: LoginView,
@@ -77,10 +83,27 @@ const router = createRouter({
                     meta: { showHeader: true, roles: ['global_admin', 'channel_admin'] },
                 },
                 {
+                    path: 'ingest',
+                    name: 'configure-ingest',
+                    component: () => import('@/components/config/ConfigIngest.vue'),
+                    meta: { showHeader: true, roles: ['global_admin', 'channel_admin'] },
+                },
+                {
                     path: 'audio',
                     name: 'configure-audio',
                     component: () => import('@/components/config/ConfigAudio.vue'),
                     meta: { showHeader: true, roles: ['global_admin', 'channel_admin'] },
+                },
+                {
+                    path: 'outputs',
+                    name: 'configure-outputs',
+                    component: () => import('@/components/config/ConfigOutputs.vue'),
+                    meta: { showHeader: true, roles: ['global_admin', 'channel_admin'] },
+                },
+                {
+                    path: 'preview',
+                    name: 'configure-preview',
+                    redirect: (to) => ({ name: 'configure-outputs', query: to.query }),
                 },
                 {
                     path: 'recording',

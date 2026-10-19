@@ -21,6 +21,11 @@ declare global {
     }
 
     interface PlayoutOutput {
+        public_moq: boolean
+        runtime_status?: string | null
+        runtime_error?: string | null
+        runtime_retryable?: boolean
+        active?: boolean
         id: number
         name: string
         hls_variants: string
@@ -81,6 +86,8 @@ declare global {
     }
 
     interface PlayoutCodecOptions {
+        desktop_available: boolean
+        moq: OutputCodecOptions
         hls: OutputCodecOptions
         rtmp: OutputCodecOptions
         srt: OutputCodecOptions

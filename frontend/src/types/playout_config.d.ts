@@ -2,11 +2,13 @@
 
 export type Audio = { volume: number, loudness_scope: "all" | "live" | "off", compressor_ratio: number, compressor_attack_ms: number, compressor_hold_ms: number, compressor_release_ms: number, compressor_strong_release_ms: number, compressor_knee_db: number, pause_hold_ms: number, pause_return_delay_ms: number, loudness_output_max_correction_db: number, loudness_output_gain_up_db_per_second: number, loudness_output_gain_down_db_per_second: number, compressor_threshold_dbfs: number, pause_threshold_dbfs: number, loudness_enable: boolean, loudness_target_lufs: number, loudness_dead_band_lu: number, loudness_max_gain_db: number, loudness_max_attenuation_db: number, loudness_gain_up_db_per_second: number, loudness_gain_down_db_per_second: number, loudness_silence_gate_lufs: number, loudness_true_peak_ceiling_dbtp: number, };
 
+export type EncodingSource = "hls_variant" | "stream" | "encode";
+
 export type General = { stop_threshold: number, };
 
 export type Ingest = { listeners: Array<LiveInput>, };
 
-export type LiveInput = { id: number, priority: number, enabled: boolean, name: string, backend: string, identifier: string, options: { [key in string]: string }, demuxer_options: { [key in string]: string }, };
+export type LiveInput = { idle_timeout_ms: number, id: number, priority: number, enabled: boolean, name: string, backend: string, identifier: string, options: { [key in string]: string }, demuxer_options: { [key in string]: string }, };
 
 export type Logging = { ffmpeg_level: string, ingest_level: string, detect_silence: boolean, ignore_lines: Array<string>, };
 
@@ -16,23 +18,23 @@ export type Notification = { show: boolean, topic: string, level: NotificationLe
 
 export type NotificationLevel = "INFO" | "WARNING" | "ERROR" | "FATAL";
 
-export type Output = { id: number, mode: OutputMode, stream_url: string, stream_type: StreamType, stream_format: string, hls_playlist_name: string, hls_segment_duration: number, hls_list_size: number, desktop_fullscreen: boolean, width: number, height: number, fps: number, video_codec: string, video_options: { [key in string]: string }, 
+export type Output = { id: number, label: string, enabled: boolean, inherit_resolution: boolean, share_encoding: boolean, encoding_source_id: number | null, encoding_variant: string, public_moq: boolean, mode: OutputMode, stream_url: string, stream_type: StreamType, stream_format: string, hls_playlist_name: string, hls_segment_duration: number, hls_list_size: number, desktop_fullscreen: boolean, width: number, height: number, fps: number, video_codec: string, video_options: { [key in string]: string },
 /**
  * FFmpeg AVIO/protocol options used while opening a network stream.
  */
-protocol_options: { [key in string]: string }, 
+protocol_options: { [key in string]: string },
 /**
  * FFmpeg muxer options for this output, such as HLS `hls_flags`.
  */
-muxer_options: { [key in string]: string }, 
+muxer_options: { [key in string]: string },
 /**
  * Global container metadata. Availability depends on the output muxer.
  */
-metadata_options: { [key in string]: string }, audio_codec: string, 
+metadata_options: { [key in string]: string }, audio_codec: string,
 /**
  * FFmpeg AVOptions for the selected audio encoder.
  */
-audio_options: { [key in string]: string }, audio_bitrate: number, 
+audio_options: { [key in string]: string }, audio_bitrate: number,
 /**
  * Adaptive HLS renditions, one per entry, each formatted as
  * `NAME:WIDTHxHEIGHT:VIDEO_BITRATE[:AUDIO_BITRATE]` (e.g.
@@ -42,7 +44,7 @@ audio_options: { [key in string]: string }, audio_bitrate: number,
  */
 hls_variants: Array<string>, };
 
-export type OutputMode = "desktop" | "hls" | "stream";
+export type OutputMode = "desktop" | "hls" | "stream" | "moq";
 
 export type Playlist = { day_start: string, length: string, infinit: boolean, };
 
@@ -51,15 +53,15 @@ export type Playlist = { day_start: string, length: string, infinit: boolean, };
  *
  * This we init ones, when ffplayout is starting and use them globally in the hole program.
  */
-export type PlayoutConfig = { general: General, mail: Mail, notification: Notification, logging: Logging, processing: Processing, audio: Audio, ingest: Ingest, playlist: Playlist, storage: Storage, text: Text, task: Task, recording: Recording, output: Output, };
+export type PlayoutConfig = { general: General, mail: Mail, notification: Notification, logging: Logging, processing: Processing, audio: Audio, ingest: Ingest, playlist: Playlist, storage: Storage, text: Text, task: Task, recording: Recording, output: Output, program: ProgramFormat | null, outputs: Array<Output>, };
 
 export type ProcessMode = "folder" | "playlist";
 
 export type Processing = { mode: ProcessMode, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, vtt_enable: boolean, vtt_dummy: string | null, vtt_name: string, vtt_language: string, vtt_default: boolean, };
 
-export type Recording = { enable: boolean, source: RecordingSource, source_output_id: number | null, variant: string, path: string, segment_duration: number, retention_days: number, minimum_free_space_gb: number, width: number, height: number, video_codec: string, video_options: { [key in string]: string }, audio_codec: string, audio_options: { [key in string]: string }, audio_bitrate: number, };
+export type ProgramFormat = { width: number, height: number, fps: number, };
 
-export type RecordingSource = "hls_variant" | "stream" | "encode";
+export type Recording = { enable: boolean, source: EncodingSource, source_output_id: number | null, variant: string, path: string, segment_duration: number, retention_days: number, minimum_free_space_gb: number, width: number, height: number, video_codec: string, video_options: { [key in string]: string }, audio_codec: string, audio_options: { [key in string]: string }, audio_bitrate: number, };
 
 export type Storage = { filler: string, extensions: Array<string>, shuffle: boolean, shared_storage: boolean, };
 

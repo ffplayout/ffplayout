@@ -72,6 +72,96 @@ CARGO_FEATURES=desktop,embed_frontend,ffmpeg-filter,ffmpeg-device \\
     ./scripts/build.sh debian-static
 ```
 
+To retain release debug symbols for CPU profiling, add `--profiling` to either
+container build target:
+
+```bash
+CARGO_FEATURES=embed_frontend ./scripts/build.sh debian-shared --profiling
+# Or: ./scripts/build.sh debian-static --profiling
+```
+
+This sets `CARGO_PROFILE_RELEASE_DEBUG=1` and
+`CARGO_PROFILE_RELEASE_STRIP=false` in the build container. Release optimizations
+remain enabled, and debug symbols are retained in both the binary and Debian
+package. These two environment variables can also be passed directly or set in
+`.env`; `--profiling` overrides their values. Build artifacts will be larger.
+
+The build script keeps one stopped build container per workspace and target
+(`ffplayout-build-debian-shared-…` / `ffplayout-build-debian-static-…`). Cargo and
+npm download caches inside it survive subsequent builds. Before a build, a
+container older than seven days is removed and recreated; a changed builder image
+also requires recreation. Features, `.env` values and profiling settings are
+forwarded afresh on every build. Failed builds preserve the container/cache too.
+An already running build container is left untouched and a concurrent build is
+refused. Containers are stopped after use, so they consume disk space but no CPU.
+An atomic lock directory under `target/.ffplayout-build-*.lock` protects the
+container from inspection through shutdown. Normal exits, failures and handled
+interrupts release it. After a forced kill or host crash, check that no build is
+running before removing the leftover lock directory (its `pid` file records the
+owning shell).
+Image layers and the container engine's separate build cache are not pruned.
+
+## CPU profiling with perf (Linux)
+
+Install your distribution's `perf` package matching the running kernel. Build
+with `--profiling` as described above, install that build on the test server,
+and start it with the normal playout configuration. For a local Cargo build,
+retain symbols with:
+
+```bash
+CARGO_PROFILE_RELEASE_DEBUG=1 CARGO_PROFILE_RELEASE_STRIP=false \
+    cargo build --release -p ffplayout
+```
+
+Use the same Cargo features as the build being investigated. Keep the exact
+binary used for the recording: rebuilding or replacing it can prevent later
+symbol resolution. Debug symbols for system libraries may also be needed to
+resolve internal FFmpeg or codec functions in shared-library builds.
+
+Find the running process and record 60 seconds of CPU samples, replacing `1234`
+with its PID:
+
+```bash
+pgrep -a -x ffplayout
+sudo perf record -F 99 --call-graph dwarf \
+    -p 1234 -o ffplayout-cpu.data -- sleep 60
+```
+
+This attaches to the running process, including its threads, without restarting
+it. Recording stops after 60 seconds; ffplayout continues running. Sampling and
+stack collection add some overhead. `sudo` permits recording on systems with
+restricted perf access without changing global kernel settings.
+
+Open the interactive report or export it as text:
+
+```bash
+sudo perf report -i ffplayout-cpu.data
+sudo perf report -i ffplayout-cpu.data --stdio > ffplayout-cpu-report.txt
+```
+
+Inspect function names and call chains to distinguish encoding, muxing, MoQ
+importing, relay work and other application activity. Report percentages describe
+the distribution of recorded CPU samples, not the process's overall CPU usage.
+Inclusive call-chain percentages overlap and must not be added together. MoQ
+and other asynchronous tasks share Tokio worker threads, so thread names alone
+cannot reliably attribute CPU usage to MoQ.
+
+For a MoQ comparison, record these three configurations separately, using the
+same clip, HLS encoding settings and recording duration after startup settles:
+
+- HLS alone.
+- HLS plus MoQ using shared encoding, without a connected player.
+- HLS plus MoQ using shared encoding, with a player actively playing.
+
+Use distinct `.data` and report filenames for each case, and retain the matching
+binary, build revision, configuration and process CPU measurements. The
+`--process-diagnostics` option described below provides interval-averaged process
+CPU usage alongside memory measurements.
+
+See the upstream documentation for
+[`perf record`](https://github.com/torvalds/linux/blob/master/tools/perf/Documentation/perf-record.txt)
+and [`perf report`](https://github.com/torvalds/linux/blob/master/tools/perf/Documentation/perf-report.txt).
+
 ## Processing Benchmark
 
 The optional `processing-bench` feature prints periodic wall-clock timings for
@@ -121,11 +211,11 @@ cargo deb --no-build -p ffplayout
 ```
 
 For RHEL-based systems, build the release binary first, then generate the RPM
-from `backend/app`:
+from `crates/app`:
 
 ```bash
 cargo build --release -p ffplayout
-cd backend/app
+cd crates/app
 cargo generate-rpm
 ```
 
@@ -136,6 +226,71 @@ environment and verify the resulting binary on the target system.
 The frontend uses TypeScript, to generate types for the rust structs run: `cargo test`.
 
 The generated types are written next to the frontend sources that import them.
+
+## Automatic backups before database migrations
+
+Before applying pending migrations to an existing file database, ffplayout creates
+one consistent SQLite snapshot in the same directory. Committed data in the WAL
+is included. Fresh databases, in-memory databases and starts without pending
+migrations do not create backups.
+
+Backups use the database filename, the local date, and the highest successfully applied
+migration version **before** the update:
+
+```text
+ffplayout.db.2026-10-18.schema-6.bak
+```
+
+An existing database without migration history uses `schema-0`. A repeated
+migration attempt with the same schema version and date replaces that day's
+backup only after the new snapshot is complete. Backup creation or publication
+failure aborts migration, preserving any previous backup at that path.
+
+After a successful backup, ffplayout retains that snapshot and the four most
+recently modified older backups matching this database's naming pattern. Other
+files and manually named backups are left untouched. Cleanup failure also aborts
+migration. The backup path and removed old backups are logged.
+
+Restore a backup only while ffplayout is stopped, with the database's WAL and SHM
+sidecars removed or moved aside. Keep a copy of the current database and its
+sidecars before restoring, and use an application version compatible with the
+restored schema.
+
+### Roll back migration 7
+
+Stop ffplayout before using the maintenance script. First validate the rollback
+without committing changes or creating a backup:
+
+```bash
+python3 scripts/rollback_migration_7.py /path/to/ffplayout.db --dry-run
+```
+
+To return to schema 6:
+
+```bash
+python3 scripts/rollback_migration_7.py /path/to/ffplayout.db
+```
+
+This removes migration 7's output-instance settings and `program_format`, but
+retains output rows and their older settings. Schema 6 permits only one active
+output per channel and cannot represent shared encoding; incompatible active
+configurations are rejected. Starting the current application reapplies migration 7.
+
+To reset migration 7 and immediately apply the repository's SQL again while
+preserving its settings, including multiple active outputs, use:
+
+```bash
+python3 scripts/rollback_migration_7.py /path/to/ffplayout.db --reapply --dry-run
+python3 scripts/rollback_migration_7.py /path/to/ffplayout.db --reapply
+```
+
+Both changes occur in one transaction. Reapplication updates SQLx's migration
+checksum. The script supports databases with successful migrations 1 through 7
+and the migration 7 columns currently defined in this repository. It requires
+Python 3 with SQLite 3.35 or newer. Before committing changes, it creates a
+`<database>.<date>.schema-7.bak` snapshot and retains at most five schema backups
+using the same filename pattern as the application. A failed rollback or
+reapplication restores the transaction; its backup remains available.
 
 ## Database migrations on `main`
 
@@ -195,3 +350,156 @@ Check out the [deployment documentation](https://vuejs.org/guide/quick-start.htm
 4. Complete first-time setup in the frontend.
 
 For an initial setup without the frontend, use `cargo run -- -i` instead.
+
+### Process diagnostics
+
+Use the hidden startup flag together with DEBUG logging:
+
+```sh
+ffplayout --process-diagnostics --log-level DEBUG
+```
+
+Alternatively, use the Clap environment variable:
+
+```sh
+FFPLAYOUT_PROCESS_DIAGNOSTICS=true ffplayout --log-level DEBUG
+```
+
+For systemd, add `Environment="FFPLAYOUT_PROCESS_DIAGNOSTICS=true"` to the service
+configuration and restart the service. Both forms enable diagnostics for all
+running channels. The setting defaults to false; an explicit CLI flag enables
+it even if the environment variable is false. This setting is not part of the
+TOML configuration or database and has no frontend field.
+
+`[Process Diagnostics]` DEBUG records are produced immediately before opening each
+non-skipped clip (after the preceding playback call has returned), and on actual
+live takeover/end events. Additional `event=periodic` records are emitted every
+five minutes, starting five minutes after the channel diagnostics worker starts.
+The first clip establishes the RSS baseline. Clip numbers
+count playback attempts, including filler, repeated sources and post-live attempts.
+A single worker serializes measurements and logging; queued live transitions are
+processed before the next clip boundary. Playback waits for its clip record.
+Each live event requests a measurement asynchronously; this is not a snapshot
+captured inside the decoder at the exact instant of the transition.
+
+CPU usage is reported as `cpu_percent`, averaged over `cpu_window_s` seconds
+since the preceding measurement for that channel. 100% means one fully occupied
+CPU core; multithreaded usage can exceed 100%. The first measurement establishes
+the CPU baseline and reports `unavailable`. CPU time includes all process threads,
+including encoding, MoQ and the application, but excludes child processes.
+Measurements are event-based and every five minutes; brief peaks may be averaged out.
+Enable these measurements with `--process-diagnostics` or
+`FFPLAYOUT_PROCESS_DIAGNOSTICS=true`.
+
+Records contain `scope=process`, event, channel metadata, clip number, process
+uptime in seconds, RSS bytes, signed RSS delta since the previous measurement for
+that channel, PSS bytes on Linux (`pss_bytes`, `pss_anon_bytes`, and
+`pss_file_bytes`), thread count where supported, live status,
+listener ID and source kind (`playlist`, `folder`, `filler`, or `ingest`).
+No media file paths are included in these diagnostic records. Live start uses
+`ingest`; live end uses the preceding program source kind until the next clip
+boundary establishes the newly selected source. Unavailable measurements are marked `unavailable`.
+`pss_anon_bytes` represents anonymous memory, including heap and media buffers;
+`pss_file_bytes` represents file-backed memory. Missing fields on older kernels
+remain `unavailable` independently of the other fields.
+Linux PSS is read from `/proc/self/smaps_rollup`. RSS/PSS cover the entire process,
+so measurements from different channels cannot attribute growth to one channel.
+The live end retains the listener ID of the ended session.
+
+Periodic measurements use the same worker and RSS baseline as event measurements,
+retain the current clip number and source, and report the current live status.
+Queued live and clip events take priority; missed timer ticks are skipped instead
+of producing catch-up measurements. Process inspection runs outside the
+async executor on blocking workers, and no measurements run unless diagnostics
+are enabled and DEBUG logging is active. Existing periodic development metrics
+remain independent.
+
+### Linux allocator diagnostics
+
+On Linux with glibc, the same `[Process Diagnostics]` records additionally report:
+
+| Field | Meaning |
+| --- | --- |
+| `glibc_arena_bytes` | Arena space managed by glibc, including used and free blocks. |
+| `glibc_used_bytes` | Arena bytes glibc accounts as in use (`uordblks`), excluding the separate mmap counter. |
+| `glibc_free_bytes` | Free blocks retained inside those arenas (`fordblks`). |
+| `glibc_mmap_bytes` | Allocator-managed mmap allocations (`hblkhd`), separate from arena space. |
+
+These counters use `mallinfo2()`, available since glibc 2.33. The symbol is resolved
+at runtime so older installations can still start; unsupported platforms,
+missing symbols and fully static builds that do not export it report
+`unavailable`. No extra package is required for these counters. Sampling uses
+the existing blocking diagnostics worker, only with `--process-diagnostics`
+and DEBUG logging. It runs at clip/live events and every five minutes; no new
+timer, background thread, allocator tuning or forced memory release is added.
+
+Compare the counters after warmup and at equivalent points in repeated workloads:
+growing `glibc_free_bytes` with stable used/mmap counters supports allocator
+retention; growing used/mmap counters warrants investigating retained allocations.
+`glibc_used_bytes + glibc_mmap_bytes` is an allocator-accounted used total, **not**
+an exact count of live application objects. Thread caches can still count as used;
+allocator overhead is included. Free bytes are not necessarily immediately
+returnable to the OS. Arena/mmap counters are not RSS or PSS and omit direct
+mappings, stacks and allocations serviced by replacement allocators. When using
+jemalloc/tcmalloc or another replacement allocator, do not interpret these as
+whole-process heap measurements. The counters are observations, not a leak verdict.
+
+See the glibc [`mallinfo2` implementation](https://github.com/bminor/glibc/blob/glibc-2.33/malloc/malloc.c)
+for its arena accounting and the [allocation statistics manual](https://man7.org/linux/man-pages/man3/mallinfo.3.html)
+for field definitions.
+
+### Linux heap profiles
+
+Use `scripts/heap-profile.sh` to launch a separate reproduction under
+[Heaptrack](https://github.com/KDE/heaptrack). Install your distribution's
+`heaptrack` package first; analysis can be done on a different machine with
+`heaptrack_gui`. Use a release build with symbols (`scripts/build.sh --profiling …`
+or `CARGO_PROFILE_RELEASE_DEBUG=1 CARGO_PROFILE_RELEASE_STRIP=false cargo build --release -p ffplayout`).
+The executable must dynamically link its allocator for Heaptrack's preload
+interception; statically linked FFmpeg libraries are fine. Keep the exact binary
+and any separate debug symbols/shared libraries used during recording.
+
+From the repository root, with a dedicated test database and output destination:
+
+```sh
+scripts/heap-profile.sh --output-dir /tmp/ffplayout-heap -- \
+    ./target/release/ffplayout \
+    --db /path/to/test.db --channel 1 --foreground
+```
+
+The script preserves the working directory and argument boundaries, enables
+`FFPLAYOUT_PROCESS_DIAGNOSTICS=true`, and defaults to DEBUG console logging with
+timestamps. Explicit CLI logging options are preserved; selecting a level above
+DEBUG disables the process measurements. A unique private directory contains
+the compressed `heaptrack.gz` or `heaptrack.zst` profile, combined `playout.log`,
+command, binary SHA-256, system/tool version and exit code. It never overwrites
+an earlier recording. The application's original umask is preserved, so HLS and
+other application outputs retain their normal permissions. With no application
+arguments, the script explicitly preserves ffplayout's default listener at
+`127.0.0.1:8787` (or the `LISTEN` environment value).
+It does not copy or anonymize the database/configuration;
+the command you supply runs normally with those paths and outputs. Avoid running
+a second instance against an active service's database, listeners or destinations.
+
+Stop the foreground test normally with Ctrl+C when enough clip repetitions have
+been collected. The log reader remains active while Heaptrack handles SIGINT,
+and the script waits for recording finalization before saving the exit code.
+There is no automatic duration, service restart or attachment to
+existing processes. For a service, use a separately scheduled reproduction with
+the same user/environment and workload. Runtime attachment is deliberately not
+provided: upstream Heaptrack flags injection/detachment as unstable. This script
+is a diagnostic tool, not a periodic restart mechanism for production.
+
+Open the resulting file, using its actual `.gz` or `.zst` suffix:
+
+```sh
+heaptrack_gui /tmp/ffplayout-heap/ffplayout-TIMESTAMP-SUFFIX/heaptrack.zst
+```
+
+Compare retained allocations and their call stacks across repeated sequences
+after warmup. Allocations still present when a running stream is interrupted
+include legitimate decoder/encoder buffers; an end-of-profile “leak” count alone
+is not proof of a leak. Profiling adds CPU/memory overhead and can produce large
+files over hours, so check available disk space and use bounded reproductions.
+The script does not change kernel security settings, install packages or run sudo.
+On macOS, use Instruments Allocations; this helper explicitly supports Linux only.

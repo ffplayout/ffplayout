@@ -152,7 +152,7 @@ jobs:
             cargo_deb_args=(
               --no-build
               -p ffplayout
-              --manifest-path backend/app/Cargo.toml
+              --manifest-path crates/app/Cargo.toml
               --deb-version "${package_version}-1"
               -o "dist/ffplayout_${{ github.ref_name }}-1_${{ matrix.deb_arch }}.deb"
             )
@@ -161,7 +161,7 @@ jobs:
             fi
             cargo deb "${cargo_deb_args[@]}"
             cargo generate-rpm \
-              -p backend/app \
+              -p crates/app \
               --set-metadata "version = \"${package_version}\"" \
               --set-metadata "release = \"1\"" \
               -o "dist/ffplayout-${{ github.ref_name }}-1.${{ matrix.rpm_arch }}.rpm"
