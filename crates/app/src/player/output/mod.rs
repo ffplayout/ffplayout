@@ -64,6 +64,10 @@ fn apply_outputs(
         &mut attachments,
         recording_owner,
         manager.moq_demand.active(),
+        crate::moq::AudioMeterSource::new(
+            manager.audio_level.clone(),
+            manager.loudness_meter.clone(),
+        ),
     )?;
     manager
         .output_status

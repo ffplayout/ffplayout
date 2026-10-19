@@ -15,8 +15,16 @@ pub(super) async fn open_parallel_playout(
     program: &mut OutputConfig,
     attachments: &mut Vec<crate::moq::OutputAttachment>,
     moq_demanded: bool,
+    audio_level: crate::moq::AudioMeterSource,
 ) -> Result<AsyncPlayout, ServiceError> {
-    configure_destinations(config, program, attachments, config.output.id, moq_demanded)?;
+    configure_destinations(
+        config,
+        program,
+        attachments,
+        config.output.id,
+        moq_demanded,
+        audio_level,
+    )?;
     if config
         .active_outputs()
         .any(|output| output.mode == OutputMode::Desktop)
@@ -35,6 +43,7 @@ pub(super) fn configure_destinations(
     attachments: &mut Vec<crate::moq::OutputAttachment>,
     recording_owner: i32,
     moq_demanded: bool,
+    audio_level: crate::moq::AudioMeterSource,
 ) -> Result<(), ServiceError> {
     let mut destinations = Vec::new();
     let desktop = config
@@ -180,7 +189,10 @@ pub(super) fn configure_destinations(
                 url: output_url(&scoped)?,
             },
             OutputMode::Moq => {
-                let attachment = crate::moq::OutputAttachment::new(config.general.channel_id);
+                let attachment = crate::moq::OutputAttachment::new(
+                    config.general.channel_id,
+                    audio_level.clone(),
+                );
                 settings.stream_endpoint = Some(attachment.endpoint());
                 attachments.push(attachment);
                 settings.stream_type = ff_engine::StreamType::Custom;
@@ -247,17 +259,49 @@ mod tests {
         };
         let mut program = OutputConfig::new(160, 90, 25, 48_000);
         let mut attachments = Vec::new();
-        configure_destinations(&config, &mut program, &mut attachments, 2, false).unwrap();
+        configure_destinations(
+            &config,
+            &mut program,
+            &mut attachments,
+            2,
+            false,
+            Default::default(),
+        )
+        .unwrap();
         assert!(program.destinations.is_empty());
         assert!(attachments.is_empty());
-        configure_destinations(&config, &mut program, &mut attachments, 2, true).unwrap();
+        configure_destinations(
+            &config,
+            &mut program,
+            &mut attachments,
+            2,
+            true,
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(program.destinations.len(), 1);
         assert!(program.destinations[0].config.delivery_enabled);
         config.output.public_moq = true;
-        configure_destinations(&config, &mut program, &mut attachments, 2, false).unwrap();
+        configure_destinations(
+            &config,
+            &mut program,
+            &mut attachments,
+            2,
+            false,
+            Default::default(),
+        )
+        .unwrap();
         assert!(program.destinations[0].config.delivery_enabled);
         config.output.enabled = false;
-        configure_destinations(&config, &mut program, &mut attachments, 2, true).unwrap();
+        configure_destinations(
+            &config,
+            &mut program,
+            &mut attachments,
+            2,
+            true,
+            Default::default(),
+        )
+        .unwrap();
         assert!(program.destinations.is_empty());
     }
 
@@ -285,7 +329,15 @@ mod tests {
         };
         let mut program = OutputConfig::new(160, 90, 25, 48_000);
         let mut attachments = Vec::new();
-        configure_destinations(&config, &mut program, &mut attachments, 1, false).unwrap();
+        configure_destinations(
+            &config,
+            &mut program,
+            &mut attachments,
+            1,
+            false,
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(program.destinations.len(), 2);
         assert!(!program.destinations[0].config.delivery_enabled);
         assert!(program.destinations[1].config.delivery_enabled);
@@ -296,7 +348,15 @@ mod tests {
         config.recording.source_output_id = Some(1);
         config.recording.path = directory.to_string_lossy().into_owned();
         config.recording.segment_duration = 60;
-        configure_destinations(&config, &mut program, &mut attachments, 1, false).unwrap();
+        configure_destinations(
+            &config,
+            &mut program,
+            &mut attachments,
+            1,
+            false,
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(program.destinations.len(), 1);
         assert!(!program.destinations[0].config.delivery_enabled);
         assert!(program.destinations[0].config.recording.is_some());
@@ -330,7 +390,15 @@ mod tests {
         config.channel.public = directory.clone();
         let mut program = OutputConfig::new(1280, 720, 25, 48_000);
         let mut attachments = Vec::new();
-        configure_destinations(&config, &mut program, &mut attachments, 1, true).unwrap();
+        configure_destinations(
+            &config,
+            &mut program,
+            &mut attachments,
+            1,
+            true,
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(program.destinations.len(), 2);
         assert!(!program.destinations[0].config.delivery_enabled);
         assert!(program.destinations[1].config.delivery_enabled);
@@ -340,7 +408,15 @@ mod tests {
             program.destinations[1].config.encoding_revision
         );
         config.outputs[0].enabled = false;
-        configure_destinations(&config, &mut program, &mut attachments, 1, true).unwrap();
+        configure_destinations(
+            &config,
+            &mut program,
+            &mut attachments,
+            1,
+            true,
+            Default::default(),
+        )
+        .unwrap();
         assert!(program.destinations.is_empty());
         std::fs::remove_dir_all(directory).unwrap();
     }

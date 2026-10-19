@@ -57,6 +57,7 @@ const timer = ref()
 const errorCounter = ref(0)
 const controlsUnlocked = ref(false)
 const lastReportedRunning = ref<boolean | null>(null)
+const moqAudioLevel = ref<AudioLevel | null>(null)
 const volumeLevel = ref(configStore.playout.audio?.volume ?? 1)
 const useMoqPreview = computed(() =>
     [configStore.playoutSaved.output, ...(configStore.playoutSaved.outputs ?? [])].some(
@@ -222,7 +223,7 @@ function timeRemaining() {
 }
 
 function audioMeterValue() {
-    const peak = playlistStore.audioLevel?.peak_db ?? -100
+    const peak = (useMoqPreview.value ? moqAudioLevel.value : playlistStore.audioLevel)?.peak_db ?? -100
 
     return Math.min(100, Math.max(0, ((peak + 60) / 60) * 100))
 }
@@ -286,6 +287,7 @@ function resetStatus() {
     playlistStore.elapsedSec = 0
     playlistStore.shift = 0
     playlistStore.audioLevel = null
+    moqAudioLevel.value = null
     playlistStore.current = currentDefault
 }
 
@@ -366,6 +368,8 @@ function runControl(button: PlayerControlButton) {
                     <div class="w-full aspect-video">
                         <MoqPlayer
                             v-if="useMoqPreview"
+                            audio-meter
+                            @audio-level="moqAudioLevel = $event"
                             :key="configStore.channels[configStore.i]?.id"
                             :channel="configStore.channels[configStore.i]?.id"
                         />
@@ -484,7 +488,8 @@ function runControl(button: PlayerControlButton) {
                         class="relative h-full min-h-20 w-4 rounded-sm overflow-hidden bg-linear-to-t from-success from-70% via-warning via-80% to-error to-100%"
                     >
                         <div
-                            class="absolute top-0 left-0 w-full bg-base-300 transition-[height] duration-300"
+                            class="absolute top-0 left-0 w-full bg-base-300"
+                            :class="useMoqPreview ? '' : 'transition-[height] duration-200'"
                             :style="{ height: `${100 - audioMeterValue()}%` }"
                         />
                     </div>

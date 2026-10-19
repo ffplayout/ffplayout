@@ -6,6 +6,7 @@ mod importer;
 mod relay;
 
 pub use http::routes;
+pub(crate) use importer::AudioMeterSource;
 pub use importer::{OutputAttachment, status};
 pub use relay::Server;
 

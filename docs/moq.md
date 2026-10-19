@@ -155,3 +155,37 @@ is retried on the same schedule, and a terminated importer is recreated on the n
 connection attempt. Encoder failures still require a channel restart.
 Endurance tests with browser audio/video
 and clip transitions are still needed for the current multi-output implementation.
+
+The Player page receives program peak/RMS levels through the existing MoQ
+connection on the `audio-level.json` track, with 250 ms measurement and publication
+intervals. Each reading carries the end timestamp of its measured audio window.
+The importer maps program timestamps onto its actual imported AAC timeline once
+per connection, accounting for codec priming, TS mux shifts and live re-anchoring.
+The Player meter follows the audio worklet's read position and the browser's
+reported output latency, aligning each 250 ms measurement window to its midpoint
+to reduce visual lag. While paused, without audio playback, or after the playhead
+has stopped advancing for 500 ms, the meter shows current program measurements.
+Missing current measurements expire after one second; reconnects discard old
+readings. Muting stops audio downloads in the player library, so the meter follows
+the displayed video while muted and advancing.
+The browser keeps at most 40 pending readings (about ten seconds), checks the
+play position every 50 ms, and never drives or blocks media playback. This is a
+250 ms windowed program meter, not a sample-accurate peak display; timing precision
+also depends on the browser's playback-position and output-latency reports.
+Browser volume does not change the measured program level. HLS previews continue
+to show the current program level via SSE, independently of HLS playback delay.
+Only authenticated Player and Audio configuration pages subscribe to this track; the public player
+does not request meter data. Publication shares the importer task and keeps only
+the latest reading, without an additional HTTP polling connection.
+
+Audio configuration also uses MoQ for its peak/RMS and loudness meters when an
+MoQ output is enabled. It subscribes to `audio-level.json` and
+`audio-loudness.json` at 250 ms intervals without requesting media tracks or
+starting a browser decoder. These configuration meters show current program
+measurements immediately rather than following a playback position. Loudness analysis is enabled only while its track
+has subscribers and released when they disconnect. Channels without an enabled
+MoQ output retain their SSE meters. With MoQ enabled, meters use MoQ exclusively;
+missing readings or a disconnected transport clear the display without switching
+to SSE. During the initial
+three-second short-term measurement window, the loudness bar shows the available
+momentary value and labels it accordingly.

@@ -86,6 +86,21 @@ remain enabled, and debug symbols are retained in both the binary and Debian
 package. These two environment variables can also be passed directly or set in
 `.env`; `--profiling` overrides their values. Build artifacts will be larger.
 
+The build script keeps one stopped build container per workspace and target
+(`ffplayout-build-debian-shared-…` / `ffplayout-build-debian-static-…`). Cargo and
+npm download caches inside it survive subsequent builds. Before a build, a
+container older than seven days is removed and recreated; a changed builder image
+also requires recreation. Features, `.env` values and profiling settings are
+forwarded afresh on every build. Failed builds preserve the container/cache too.
+An already running build container is left untouched and a concurrent build is
+refused. Containers are stopped after use, so they consume disk space but no CPU.
+An atomic lock directory under `target/.ffplayout-build-*.lock` protects the
+container from inspection through shutdown. Normal exits, failures and handled
+interrupts release it. After a forced kill or host crash, check that no build is
+running before removing the leftover lock directory (its `pid` file records the
+owning shell).
+Image layers and the container engine's separate build cache are not pruned.
+
 ## CPU profiling with perf (Linux)
 
 Install your distribution's `perf` package matching the running kernel. Build

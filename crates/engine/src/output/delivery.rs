@@ -128,6 +128,7 @@ fn deliver_with_retry(
     let status = &destination.config.output_status;
     let mut output: Option<EncodedOutput> = None;
     let mut keyframes = Keyframes::default();
+    let mut audio_started = false;
     let mut error = None;
     let mut ready = false;
     let mut exhausted = false;
@@ -179,6 +180,7 @@ fn deliver_with_retry(
                     }
                     interrupted.store(false, Ordering::Release);
                     keyframes = Keyframes::default();
+                    audio_started = false;
                     ready = false;
                     output = Some(opened);
                 }
@@ -226,6 +228,17 @@ fn deliver_with_retry(
                 Delivery::Packet(packet) => {
                     if let Some(opened) = output.as_mut() {
                         if keyframes.accept(&packet) {
+                            if !audio_started
+                                && packet.stream & 1 == 1
+                                && let Some(pts) = packet.packet.pts()
+                            {
+                                if let Some(endpoint) = &destination.config.stream_endpoint {
+                                    endpoint.audio_started(
+                                        pts.rescale(packet.time_base, rescale::TIME_BASE),
+                                    );
+                                }
+                                audio_started = true;
+                            }
                             opened.handle_encoded_packet(packet)
                         } else {
                             Ok(())

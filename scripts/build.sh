@@ -52,18 +52,10 @@ for name in CARGO_PROFILE_RELEASE_DEBUG CARGO_PROFILE_RELEASE_STRIP; do
     fi
 done
 
-container_run_env() {
-    local args=()
-
-    # Bash 3.2 treats empty arrays as unset under `set -u`.
-    for name in ${env_names[@]+"${env_names[@]}"}; do
-        if [[ -n ${!name+x} ]]; then
-            args+=("-e" "$name=${!name}")
-        fi
-    done
-
-    "$container_cli" run --platform linux/amd64 --rm -it ${args[@]+"${args[@]}"} "$@"
-}
+source ./scripts/lib/build-container.sh
+trap cleanup_build_container EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 select_cargo_features() {
     local selection
@@ -180,8 +172,8 @@ if [[ $target == "debian-shared" ]]; then
     rm -f "ffplayout-v${version}_debian.tar.gz"
 
     "$container_cli" build --platform linux/amd64 -t rust-debian -f ./docker/shared.Dockerfile .
-    shared_docker_args=(-v "$(pwd)":/src:z -e "CARGO_FEATURES=$CARGO_FEATURES")
-    container_run_env "${shared_docker_args[@]}" rust-debian
+    shared_docker_args=(-v "$(pwd)":/src:z)
+    container_run_env rust-debian "${shared_docker_args[@]}"
 
     tar -czvf "ffplayout-v${version}_debian.tar.gz" --exclude='*.db' --exclude='*.db-shm' \
         --exclude='*.db-wal' assets docker docs LICENSE README.md -C ./target/release ffplayout
@@ -211,10 +203,9 @@ elif [[ $target == "debian-static" ]]; then
         -t localhost/ffplayout-static-builder:latest \
         -f ./docker/static.Dockerfile .
 
-    container_run_env \
+    container_run_env localhost/ffplayout-static-builder:latest \
         -v "$(pwd)":/src:z \
-        -v "$(pwd)/target/debian-static":/artifacts:z \
-        localhost/ffplayout-static-builder:latest
+        -v "$(pwd)/target/debian-static":/artifacts:z
 
     mv "./target/debian-static/ffplayout_${version}-1_amd64.deb" .
 fi

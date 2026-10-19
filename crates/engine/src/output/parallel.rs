@@ -192,6 +192,8 @@ impl OutputStatus {
 pub trait OutputEndpoint: std::fmt::Debug + Send + Sync {
     fn connect_url(&self) -> Result<String>;
     fn disconnect(&self) {}
+    /// First accepted encoded audio PTS of this connection, before muxer time shifts.
+    fn audio_started(&self, _timestamp_us: i64) {}
 }
 
 #[derive(Debug, Clone)]

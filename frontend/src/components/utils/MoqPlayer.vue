@@ -5,8 +5,13 @@ import type MoqWatch from '@moq/watch/element'
 import { authFetch } from '@/composables/authFetch'
 import type { moqDiagnostics } from '@/composables/moqDiagnostics'
 import { refreshMoqTicketOnFailure } from '@/composables/moqTicketRefresh'
+import { synchronizeMoqAudioLevel } from '@/composables/moqAudioLevelSync'
+import { moqRelayUrl, type MoqBootstrap } from '@/composables/moqConnection'
 
-const props = withDefaults(defineProps<{ channel: number; publicAccess?: boolean }>(), { publicAccess: false })
+const props = withDefaults(defineProps<{ channel: number; publicAccess?: boolean; audioMeter?: boolean }>(), {
+    publicAccess: false,
+})
+const emit = defineEmits<{ audioLevel: [level: AudioLevel | null] }>()
 const { t } = useI18n()
 // Explicitly opt in before mounting; production and public playback stay quiet.
 const diagnosticsEnabled =
@@ -20,43 +25,24 @@ let player: MoqWatch | undefined
 let disposed = false
 let connecting = false
 
-interface Bootstrap {
-    broadcast: string
-    relay_url: string | null
-    relay_port: number
-    delay_ms: number
-    ticket: string | null
-}
-
-async function loadConfig(signal?: AbortSignal): Promise<Bootstrap> {
+async function loadConfig(signal?: AbortSignal): Promise<MoqBootstrap> {
     const path = `${props.publicAccess ? '/moq/config' : '/api/moq/config'}?channel=${props.channel}`
     return props.publicAccess
         ? await fetch(path, { cache: 'no-store', signal }).then(async (response) => {
               if (!response.ok) throw new Error(t('config.moqPublicUnavailable'))
-              return (await response.json()) as Bootstrap
+              return (await response.json()) as MoqBootstrap
           })
-        : await authFetch<Bootstrap>(path, { signal })
+        : await authFetch<MoqBootstrap>(path, { signal })
 }
 
-async function connect(prefetched?: Bootstrap, signal?: AbortSignal) {
+async function connect(prefetched?: MoqBootstrap, signal?: AbortSignal) {
     if (disposed || connecting) return
     connecting = true
     error.value = false
     try {
         const config = prefetched ?? (await loadConfig(signal))
         if (disposed || signal?.aborted || !player) return
-        const relay = new URL('/moq/relay', location.href)
-        relay.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-        // Development uses Vite's same-origin WebSocket proxy, including when
-        // the backend advertises a direct relay address on another host/port.
-        if (!import.meta.env.DEV) {
-            if (config.relay_url) relay.href = config.relay_url
-            else if (location.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) {
-                relay.href = `http://${location.hostname}:${config.relay_port}/channels`
-            }
-        }
-        relay.searchParams.set('channel', String(props.channel))
-        if (config.ticket) relay.searchParams.set('ticket', config.ticket)
+        const relay = moqRelayUrl(config, props.channel)
         player.setAttribute('delay', `${config.delay_ms}ms`)
         player.name = config.broadcast
         player.url = relay
@@ -122,6 +108,9 @@ onMounted(async () => {
                           : t('config.moqPlaying')
                       : t('config.moqWaiting')
             })
+        }
+        if (props.audioMeter && !props.publicAccess) {
+            synchronizeMoqAudioLevel(player, (level) => emit('audioLevel', level))
         }
         if (!props.publicAccess) {
             refreshMoqTicketOnFailure(player.signals, player.connection, (signal) => connect(undefined, signal))

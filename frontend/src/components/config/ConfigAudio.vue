@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useEventSource } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 
@@ -9,41 +9,62 @@ import { useAuth } from '@/stores/auth'
 import { useConfig } from '@/stores/config'
 import { useIndex } from '@/stores/index'
 import { authFetch } from '@/composables/authFetch'
+import { useMoqAudioMeters } from '@/composables/useMoqAudioMeters'
 
 const { t } = useI18n()
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
-const audioLevel = ref<AudioLevel | null>(null)
-const loudness = ref<LiveLoudnessMetrics | null>(null)
-const streamUrl = ref(
-    `/data/event/${configStore.channels[configStore.i]?.id}?endpoint=playout&audio_meter=true&uuid=${authStore.uuid}`,
+const channel = computed(() => configStore.channels[configStore.i]?.id)
+const useMoq = computed(() =>
+    [configStore.playoutSaved.output, ...(configStore.playoutSaved.outputs ?? [])].some(
+        (output) => output?.enabled && output.mode === 'moq',
+    ),
+)
+const { audioLevel: moqAudioLevel, loudness: moqLoudness } = useMoqAudioMeters(channel, useMoq)
+const sseAudioLevel = ref<AudioLevel | null>(null)
+const sseLoudness = ref<LiveLoudnessMetrics | null>(null)
+const audioLevel = computed(() => (useMoq.value ? moqAudioLevel.value : sseAudioLevel.value))
+const loudness = computed(() => (useMoq.value ? moqLoudness.value : sseLoudness.value))
+const loudnessValue = computed(() => loudness.value?.short_term_lufs ?? loudness.value?.momentary_lufs)
+const loudnessLabel = computed(() => (loudness.value?.short_term_lufs != null ? 'Short-term' : 'Momentary'))
+const streamUrl = computed(() =>
+    useMoq.value || channel.value === undefined
+        ? undefined
+        : `/data/event/${channel.value}?endpoint=playout&audio_meter=true&uuid=${authStore.uuid}`,
 )
 
-const { data, close } = useEventSource(streamUrl, [], {
+const { data, status: sseStatus, close } = useEventSource(streamUrl, [], {
     autoReconnect: { retries: -1, delay: 1000 },
 })
 
 watch(data, () => {
-    if (!data.value) return
+    if (useMoq.value || !data.value) return
+    if (data.value === 'not running') {
+        sseAudioLevel.value = null
+        sseLoudness.value = null
+        return
+    }
 
     try {
         const status = JSON.parse(data.value) as PlayoutStatus
-        audioLevel.value = status.audio ?? null
-        loudness.value = status.loudness ?? null
+        sseAudioLevel.value = status.audio ?? null
+        sseLoudness.value = status.loudness ?? null
     } catch {
         // The connection banner and keep-alive messages are not status JSON.
     }
 })
 
-watch(
-    () => configStore.i,
-    () => {
-        audioLevel.value = null
-        loudness.value = null
-        streamUrl.value = `/data/event/${configStore.channels[configStore.i]?.id}?endpoint=playout&audio_meter=true&uuid=${authStore.uuid}`
-    },
-)
+watch(sseStatus, (status) => {
+    if (status === 'OPEN') return
+    sseAudioLevel.value = null
+    sseLoudness.value = null
+})
+
+watch([channel, useMoq], () => {
+    sseAudioLevel.value = null
+    sseLoudness.value = null
+})
 
 onBeforeUnmount(close)
 
@@ -79,32 +100,34 @@ async function saveAudio() {
 </script>
 
 <template>
-    <div class="max-w-300 xs:pe-8">
+    <div class="w-full min-w-0 max-w-3xl xs:pe-8">
         <h2 class="pt-3 text-3xl">Audio</h2>
-        <form v-if="configStore.playout" class="mt-10 max-w-3xl" @submit.prevent="saveAudio">
+        <form v-if="configStore.playout" class="mx-auto mt-10 w-full max-w-3xl" @submit.prevent="saveAudio">
             <section class="grid gap-4 sm:grid-cols-2" aria-label="Program output audio meters">
-                <div class="rounded-box border border-base-300 bg-base-200 p-4">
-                    <div class="flex items-baseline justify-between gap-3">
+                <div class="min-w-0 rounded-box border border-base-300 bg-base-200 p-4">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                         <h3 class="font-semibold">Volume meter</h3>
                         <span class="font-mono text-sm">{{ meterValue(audioLevel?.peak_db, 'dBFS') }}</span>
                     </div>
                     <div class="mt-3 h-3 overflow-hidden rounded-full bg-base-300">
                         <div
-                            class="h-full bg-success transition-[width] duration-300"
+                            class="h-full bg-success transition-[width] duration-200"
                             :style="{ width: `${meterPercent(audioLevel?.peak_db)}%` }"
                         />
                     </div>
                     <p class="mt-2 text-sm text-base-content/70">RMS: {{ meterValue(audioLevel?.rms_db, 'dBFS') }}</p>
                 </div>
-                <div class="rounded-box border border-base-300 bg-base-200 p-4">
-                    <div class="flex items-baseline justify-between gap-3">
+                <div class="min-w-0 rounded-box border border-base-300 bg-base-200 p-4">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                         <h3 class="font-semibold">Loudness meter</h3>
-                        <span class="font-mono text-sm">{{ meterValue(loudness?.short_term_lufs, 'LUFS') }}</span>
+                        <span class="font-mono text-sm"
+                            >{{ loudnessLabel }}: {{ meterValue(loudnessValue, 'LUFS') }}</span
+                        >
                     </div>
                     <div class="mt-3 h-3 overflow-hidden rounded-full bg-base-300">
                         <div
-                            class="h-full bg-success transition-[width] duration-300"
-                            :style="{ width: `${meterPercent(loudness?.short_term_lufs)}%` }"
+                            class="h-full bg-success transition-[width] duration-200"
+                            :style="{ width: `${meterPercent(loudnessValue)}%` }"
                         />
                     </div>
                     <p class="mt-2 text-sm text-base-content/70">

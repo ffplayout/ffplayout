@@ -68,6 +68,10 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             &mut output_config,
             &mut moq_attachments,
             moq_demanded,
+            crate::moq::AudioMeterSource::new(
+                manager.audio_level.clone(),
+                manager.loudness_meter.clone(),
+            ),
         )
         .await?
     } else {

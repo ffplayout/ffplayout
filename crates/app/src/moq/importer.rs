@@ -5,9 +5,14 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use futures_util::FutureExt;
 use hang::moq_net;
 use moq_mux::{catalog, container::ts};
-use tokio::{io::AsyncReadExt, net::TcpListener};
+use tokio::{
+    io::AsyncReadExt,
+    net::TcpListener,
+    time::{MissedTickBehavior, interval},
+};
 use tokio_util::sync::CancellationToken;
 
 use super::relay::{RETENTION, RUNTIME};
@@ -17,6 +22,57 @@ pub struct ImportStatus {
     pub phase: &'static str,
     pub error: Option<String>,
 }
+
+#[derive(Clone, Default)]
+pub(crate) struct AudioMeterSource {
+    level: Arc<Mutex<Option<ff_engine::AudioLevel>>>,
+    loudness: ff_engine::LoudnessMeterControl,
+    first_audio_pts: Arc<Mutex<Option<i64>>>,
+}
+
+impl AudioMeterSource {
+    pub(crate) fn new(
+        level: Arc<Mutex<Option<ff_engine::AudioLevel>>>,
+        loudness: ff_engine::LoudnessMeterControl,
+    ) -> Self {
+        Self {
+            level,
+            loudness,
+            first_audio_pts: Default::default(),
+        }
+    }
+}
+
+// Loudness analysis only runs while its MoQ track has subscribers. Drop also
+// releases demand when the importer task is cancelled or a connection fails.
+struct LoudnessSubscription {
+    control: ff_engine::LoudnessMeterControl,
+    active: bool,
+}
+
+impl LoudnessSubscription {
+    fn update(&mut self, active: bool) {
+        if active == self.active {
+            return;
+        }
+        if active {
+            self.control.subscribe();
+        } else {
+            self.control.unsubscribe();
+        }
+        self.active = active;
+    }
+}
+
+impl Drop for LoudnessSubscription {
+    fn drop(&mut self) {
+        self.update(false);
+    }
+}
+
+const AUDIO_LEVEL_INTERVAL: Duration = Duration::from_millis(250);
+const AUDIO_LEVEL_TRACK: &str = "audio-level.json";
+const LOUDNESS_TRACK: &str = "audio-loudness.json";
 
 type StatusSlot = Arc<Mutex<ImportStatus>>;
 static STATUSES: OnceLock<Mutex<BTreeMap<i32, StatusSlot>>> = OnceLock::new();
@@ -88,6 +144,7 @@ pub struct OutputAttachment(Arc<Endpoint>);
 
 struct Endpoint {
     channel: i32,
+    audio_level: AudioMeterSource,
     runtime: tokio::runtime::Handle,
     attached: Mutex<Option<(String, Attachment)>>,
 }
@@ -102,7 +159,23 @@ impl std::fmt::Debug for Endpoint {
 
 impl ff_engine::OutputEndpoint for Endpoint {
     fn connect_url(&self) -> Result<String> {
-        self.connect_with(|| self.runtime.block_on(attach_output(self.channel)))
+        self.connect_with(|| {
+            self.audio_level
+                .first_audio_pts
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take();
+            self.runtime
+                .block_on(attach_output(self.channel, self.audio_level.clone()))
+        })
+    }
+
+    fn audio_started(&self, timestamp_us: i64) {
+        *self
+            .audio_level
+            .first_audio_pts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(timestamp_us);
     }
 
     fn disconnect(&self) {
@@ -143,9 +216,10 @@ impl Endpoint {
 }
 
 impl OutputAttachment {
-    pub fn new(channel: i32) -> Self {
+    pub(crate) fn new(channel: i32, audio_level: AudioMeterSource) -> Self {
         Self(Arc::new(Endpoint {
             channel,
+            audio_level,
             runtime: tokio::runtime::Handle::current(),
             attached: Mutex::new(None),
         }))
@@ -171,16 +245,17 @@ impl OutputAttachment {
 }
 
 /// Attach a regular MoQ destination to the channel's browser broadcast.
-pub async fn attach_output(id: i32) -> Result<(String, Attachment)> {
+async fn attach_output(id: i32, audio_level: AudioMeterSource) -> Result<(String, Attachment)> {
     let runtime = RUNTIME
         .get()
         .context("MoQ output requires ffplayout --listen")?;
-    attach_to_origin(id, runtime.origin.clone()).await
+    attach_to_origin(id, runtime.origin.clone(), audio_level).await
 }
 
 async fn attach_to_origin(
     id: i32,
     origin: moq_net::origin::Producer,
+    audio_level: AudioMeterSource,
 ) -> Result<(String, Attachment)> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let url = format!("tcp://{}?tcp_nodelay=1", listener.local_addr()?);
@@ -218,6 +293,21 @@ async fn attach_to_origin(
                     .with_catalog(catalog::hang::Catalog::<ts::Ext>::default());
                 let mut catalog = catalog::Producer::new(&mut broadcast, config)?;
                 let mut import = ts::Import::new(broadcast.clone(), catalog.reserve()).live();
+                let mut audio_levels = broadcast.create_track(
+                    AUDIO_LEVEL_TRACK,
+                    moq_net::track::Info::default().with_max_age(Duration::ZERO),
+                )?;
+                let mut loudness_track = broadcast.create_track(
+                    LOUDNESS_TRACK,
+                    moq_net::track::Info::default().with_max_age(Duration::ZERO),
+                )?;
+                let mut loudness_subscription = LoudnessSubscription {
+                    control: audio_level.loudness.clone(),
+                    active: false,
+                };
+                let mut audio_clock = AudioClock::default();
+                let mut meter_tick = interval(AUDIO_LEVEL_INTERVAL);
+                meter_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
                 broadcast.announce(Default::default())?;
                 {
                     *task_status.lock().unwrap_or_else(PoisonError::into_inner) = ImportStatus {
@@ -237,6 +327,12 @@ async fn attach_to_origin(
                     loop {
                         let count = tokio::select! {
                             result = stream.read(&mut buffer) => result?,
+                            _ = meter_tick.tick() => {
+                                publish_audio_level(&mut audio_levels, &audio_level, audio_clock.offset_us)?;
+                                loudness_subscription.update(loudness_track.is_used());
+                                publish_loudness(&mut loudness_track, &audio_level)?;
+                                continue;
+                            },
                             _ = token.cancelled() => break,
                         };
 
@@ -259,8 +355,19 @@ async fn attach_to_origin(
                         {
                             configure_catalog(&mut update);
                         }
+                        let audio_track = if audio_clock.offset_us.is_none() {
+                            update.audio.renditions.keys().next().cloned()
+                        } else {
+                            None
+                        };
                         update.commit()?;
                         drop(reserved);
+                        if let Some(name) = audio_track {
+                            // Meter synchronization must never stall or fail media delivery.
+                            if audio_clock.observe(&broadcast, &name, &audio_level).is_err() {
+                                audio_clock = AudioClock::default();
+                            }
+                        }
                         // Report the actual importer receiving media, for the configured output.
                         if !received_media {
                             task_status
@@ -296,6 +403,8 @@ async fn attach_to_origin(
                         }
                     }
                 }
+                loudness_track.finish()?;
+                audio_levels.finish()?;
                 import.finish()?;
                 catalog.finish()?;
                 Ok::<(), anyhow::Error>(())
@@ -336,6 +445,109 @@ async fn attach_to_origin(
     ))
 }
 
+/// Resolve the program-to-MoQ offset once per connection from the exact first
+/// encoded audio packet and its first imported frame. This includes encoder
+/// priming, MPEG-TS mux shifts and the importer's live clock re-anchoring.
+#[derive(Default)]
+struct AudioClock {
+    subscriber: Option<moq_net::track::Subscriber>,
+    group: Option<moq_net::group::Consumer>,
+    offset_us: Option<i64>,
+}
+
+impl AudioClock {
+    fn observe(
+        &mut self,
+        broadcast: &moq_net::broadcast::Producer,
+        name: &str,
+        source: &AudioMeterSource,
+    ) -> Result<()> {
+        let Some(source_pts) = *source
+            .first_audio_pts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+        else {
+            return Ok(());
+        };
+        if self.subscriber.is_none() {
+            let track = broadcast.consume().track(name)?;
+            // Include the initial group even if a read delivered several AAC frames.
+            let subscription = moq_net::track::Subscription::default().with_max_age(RETENTION);
+            let Some(subscriber) = track.subscribe(subscription).now_or_never() else {
+                return Ok(());
+            };
+            let mut subscriber = subscriber?;
+            // Never derive an offset from a later group if the first was evicted.
+            subscriber.set_groups(0..=0);
+            self.subscriber = Some(subscriber);
+        }
+        let subscriber = self
+            .subscriber
+            .as_mut()
+            .expect("audio subscriber was just initialized");
+        if self.group.is_none() {
+            let Some(group) = subscriber.recv_group().now_or_never() else {
+                return Ok(());
+            };
+            self.group = group?;
+        }
+        let Some(group) = self.group.as_mut() else {
+            return Ok(());
+        };
+        if let Some(frame) = group.read_frame().now_or_never() {
+            if let Some(frame) = frame? {
+                self.offset_us = i64::try_from(frame.timestamp.as_micros())
+                    .ok()
+                    .and_then(|timestamp| timestamp.checked_sub(source_pts));
+            }
+            self.group = None;
+            self.subscriber = None;
+        }
+
+        Ok(())
+    }
+}
+
+fn publish_audio_level(
+    track: &mut moq_net::track::Producer,
+    source: &AudioMeterSource,
+    offset_us: Option<i64>,
+) -> Result<()> {
+    // A public player does not subscribe. Do not serialize or retain samples
+    // unless a player-page meter is actually consuming this track.
+    if !track.is_used() {
+        return Ok(());
+    }
+    let level = *source.level.lock().unwrap_or_else(PoisonError::into_inner);
+    let payload = level.map(|level| {
+        serde_json::json!({
+            "rms_db": level.rms_db,
+            "peak_db": level.peak_db,
+            "timestamp_us": level.timestamp_us.zip(offset_us).and_then(|(pts, offset)| pts.checked_add(offset)),
+        })
+    });
+    track.write_frame(moq_net::Timestamp::now(), serde_json::to_vec(&payload)?)?;
+
+    Ok(())
+}
+
+fn publish_loudness(track: &mut moq_net::track::Producer, source: &AudioMeterSource) -> Result<()> {
+    if !track.is_used() {
+        return Ok(());
+    }
+    let payload = source.loudness.metrics().map(|metrics| {
+        serde_json::json!({
+            "momentary_lufs": metrics.momentary_lufs,
+            "short_term_lufs": metrics.short_term_lufs,
+            "integrated_lufs": metrics.integrated_lufs,
+            "true_peak_dbtp": metrics.true_peak_dbtp,
+        })
+    });
+    track.write_frame(moq_net::Timestamp::now(), serde_json::to_vec(&payload)?)?;
+
+    Ok(())
+}
+
 pub(super) fn configure_catalog(catalog: &mut catalog::hang::Catalog<ts::Ext>) {
     for video in catalog.video.renditions.values_mut() {
         video.optimize_for_latency = Some(true);
@@ -350,6 +562,101 @@ mod tests {
         atomic::{AtomicBool, Ordering},
     };
     use tokio::sync::oneshot;
+
+    #[test]
+    fn audio_clock_maps_first_codec_pts_to_imported_pts_without_retaining_media() {
+        let broadcast = moq_net::broadcast::Producer::new(Default::default());
+        let mut audio = broadcast
+            .create_track("1.aac", hang::container::track_info(80))
+            .unwrap();
+        audio
+            .write_frame(
+                moq_net::Timestamp::from_micros(10_000_000).unwrap(),
+                vec![1],
+            )
+            .unwrap();
+        audio
+            .write_frame(
+                moq_net::Timestamp::from_micros(10_021_333).unwrap(),
+                vec![2],
+            )
+            .unwrap();
+        let source = AudioMeterSource::default();
+        *source.first_audio_pts.lock().unwrap() = Some(-21_333);
+        let mut clock = AudioClock::default();
+        clock.observe(&broadcast, "1.aac", &source).unwrap();
+        assert_eq!(clock.offset_us, Some(10_021_333));
+        assert!(clock.subscriber.is_none());
+        assert!(clock.group.is_none());
+        assert!(!audio.is_used());
+    }
+
+    #[test]
+    fn loudness_demand_is_balanced_on_disconnect_and_importer_drop() {
+        let control = ff_engine::LoudnessMeterControl::default();
+        {
+            let mut demand = LoudnessSubscription {
+                control: control.clone(),
+                active: false,
+            };
+            assert!(!control.active());
+            demand.update(true);
+            demand.update(true);
+            assert!(control.active());
+            demand.update(false);
+            assert!(!control.active());
+            demand.update(true);
+        }
+        assert!(!control.active());
+        // Ending a MoQ subscription must not remove a concurrent SSE subscriber.
+        control.subscribe();
+        {
+            let mut demand = LoudnessSubscription {
+                control: control.clone(),
+                active: false,
+            };
+            demand.update(true);
+        }
+        assert!(control.active());
+        control.unsubscribe();
+        assert!(!control.active());
+    }
+
+    #[tokio::test]
+    async fn audio_level_track_is_on_demand_and_carries_current_program_levels() {
+        let broadcast = moq_net::broadcast::Producer::new(Default::default());
+        let mut track = broadcast
+            .create_track(
+                AUDIO_LEVEL_TRACK,
+                moq_net::track::Info::default().with_max_age(Duration::ZERO),
+            )
+            .unwrap();
+        let source = AudioMeterSource::new(
+            Arc::new(Mutex::new(Some(ff_engine::AudioLevel {
+                rms_db: -24.5,
+                peak_db: -6.25,
+                timestamp_us: Some(250_000),
+            }))),
+            Default::default(),
+        );
+        publish_audio_level(&mut track, &source, Some(10_000_000)).unwrap();
+        let mut subscriber = track.subscribe(None);
+        assert_eq!(subscriber.latest(), None);
+        publish_audio_level(&mut track, &source, Some(10_000_000)).unwrap();
+        let mut group = subscriber.recv_group().await.unwrap().unwrap();
+        let frame = group.read_frame().await.unwrap().unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&frame.payload).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({"rms_db": -24.5, "peak_db": -6.25, "timestamp_us": 10_250_000})
+        );
+        assert!(group.read_frame().await.unwrap().is_none());
+        *source.level.lock().unwrap() = None;
+        publish_audio_level(&mut track, &source, Some(10_000_000)).unwrap();
+        let mut group = subscriber.recv_group().await.unwrap().unwrap();
+        let frame = group.read_frame().await.unwrap().unwrap();
+        assert_eq!(&frame.payload[..], b"null");
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn hls_and_moq_can_toggle_independently_with_a_shared_encoder() {
@@ -374,12 +681,17 @@ mod tests {
             fn connect_url(&self) -> Result<String> {
                 self.connections.fetch_add(1, Ordering::SeqCst);
                 self.endpoint.connect_with(|| {
-                    self.endpoint
-                        .runtime
-                        .block_on(attach_to_origin(-98770, self.origin.clone()))
+                    self.endpoint.runtime.block_on(attach_to_origin(
+                        -98770,
+                        self.origin.clone(),
+                        self.endpoint.audio_level.clone(),
+                    ))
                 })
             }
 
+            fn audio_started(&self, timestamp_us: i64) {
+                self.endpoint.audio_started(timestamp_us);
+            }
             fn disconnect(&self) {
                 self.disconnects.fetch_add(1, Ordering::SeqCst);
                 ff_engine::OutputEndpoint::disconnect(&self.endpoint);
@@ -391,7 +703,7 @@ mod tests {
         let media = directory.join("clip.mp4");
         std::fs::copy(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../tests_assets/storage/media_mix/av_sync.mp4"),
+                .join("../../tests_assets/storage/media_mix/with_audio.mp4"),
             &media,
         )
         .unwrap();
@@ -400,10 +712,12 @@ mod tests {
             "WEBVTT\n\n00:00:00.000 --> 00:00:20.000\nShared encoder remains active\n",
         )
         .unwrap();
-        let (origin, _driver) = moq_net::origin::Producer::new(Default::default());
+        let (origin, driver) = moq_net::origin::Producer::new(Default::default());
+        let driver = tokio::spawn(moq_net::time::run(driver));
         let endpoint = Arc::new(LocalEndpoint {
             endpoint: Endpoint {
                 channel: -98770,
+                audio_level: Default::default(),
                 runtime: tokio::runtime::Handle::current(),
                 attached: Mutex::new(None),
             },
@@ -411,7 +725,13 @@ mod tests {
             connections: AtomicUsize::new(0),
             disconnects: AtomicUsize::new(0),
         });
+        let observer = endpoint.origin.consume();
+        let measured_level = endpoint.endpoint.audio_level.level.clone();
         let mut config = OutputConfig::new(160, 90, 25, 48_000);
+        config.loudness_meter_control = endpoint.endpoint.audio_level.loudness.clone();
+        config.audio_level_callback = Some(ff_engine::AudioLevelCallback::new(move |level| {
+            *measured_level.lock().unwrap() = Some(level);
+        }));
         config.stream_type = StreamType::Custom;
         config.stream_format = "mpegts".into();
         config
@@ -497,13 +817,90 @@ mod tests {
             playout.finish().unwrap();
             assert_eq!(endpoint.disconnects.load(Ordering::SeqCst), 2);
         });
+        // Exercise the actual encoder -> delivery -> MPEG-TS -> live importer mapping.
+        // The meter must name the same timeline as the imported AAC, not process uptime.
+        tokio::time::timeout(Duration::from_secs(4), async {
+            let broadcast = loop {
+                if let Ok(broadcast) = observer
+                    .request_broadcast("channels/channel--98770.hang")
+                    .await
+                {
+                    break broadcast;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            };
+            let mut catalogs = broadcast
+                .track("catalog.json")
+                .unwrap()
+                .subscribe(None)
+                .await
+                .unwrap();
+            let audio_name = loop {
+                let mut group = catalogs.recv_group().await.unwrap().unwrap();
+                let frame = group.read_frame().await.unwrap().unwrap();
+                let value: serde_json::Value = serde_json::from_slice(&frame.payload).unwrap();
+                if let Some(name) = value["audio"]["renditions"]
+                    .as_object()
+                    .and_then(|renditions| renditions.keys().next())
+                {
+                    break name.clone();
+                }
+            };
+            let mut audio = broadcast
+                .track(&audio_name)
+                .unwrap()
+                .subscribe(None)
+                .await
+                .unwrap();
+            let mut audio_group = audio.recv_group().await.unwrap().unwrap();
+            let first_audio = audio_group
+                .read_frame()
+                .await
+                .unwrap()
+                .unwrap()
+                .timestamp
+                .as_micros();
+            let mut loudness = broadcast
+                .track(LOUDNESS_TRACK)
+                .unwrap()
+                .subscribe(None)
+                .await
+                .unwrap();
+            let mut meter = broadcast
+                .track(AUDIO_LEVEL_TRACK)
+                .unwrap()
+                .subscribe(None)
+                .await
+                .unwrap();
+            let timestamp = loop {
+                let mut group = meter.recv_group().await.unwrap().unwrap();
+                let frame = group.read_frame().await.unwrap().unwrap();
+                let value: serde_json::Value = serde_json::from_slice(&frame.payload).unwrap();
+                if let Some(timestamp) = value["timestamp_us"].as_u64() {
+                    break timestamp;
+                }
+            };
+            assert!(u128::from(timestamp) >= first_audio);
+            assert!(u128::from(timestamp) - first_audio < 1_000_000);
+            loop {
+                let mut group = loudness.recv_group().await.unwrap().unwrap();
+                let frame = group.read_frame().await.unwrap().unwrap();
+                let value: serde_json::Value = serde_json::from_slice(&frame.payload).unwrap();
+                if value["short_term_lufs"].as_f64().is_some() {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("synchronized audio meter was not published");
         worker.await.unwrap();
+        driver.abort();
         std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[tokio::test]
     async fn failed_importer_initialization_can_be_retried_and_recreated() {
-        let attachment = OutputAttachment::new(-98766);
+        let attachment = OutputAttachment::new(-98766, Default::default());
         let endpoint = attachment.0.clone();
         assert!(
             endpoint
@@ -512,7 +909,9 @@ mod tests {
         );
         assert!(endpoint.attached.lock().unwrap().is_none());
         let (origin, _driver) = moq_net::origin::Producer::new(Default::default());
-        let first = attach_to_origin(-98766, origin.clone()).await.unwrap();
+        let first = attach_to_origin(-98766, origin.clone(), Default::default())
+            .await
+            .unwrap();
         let url = endpoint.connect_with(|| Ok(first)).unwrap();
         assert_eq!(
             endpoint
@@ -524,7 +923,9 @@ mod tests {
         first.stopped.cancel();
         first.task.as_mut().unwrap().await.unwrap();
         *endpoint.attached.lock().unwrap() = Some((url, first));
-        let second = attach_to_origin(-98766, origin).await.unwrap();
+        let second = attach_to_origin(-98766, origin, Default::default())
+            .await
+            .unwrap();
         let expected = second.0.clone();
         assert_eq!(endpoint.connect_with(|| Ok(second)).unwrap(), expected);
         attachment.finish().await.unwrap();
@@ -550,7 +951,9 @@ mod tests {
         )
         .unwrap();
         let (origin, _driver) = moq_net::origin::Producer::new(Default::default());
-        let (url, attachment) = attach_to_origin(-98768, origin).await.unwrap();
+        let (url, attachment) = attach_to_origin(-98768, origin, Default::default())
+            .await
+            .unwrap();
         let mut config = OutputConfig::new(320, 180, 25, 48000);
         config
             .video_options
@@ -651,7 +1054,9 @@ mod tests {
         use tokio::{io::AsyncWriteExt, net::TcpStream};
         let (origin, _driver) = moq_net::origin::Producer::new(Default::default());
         let channel = -98765;
-        let (url, attachment) = attach_to_origin(channel, origin).await.unwrap();
+        let (url, attachment) = attach_to_origin(channel, origin, Default::default())
+            .await
+            .unwrap();
         let address = url
             .strip_prefix("tcp://")
             .unwrap()
