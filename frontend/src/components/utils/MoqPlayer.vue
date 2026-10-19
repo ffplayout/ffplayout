@@ -79,6 +79,21 @@ onMounted(async () => {
         await Promise.all([import('@moq/watch/element'), import('@moq/watch/ui')])
         if (disposed || !host.value) return
         const ui = document.createElement('moq-watch-ui')
+        // The library renders this button inside its shadow root without a CSS part.
+        const buttonStyle = document.createElement('style')
+        buttonStyle.textContent = `
+            .center-play {
+                width: 3.5rem;
+                height: 3.5rem;
+                background: #313131;
+            }
+            .center-play svg { width: 1.5rem; height: 1.5rem; }
+            .center-play:hover {
+                background: #414141;
+                box-shadow: 0 0.5rem 2rem #0008;
+            }
+        `
+        ui.shadowRoot?.append(buttonStyle)
         player = document.createElement('moq-watch')
         const canvas = document.createElement('canvas')
         canvas.addEventListener('click', () => {

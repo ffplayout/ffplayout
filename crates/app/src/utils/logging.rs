@@ -20,6 +20,7 @@ use chrono_tz::Tz;
 use flexi_logger::{
     Age, Cleanup, Criterion, DeferredNow, FileSpec, Level, LogSpecification, Logger, Naming,
     WriteMode,
+    filter::{LogLineFilter, LogLineWriter},
     writers::{FileLogWriter, LogWriter},
 };
 use log::{kv::Value, *};
@@ -579,6 +580,35 @@ pub fn log_file_path() -> PathBuf {
     log_path
 }
 
+struct MoqWebSocketLogFilter {
+    level: LevelFilter,
+}
+
+impl LogLineFilter for MoqWebSocketLogFilter {
+    fn write(
+        &self,
+        now: &mut DeferredNow,
+        record: &Record,
+        writer: &dyn LogLineWriter,
+    ) -> io::Result<()> {
+        if record.level() != Level::Error
+            || record.target() != "moq_relay::websocket"
+            || record.args().to_string().trim() != "error=transport: connection closed"
+        {
+            return writer.write(now, record);
+        }
+
+        // The relay's instrumented handler logs even an ordinary client close
+        // as an error. Only this exact event follows the application's DEBUG
+        // verbosity; other relay logs retain their module-level filtering.
+        if self.level >= LevelFilter::Debug {
+            writer.write(now, &record.to_builder().level(Level::Debug).build())?;
+        }
+
+        Ok(())
+    }
+}
+
 /// Initialize our logging, to have:
 ///
 /// - default file and mail logger
@@ -635,12 +665,15 @@ pub fn init_logging(
         "moq_noq_udp",
         "moq_sock",
         "moq_tokio",
+        "tungstenite",
         "web_transport_moq",
     ] {
         builder.module(module, log_level.min(LevelFilter::Error));
     }
 
-    let mut logger = Logger::with(builder.build()).write_mode(WriteMode::Async);
+    let mut logger = Logger::with(builder.build())
+        .filter(Box::new(MoqWebSocketLogFilter { level: log_level }))
+        .write_mode(WriteMode::Async);
 
     if ARGS.log_to_console {
         logger = logger.log_to_writer(Box::new(LogConsole::with_notifier(mail_queues)));
@@ -737,12 +770,129 @@ pub async fn log_middleware(real_ip: RealIp, req: Request<Body>, next: Next) -> 
 
 #[cfg(test)]
 mod tests {
-    use log::{Level, Record};
+    use std::cell::RefCell;
+
+    use flexi_logger::{
+        DeferredNow,
+        filter::{LogLineFilter, LogLineWriter},
+    };
+    use log::{Level, LevelFilter, Record};
 
     use super::{
-        LogConsole, cpu_bench_line_count, explicitly_targets_console, format_level, html_to_ansi,
-        record_channel,
+        LogConsole, MoqWebSocketLogFilter, cpu_bench_line_count, explicitly_targets_console,
+        format_level, html_to_ansi, record_channel,
     };
+
+    type CapturedLog = (Level, String, String, Option<i32>);
+
+    #[derive(Default)]
+    struct CapturedLogs(RefCell<Vec<CapturedLog>>);
+
+    impl LogLineWriter for CapturedLogs {
+        fn write(&self, _: &mut DeferredNow, record: &Record) -> std::io::Result<()> {
+            self.0.borrow_mut().push((
+                record.level(),
+                record.target().to_string(),
+                record.args().to_string(),
+                record_channel(record),
+            ));
+
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn only_the_exact_moq_websocket_close_error_becomes_debug() {
+        let filter = MoqWebSocketLogFilter {
+            level: LevelFilter::Debug,
+        };
+        let captured = CapturedLogs::default();
+        let metadata = ("channel", 7_i64);
+        let close = Record::builder()
+            .target("moq_relay::websocket")
+            .level(Level::Error)
+            .key_values(&metadata)
+            .args(format_args!("error=transport: connection closed"))
+            .build();
+        filter
+            .write(&mut DeferredNow::new(), &close, &captured)
+            .unwrap();
+        assert_eq!(
+            captured.0.borrow()[0],
+            (
+                Level::Debug,
+                "moq_relay::websocket".to_string(),
+                "error=transport: connection closed".to_string(),
+                Some(7),
+            )
+        );
+
+        for (target, message, level) in [
+            (
+                "moq_relay::websocket",
+                "error=transport: connection reset",
+                Level::Error,
+            ),
+            (
+                "moq_relay::websocket",
+                "error=transport: connection closed unexpectedly",
+                Level::Error,
+            ),
+            (
+                "ffplayout::moq",
+                "error=transport: connection closed",
+                Level::Error,
+            ),
+            (
+                "moq_relay::websocket",
+                "error=transport: connection closed",
+                Level::Warn,
+            ),
+        ] {
+            captured.0.borrow_mut().clear();
+            filter
+                .write(
+                    &mut DeferredNow::new(),
+                    &Record::builder()
+                        .target(target)
+                        .level(level)
+                        .args(format_args!("{message}"))
+                        .build(),
+                    &captured,
+                )
+                .unwrap();
+            assert_eq!(captured.0.borrow()[0].0, level);
+            assert_eq!(captured.0.borrow()[0].2, message);
+        }
+    }
+
+    #[test]
+    fn demoted_moq_close_respects_application_verbosity() {
+        let close = Record::builder()
+            .target("moq_relay::websocket")
+            .level(Level::Error)
+            .args(format_args!("error=transport: connection closed "))
+            .build();
+
+        for level in [
+            LevelFilter::Off,
+            LevelFilter::Error,
+            LevelFilter::Warn,
+            LevelFilter::Info,
+            LevelFilter::Debug,
+            LevelFilter::Trace,
+        ] {
+            let captured = CapturedLogs::default();
+            MoqWebSocketLogFilter { level }
+                .write(&mut DeferredNow::new(), &close, &captured)
+                .unwrap();
+            assert_eq!(
+                captured.0.borrow().len(),
+                usize::from(level >= LevelFilter::Debug),
+                "{level:?}",
+            );
+        }
+    }
 
     #[test]
     fn shared_console_preserves_messages_between_benchmark_updates() {

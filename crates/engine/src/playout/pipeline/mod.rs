@@ -398,7 +398,7 @@ pub(super) fn play<O: FrameOutput>(
         audio_packets.close();
     }
 
-    log::debug!(channel = cfg.channel_id.unwrap_or_default(); r#"<span class="log-gray">[Input Pipeline]</span> generation=<span class="log-number">{generation}</span> started video=<span class="log-addr">{has_video}</span> audio=<span class="log-addr">{}</span>"#, plan.has_audio);
+    log::trace!(channel = cfg.channel_id.unwrap_or_default(); r#"<span class="log-gray">[Input Pipeline]</span> generation=<span class="log-number">{generation}</span> started video=<span class="log-addr">{has_video}</span> audio=<span class="log-addr">{}</span>"#, plan.has_audio);
     let diagnostics_handle = output.input_diagnostics_handle();
     let result = thread::scope(|scope| -> Result<()> {
         let _cancel_guard = CancelOnDrop(&control);
@@ -456,7 +456,7 @@ pub(super) fn play<O: FrameOutput>(
         control.cancel();
         result
     });
-    log::debug!(channel = cfg.channel_id.unwrap_or_default(); r#"<span class="log-gray">[Input Pipeline]</span> generation=<span class="log-number">{generation}</span> stopped"#);
+    log::trace!(channel = cfg.channel_id.unwrap_or_default(); r#"<span class="log-gray">[Input Pipeline]</span> generation=<span class="log-number">{generation}</span> stopped"#);
 
     result
 }

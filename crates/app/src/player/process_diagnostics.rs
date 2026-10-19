@@ -16,7 +16,11 @@ use tokio::{
     time::{Instant, Interval, MissedTickBehavior, interval_at},
 };
 
+mod allocator;
+
 use crate::{player::utils::Media, utils::config::ProcessMode};
+
+use allocator::AllocatorMemory;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum SourceKind {
@@ -80,6 +84,7 @@ struct Snapshot {
     rss: u64,
     delta: Option<i128>,
     pss: ProportionalMemory,
+    allocator: AllocatorMemory,
     threads: Option<usize>,
     uptime: u64,
     clips: u64,
@@ -251,6 +256,7 @@ async fn sample(
             rss,
             delta,
             pss,
+            allocator: allocator::sample(),
             threads,
             uptime,
             clips: state.clips,
@@ -265,7 +271,7 @@ async fn sample(
 
     match result {
         Ok(Some(snapshot)) => debug!(channel = channel;
-            r#"<span class="log-gray">[Process Diagnostics]</span> scope=<span class="log-addr">process</span> channel=<span class="log-number">{channel}</span> event=<span class="log-addr">{event}</span> clip=<span class="log-number">{}</span> uptime_s=<span class="log-number">{}</span> cpu_percent=<span class="log-number">{}</span> cpu_window_s=<span class="log-number">{}</span> rss_bytes=<span class="log-number">{}</span> rss_delta_bytes=<span class="log-number">{}</span> pss_bytes=<span class="log-number">{}</span> pss_anon_bytes=<span class="log-number">{}</span> pss_file_bytes=<span class="log-number">{}</span> threads=<span class="log-number">{}</span> live=<span class="log-addr">{}</span> listener=<span class="log-number">{}</span> source=<span class="log-addr">{}</span>"#,
+            r#"<span class="log-gray">[Process Diagnostics]</span> scope=<span class="log-addr">process</span> channel=<span class="log-number">{channel}</span> event=<span class="log-addr">{event}</span> clip=<span class="log-number">{}</span> uptime_s=<span class="log-number">{}</span> cpu_percent=<span class="log-number">{}</span> cpu_window_s=<span class="log-number">{}</span> rss_bytes=<span class="log-number">{}</span> rss_delta_bytes=<span class="log-number">{}</span> pss_bytes=<span class="log-number">{}</span> pss_anon_bytes=<span class="log-number">{}</span> pss_file_bytes=<span class="log-number">{}</span> glibc_arena_bytes=<span class="log-number">{}</span> glibc_used_bytes=<span class="log-number">{}</span> glibc_free_bytes=<span class="log-number">{}</span> glibc_mmap_bytes=<span class="log-number">{}</span> threads=<span class="log-number">{}</span> live=<span class="log-addr">{}</span> listener=<span class="log-number">{}</span> source=<span class="log-addr">{}</span>"#,
             snapshot.clips, snapshot.uptime,
             snapshot.cpu_percent.map_or_else(|| "unavailable".to_string(), |value| format!("{value:.2}")),
             snapshot.cpu_window.map_or_else(|| "unavailable".to_string(), |value| format!("{:.3}", value.as_secs_f64())),
@@ -274,6 +280,10 @@ async fn sample(
             snapshot.pss.total.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
             snapshot.pss.anonymous.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
             snapshot.pss.file.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
+            snapshot.allocator.arena.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
+            snapshot.allocator.used.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
+            snapshot.allocator.free.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
+            snapshot.allocator.mmap.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
             snapshot.threads.map_or_else(|| "unavailable".to_string(), |value| value.to_string()),
             active, listener.map_or_else(|| "none".to_string(), |value| value.to_string()), snapshot.source.as_str()),
         _ => {

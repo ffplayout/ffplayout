@@ -398,3 +398,93 @@ of producing catch-up measurements. Process inspection runs outside the
 async executor on blocking workers, and no measurements run unless diagnostics
 are enabled and DEBUG logging is active. Existing periodic development metrics
 remain independent.
+
+### Linux allocator diagnostics
+
+On Linux with glibc, the same `[Process Diagnostics]` records additionally report:
+
+| Field | Meaning |
+| --- | --- |
+| `glibc_arena_bytes` | Arena space managed by glibc, including used and free blocks. |
+| `glibc_used_bytes` | Arena bytes glibc accounts as in use (`uordblks`), excluding the separate mmap counter. |
+| `glibc_free_bytes` | Free blocks retained inside those arenas (`fordblks`). |
+| `glibc_mmap_bytes` | Allocator-managed mmap allocations (`hblkhd`), separate from arena space. |
+
+These counters use `mallinfo2()`, available since glibc 2.33. The symbol is resolved
+at runtime so older installations can still start; unsupported platforms,
+missing symbols and fully static builds that do not export it report
+`unavailable`. No extra package is required for these counters. Sampling uses
+the existing blocking diagnostics worker, only with `--process-diagnostics`
+and DEBUG logging. It runs at clip/live events and every five minutes; no new
+timer, background thread, allocator tuning or forced memory release is added.
+
+Compare the counters after warmup and at equivalent points in repeated workloads:
+growing `glibc_free_bytes` with stable used/mmap counters supports allocator
+retention; growing used/mmap counters warrants investigating retained allocations.
+`glibc_used_bytes + glibc_mmap_bytes` is an allocator-accounted used total, **not**
+an exact count of live application objects. Thread caches can still count as used;
+allocator overhead is included. Free bytes are not necessarily immediately
+returnable to the OS. Arena/mmap counters are not RSS or PSS and omit direct
+mappings, stacks and allocations serviced by replacement allocators. When using
+jemalloc/tcmalloc or another replacement allocator, do not interpret these as
+whole-process heap measurements. The counters are observations, not a leak verdict.
+
+See the glibc [`mallinfo2` implementation](https://github.com/bminor/glibc/blob/glibc-2.33/malloc/malloc.c)
+for its arena accounting and the [allocation statistics manual](https://man7.org/linux/man-pages/man3/mallinfo.3.html)
+for field definitions.
+
+### Linux heap profiles
+
+Use `scripts/heap-profile.sh` to launch a separate reproduction under
+[Heaptrack](https://github.com/KDE/heaptrack). Install your distribution's
+`heaptrack` package first; analysis can be done on a different machine with
+`heaptrack_gui`. Use a release build with symbols (`scripts/build.sh --profiling …`
+or `CARGO_PROFILE_RELEASE_DEBUG=1 CARGO_PROFILE_RELEASE_STRIP=false cargo build --release -p ffplayout`).
+The executable must dynamically link its allocator for Heaptrack's preload
+interception; statically linked FFmpeg libraries are fine. Keep the exact binary
+and any separate debug symbols/shared libraries used during recording.
+
+From the repository root, with a dedicated test database and output destination:
+
+```sh
+scripts/heap-profile.sh --output-dir /tmp/ffplayout-heap -- \
+    ./target/release/ffplayout \
+    --db /path/to/test.db --channel 1 --foreground
+```
+
+The script preserves the working directory and argument boundaries, enables
+`FFPLAYOUT_PROCESS_DIAGNOSTICS=true`, and defaults to DEBUG console logging with
+timestamps. Explicit CLI logging options are preserved; selecting a level above
+DEBUG disables the process measurements. A unique private directory contains
+the compressed `heaptrack.gz` or `heaptrack.zst` profile, combined `playout.log`,
+command, binary SHA-256, system/tool version and exit code. It never overwrites
+an earlier recording. The application's original umask is preserved, so HLS and
+other application outputs retain their normal permissions. With no application
+arguments, the script explicitly preserves ffplayout's default listener at
+`127.0.0.1:8787` (or the `LISTEN` environment value).
+It does not copy or anonymize the database/configuration;
+the command you supply runs normally with those paths and outputs. Avoid running
+a second instance against an active service's database, listeners or destinations.
+
+Stop the foreground test normally with Ctrl+C when enough clip repetitions have
+been collected. The log reader remains active while Heaptrack handles SIGINT,
+and the script waits for recording finalization before saving the exit code.
+There is no automatic duration, service restart or attachment to
+existing processes. For a service, use a separately scheduled reproduction with
+the same user/environment and workload. Runtime attachment is deliberately not
+provided: upstream Heaptrack flags injection/detachment as unstable. This script
+is a diagnostic tool, not a periodic restart mechanism for production.
+
+Open the resulting file, using its actual `.gz` or `.zst` suffix:
+
+```sh
+heaptrack_gui /tmp/ffplayout-heap/ffplayout-TIMESTAMP-SUFFIX/heaptrack.zst
+```
+
+Compare retained allocations and their call stacks across repeated sequences
+after warmup. Allocations still present when a running stream is interrupted
+include legitimate decoder/encoder buffers; an end-of-profile “leak” count alone
+is not proof of a leak. Profiling adds CPU/memory overhead and can produce large
+files over hours, so check available disk space and use bounded reproductions.
+The script does not change kernel security settings, install packages or run sudo.
+On macOS, use Instruments Allocations; this helper explicitly supports Linux only.
