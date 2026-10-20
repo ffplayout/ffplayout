@@ -101,6 +101,28 @@ running before removing the leftover lock directory (its `pid` file records the
 owning shell).
 Image layers and the container engine's separate build cache are not pruned.
 
+### Experimental transcription example
+
+Whisper and ONNX Runtime are only enabled by the engine's optional
+`transcription-example` feature. The normal ffplayout build does not include
+them. To compile the desktop transcription example:
+
+```sh
+cargo build --locked -p ff-engine --example live_transcription --features transcription-example
+```
+
+Workspace checks with `--all-features --all-targets` also build this example.
+On Apple Silicon, `.cargo/config.toml` registers a project-scoped CMake hook
+for whisper.cpp. It checks native SVE compiler support before allowing GGML's
+forced-SVE runtime probe, which can hang at its first SVE instruction on
+[affected macOS systems](https://github.com/ggml-org/llama.cpp/pull/20064).
+Other ARM feature checks, including DotProd, I8MM and SME, remain enabled.
+The hook does nothing for other targets or CMake projects.
+
+`ort` is pinned to `2.0.0-rc.12` for this feature because the currently used
+`transcribe-rs` expects that API. Later ORT prereleases changed
+`Session::builder`; review this pin when updating the transcription dependency.
+
 ## CPU profiling with perf (Linux)
 
 Install your distribution's `perf` package matching the running kernel. Build
