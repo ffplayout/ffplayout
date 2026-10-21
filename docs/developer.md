@@ -447,6 +447,28 @@ async executor on blocking workers, and no measurements run unless diagnostics
 are enabled and DEBUG logging is active. Existing periodic development metrics
 remain independent.
 
+### Media analysis and clip resource lifetimes
+
+Metadata probes read stream parameters without opening additional decoders.
+Playlist validation reuses probes from preceding entries in the same validation
+run; external audio is matched by its own source path. A new validation run
+starts without probes from the previous playlist. Fresh and reused probes apply
+the same duration correction while preserving explicit clip boundaries.
+
+Background silence checks run one at a time per process. Channel restarts and
+shutdown cancel the validator as well as permanent stops. Cancellation of a
+validator also interrupts its FFmpeg input/seek/read operations and is checked
+between packets. The analysis slot is released by the blocking worker itself,
+so aborting its async caller cannot start overlapping replacement analyses.
+This may serialize validation across channels; it does not serialize playback.
+
+Playback input workers are scoped to a clip generation and joined before the
+next generation starts. Packet/frame queues and decoder/filter state then drop
+with that generation. Output encoders and their bounded queues deliberately
+remain alive across clips. A flat live heap with rising RSS still needs to be
+distinguished from retained references; these lifecycle guarantees alone do
+not prove a stable RSS over days.
+
 ### Linux allocator diagnostics
 
 On Linux with glibc, the same `[Process Diagnostics]` records additionally report:

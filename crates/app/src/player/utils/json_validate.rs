@@ -75,11 +75,19 @@ async fn check_media(
         && config.logging.detect_silence
         && let Some(audio_source) = silence_check_source(&node)
     {
-        match detect_audio_silence(audio_source, node.seek, node.out - node.seek).await {
+        match detect_audio_silence(
+            audio_source,
+            node.seek,
+            node.out - node.seek,
+            cancel_token.clone(),
+        )
+        .await
+        {
             Ok(result) if result.silent => {
                 error_list.push("Audio is totally silent!".to_string());
             }
             Ok(_) => {}
+            Err(_) if cancel_token.is_cancelled() => return Ok(()),
             Err(error) => {
                 error!(channel = id;
                     "<span class=\"log-gray\">[Validation]</span> Silence detection failed on position <span class=\"log-number\">{pos}</span> - {}: <span class=\"log-addr\">{}</span>: {error}",
@@ -140,6 +148,28 @@ fn silence_check_source(node: &Media) -> Option<&str> {
         Some(&node.source)
     } else {
         None
+    }
+}
+
+// Reuse only preceding entries in this validation run. The shared playback
+// list can still belong to an older playlist while a new validator starts.
+fn reuse_playlist_probes(item: &mut Media, list: &[Media]) {
+    if item.probe.is_none()
+        && let Some(cached) = list
+            .iter()
+            .find(|node| node.source == item.source && node.probe.is_some())
+    {
+        item.probe.clone_from(&cached.probe);
+    }
+
+    if !item.audio.is_empty()
+        && item.probe_audio.is_none()
+        && let Some(cached) = list
+            .iter()
+            .find(|node| node.audio == item.audio && node.probe_audio.is_some())
+    {
+        item.probe_audio.clone_from(&cached.probe_audio);
+        item.duration_audio = cached.duration_audio;
     }
 }
 
@@ -213,7 +243,9 @@ pub async fn validate_playlist(
     debug!(channel = id; "Validate playlist from: <span class=\"log-number\">{date}</span>");
     let timer = Instant::now();
 
-    for (index, item) in playlist.program.iter_mut().enumerate() {
+    for index in 0..playlist.program.len() {
+        let (validated, remaining) = playlist.program.split_at_mut(index);
+        let item = &mut remaining[0];
         if cancel_token.is_cancelled() || !is_alive.load(Ordering::SeqCst) {
             return;
         }
@@ -233,6 +265,8 @@ pub async fn validate_playlist(
                     *path = new_path.to_string_lossy().to_string();
                 }
             }
+
+            reuse_playlist_probes(item, validated);
 
             if item.audio.is_empty() {
                 if let Err(e) = item.add_probe(false).await {
@@ -363,6 +397,78 @@ mod tests {
                 .into_iter()
                 .collect(),
         }
+    }
+
+    #[test]
+    fn new_validation_does_not_reuse_the_previous_playlists_probe() {
+        crate::utils::time_machine::with_mock_time("2026-10-21T00:00:01+00:00", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../tests_assets/storage/media_mix/with_audio.mp4");
+                    let source = path.to_string_lossy().into_owned();
+                    let expected = ff_engine::probe_media(&source).unwrap();
+                    let item = Media {
+                        source,
+                        duration: 999.0,
+                        out: 10.0,
+                        ..Media::default()
+                    };
+                    let mut old = item.clone();
+                    old.probe = Some(probe(Some(999.0), Some(999.0)));
+                    let current_list = std::sync::Arc::new(tokio::sync::Mutex::new(vec![old]));
+                    let mut config = super::PlayoutConfig::default();
+                    config.channel.timezone = Some(chrono_tz::UTC);
+                    config.playlist.start_sec = Some(0.0);
+                    config.playlist.length_sec = Some(30.0);
+                    config.logging.detect_silence = false;
+                    config.processing.vtt_enable = false;
+                    config.general.validate = false;
+                    let playlist = super::JsonPlaylist {
+                        date: "2026-10-21".to_string(),
+                        program: vec![item.clone(), item.clone(), item],
+                        ..super::JsonPlaylist::default()
+                    };
+                    super::validate_playlist(
+                        config,
+                        current_list.clone(),
+                        playlist,
+                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                        tokio_util::sync::CancellationToken::new(),
+                    )
+                    .await;
+                    let list = current_list.lock().await;
+                    assert_eq!(list[0].probe.as_ref(), Some(&expected));
+                    assert_eq!(list[0].duration, expected.format.duration.unwrap());
+                });
+        });
+    }
+
+    #[test]
+    fn repeated_sources_reuse_probes_but_external_audio_keeps_its_own_identity() {
+        let source = Media {
+            source: "video.mp4".to_string(),
+            audio: "first.wav".to_string(),
+            probe: Some(probe(Some(20.0), Some(20.0))),
+            probe_audio: Some(probe(None, Some(10.0))),
+            duration_audio: 10.0,
+            ..Media::default()
+        };
+        let mut repeated = Media {
+            source: source.source.clone(),
+            audio: "second.wav".to_string(),
+            ..Media::default()
+        };
+        super::reuse_playlist_probes(&mut repeated, std::slice::from_ref(&source));
+        assert_eq!(repeated.probe, source.probe);
+        assert!(repeated.probe_audio.is_none());
+        repeated.audio.clone_from(&source.audio);
+        super::reuse_playlist_probes(&mut repeated, std::slice::from_ref(&source));
+        assert_eq!(repeated.probe_audio, source.probe_audio);
+        assert_eq!(repeated.duration_audio, 10.0);
     }
 
     #[test]
