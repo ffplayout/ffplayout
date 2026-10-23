@@ -600,6 +600,149 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shared_hls_and_moq_accept_video_lookahead_across_clip_changes() {
+        let directory =
+            std::env::temp_dir().join(format!("moq-lookahead-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let (origin, driver) = moq_net::origin::Producer::new(Default::default());
+        let observer = origin.consume();
+        let driver = tokio::spawn(moq_net::time::run(driver));
+        let endpoint = Arc::new(LocalEndpoint {
+            endpoint: Endpoint {
+                channel: -98795,
+                audio_level: Default::default(),
+                runtime: tokio::runtime::Handle::current(),
+                attached: Mutex::new(None),
+            },
+            origin,
+            connections: AtomicUsize::new(0),
+            disconnects: AtomicUsize::new(0),
+        });
+        let mut config = ff_engine::OutputConfig::new(1280, 720, 25, 48_000);
+        config
+            .video_options
+            .insert("preset".into(), "faster".into());
+        config.video_options.insert("tune".into(), "none".into());
+        config.video_options.insert("crf".into(), "23".into());
+        let hls = ff_engine::OutputDestination {
+            id: 1,
+            config: config.clone(),
+            target: ff_engine::OutputTarget::Hls {
+                playlist: directory.join("index.m3u8").to_string_lossy().into_owned(),
+                variants: vec![],
+                subtitle: None,
+                segment_seconds: 2,
+                list_size: 6,
+            },
+        };
+        let mut moq = config.clone();
+        moq.encoding_source = Some((1, 0));
+        moq.stream_endpoint = Some(endpoint.clone());
+        config.destinations = vec![
+            hls,
+            ff_engine::OutputDestination {
+                id: 5,
+                config: moq,
+                target: ff_engine::OutputTarget::Stream { url: String::new() },
+            },
+        ];
+        let mut worker = tokio::spawn(async move {
+            let status = config.output_status.clone();
+            let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests_assets/storage/media_mix/with_audio.mp4");
+            let playout = ff_engine::AsyncPlayout::open_parallel(config, 1.0)
+                .await
+                .unwrap();
+            for _ in 0..2 {
+                playout
+                    .play_with_timing_logo_fade_rate_and_audio(
+                        media.to_str().unwrap(),
+                        None,
+                        Some(6.0),
+                        None,
+                        None,
+                        Default::default(),
+                        1.0,
+                    )
+                    .await
+                    .unwrap();
+                for id in [1, 5] {
+                    assert_eq!(
+                        status.snapshot()[&id].phase,
+                        "running",
+                        "{:?}",
+                        status.snapshot()[&id]
+                    );
+                }
+            }
+            playout.finish().await.unwrap();
+        });
+        let consumer = tokio::spawn(async move {
+            let broadcast = loop {
+                if let Ok(broadcast) = observer
+                    .request_broadcast("channels/channel--98795.hang")
+                    .await
+                {
+                    break broadcast;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            };
+            let mut counts = tokio::task::JoinSet::new();
+            for name in ["0.video", "1.audio"] {
+                let mut track = broadcast
+                    .track(name)
+                    .unwrap()
+                    .subscribe(None)
+                    .await
+                    .unwrap();
+                counts.spawn(async move {
+                    let mut count = 0;
+                    while let Some(mut group) = track.recv_group().await.unwrap() {
+                        while group.read_frame().await.unwrap().is_some() {
+                            count += 1;
+                        }
+                    }
+                    count
+                });
+            }
+            let mut result = vec![];
+            while let Some(count) = counts.join_next().await {
+                result.push(count.unwrap());
+            }
+            result
+        });
+        if let Ok(result) = tokio::time::timeout(Duration::from_secs(25), &mut worker).await {
+            result.unwrap();
+        } else {
+            // Aborting this async owner drops AsyncPlayout, which requests
+            // engine shutdown. No non-cancellable Tokio blocking task remains.
+            worker.abort();
+            let _ = worker.await;
+            consumer.abort();
+            let _ = consumer.await;
+            driver.abort();
+            let _ = driver.await;
+            panic!("lookahead playout did not finish within 25 seconds");
+        }
+        let counts = tokio::time::timeout(Duration::from_secs(3), consumer)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            counts.iter().all(|count| *count > 200),
+            "received frame counts: {counts:?}"
+        );
+        assert_eq!(endpoint.connections.load(Ordering::SeqCst), 1);
+        assert!(
+            std::fs::read_to_string(directory.join("index.m3u8"))
+                .unwrap()
+                .contains(".ts")
+        );
+        driver.abort();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn hls_and_moq_can_toggle_independently_with_a_shared_encoder() {
         use ff_engine::{
             HlsSubtitle, LogoFade, OutputConfig, OutputDestination, OutputTarget, Playout,

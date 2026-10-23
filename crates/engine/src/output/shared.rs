@@ -84,7 +84,10 @@ impl Sink {
             QueueLimits {
                 items: 512,
                 bytes: 32 * 1024 * 1024,
-                duration_us: 1_000_000,
+                // Encoded timestamps include codec lookahead. A media-span
+                // limit mistakes that delay for backlog; count and bytes bound
+                // this destination independently of the encoder's latency.
+                duration_us: i64::MAX,
             },
             control.clone(),
         );

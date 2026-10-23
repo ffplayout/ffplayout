@@ -85,6 +85,12 @@ and bounded packet queue, publishing frames directly without a container or loca
 TCP connection. After media drains, its auxiliary meter task stops. Dropping an
 unfinished output cancels it and joins its workers.
 
+The compressed delivery and mux queues each retain hard limits of 512 packets and
+32 MiB. Their media timestamp span is not a backlog limit: audio and video can be
+separated by encoder lookahead. Raw input/processing queues retain their time
+budgets. Paced destinations reconsider pending packets when earlier DTS arrives,
+so future audio does not hold up newly encoded video.
+
 ## Null (CLI only)
 
 Use `--output null` to run the normal stream encoding pipeline in real time

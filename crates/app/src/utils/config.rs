@@ -1049,6 +1049,15 @@ impl Default for Output {
 }
 
 impl Output {
+    fn encoder_video_options(&self) -> BTreeMap<String, String> {
+        let mut options = self.video_options.clone();
+        if self.mode == OutputMode::Moq && self.video_codec == "libx264" {
+            options.insert("tune".into(), "zerolatency".into());
+        }
+
+        options
+    }
+
     /// Resolve the CLI-only sink without exposing it to config serialization or the DB.
     pub(crate) fn for_playout(&self) -> Self {
         let mut output = self.clone();
@@ -1458,7 +1467,10 @@ impl PlayoutConfig {
     /// Apply inherited encoder settings while retaining the destination's transport and muxer.
     pub fn effective_output(&self, output: &Output) -> Result<Output, String> {
         if output.encoding_source_id.is_none() {
-            return Ok(output.clone());
+            let mut effective = output.clone();
+            effective.video_options = output.encoder_video_options();
+
+            return Ok(effective);
         }
         let (source, index) = self.encoding_source(output)?;
         let mut effective = output.clone();
@@ -1466,7 +1478,7 @@ impl PlayoutConfig {
         effective.height = source.height;
         effective.inherit_resolution = source.inherit_resolution;
         effective.video_codec = source.video_codec.clone();
-        effective.video_options = source.video_options.clone();
+        effective.video_options = source.encoder_video_options();
         effective.audio_codec = source.audio_codec.clone();
         effective.audio_options = source.audio_options.clone();
         effective.audio_bitrate = source.audio_bitrate;
@@ -2283,6 +2295,37 @@ mod output_tests {
         assert!(output.validate().is_ok());
         output.width = 0;
         assert!(output.validate().is_err());
+    }
+
+    #[test]
+    fn moq_owns_low_latency_tuning_and_shared_outputs_keep_the_owner_settings() {
+        let mut moq = output(OutputMode::Moq);
+        moq.id = 1;
+        moq.video_options.insert("tune".into(), "none".into());
+        let mut hls = output(OutputMode::HLS);
+        hls.id = 2;
+        hls.video_options.insert("tune".into(), "none".into());
+        let mut config = PlayoutConfig {
+            output: moq.clone(),
+            outputs: vec![hls.clone()],
+            ..Default::default()
+        };
+        assert_eq!(
+            config.effective_output(&moq).unwrap().video_options["tune"],
+            "zerolatency"
+        );
+        moq.encoding_source_id = Some(2);
+        moq.encoding_variant = hls.hls_playlist_name.clone();
+        assert_eq!(
+            config.effective_output(&moq).unwrap().video_options["tune"],
+            "none"
+        );
+        hls.encoding_source_id = Some(1);
+        config.outputs = vec![hls.clone()];
+        assert_eq!(
+            config.effective_output(&hls).unwrap().video_options["tune"],
+            "zerolatency"
+        );
     }
 
     #[test]

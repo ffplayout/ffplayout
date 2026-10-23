@@ -38,10 +38,13 @@ Extending transport capabilities does not require a database migration.
 
 Browser codec support, GOP length, B-frames and encoder buffering affect playback
 and latency. MoQ does not start another playlist player or ingest listener.
-Use low-latency encoder settings: a long encoder lookahead can let audio run
-ahead of video far enough to exceed the bounded destination queue. Direct frame
-publication retains those queue limits; it does not mask encoder delay with an
-unbounded buffer.
+An independent MoQ output using `libx264` always uses `tune=zerolatency`; the Tune
+selector is omitted for that encoder. When MoQ reuses another output's encoding,
+it keeps that source's settings, including lookahead and B-frames. Such profiles
+add startup/playback latency. Encoded delivery queues are bounded by packet count
+and bytes rather than an audio/video timestamp span, so encoder delay alone does
+not cause a queue-capacity failure. A genuinely blocked destination can still
+exhaust those bounds and reconnect independently.
 
 ## Experimental demand-based publication
 
