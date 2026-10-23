@@ -13,9 +13,125 @@ use crate::utils::pipeline_queue::{PipelineControl, PipelineQueue};
 use super::{
     encoded::EncodedOutput,
     encoding::EncodedPacket,
+    mux::MuxOutput,
     parallel::{Message, OutputDestination, destination_mux},
     shared::Delivery,
 };
+
+enum DestinationOutput {
+    Container(Box<EncodedOutput>),
+    Native(MuxOutput),
+}
+
+impl DestinationOutput {
+    fn open(
+        destination: &OutputDestination,
+        parameters: &[(codec::Parameters, codec::Parameters)],
+    ) -> Result<Self> {
+        if let Some(endpoint) = &destination.config.stream_endpoint {
+            let streams = parameters
+                .iter()
+                .flat_map(|(video, audio)| [video, audio])
+                .map(|parameters| {
+                    // FFmpeg owns this initialization until parameters are dropped. Copy once
+                    // for the connection; per-frame delivery never exposes FFmpeg pointers.
+                    let initialization = unsafe {
+                        let raw = &*parameters.as_ptr();
+                        if raw.extradata.is_null() || raw.extradata_size <= 0 {
+                            Vec::new()
+                        } else {
+                            std::slice::from_raw_parts(raw.extradata, raw.extradata_size as usize)
+                                .to_vec()
+                        }
+                    };
+                    crate::EncodedStream {
+                        codec: parameters.id().name().into(),
+                        initialization,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let sink = endpoint.connect_packets(&streams)?;
+
+            return Ok(Self::Native(MuxOutput::packets(
+                sink,
+                streams.len(),
+                destination.config.channel_id,
+            )?));
+        }
+        let (path, format) = destination_mux(destination)?;
+
+        Ok(Self::Container(Box::new(EncodedOutput::open_packets(
+            &path,
+            &destination.config,
+            format,
+            parameters.to_vec(),
+        )?)))
+    }
+
+    fn set_playout_rate(&mut self, rate: f64) {
+        match self {
+            Self::Container(output) => output.set_playout_rate(rate),
+            Self::Native(output) => output.set_rate(rate),
+        }
+    }
+
+    fn delivery_state(&self) -> (bool, Option<String>) {
+        match self {
+            Self::Container(output) => output.delivery_state(),
+            Self::Native(output) => output.delivery_state(),
+        }
+    }
+
+    fn observe_delivery(
+        &self,
+        activity: std::sync::Arc<crate::utils::pipeline_queue::PipelineActivity>,
+    ) {
+        match self {
+            Self::Container(output) => output.observe_delivery(activity),
+            Self::Native(output) => output.observe_delivery(activity),
+        }
+    }
+
+    fn handle_encoded_packet(&mut self, mut packet: EncodedPacket) -> Result<()> {
+        match self {
+            Self::Container(output) => output.handle_encoded_packet(packet),
+            Self::Native(output) => {
+                packet.packet.set_stream(packet.stream);
+                packet
+                    .packet
+                    .rescale_ts(packet.time_base, rescale::TIME_BASE);
+                output.write(&mut packet.packet)
+            }
+        }
+    }
+
+    fn write_vtt_subtitles(&mut self, path: &str, start: i64, source: i64) -> Result<()> {
+        match self {
+            Self::Container(output) => output.write_vtt_subtitles(path, start, source),
+            Self::Native(_) => Ok(()),
+        }
+    }
+
+    fn advance_vtt_subtitles(&mut self, position: i64) -> Result<()> {
+        match self {
+            Self::Container(output) => output.advance_vtt_subtitles(position),
+            Self::Native(_) => Ok(()),
+        }
+    }
+
+    fn clear_vtt_subtitles(&mut self) {
+        if let Self::Container(output) = self {
+            output.clear_vtt_subtitles();
+        }
+    }
+
+    fn finish(mut self) -> Result<()> {
+        match self {
+            Self::Container(output) => output.finish(),
+            Self::Native(ref mut output) => output.finish(),
+        }
+    }
+}
 
 const RETRY_INTERVAL: Duration = Duration::from_secs(15);
 const RETRY_WINDOW: Duration = Duration::from_secs(180);
@@ -126,9 +242,8 @@ fn deliver_with_retry(
     let id = destination.id;
     let channel = destination.config.channel_id.unwrap_or_default();
     let status = &destination.config.output_status;
-    let mut output: Option<EncodedOutput> = None;
+    let mut output: Option<DestinationOutput> = None;
     let mut keyframes = Keyframes::default();
-    let mut audio_started = false;
     let mut error = None;
     let mut ready = false;
     let mut exhausted = false;
@@ -157,14 +272,8 @@ fn deliver_with_retry(
             }
         } else if output.is_none() && retry.due(Instant::now()) && !queue.closed() {
             status.set(id, "starting", error.clone());
-            let opened = (|| -> Result<EncodedOutput> {
-                let (path, format) = destination_mux(&destination)?;
-                let mut opened = EncodedOutput::open_packets(
-                    &path,
-                    &destination.config,
-                    format,
-                    parameters.clone(),
-                )?;
+            let opened = (|| -> Result<DestinationOutput> {
+                let mut opened = DestinationOutput::open(&destination, &parameters)?;
                 opened.set_playout_rate(rate);
                 if let Some((ref path, start, source)) = subtitles {
                     opened.write_vtt_subtitles(path, start, source)?;
@@ -184,7 +293,6 @@ fn deliver_with_retry(
                     }
                     interrupted.store(false, Ordering::Release);
                     keyframes = Keyframes::default();
-                    audio_started = false;
                     ready = false;
                     output = Some(opened);
                 }
@@ -199,7 +307,7 @@ fn deliver_with_retry(
 
         let (delivered, failure) = output
             .as_ref()
-            .map(EncodedOutput::delivery_state)
+            .map(DestinationOutput::delivery_state)
             .unwrap_or_default();
         if delivered && !ready {
             ready = true;
@@ -245,17 +353,6 @@ fn deliver_with_retry(
                 Delivery::Packet(packet) => {
                     if let Some(opened) = output.as_mut() {
                         if keyframes.accept(&packet) {
-                            if !audio_started
-                                && packet.stream & 1 == 1
-                                && let Some(pts) = packet.packet.pts()
-                            {
-                                if let Some(endpoint) = &destination.config.stream_endpoint {
-                                    endpoint.audio_started(
-                                        pts.rescale(packet.time_base, rescale::TIME_BASE),
-                                    );
-                                }
-                                audio_started = true;
-                            }
                             opened.handle_encoded_packet(packet)
                         } else {
                             Ok(())
@@ -325,6 +422,66 @@ fn deliver_with_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_packet_failures_reconnect_twice_without_opening_a_muxer() {
+        use std::sync::{Arc, atomic::AtomicUsize};
+        #[derive(Debug, Default)]
+        struct Endpoint {
+            connections: AtomicUsize,
+            fail: Arc<AtomicBool>,
+        }
+        struct Sink(Arc<AtomicBool>);
+        impl crate::PacketSink for Sink {
+            fn write(&mut self, _: crate::EncodedFrame<'_>) -> Result<()> {
+                if self.0.swap(false, Ordering::AcqRel) {
+                    return Err(anyhow!("test native disconnect"));
+                }
+                Ok(())
+            }
+            fn finish(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+        impl crate::OutputEndpoint for Endpoint {
+            fn connect_packets(
+                &self,
+                streams: &[crate::EncodedStream],
+            ) -> Result<Box<dyn crate::PacketSink>> {
+                assert_eq!(streams.len(), 2);
+                assert_eq!(streams[0].codec, "h264");
+                assert_eq!(streams[1].codec, "aac");
+                assert!(!streams[1].initialization.is_empty());
+                self.connections.fetch_add(1, Ordering::SeqCst);
+                Ok(Box::new(Sink(self.fail.clone())))
+            }
+        }
+        let endpoint = Arc::new(Endpoint::default());
+        endpoint.fail.store(true, Ordering::Release);
+        let fixture = Fixture::configured(
+            String::new(),
+            Duration::from_millis(80),
+            Duration::from_secs(2),
+            |destination| {
+                destination.config.stream_endpoint = Some(endpoint.clone());
+            },
+        );
+        fixture.wait("starting");
+        fixture.send_media();
+        fixture.wait("retrying");
+        fixture.wait("starting");
+        fixture.send_media();
+        fixture.wait("running");
+        assert_eq!(endpoint.connections.load(Ordering::SeqCst), 2);
+        endpoint.fail.store(true, Ordering::Release);
+        fixture.send_media();
+        fixture.wait("retrying");
+        fixture.wait("starting");
+        fixture.send_media();
+        fixture.wait("running");
+        assert_eq!(endpoint.connections.load(Ordering::SeqCst), 3);
+        fixture.finish();
+    }
 
     #[test]
     fn retries_are_spaced_and_stop_before_the_three_minute_deadline() {
@@ -538,24 +695,38 @@ mod tests {
     }
 
     #[test]
-    fn endpoint_initialization_failure_is_retried_before_opening_the_muxer() {
+    fn endpoint_initialization_failure_is_retried_before_delivering_packets() {
         #[derive(Debug)]
         struct Endpoint {
             attempts: std::sync::atomic::AtomicUsize,
-            path: String,
+            packets: std::sync::Arc<std::sync::atomic::AtomicUsize>,
         }
-        impl crate::OutputEndpoint for Endpoint {
-            fn connect_url(&self) -> Result<String> {
-                if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
-                    return Err(anyhow!("importer initialization failed"));
-                }
-                Ok(self.path.clone())
+        struct Sink(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+        impl crate::PacketSink for Sink {
+            fn write(&mut self, _: crate::EncodedFrame<'_>) -> Result<()> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+
+            fn finish(&mut self) -> Result<()> {
+                Ok(())
             }
         }
-        let path = std::env::temp_dir().join(format!("endpoint-retry-{}.ts", uuid_for_test()));
+        impl crate::OutputEndpoint for Endpoint {
+            fn connect_packets(
+                &self,
+                _: &[crate::EncodedStream],
+            ) -> Result<Box<dyn crate::PacketSink>> {
+                if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    return Err(anyhow!("publisher initialization failed"));
+                }
+
+                Ok(Box::new(Sink(self.packets.clone())))
+            }
+        }
         let endpoint = std::sync::Arc::new(Endpoint {
             attempts: std::sync::atomic::AtomicUsize::new(0),
-            path: path.to_string_lossy().into_owned(),
+            packets: Default::default(),
         });
         let fixture = Fixture::configured(
             String::new(),
@@ -571,7 +742,7 @@ mod tests {
                 .error
                 .as_ref()
                 .unwrap()
-                .contains("importer initialization")
+                .contains("publisher initialization")
         );
         let deadline = Instant::now() + Duration::from_secs(2);
         while endpoint.attempts.load(Ordering::SeqCst) < 2 {
@@ -582,8 +753,7 @@ mod tests {
         fixture.send_media();
         fixture.wait("running");
         fixture.finish();
-        assert!(std::fs::metadata(&path).unwrap().len() > 188);
-        std::fs::remove_file(path).unwrap();
+        assert!(endpoint.packets.load(Ordering::SeqCst) > 0);
     }
 
     #[test]

@@ -206,10 +206,30 @@ impl OutputStatus {
 /// Resolves or recreates an application-owned transport on each connection attempt.
 /// Called only from the destination's blocking delivery worker.
 pub trait OutputEndpoint: std::fmt::Debug + Send + Sync {
-    fn connect_url(&self) -> Result<String>;
+    fn connect_packets(&self, streams: &[EncodedStream]) -> Result<Box<dyn PacketSink>>;
+
     fn disconnect(&self) {}
-    /// First accepted encoded audio PTS of this connection, before muxer time shifts.
-    fn audio_started(&self, _timestamp_us: i64) {}
+}
+
+/// Codec initialization copied once when connecting a native packet destination.
+pub struct EncodedStream {
+    pub codec: String,
+    pub initialization: Vec<u8>,
+}
+
+/// One complete encoded access unit, borrowed only for the duration of the write.
+pub struct EncodedFrame<'a> {
+    pub stream: usize,
+    pub data: &'a [u8],
+    pub pts_us: i64,
+    pub dts_us: i64,
+    pub duration_us: i64,
+}
+
+/// Application-owned transport; the existing bounded worker owns ordering/pacing.
+pub trait PacketSink: Send {
+    fn write(&mut self, frame: EncodedFrame<'_>) -> Result<()>;
+    fn finish(&mut self) -> Result<()>;
 }
 
 #[derive(Debug, Clone)]
@@ -785,10 +805,7 @@ pub(super) fn destination_mux(destination: &OutputDestination) -> Result<(String
         },
     };
     let path = match &destination.target {
-        OutputTarget::Stream { url } => match &destination.config.stream_endpoint {
-            Some(endpoint) => endpoint.connect_url()?,
-            None => url.clone(),
-        },
+        OutputTarget::Stream { url } => url.clone(),
         OutputTarget::Hls { playlist, .. } => playlist.clone(),
     };
     Ok((path, format))

@@ -42,7 +42,8 @@ use input::live::{LiveEnded, LiveOverrideOutput};
 #[cfg(all(feature = "desktop-base", feature = "tokio"))]
 pub use output::desktop::thread::run_on_main_thread as run_desktop_on_main_thread;
 pub use output::parallel::{
-    OutputDestination, OutputEndpoint, OutputState, OutputStatus, OutputTarget,
+    EncodedFrame, EncodedStream, OutputDestination, OutputEndpoint, OutputState, OutputStatus,
+    OutputTarget, PacketSink,
 };
 pub use output::resolved_variant_playlist_path;
 use output::{FrameOutput, Output, PlaybackStopped};

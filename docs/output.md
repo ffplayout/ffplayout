@@ -76,13 +76,14 @@ describes encoding independently of a recording or transport; the former
 `output/delivery.rs` owns each destination's connection lifecycle; `output/mux.rs`
 owns ordering, pacing and I/O. `output/diagnostics.rs` retains optional primary
 video timing measurements without a Cargo feature. These engine modules do not
-depend on MoQ. The application integrates that transport with its relay, importer
+depend on MoQ. The application integrates that transport with its relay, native packet publisher
 and browser endpoints under `crates/app/src/moq/`.
 
 Normal finish closes producers, drains accepted media, flushes codec tails and
-joins the auxiliary transport workers before the MoQ importer reaches EOF.
-Dropping an unfinished output cancels it and joins its workers. The importer
-also has separate drain and abort paths, with a five-second shutdown deadline.
+joins the auxiliary transport workers. MoQ reuses the same DTS ordering, pacing
+and bounded packet queue, publishing frames directly without a container or local
+TCP connection. After media drains, its auxiliary meter task stops. Dropping an
+unfinished output cancels it and joins its workers.
 
 ## Null (CLI only)
 
@@ -313,12 +314,12 @@ MoQ is always available as mode `moq`. It can be the only output and publishes t
 the `/moq/player?channel=ID` browser player. It currently supports one
 MoQ instance per channel, H.264/H.265 with AAC, and requires `--listen` to start
 the relay. Encoder names are unrestricted in the database; runtime codec
-capabilities reflect what the current MPEG-TS importer supports. AV1 needs an
-import/container path that supports it before it can be enabled.
+capabilities advertise the combinations validated for direct frame publication.
+Additional codecs require encoder-initialization and browser-playback validation.
 
 Private MoQ publication starts on Player demand and stops three minutes after the
 last authenticated relay connection ends. Public MoQ publishes continuously while
-enabled. Sleeping MoQ releases its delivery/importer and unneeded encoder group;
+enabled. Sleeping MoQ releases its delivery/publisher and unneeded encoder group;
 other outputs and recording retain any shared encoding they still need. See
 [demand-based publication](moq.md#experimental-demand-based-publication).
 
@@ -336,7 +337,7 @@ encoding settings. `--output null` uses the primary output's effective encoding.
 An enabled MoQ output is displayed first in the output editor and supplies the
 program preview in the main Player window. Without an enabled MoQ output, the
 configured HLS preview remains in use. Saving MoQ activation starts or stops its
-delivery and importer without restarting the channel.
+delivery and publisher without restarting the channel.
 
 ### Live output changes
 
@@ -382,7 +383,7 @@ its HLS source selector offers the derived output's single playlist.
 Output settings stay expanded; advanced options are collapsible and initially
 open when custom options are configured. Runtime status refreshes every five
 seconds while the Outputs page is open. Missing status information is shown as
-unknown. MoQ status comes from its media importer.
+unknown. MoQ status comes from its native frame publisher.
 
 Existing migration 0007 stores the source output ID and optional HLS variant.
 The former `share_encoding` column is retained for reading old configurations;

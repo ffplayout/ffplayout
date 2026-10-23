@@ -1074,10 +1074,17 @@ impl Output {
     }
 
     pub(crate) fn from_record(output: models::Output) -> Self {
+        let mode = OutputMode::new(&output.name);
         let video_codec = output.video_codec.unwrap_or_else(default_video_codec);
         let video_options = serde_json::from_str(&output.video_options)
             .unwrap_or_else(|_| ff_engine::video_option_defaults(&video_codec));
-        let protocol_options = serde_json::from_str(&output.protocol_options).unwrap_or_default();
+        // The former MoQ TCP bridge stored protocol options. Native publishing
+        // has no FFmpeg network transport, so retire those settings on load.
+        let protocol_options = if mode == OutputMode::Moq {
+            BTreeMap::new()
+        } else {
+            serde_json::from_str(&output.protocol_options).unwrap_or_default()
+        };
         let muxer_options = serde_json::from_str(&output.muxer_options).unwrap_or_default();
         let metadata_options = serde_json::from_str(&output.metadata_options).unwrap_or_default();
         let audio_options = serde_json::from_str(&output.audio_options).unwrap_or_default();
@@ -1095,7 +1102,7 @@ impl Output {
             },
             encoding_variant: output.encoding_variant,
             public_moq: output.public_moq,
-            mode: OutputMode::new(&output.name),
+            mode,
             discard: false,
             stream_url: output.stream_url,
             stream_type: output
@@ -1214,17 +1221,10 @@ impl Output {
                 || !audio.is_some_and(|codec| super::moq_codecs::supports_audio(&codec.codec_id))
             {
                 return Err(format!(
-                    "MoQ MPEG-TS importer does not support video encoder {:?} with audio encoder {:?}",
+                    "MoQ does not support video encoder {:?} with audio encoder {:?}",
                     self.video_codec, self.audio_codec
                 ));
             }
-            let mut transport = self.clone();
-            transport.mode = OutputMode::Stream;
-            transport.stream_type = StreamType::Custom;
-            transport.stream_format = "mpegts".into();
-            transport.stream_url = "tcp://127.0.0.1:1".into();
-
-            return transport.validate();
         }
         if self.width == 0 || self.height == 0 {
             return Err("output size must be greater than zero".to_string());
@@ -1239,7 +1239,10 @@ impl Output {
         {
             return Err("muxer option names and values must not be empty".to_string());
         }
-        if self.mode != OutputMode::Stream && !self.protocol_options.is_empty() {
+        // Also tolerate stale API payloads from before native MoQ publishing.
+        if !matches!(self.mode, OutputMode::Stream | OutputMode::Moq)
+            && !self.protocol_options.is_empty()
+        {
             return Err(
                 "protocol options can only be used with network stream outputs".to_string(),
             );
@@ -1322,6 +1325,12 @@ impl Output {
                     self.audio_codec, self.mode
                 ));
             }
+        }
+
+        if matches!(
+            self.mode,
+            OutputMode::HLS | OutputMode::Stream | OutputMode::Moq
+        ) {
             ff_engine::validate_video_options(&self.video_codec, &self.video_options)?;
             ff_engine::validate_audio_options(
                 &self.audio_codec,
@@ -2257,6 +2266,23 @@ mod output_tests {
                     .contains("only be used with network stream outputs")
             );
         }
+    }
+
+    #[test]
+    fn legacy_moq_protocol_options_are_retired_without_blocking_validation() {
+        let mut record = crate::db::models::Output::new(1, OutputMode::Moq);
+        record.protocol_options = r#"{"tcp_nodelay":"1"}"#.into();
+        let mut output = Output::from_record(record);
+        assert!(output.protocol_options.is_empty());
+        assert!(output.validate().is_ok());
+
+        // A client that still holds the old configuration can save it as well.
+        output
+            .protocol_options
+            .insert("tcp_nodelay".into(), "1".into());
+        assert!(output.validate().is_ok());
+        output.width = 0;
+        assert!(output.validate().is_err());
     }
 
     #[test]

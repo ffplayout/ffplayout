@@ -725,7 +725,7 @@ pub async fn get_playout_outputs(
                 if output.name == "moq"
                     && let Some(status) = crate::moq::status(id)
                 {
-                    // Encoder status alone cannot tell whether the MoQ importer is alive.
+                    // Encoder status alone cannot tell whether MoQ is publishing frames.
                     if matches!(
                         output.runtime_status.as_deref(),
                         Some("running" | "starting")
@@ -818,7 +818,7 @@ mod tests {
     }
 
     #[test]
-    fn moq_codec_options_follow_importer_support_without_an_encoder_name_whitelist() {
+    fn moq_codec_options_follow_publisher_support_without_an_encoder_name_whitelist() {
         let options = super::moq_output_codec_options();
         let expected =
             ff_engine::ffmpeg_capabilities().video_codecs_for(ff_engine::FfmpegOutputTarget::Srt);

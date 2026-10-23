@@ -1,7 +1,8 @@
 # MoQ output and browser preview
 
 MoQ is included in every application build; no additional Cargo feature is needed.
-MoQ consumes the common output pipeline through a local MPEG-TS connection. Start the application with
+MoQ receives encoded frames directly from the common output pipeline through the
+`moq-mux` track API. Start the application with
 `--listen` to make its media relay and HTTP endpoints available.
 
 ## Configuration
@@ -26,18 +27,21 @@ configuration. The MoQ output also supplies the main Player window's preview.
 ## Codecs
 
 The database stores encoder names without a codec whitelist. The codec API
-advertises available FFmpeg encoders supported by the current importer, including
+advertises available FFmpeg encoders validated for the native publisher, including
 supported hardware encoders; validation uses codec IDs rather than names such as
 `libx264` or `libx265`.
 
-The current MPEG-TS-to-MoQ bridge supports H.264/H.265 video with AAC audio for this
-application. AV1 is not advertised because the pinned `moq-mux` MPEG-TS importer
-has no AV1 video import path. Enabling AV1 requires a compatible import/container
-path and browser playback validation; changing a SQL constraint cannot add that
-support. Extending transport capabilities does not require a database migration.
+The currently validated combinations are H.264/H.265 video with AAC audio.
+The direct API can support additional codecs, but they are not advertised until
+their encoder initialization and browser playback have been validated.
+Extending transport capabilities does not require a database migration.
 
 Browser codec support, GOP length, B-frames and encoder buffering affect playback
 and latency. MoQ does not start another playlist player or ingest listener.
+Use low-latency encoder settings: a long encoder lookahead can let audio run
+ahead of video far enough to exceed the bounded destination queue. Direct frame
+publication retains those queue limits; it does not mask encoder delay with an
+unbounded buffer.
 
 ## Experimental demand-based publication
 
@@ -52,10 +56,10 @@ With **Allow public player** enabled, the MoQ output publishes continuously even
 without viewers. Disabling the output always stops publication. These runtime
 transitions do not change saved settings or restart the channel.
 
-When private publication sleeps, its MPEG-TS delivery and importer stop. Its own
+When private publication sleeps, its packet delivery and meter publisher stop. Its own
 encoder also stops if no other output or recording needs it; shared HLS/Stream
 encoders and their outputs continue. The relay stays reachable. Opening the
-player again incurs encoder/importer startup and a wait for a usable keyframe;
+player again incurs encoder/publisher startup and a wait for a usable keyframe;
 the delay depends on the encoder and GOP length. No extra frontend heartbeat or
 periodic HTTP request is required. The Outputs page reports the sleeping output
 as not running.
@@ -131,7 +135,7 @@ mode, open `/player?channel=ID&diagnostics=1` to opt in, then reload the page.
 Production builds and the public player never run these measurements. Private
 connection-ticket renewal remains active independently of diagnostics.
 
-The Outputs page refreshes runtime status every five seconds. MoQ importer state
+The Outputs page refreshes runtime status every five seconds. MoQ publisher state
 reflects received media; missing status information is shown as unknown.
 
 Use `--log-level trace --log-to-console` for timing summaries. The hidden
@@ -141,17 +145,16 @@ measurements without enabling a MoQ output. Trace-level timing collection is
 otherwise gated to avoid unnecessary diagnostic work.
 
 `[Output Timing] stage=mux` reports per-track gaps, drift, queue residence and mux
-call duration. `[Preview Timing] stage=importer` reports TCP reads, bytes, maximum
-read gap and import call time. Compare several windows and their timestamps:
-TCP read boundaries are not frame boundaries, and successful mux calls do not
-prove browser presentation timing.
+call duration (or native frame publication duration for MoQ). The old TCP-importer
+timing stage no longer exists. Successful output writes do not prove browser
+presentation timing.
 
 The relay cache is bounded to 32 MiB with two seconds of retention. Destination
 I/O and packet queues are independent; a failed MoQ transport does not stop other
 outputs using its encoding profile. Failed destinations retry every 15 seconds for
 up to three minutes; successful media delivery resets that window. After exhaustion,
-use **Reconnect** on the Outputs page to start a new round. Importer initialization
-is retried on the same schedule, and a terminated importer is recreated on the next
+use **Reconnect** on the Outputs page to start a new round. Publisher initialization
+is retried on the same schedule, and a terminated publisher is recreated on the next
 connection attempt. Encoder failures still require a channel restart.
 Endurance tests with browser audio/video
 and clip transitions are still needed for the current multi-output implementation.
@@ -159,8 +162,10 @@ and clip transitions are still needed for the current multi-output implementatio
 The Player page receives program peak/RMS levels through the existing MoQ
 connection on the `audio-level.json` track, with 250 ms measurement and publication
 intervals. Each reading carries the end timestamp of its measured audio window.
-The importer maps program timestamps onto its actual imported AAC timeline once
-per connection, accounting for codec priming, TS mux shifts and live re-anchoring.
+The publisher uses one shared decode-time anchor for audio and video, preserving
+their relative presentation timestamps, encoder priming and video reordering.
+The meter uses the exact audio-to-broadcast offset from the published AAC frames;
+each connection starts with a fresh mapping.
 The Player meter follows the audio worklet's read position and the browser's
 reported output latency, aligning each 250 ms measurement window to its midpoint
 to reduce visual lag. While paused, without audio playback, or after the playhead
@@ -175,7 +180,7 @@ also depends on the browser's playback-position and output-latency reports.
 Browser volume does not change the measured program level. HLS previews continue
 to show the current program level via SSE, independently of HLS playback delay.
 Only authenticated Player and Audio configuration pages subscribe to this track; the public player
-does not request meter data. Publication shares the importer task and keeps only
+does not request meter data. An auxiliary publisher task keeps only
 the latest reading, without an additional HTTP polling connection.
 
 Audio configuration also uses MoQ for its peak/RMS and loudness meters when an
