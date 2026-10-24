@@ -6,14 +6,10 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
-#[cfg(test)]
-use moq_mux::{catalog, container::ts};
 use serde::Deserialize;
 
 use crate::{api::state::AppState, db::handles, utils::errors::ServiceError};
 
-#[cfg(test)]
-use super::importer::configure_catalog;
 use super::relay::RUNTIME;
 
 pub fn routes() -> Router<AppState> {
@@ -209,33 +205,6 @@ mod tests {
     use tokio::sync::{Mutex, RwLock};
     use tokio_util::sync::CancellationToken;
     use tower::ServiceExt;
-
-    #[test]
-    fn decoder_hint_preserves_media_configuration() {
-        let original = serde_json::json!({
-            "video": {"renditions": {"0.avc3": {
-                "codec": "avc3.64001f", "codedWidth": 960, "codedHeight": 540,
-                "framerate": 25, "jitter": 68
-            }}},
-            "audio": {"renditions": {"1.aac": {
-                "codec": "mp4a.40.2", "sampleRate": 48000, "numberOfChannels": 2
-            }}}
-        });
-        let mut catalog: catalog::hang::Catalog<ts::Ext> =
-            serde_json::from_value(original).unwrap();
-        let before = serde_json::to_value(&catalog).unwrap();
-        configure_catalog(&mut catalog);
-        configure_catalog(&mut catalog);
-        let mut after = serde_json::to_value(catalog).unwrap();
-        assert_eq!(
-            after["video"]["renditions"]["0.avc3"]
-                .as_object_mut()
-                .unwrap()
-                .remove("optimizeForLatency"),
-            Some(serde_json::json!(true))
-        );
-        assert_eq!(after, before);
-    }
 
     #[tokio::test]
     async fn public_access_is_opt_in_and_private_bootstrap_requires_auth() {

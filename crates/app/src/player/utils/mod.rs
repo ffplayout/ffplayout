@@ -17,7 +17,9 @@ use serde_json::{Map, Value, json};
 use tokio::{
     fs::{File, metadata},
     io::{AsyncReadExt, AsyncWriteExt},
+    sync::Semaphore,
 };
+use tokio_util::sync::CancellationToken;
 
 pub mod import;
 pub mod json_serializer;
@@ -98,10 +100,15 @@ pub async fn probe_media(input: impl AsRef<std::path::Path>) -> Result<MediaProb
     ff_engine::probe_media(&path).map_err(|error| ProcessError::Ffprobe(error.to_string()))
 }
 
+// Keep the permit inside the blocking task: aborting a validator cannot
+// release its slot while FFmpeg still owns the input and decoder.
+static SILENCE_ANALYSIS: Semaphore = Semaphore::const_new(1);
+
 pub async fn detect_audio_silence(
     input: impl AsRef<std::path::Path>,
     seek_seconds: f64,
     duration_seconds: f64,
+    cancel_token: CancellationToken,
 ) -> Result<SilenceDetection, ProcessError> {
     let path = input.as_ref().to_string_lossy().to_string();
     let window_seconds = 30.0_f64;
@@ -114,15 +121,34 @@ pub async fn detect_audio_silence(
     }
     let analysis_seconds = window_seconds;
     let analysis_seek_seconds = seek_seconds.max(0.0) + (duration_seconds - analysis_seconds) / 2.0;
-    tokio::task::spawn_blocking(move || {
-        ff_engine::detect_audio_silence(
+    run_silence_analysis(cancel_token, move |cancelled| {
+        ff_engine::detect_audio_silence_with_cancel(
             &path,
             analysis_seek_seconds,
             analysis_seconds,
             -30.0,
             analysis_seconds,
+            move || cancelled.is_cancelled(),
         )
         .map_err(|error| ProcessError::Ffprobe(error.to_string()))
+    })
+    .await
+}
+
+async fn run_silence_analysis<T: Send + 'static>(
+    cancel_token: CancellationToken,
+    analyze: impl FnOnce(CancellationToken) -> Result<T, ProcessError> + Send + 'static,
+) -> Result<T, ProcessError> {
+    let cancelled = cancel_token.child_token();
+    let _cancel_on_drop = cancelled.clone().drop_guard();
+    let permit = tokio::select! {
+        _ = cancelled.cancelled() => return Err(ProcessError::Custom("Silence analysis cancelled".to_string())),
+        permit = SILENCE_ANALYSIS.acquire() => permit.map_err(|error| ProcessError::Custom(error.to_string()))?,
+    };
+
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        analyze(cancelled)
     })
     .await
     .map_err(|error| ProcessError::Custom(error.to_string()))?
@@ -336,23 +362,23 @@ impl Media {
 
         if !source_is_live && self.probe.is_none() {
             match probe_media(&self.source).await {
-                Ok(probe) => {
-                    self.probe = Some(probe.clone());
-
-                    if let Some(dur) = probe
-                        .format
-                        .duration
-                        .filter(|d| !is_close(*d, self.duration, 0.5))
-                    {
-                        self.duration = dur;
-
-                        if self.out == 0.0 {
-                            self.out = dur;
-                        }
-                    }
-                }
+                Ok(probe) => self.probe = Some(probe),
                 Err(e) => errors.push(e.to_string()),
             };
+        }
+
+        // Apply metadata equally to fresh and reused probes. Explicit clip
+        // boundaries are independent of the source file's total duration.
+        if !source_is_live
+            && let Some(dur) = self.probe.as_ref().and_then(|probe| probe.format.duration)
+        {
+            if !is_close(dur, self.duration, 0.5) {
+                self.duration = dur;
+            }
+
+            if self.out == 0.0 {
+                self.out = dur;
+            }
         }
 
         if check_audio
@@ -774,6 +800,40 @@ mod tests {
         get_date, get_delta, is_remote, normalize_live_source_timing, probe_media,
     };
 
+    #[tokio::test]
+    async fn aborted_validator_keeps_analysis_slot_until_blocking_task_exits() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(super::run_silence_analysis(
+            tokio_util::sync::CancellationToken::new(),
+            move |cancelled| {
+                started_tx.send(cancelled.clone()).unwrap();
+                release_rx.recv().unwrap();
+                assert!(cancelled.is_cancelled());
+                finished_tx.send(()).unwrap();
+                Ok(())
+            },
+        ));
+        let cancelled = started_rx.await.unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        let still_occupied = super::SILENCE_ANALYSIS.try_acquire().is_err();
+        let was_cancelled = cancelled.is_cancelled();
+        release_tx.send(()).unwrap();
+        finished_rx.await.unwrap();
+        let permit = super::SILENCE_ANALYSIS.acquire().await.unwrap();
+        drop(permit);
+        assert!(
+            still_occupied,
+            "aborting the async caller must not detach an unbounded analysis"
+        );
+        assert!(
+            was_cancelled,
+            "aborting the async caller must interrupt FFmpeg"
+        );
+    }
+
     #[test]
     fn get_date_yesterday_before_the_playlist_start() {
         with_mock_time("2022-05-20T05:59:24+02:00", || {
@@ -857,6 +917,38 @@ mod tests {
 
         assert!(media.probe_audio.is_some());
         assert!(media.duration_audio > 0.0);
+    }
+
+    #[tokio::test]
+    async fn reused_probe_applies_duration_without_changing_explicit_clip_boundaries() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests_assets/storage/media_mix/with_audio.mp4");
+        let source = path.to_string_lossy().into_owned();
+        let mut fresh = Media {
+            source,
+            duration: 999.0,
+            seek: 1.0,
+            out: 2.0,
+            ..Media::default()
+        };
+        fresh.add_probe(false).await.unwrap();
+        let duration = fresh.probe.as_ref().unwrap().format.duration.unwrap();
+        let mut reused = Media {
+            source: "already-probed.mp4".to_string(),
+            probe: fresh.probe.clone(),
+            duration: 999.0,
+            seek: 1.0,
+            out: 2.0,
+            ..Media::default()
+        };
+        reused.add_probe(false).await.unwrap();
+        assert_eq!(fresh.duration, duration);
+        assert_eq!(reused.duration, duration);
+        assert_eq!((reused.seek, reused.out), (1.0, 2.0));
+        reused.out = 0.0;
+        reused.add_probe(false).await.unwrap();
+        assert_eq!(reused.out, duration);
+        assert_eq!(reused.seek, 1.0);
     }
 
     #[test]

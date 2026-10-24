@@ -674,7 +674,6 @@ impl ChannelManager {
                 error!(target: Target::All.as_str(), channel = channel_id; "Player status cannot be written: {e}");
             };
 
-            self.stop_validation().await;
             self.stop_dev_metrics_snapshot().await;
         } else {
             debug!(target: Target::All.as_str(), channel = channel_id; "Stop all child processes from channel: <span class=\"log-number\">{channel_id}</span>");
@@ -682,6 +681,9 @@ impl ChannelManager {
 
         self.is_alive.store(false, Ordering::SeqCst);
         self.playback_control.lock().await.skip_current();
+        // Restarts and shutdown must also cancel an in-flight validator, not
+        // only permanent stops. Its blocking FFmpeg analysis owns resources.
+        self.stop_validation().await;
         self.stop_task(
             "task_runner",
             &self.task_runner_handle,
@@ -887,6 +889,26 @@ mod tests {
     use crate::test_support::channel_manager;
 
     use super::*;
+
+    #[tokio::test]
+    async fn temporary_stop_cancels_and_joins_the_validator() {
+        let (manager, pool) = channel_manager().await;
+        let root = manager.config.read().await.storage.path.clone();
+        let token = CancellationToken::new();
+        let worker_token = token.clone();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        *manager.validation_token.lock().await = Some(token.clone());
+        *manager.validation_handle.lock().await = Some(tokio::spawn(async move {
+            worker_token.cancelled().await;
+            done_tx.send(()).unwrap();
+        }));
+        manager.stop_all(false).await;
+        assert!(token.is_cancelled());
+        done_rx.await.unwrap();
+        assert!(manager.validation_handle.lock().await.is_none());
+        pool.close().await;
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
 
     #[tokio::test]
     async fn saving_idle_timeout_updates_the_existing_runtime_control() {

@@ -21,6 +21,30 @@ pub struct LogoOverlay {
 }
 
 impl LogoOverlay {
+    /// Reuse the decoded logo pixels; only placement depends on the destination.
+    pub(crate) fn positioned(
+        &self,
+        position: Option<&str>,
+        width: u32,
+        height: u32,
+    ) -> Result<Self> {
+        let (x, y) = if let Some(position) = position {
+            logo_position(position, width, height, self.width, self.height)?
+        } else {
+            (self.x, self.y)
+        };
+
+        Ok(Self {
+            frame: crate::utils::ffmpeg::reference_video_frame(&self.frame)?,
+            chroma_alpha: self.chroma_alpha.clone(),
+            x: even(x),
+            y: even(y),
+            width: self.width,
+            height: self.height,
+            opacity: self.opacity,
+        })
+    }
+
     pub fn load(config: &LogoConfig, output_width: u32, output_height: u32) -> Result<Self> {
         if !(0.0..=1.0).contains(&config.opacity) || !config.opacity.is_finite() {
             return Err(anyhow!("logo opacity must be between 0.0 and 1.0"));

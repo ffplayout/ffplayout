@@ -116,7 +116,10 @@ pub async fn read_json(
     let mut playlist_path = config.channel.playlists.clone();
     let start_sec = config.playlist.start_sec.unwrap();
 
-    if playlist_path.is_dir() || is_remote(&config.channel.playlists.to_string_lossy()) {
+    let uses_daily_playlists =
+        playlist_path.is_dir() || is_remote(&config.channel.playlists.to_string_lossy());
+
+    if uses_daily_playlists {
         let d: Vec<&str> = date.split('-').collect();
         playlist_path = playlist_path
             .join(d[0])
@@ -194,6 +197,12 @@ pub async fn read_json(
             }
         };
 
+        // An explicitly selected file is reusable on any broadcast day. Its
+        // embedded date must not repeatedly trigger the next-day reload path.
+        if !uses_daily_playlists {
+            playlist.date.clone_from(&date);
+        }
+
         // catch empty program list
         if playlist.program.is_empty() {
             error!("Playlist from <span class=\"log-number\">{date}</span> is empty!");
@@ -219,4 +228,62 @@ pub async fn read_json(
     error!(channel = id; "Playlist <span class=\"log-addr\">{current_file}</span> not exist!");
 
     JsonPlaylist::new(date, start_sec)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn explicit_file_uses_broadcast_date_but_daily_directory_keeps_file_date() {
+        let (manager, pool) = crate::test_support::channel_manager().await;
+        let mut config = manager.config.read().await.clone();
+        let root = config.storage.path.clone();
+        config.general.skip_validation = true;
+        config.playlist.start_sec = Some(0.0);
+        let file = root.join("old-playlist.json");
+        let contents = r#"{"date":"2026-10-20","program":[{"source":"clip.mp4","in":2.0,"out":12.0,"duration":30.0}]}"#;
+        tokio::fs::write(&file, contents).await.unwrap();
+        config.channel.playlists = file.clone();
+
+        for date in ["2026-10-21", "2026-10-22"] {
+            let playlist = read_json(
+                &manager,
+                &mut config,
+                manager.current_list.clone(),
+                None,
+                manager.is_alive.clone(),
+                date.to_string(),
+            )
+            .await;
+            assert_eq!(playlist.date, date);
+            assert_eq!(playlist.path.as_deref(), file.to_str());
+            assert_eq!(playlist.program.len(), 1);
+            assert_eq!(
+                (playlist.program[0].seek, playlist.program[0].out),
+                (2.0, 12.0)
+            );
+        }
+
+        let daily_root = root.join("daily");
+        let daily_file = daily_root.join("2026/10/2026-10-21.json");
+        tokio::fs::create_dir_all(daily_file.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&daily_file, contents).await.unwrap();
+        config.channel.playlists = daily_root;
+        let playlist = read_json(
+            &manager,
+            &mut config,
+            manager.current_list.clone(),
+            None,
+            manager.is_alive.clone(),
+            "2026-10-21".to_string(),
+        )
+        .await;
+        assert_eq!(playlist.date, "2026-10-20");
+        assert_eq!(playlist.path.as_deref(), daily_file.to_str());
+        pool.close().await;
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
 }

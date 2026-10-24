@@ -196,7 +196,7 @@ pub(super) fn configure_destinations(
                 settings.stream_endpoint = Some(attachment.endpoint());
                 attachments.push(attachment);
                 settings.stream_type = ff_engine::StreamType::Custom;
-                settings.stream_format = "mpegts".into();
+                settings.stream_format.clear();
                 ff_engine::OutputTarget::Stream { url: String::new() }
             }
             OutputMode::Desktop => unreachable!(),

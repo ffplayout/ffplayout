@@ -274,6 +274,11 @@ fn moq_output_codec_options() -> OutputCodecOptions {
     options
         .video
         .retain(|codec| crate::utils::moq_codecs::supports_video(&codec.codec_id));
+    for codec in &mut options.video {
+        if codec.name == "libx264" {
+            codec.settings.retain(|setting| setting.key != "tune");
+        }
+    }
     options
         .audio
         .retain(|codec| crate::utils::moq_codecs::supports_audio(&codec.codec_id));
@@ -725,7 +730,7 @@ pub async fn get_playout_outputs(
                 if output.name == "moq"
                     && let Some(status) = crate::moq::status(id)
                 {
-                    // Encoder status alone cannot tell whether the MoQ importer is alive.
+                    // Encoder status alone cannot tell whether MoQ is publishing frames.
                     if matches!(
                         output.runtime_status.as_deref(),
                         Some("running" | "starting")
@@ -818,8 +823,14 @@ mod tests {
     }
 
     #[test]
-    fn moq_codec_options_follow_importer_support_without_an_encoder_name_whitelist() {
+    fn moq_codec_options_follow_publisher_support_without_an_encoder_name_whitelist() {
         let options = super::moq_output_codec_options();
+        let x264 = options
+            .video
+            .iter()
+            .find(|codec| codec.name == "libx264")
+            .unwrap();
+        assert!(x264.settings.iter().all(|setting| setting.key != "tune"));
         let expected =
             ff_engine::ffmpeg_capabilities().video_codecs_for(ff_engine::FfmpegOutputTarget::Srt);
         for codec in expected

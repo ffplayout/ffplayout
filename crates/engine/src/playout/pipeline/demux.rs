@@ -115,12 +115,14 @@ pub(super) fn run(
                 progress
                     .demux_blocked_track
                     .store(track as i64, Ordering::Release);
+                control.notify_activity();
             }
 
             let sent = queue.send(packet, bytes, pts_us);
             progress
                 .demux_blocked_track
                 .store(NO_TIMESTAMP, Ordering::Release);
+            control.notify_activity();
 
             if let Err(error) = sent
                 && !queue.closed()

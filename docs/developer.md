@@ -101,6 +101,28 @@ running before removing the leftover lock directory (its `pid` file records the
 owning shell).
 Image layers and the container engine's separate build cache are not pruned.
 
+### Experimental transcription example
+
+Whisper and ONNX Runtime are only enabled by the engine's optional
+`transcription-example` feature. The normal ffplayout build does not include
+them. To compile the desktop transcription example:
+
+```sh
+cargo build --locked -p ff-engine --example live_transcription --features transcription-example
+```
+
+Workspace checks with `--all-features --all-targets` also build this example.
+On Apple Silicon, `.cargo/config.toml` registers a project-scoped CMake hook
+for whisper.cpp. It checks native SVE compiler support before allowing GGML's
+forced-SVE runtime probe, which can hang at its first SVE instruction on
+[affected macOS systems](https://github.com/ggml-org/llama.cpp/pull/20064).
+Other ARM feature checks, including DotProd, I8MM and SME, remain enabled.
+The hook does nothing for other targets or CMake projects.
+
+`ort` is pinned to `2.0.0-rc.12` for this feature because the currently used
+`transcribe-rs` expects that API. Later ORT prereleases changed
+`Session::builder`; review this pin when updating the transcription dependency.
+
 ## CPU profiling with perf (Linux)
 
 Install your distribution's `perf` package matching the running kernel. Build
@@ -163,6 +185,17 @@ See the upstream documentation for
 and [`perf report`](https://github.com/torvalds/linux/blob/master/tools/perf/Documentation/perf-report.txt).
 
 ## Processing Benchmark
+
+To compare per-encoder logo copies with resolution-shared composition, run:
+
+```sh
+cargo test -p ff-engine --release --lib benchmark_shared_logo_composition -- --ignored --nocapture
+```
+
+This manual benchmark compares 300 720p program frames with one, two and four
+encoding groups at the same resolution. It reports median elapsed times after
+warmup, alternates old/new order, and makes no timing assertion. It measures
+frame copying/composition only, not codecs, network I/O or total playout CPU.
 
 The optional `processing-bench` feature prints periodic wall-clock timings for
 video and audio decode, audio processing and encoding, scale, overlay,
@@ -413,6 +446,28 @@ of producing catch-up measurements. Process inspection runs outside the
 async executor on blocking workers, and no measurements run unless diagnostics
 are enabled and DEBUG logging is active. Existing periodic development metrics
 remain independent.
+
+### Media analysis and clip resource lifetimes
+
+Metadata probes read stream parameters without opening additional decoders.
+Playlist validation reuses probes from preceding entries in the same validation
+run; external audio is matched by its own source path. A new validation run
+starts without probes from the previous playlist. Fresh and reused probes apply
+the same duration correction while preserving explicit clip boundaries.
+
+Background silence checks run one at a time per process. Channel restarts and
+shutdown cancel the validator as well as permanent stops. Cancellation of a
+validator also interrupts its FFmpeg input/seek/read operations and is checked
+between packets. The analysis slot is released by the blocking worker itself,
+so aborting its async caller cannot start overlapping replacement analyses.
+This may serialize validation across channels; it does not serialize playback.
+
+Playback input workers are scoped to a clip generation and joined before the
+next generation starts. Packet/frame queues and decoder/filter state then drop
+with that generation. Output encoders and their bounded queues deliberately
+remain alive across clips. A flat live heap with rising RSS still needs to be
+distinguished from retained references; these lifecycle guarantees alone do
+not prove a stable RSS over days.
 
 ### Linux allocator diagnostics
 

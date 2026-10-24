@@ -14,7 +14,7 @@ use crate::{
         PlaybackSkipped, Timeline, check_playback_control, synchronize_after_skip,
         synchronize_declared_stream_ends, synchronize_silence_to_video, synchronize_timeline,
     },
-    utils::pipeline_queue::{POLL_INTERVAL, PipelineControl, PipelineQueue},
+    utils::pipeline_queue::{PipelineControl, PipelineQueue},
 };
 
 use super::{AudioFrame, Plan, Progress, VideoFrame};
@@ -39,29 +39,34 @@ pub(super) fn coordinate<O: FrameOutput>(
     let mut last_progress = Instant::now();
     let mut release_audio = false;
     let mut release_video = false;
+    let activity = control.activity();
+    playback_control.observe_activity(&activity);
     let result = (|| {
         loop {
+            let observed = activity.snapshot();
             check_playback_control(playback_control)?;
             control.check()?;
             // Retain normal A/V interleaving, but do not create a cycle where
             // the demuxer cannot discover EOF because this scheduler refuses
             // to drain the only remaining track. Keep the release until the
             // opposite track supplies another frame.
-            if video.front_timestamp().is_some() {
+            let video_front = video.front_timestamp();
+            let audio_front = audio.front_timestamp();
+            if video_front.is_some() {
                 release_audio = false;
             }
 
-            if audio.front_timestamp().is_some() {
+            if audio_front.is_some() {
                 release_video = false;
             }
 
             match progress.demux_blocked_track.load(Ordering::Acquire) {
-                1 if video.front_timestamp().is_none() => release_audio = true,
-                0 if audio.front_timestamp().is_none() => release_video = true,
+                1 if video_front.is_none() => release_audio = true,
+                0 if audio_front.is_none() => release_video = true,
                 _ => {}
             }
 
-            let audio_first = match (video.front_timestamp(), audio.front_timestamp()) {
+            let audio_first = match (video_front, audio_front) {
                 (Some(video), Some(audio)) => audio < video,
                 (None, Some(_)) => true,
                 _ => false,
@@ -71,12 +76,14 @@ pub(super) fn coordinate<O: FrameOutput>(
             for audio_turn in [audio_first, !audio_first] {
                 if audio_turn {
                     let audio_ahead = !timeline.source_timestamp_mode
-                        && audio.front_timestamp().is_some_and(|pts| {
-                            pts > timeline
-                                .video_pts
-                                .rescale(cfg.video_time_base, rescale::TIME_BASE)
-                                .saturating_add(100_000)
-                        });
+                        && audio_front
+                            .or_else(|| audio.front_timestamp())
+                            .is_some_and(|pts| {
+                                pts > timeline
+                                    .video_pts
+                                    .rescale(cfg.video_time_base, rescale::TIME_BASE)
+                                    .saturating_add(100_000)
+                            });
                     let waiting_first_image =
                         !has_embedded_audio && plan.video.is_some() && decoded_video == 0;
 
@@ -96,12 +103,14 @@ pub(super) fn coordinate<O: FrameOutput>(
                     }
                 } else {
                     let video_ahead = !timeline.source_timestamp_mode
-                        && video.front_timestamp().is_some_and(|pts| {
-                            pts > timeline
-                                .audio_pts
-                                .rescale(cfg.audio_time_base, rescale::TIME_BASE)
-                                .saturating_add(100_000)
-                        });
+                        && video_front
+                            .or_else(|| video.front_timestamp())
+                            .is_some_and(|pts| {
+                                pts > timeline
+                                    .audio_pts
+                                    .rescale(cfg.audio_time_base, rescale::TIME_BASE)
+                                    .saturating_add(100_000)
+                            });
 
                     if !audio.drained() && video_ahead && !release_video {
                         continue;
@@ -109,7 +118,9 @@ pub(super) fn coordinate<O: FrameOutput>(
 
                     if let Some(mut item) = video.try_recv()? {
                         if let Some(logo) = &item.logo {
-                            output.apply_logo_overlay(&mut item.frame, logo, item.opacity);
+                            output.apply_shared_logo_overlay(&mut item.frame, logo, item.opacity);
+                        } else {
+                            output.clear_logo_overlay();
                         }
                         output.encode_video(&item.frame)?;
                         timeline.video_pts = timeline.video_pts.max(item.state.video_pts + 1);
@@ -183,7 +194,10 @@ pub(super) fn coordinate<O: FrameOutput>(
                 if let Some(diagnostics) = output.input_diagnostics() {
                     diagnostics.set_stage(LiveInputStage::WaitingForQueue);
                 }
-                control.wait(POLL_INTERVAL)?;
+                activity.wait(
+                    observed,
+                    Some(Duration::from_secs(5).saturating_sub(last_progress.elapsed())),
+                );
             }
         }
 

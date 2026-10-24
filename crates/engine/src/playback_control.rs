@@ -1,10 +1,12 @@
 use std::{
     mem,
     sync::{
-        Arc, Mutex, PoisonError,
+        Arc, Mutex, PoisonError, Weak,
         atomic::{AtomicBool, Ordering},
     },
 };
+
+use crate::utils::pipeline_queue::PipelineActivity;
 
 #[derive(Debug, Default)]
 struct NavigationState {
@@ -12,6 +14,7 @@ struct NavigationState {
     live_listener_id: Option<i32>,
     reserved: bool,
     requested: bool,
+    activity: Vec<Weak<PipelineActivity>>,
     #[cfg(feature = "tokio")]
     live_observers: Vec<tokio::sync::mpsc::UnboundedSender<(bool, Option<i32>)>>,
 }
@@ -25,6 +28,32 @@ pub struct PlaybackControl {
 }
 
 impl PlaybackControl {
+    pub(crate) fn observe_activity(&self, activity: &Arc<PipelineActivity>) {
+        let mut state = self
+            .navigation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        state
+            .activity
+            .retain(|observer| observer.strong_count() > 0);
+        state.activity.push(Arc::downgrade(activity));
+    }
+
+    fn notify_activity(&self) {
+        let mut state = self
+            .navigation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        state.activity.retain(|observer| {
+            if let Some(activity) = observer.upgrade() {
+                activity.notify();
+                true
+            } else {
+                false
+            }
+        });
+    }
+
     /// Observe actual live takeover/end transitions without polling.
     #[cfg(feature = "tokio")]
     pub fn subscribe_live_status(
@@ -43,6 +72,7 @@ impl PlaybackControl {
     #[cfg(any(feature = "tokio", test))]
     pub(crate) fn request_shutdown(&self) {
         self.shutdown.store(true, Ordering::SeqCst);
+        self.notify_activity();
     }
 
     pub(crate) fn is_shutdown(&self) -> bool {
@@ -52,10 +82,12 @@ impl PlaybackControl {
     /// Unconditionally interrupt playback, including live ingest (e.g. shutdown).
     pub fn skip_current(&self) {
         self.skip_current.store(true, Ordering::SeqCst);
+        self.notify_activity();
     }
 
     pub fn restart_playout(&self) {
         self.restart.store(true, Ordering::SeqCst);
+        self.notify_activity();
     }
 
     pub fn live_active(&self) -> bool {
@@ -185,6 +217,7 @@ impl Drop for PlaylistNavigation {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .reserved = false;
+        self.control.notify_activity();
     }
 }
 
@@ -217,6 +250,25 @@ mod tests {
     use std::sync::Barrier;
 
     use super::*;
+
+    #[test]
+    fn navigation_skip_restart_and_shutdown_wake_the_input_scheduler() {
+        let control = PlaybackControl::default();
+        let activity = Arc::new(PipelineActivity::default());
+        control.observe_activity(&activity);
+        let mut previous = activity.snapshot();
+        control.skip_current();
+        assert_ne!(activity.snapshot(), previous);
+        previous = activity.snapshot();
+        control.restart_playout();
+        assert_ne!(activity.snapshot(), previous);
+        previous = activity.snapshot();
+        control.begin_navigation().unwrap().commit();
+        assert_ne!(activity.snapshot(), previous);
+        previous = activity.snapshot();
+        control.request_shutdown();
+        assert_ne!(activity.snapshot(), previous);
+    }
 
     #[test]
     #[cfg(feature = "tokio")]

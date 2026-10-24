@@ -13,6 +13,7 @@ pub(in crate::output) struct VideoOutputStream {
     pub(in crate::output) scaler: Option<scaling::Context>,
     scaled_frame: Option<frame::Video>,
     vaapi_upload: Option<VaapiUpload>,
+    cpu_format: Pixel,
 }
 
 // SAFETY: all fields are exclusively owned. In addition to FFmpeg's Send
@@ -22,8 +23,33 @@ unsafe impl Send for VideoOutputStream {}
 
 impl VideoOutputStream {
     pub(in crate::output) fn submit(&mut self, frame: &frame::Video) -> Result<()> {
-        let input = if let Some(scaler) = &mut self.scaler {
+        let needs_scale = frame.width() != self.encoder.width()
+            || frame.height() != self.encoder.height()
+            || frame.format() != self.cpu_format;
+        if needs_scale
+            && !self.scaler.as_ref().is_some_and(|scaler| {
+                let input = scaler.input();
+                input.width == frame.width()
+                    && input.height == frame.height()
+                    && input.format == frame.format()
+            })
+        {
+            self.scaler = Some(scaling::Context::get(
+                frame.format(),
+                frame.width(),
+                frame.height(),
+                self.cpu_format,
+                self.encoder.width(),
+                self.encoder.height(),
+                scaling::flag::Flags::BILINEAR,
+            )?);
+            self.scaled_frame = None;
+        }
+        let input = if needs_scale && let Some(scaler) = &mut self.scaler {
             let scaled = self.scaled_frame.get_or_insert_with(frame::Video::empty);
+            if scaled.width() != 0 {
+                crate::utils::ffmpeg::make_video_frame_writable(scaled)?;
+            }
             scaled.set_pts(frame.pts());
             scaler.run(frame, scaled)?;
             scaled
@@ -282,6 +308,7 @@ pub(in crate::output) fn open_video_encoder(
         scaler,
         scaled_frame: None,
         vaapi_upload,
+        cpu_format: cpu_input_format,
     })
 }
 /// Encoders in this pipeline receive CPU-backed frames. QSV accepts NV12 and
@@ -528,6 +555,73 @@ pub(in crate::output) fn stream_gop_size(fps: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encoder_accepts_target_size_composites_and_original_frames_during_logo_fades() {
+        ffmpeg::init().unwrap();
+        let mut config = OutputConfig::new(160, 90, 25, 48_000);
+        config
+            .video_options
+            .insert("preset".into(), "ultrafast".into());
+        config
+            .video_options
+            .insert("tune".into(), "zerolatency".into());
+        config.video_options.insert("crf".into(), "0".into());
+        let mut stream =
+            open_video_encoder(0, &config, true, None, (320, 180), Some(25), true).unwrap();
+        let parameters = codec::Parameters::from(&stream.encoder);
+        let mut packets = Vec::new();
+        for index in 0..8 {
+            let (width, height) = if index % 2 == 0 {
+                (320, 180)
+            } else {
+                (160, 90)
+            };
+            let mut frame = frame::Video::new(Pixel::YUV420P, width, height);
+            frame.data_mut(0).fill(32 + index * 16);
+            frame.data_mut(1).fill(128);
+            frame.data_mut(2).fill(128);
+            frame.set_pts(Some(i64::from(index)));
+            stream.submit(&frame).unwrap();
+            stream
+                .drain(|packet, _, _| {
+                    packets.push(packet);
+                    Ok(())
+                })
+                .unwrap();
+        }
+        stream.encoder.send_eof().unwrap();
+        stream
+            .drain(|packet, _, _| {
+                packets.push(packet);
+                Ok(())
+            })
+            .unwrap();
+        let mut decoder = codec::context::Context::from_parameters(parameters)
+            .unwrap()
+            .decoder()
+            .video()
+            .unwrap();
+        let mut pixels = Vec::new();
+        for packet in packets {
+            decoder.send_packet(&packet).unwrap();
+            let mut frame = frame::Video::empty();
+            while decoder.receive_frame(&mut frame).is_ok() {
+                assert_eq!((frame.width(), frame.height()), (160, 90));
+                pixels.push(frame.data(0)[0]);
+            }
+        }
+        decoder.send_eof().unwrap();
+        let mut frame = frame::Video::empty();
+        while decoder.receive_frame(&mut frame).is_ok() {
+            pixels.push(frame.data(0)[0]);
+        }
+        assert_eq!(
+            pixels,
+            (0..8).map(|index| 32 + index * 16).collect::<Vec<u8>>()
+        );
+    }
+
     #[test]
     fn selects_nvenc_for_cpu_backed_hardware_encoding() {
         assert_eq!(

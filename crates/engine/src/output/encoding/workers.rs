@@ -13,7 +13,9 @@ use crate::{
     benchmark,
     utils::{
         ffmpeg::{reference_audio_frame, reference_video_frame},
-        pipeline_queue::{POLL_INTERVAL, PipelineControl, PipelineQueue, QueueLimits, run_worker},
+        pipeline_queue::{
+            PipelineActivity, PipelineControl, PipelineQueue, QueueLimits, run_worker,
+        },
     },
 };
 
@@ -35,6 +37,7 @@ pub(in crate::output) struct EncodingWorkers {
     audio: Arc<PipelineQueue<EncodeFrame>>,
     packets: Arc<PipelineQueue<EncodedPacket>>,
     control: Arc<PipelineControl>,
+    activity: Arc<PipelineActivity>,
     threads: Vec<JoinHandle<()>>,
     pub(in crate::output) audio_frame_size: usize,
     video_time_base: Rational,
@@ -58,6 +61,7 @@ impl EncodingWorkers {
             .first()
             .map_or(Rational(1, 48_000), |stream| stream.encoder.time_base());
         let control = Arc::new(PipelineControl::default());
+        let activity = control.activity();
         let video = PipelineQueue::new(
             QueueLimits {
                 items: 4,
@@ -91,6 +95,7 @@ impl EncodingWorkers {
             audio: audio.clone(),
             packets: packets.clone(),
             control: control.clone(),
+            activity,
             threads: Vec::new(),
             audio_frame_size,
             video_time_base,
@@ -221,18 +226,19 @@ impl EncodingWorkers {
         // output; encoder queues additionally have small frame/byte bounds.
         let mut pending = frame;
 
-        while let Some(frame) = queue.try_send(pending, bytes, timestamp_us)? {
+        loop {
+            let observed = self.activity.snapshot();
+            let Some(frame) = queue.try_send(pending, bytes, timestamp_us)? else {
+                break;
+            };
             pending = frame;
-            let mut progressed = false;
 
             while let Some(packet) = self.packets.try_recv()? {
                 emit(packet)?;
-                progressed = true;
             }
 
-            if !progressed {
-                self.control.wait(POLL_INTERVAL)?;
-            }
+            self.control.check()?;
+            self.activity.wait(observed, None);
         }
 
         while let Some(packet) = self.packets.try_recv()? {
@@ -258,12 +264,14 @@ impl EncodingWorkers {
         self.audio.close();
 
         while !self.packets.drained() {
+            let observed = self.activity.snapshot();
             while let Some(packet) = self.packets.try_recv()? {
                 emit(packet)?;
             }
 
             if !self.packets.drained() {
-                self.control.wait(POLL_INTERVAL)?;
+                self.control.check()?;
+                self.activity.wait(observed, None);
             }
         }
 

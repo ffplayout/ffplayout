@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use ffmpeg_next::{
     Rational, Rescale, codec, format, frame, media,
@@ -6,7 +8,7 @@ use ffmpeg_next::{
 };
 use log::{error, info};
 
-use crate::utils::helper::open_media_input;
+use crate::utils::helper::{is_network_url, network_io_options, open_media_input};
 
 const SILENCE_SAMPLE_RATE: u32 = 48_000;
 const SILENCE_CHANNEL_LAYOUT: ChannelLayout = ChannelLayout::STEREO;
@@ -91,10 +93,14 @@ pub fn probe_media_info(path: &str) -> Result<MediaInfo> {
 
     let fps = rational_to_f64(video_stream.avg_frame_rate())
         .or_else(|| rational_to_f64(video_stream.rate()));
-    let resolution = codec::context::Context::from_parameters(video_stream.parameters())
-        .ok()
-        .and_then(|context| context.decoder().video().ok())
-        .map(|decoder| (decoder.width(), decoder.height()));
+    let parameters = video_stream.parameters();
+    // SAFETY: stream parameters remain owned by the live input. Read only;
+    // probing dimensions must not initialize a decoder and its worker pool.
+    let resolution = unsafe {
+        let parameters = &*parameters.as_ptr();
+        (parameters.width > 0 && parameters.height > 0)
+            .then_some((parameters.width as u32, parameters.height as u32))
+    };
 
     Ok(MediaInfo {
         duration_seconds,
@@ -136,7 +142,42 @@ pub fn detect_audio_silence(
     threshold_db: f32,
     min_silence_seconds: f64,
 ) -> Result<SilenceDetection> {
-    let mut ictx = open_media_input(path)?;
+    detect_audio_silence_with_cancel(
+        path,
+        seek_seconds,
+        duration_seconds,
+        threshold_db,
+        min_silence_seconds,
+        || false,
+    )
+}
+
+/// Cancellation interrupts demuxer I/O and is checked between audio packets.
+/// The callback must stay cheap; FFmpeg also invokes it while opening/seeking.
+pub fn detect_audio_silence_with_cancel(
+    path: &str,
+    seek_seconds: f64,
+    duration_seconds: f64,
+    threshold_db: f32,
+    min_silence_seconds: f64,
+    cancelled: impl Fn() -> bool + Send + Sync + 'static,
+) -> Result<SilenceDetection> {
+    let cancelled = Arc::new(cancelled);
+    let interrupt = cancelled.clone();
+
+    if cancelled() {
+        return Err(ffmpeg_next::Error::Exit.into());
+    }
+
+    let mut ictx = if is_network_url(path) {
+        format::input_with_interrupt_and_dictionary(
+            &path,
+            move || interrupt(),
+            network_io_options(),
+        )?
+    } else {
+        format::input_with_interrupt(&path, move || interrupt())?
+    };
     let stream = ictx
         .streams()
         .best(media::Type::Audio)
@@ -167,6 +208,10 @@ pub fn detect_audio_silence(
     let mut has_loud_sample = false;
 
     for (stream, packet) in ictx.packets() {
+        if cancelled() {
+            return Err(ffmpeg_next::Error::Exit.into());
+        }
+
         if stream.index() != stream_index {
             continue;
         }
@@ -185,6 +230,10 @@ pub fn detect_audio_silence(
         if has_loud_sample || analyzed_samples >= max_samples {
             break;
         }
+    }
+
+    if cancelled() {
+        return Err(ffmpeg_next::Error::Exit.into());
     }
 
     decoder.send_eof()?;
@@ -261,11 +310,12 @@ fn probe_audio_stream(stream: &format::stream::Stream) -> AudioStream {
         sample_rate: None,
     };
 
-    if let Ok(context) = codec::context::Context::from_parameters(parameters)
-        && let Ok(decoder) = context.decoder().audio()
-    {
-        result.sample_rate = Some(i64::from(decoder.rate()));
-        result.channels = Some(i64::from(decoder.channels()));
+    // SAFETY: parameters borrow the live input, and no decoder is needed to
+    // inspect the format already discovered by avformat_find_stream_info.
+    unsafe {
+        let parameters = &*parameters.as_ptr();
+        result.sample_rate = Some(i64::from(parameters.sample_rate));
+        result.channels = Some(i64::from(parameters.ch_layout.nb_channels));
     }
 
     result
@@ -296,11 +346,11 @@ fn probe_video_stream(stream: &format::stream::Stream) -> VideoStream {
         width: None,
     };
 
-    if let Ok(context) = codec::context::Context::from_parameters(parameters)
-        && let Ok(decoder) = context.decoder().video()
-    {
-        let width = decoder.width();
-        let height = decoder.height();
+    // SAFETY: the stream and its parameters outlive these read-only accesses.
+    unsafe {
+        let parameters = &*parameters.as_ptr();
+        let width = parameters.width;
+        let height = parameters.height;
         result.width = Some(i64::from(width));
         result.height = Some(i64::from(height));
         result.aspect_ratio = Some(format!("{width}:{height}"));
@@ -395,6 +445,71 @@ mod tests {
             .join(name)
             .to_string_lossy()
             .into_owned()
+    }
+
+    #[test]
+    fn stream_metadata_does_not_require_an_available_decoder() {
+        use ffmpeg_next::{ffi, format};
+        // SAFETY: the RAII input owns the allocated context and its stream.
+        // No decoder is available for AV_CODEC_ID_NONE; parameter inspection
+        // must still return the container's audio/video metadata.
+        unsafe {
+            let context = ffi::avformat_alloc_context();
+            assert!(!context.is_null());
+            let input = format::context::Input::wrap(context);
+            let stream = ffi::avformat_new_stream(context, std::ptr::null());
+            assert!(!stream.is_null());
+            (*(*stream).codecpar).width = 640;
+            (*(*stream).codecpar).height = 360;
+            (*(*stream).codecpar).sample_rate = 48_000;
+            (*(*stream).codecpar).ch_layout.nb_channels = 2;
+            let stream = input.stream(0).unwrap();
+            let video = super::probe_video_stream(&stream);
+            assert_eq!((video.width, video.height), (Some(640), Some(360)));
+            let audio = super::probe_audio_stream(&stream);
+            assert_eq!((audio.sample_rate, audio.channels), (Some(48_000), Some(2)));
+        }
+    }
+
+    #[test]
+    fn cancelled_silence_analysis_does_not_open_the_input() {
+        let error = super::detect_audio_silence_with_cancel(
+            "/file-that-does-not-exist",
+            0.0,
+            30.0,
+            -30.0,
+            30.0,
+            || true,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<ffmpeg_next::Error>(),
+            Some(&ffmpeg_next::Error::Exit)
+        );
+    }
+
+    #[test]
+    fn silence_analysis_observes_cancellation_after_open() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let token = cancelled.clone();
+        let error = super::detect_audio_silence_with_cancel(
+            &media_mix_asset("with_audio.mp4"),
+            0.0,
+            30.0,
+            -30.0,
+            30.0,
+            move || token.swap(true, Ordering::SeqCst),
+        )
+        .unwrap_err();
+        assert!(cancelled.load(Ordering::SeqCst));
+        assert_eq!(
+            error.downcast_ref::<ffmpeg_next::Error>(),
+            Some(&ffmpeg_next::Error::Exit)
+        );
     }
 
     #[test]

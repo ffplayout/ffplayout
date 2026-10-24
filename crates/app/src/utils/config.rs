@@ -1049,6 +1049,15 @@ impl Default for Output {
 }
 
 impl Output {
+    fn encoder_video_options(&self) -> BTreeMap<String, String> {
+        let mut options = self.video_options.clone();
+        if self.mode == OutputMode::Moq && self.video_codec == "libx264" {
+            options.insert("tune".into(), "zerolatency".into());
+        }
+
+        options
+    }
+
     /// Resolve the CLI-only sink without exposing it to config serialization or the DB.
     pub(crate) fn for_playout(&self) -> Self {
         let mut output = self.clone();
@@ -1074,10 +1083,17 @@ impl Output {
     }
 
     pub(crate) fn from_record(output: models::Output) -> Self {
+        let mode = OutputMode::new(&output.name);
         let video_codec = output.video_codec.unwrap_or_else(default_video_codec);
         let video_options = serde_json::from_str(&output.video_options)
             .unwrap_or_else(|_| ff_engine::video_option_defaults(&video_codec));
-        let protocol_options = serde_json::from_str(&output.protocol_options).unwrap_or_default();
+        // The former MoQ TCP bridge stored protocol options. Native publishing
+        // has no FFmpeg network transport, so retire those settings on load.
+        let protocol_options = if mode == OutputMode::Moq {
+            BTreeMap::new()
+        } else {
+            serde_json::from_str(&output.protocol_options).unwrap_or_default()
+        };
         let muxer_options = serde_json::from_str(&output.muxer_options).unwrap_or_default();
         let metadata_options = serde_json::from_str(&output.metadata_options).unwrap_or_default();
         let audio_options = serde_json::from_str(&output.audio_options).unwrap_or_default();
@@ -1095,7 +1111,7 @@ impl Output {
             },
             encoding_variant: output.encoding_variant,
             public_moq: output.public_moq,
-            mode: OutputMode::new(&output.name),
+            mode,
             discard: false,
             stream_url: output.stream_url,
             stream_type: output
@@ -1214,17 +1230,10 @@ impl Output {
                 || !audio.is_some_and(|codec| super::moq_codecs::supports_audio(&codec.codec_id))
             {
                 return Err(format!(
-                    "MoQ MPEG-TS importer does not support video encoder {:?} with audio encoder {:?}",
+                    "MoQ does not support video encoder {:?} with audio encoder {:?}",
                     self.video_codec, self.audio_codec
                 ));
             }
-            let mut transport = self.clone();
-            transport.mode = OutputMode::Stream;
-            transport.stream_type = StreamType::Custom;
-            transport.stream_format = "mpegts".into();
-            transport.stream_url = "tcp://127.0.0.1:1".into();
-
-            return transport.validate();
         }
         if self.width == 0 || self.height == 0 {
             return Err("output size must be greater than zero".to_string());
@@ -1239,7 +1248,10 @@ impl Output {
         {
             return Err("muxer option names and values must not be empty".to_string());
         }
-        if self.mode != OutputMode::Stream && !self.protocol_options.is_empty() {
+        // Also tolerate stale API payloads from before native MoQ publishing.
+        if !matches!(self.mode, OutputMode::Stream | OutputMode::Moq)
+            && !self.protocol_options.is_empty()
+        {
             return Err(
                 "protocol options can only be used with network stream outputs".to_string(),
             );
@@ -1322,6 +1334,12 @@ impl Output {
                     self.audio_codec, self.mode
                 ));
             }
+        }
+
+        if matches!(
+            self.mode,
+            OutputMode::HLS | OutputMode::Stream | OutputMode::Moq
+        ) {
             ff_engine::validate_video_options(&self.video_codec, &self.video_options)?;
             ff_engine::validate_audio_options(
                 &self.audio_codec,
@@ -1449,7 +1467,10 @@ impl PlayoutConfig {
     /// Apply inherited encoder settings while retaining the destination's transport and muxer.
     pub fn effective_output(&self, output: &Output) -> Result<Output, String> {
         if output.encoding_source_id.is_none() {
-            return Ok(output.clone());
+            let mut effective = output.clone();
+            effective.video_options = output.encoder_video_options();
+
+            return Ok(effective);
         }
         let (source, index) = self.encoding_source(output)?;
         let mut effective = output.clone();
@@ -1457,7 +1478,7 @@ impl PlayoutConfig {
         effective.height = source.height;
         effective.inherit_resolution = source.inherit_resolution;
         effective.video_codec = source.video_codec.clone();
-        effective.video_options = source.video_options.clone();
+        effective.video_options = source.encoder_video_options();
         effective.audio_codec = source.audio_codec.clone();
         effective.audio_options = source.audio_options.clone();
         effective.audio_bitrate = source.audio_bitrate;
@@ -2257,6 +2278,54 @@ mod output_tests {
                     .contains("only be used with network stream outputs")
             );
         }
+    }
+
+    #[test]
+    fn legacy_moq_protocol_options_are_retired_without_blocking_validation() {
+        let mut record = crate::db::models::Output::new(1, OutputMode::Moq);
+        record.protocol_options = r#"{"tcp_nodelay":"1"}"#.into();
+        let mut output = Output::from_record(record);
+        assert!(output.protocol_options.is_empty());
+        assert!(output.validate().is_ok());
+
+        // A client that still holds the old configuration can save it as well.
+        output
+            .protocol_options
+            .insert("tcp_nodelay".into(), "1".into());
+        assert!(output.validate().is_ok());
+        output.width = 0;
+        assert!(output.validate().is_err());
+    }
+
+    #[test]
+    fn moq_owns_low_latency_tuning_and_shared_outputs_keep_the_owner_settings() {
+        let mut moq = output(OutputMode::Moq);
+        moq.id = 1;
+        moq.video_options.insert("tune".into(), "none".into());
+        let mut hls = output(OutputMode::HLS);
+        hls.id = 2;
+        hls.video_options.insert("tune".into(), "none".into());
+        let mut config = PlayoutConfig {
+            output: moq.clone(),
+            outputs: vec![hls.clone()],
+            ..Default::default()
+        };
+        assert_eq!(
+            config.effective_output(&moq).unwrap().video_options["tune"],
+            "zerolatency"
+        );
+        moq.encoding_source_id = Some(2);
+        moq.encoding_variant = hls.hls_playlist_name.clone();
+        assert_eq!(
+            config.effective_output(&moq).unwrap().video_options["tune"],
+            "none"
+        );
+        hls.encoding_source_id = Some(1);
+        config.outputs = vec![hls.clone()];
+        assert_eq!(
+            config.effective_output(&hls).unwrap().video_options["tune"],
+            "zerolatency"
+        );
     }
 
     #[test]

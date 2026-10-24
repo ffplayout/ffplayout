@@ -1,6 +1,8 @@
 [env]
 TS_RS_EXPORT_DIR = { value = "frontend/src/types", relative = true }
 CMAKE_POLICY_VERSION_MINIMUM = { value = "3.5", force = true }
+# Scope the Apple Silicon SVE probe workaround to whisper.cpp only.
+"CMAKE_PROJECT_whisper.cpp_INCLUDE" = { value = "scripts/cmake/whisper-arm-checks.cmake", relative = true }
 
 [target.aarch64-unknown-linux-gnu]
 linker = "aarch64-linux-gnu-gcc"

@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Condvar, Mutex, PoisonError},
+    sync::{Arc, Condvar, Mutex, OnceLock, PoisonError},
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
@@ -8,17 +8,45 @@ use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{Packet, Rational, Rescale, format, rescale};
 
 use crate::{
-    HlsHealth,
+    EncodedFrame, HlsHealth, PacketSink,
     clock::{PlayoutClock, SharedPlayoutClock},
     utils::ffmpeg::reference_packet,
+    utils::pipeline_queue::PipelineActivity,
 };
 
-// Packet storage is compressed, and independent of resolution. The time bound
-// permits reading across the half-second A/V chunks found in local MP4 files.
+// Bound compressed packet storage without confusing encoder latency with backlog.
 const MAX_PACKETS: usize = 512;
 const MAX_BYTES: usize = 32 * 1024 * 1024;
-const MAX_AHEAD_US: i64 = 1_000_000;
 const IDLE_DRAIN: Duration = Duration::from_millis(20);
+
+enum PacketWriter {
+    Container(format::context::Output),
+    Native(Box<dyn PacketSink>),
+}
+
+impl PacketWriter {
+    fn write(&mut self, packet: &Packet) -> Result<()> {
+        match self {
+            Self::Container(output) => packet.write_interleaved(output).map_err(Into::into),
+            Self::Native(sink) => sink.write(EncodedFrame {
+                stream: packet.stream(),
+                data: packet.data().context("encoded packet has no payload")?,
+                pts_us: packet
+                    .pts()
+                    .context("encoded packet has no presentation timestamp")?,
+                dts_us: packet.dts().or_else(|| packet.pts()).unwrap_or(0),
+                duration_us: packet.duration(),
+            }),
+        }
+    }
+
+    fn finish(&mut self) -> Result<()> {
+        match self {
+            Self::Container(output) => output.write_trailer().map_err(Into::into),
+            Self::Native(sink) => sink.finish(),
+        }
+    }
+}
 
 struct PendingPacket {
     packet: Packet,
@@ -45,6 +73,7 @@ struct Shared {
     pace_packets: bool,
     queue: Mutex<Queue>,
     changed: Condvar,
+    activity: OnceLock<Arc<PipelineActivity>>,
 }
 
 /// Owns the single destination's mux context. Encoding hands immutable packet
@@ -91,34 +120,14 @@ impl MuxOutput {
         };
 
         if threaded {
-            let shared = Arc::new(Shared {
-                // The program/input clock already limits production. HLS files
-                // may catch up immediately; network destinations stay paced.
-                pace_packets: mux
-                    .direct
-                    .as_ref()
-                    .context("mux context missing")?
-                    .format()
-                    .name()
-                    != "hls",
-                queue: Mutex::new(Queue {
-                    packets: Vec::new(),
-                    bytes: 0,
-                    last_input: Instant::now(),
-                    finished: false,
-                    aborted: false,
-                    error: None,
-                    delivered: false,
-                    #[cfg(test)]
-                    emitted: Vec::new(),
-                    #[cfg(test)]
-                    first_write_delay: Duration::ZERO,
-                }),
-                changed: Condvar::new(),
-            });
-            let worker_shared = shared.clone();
+            let pace_packets = mux
+                .direct
+                .as_ref()
+                .context("mux context missing")?
+                .format()
+                .name()
+                != "hls";
             let output = mux.direct.take().context("mux context missing")?;
-            let health = mux.health.clone();
             let active_streams = output
                 .streams()
                 .filter(|stream| {
@@ -128,42 +137,119 @@ impl MuxOutput {
                     )
                 })
                 .map(|stream| stream.index())
-                .collect::<Vec<_>>();
-            let clock = mux.clock.clone();
-            mux.worker = Some(
-                thread::Builder::new()
-                    .name("playout-mux".into())
-                    .spawn(move || {
-                        let result = run(
-                            output,
-                            &worker_shared,
-                            health,
-                            channel,
-                            clock,
-                            active_streams,
-                        );
-                        let mut queue = worker_shared
-                            .queue
-                            .lock()
-                            .unwrap_or_else(PoisonError::into_inner);
-                        if let Err(error) = &result {
-                            queue.error = Some(format!("{error:#}"));
-                        }
-                        queue.finished = true;
-                        worker_shared.changed.notify_all();
-
-                        result
-                    })
-                    .context("starting playout mux worker")?,
-            );
-            mux.shared = Some(shared);
+                .collect();
+            mux.start(
+                PacketWriter::Container(output),
+                active_streams,
+                pace_packets,
+                channel,
+            )?;
         }
 
         Ok(mux)
     }
 
+    pub(super) fn packets(
+        sink: Box<dyn PacketSink>,
+        streams: usize,
+        channel: Option<i32>,
+    ) -> Result<Self> {
+        let mut mux = Self {
+            direct: None,
+            direct_delivered: false,
+            time_bases: vec![rescale::TIME_BASE; streams],
+            #[cfg(test)]
+            stream_bitrates: vec![0; streams],
+            shared: None,
+            worker: None,
+            rate: 1.0,
+            health: None,
+            clock: Arc::new(Mutex::new(PlayoutClock::new())),
+        };
+        mux.start(
+            PacketWriter::Native(sink),
+            (0..streams).collect(),
+            true,
+            channel,
+        )?;
+
+        Ok(mux)
+    }
+
+    fn start(
+        &mut self,
+        output: PacketWriter,
+        active_streams: Vec<usize>,
+        pace_packets: bool,
+        channel: Option<i32>,
+    ) -> Result<()> {
+        let shared = Arc::new(Shared {
+            activity: OnceLock::new(),
+            // The program/input clock already limits production. HLS files
+            // may catch up immediately; network destinations stay paced.
+            pace_packets,
+            queue: Mutex::new(Queue {
+                packets: Vec::new(),
+                bytes: 0,
+                last_input: Instant::now(),
+                finished: false,
+                aborted: false,
+                error: None,
+                delivered: false,
+                #[cfg(test)]
+                emitted: Vec::new(),
+                #[cfg(test)]
+                first_write_delay: Duration::ZERO,
+            }),
+            changed: Condvar::new(),
+        });
+        let worker_shared = shared.clone();
+        let health = self.health.clone();
+        let clock = self.clock.clone();
+        let stream_count = self.time_bases.len();
+        self.worker = Some(
+            thread::Builder::new()
+                .name("playout-mux".into())
+                .spawn(move || {
+                    let result = run(
+                        output,
+                        &worker_shared,
+                        health,
+                        channel,
+                        clock,
+                        active_streams,
+                        stream_count,
+                    );
+                    let mut queue = worker_shared
+                        .queue
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    if let Err(error) = &result {
+                        queue.error = Some(format!("{error:#}"));
+                    }
+                    queue.finished = true;
+                    worker_shared.changed.notify_all();
+                    if let Some(activity) = worker_shared.activity.get() {
+                        activity.notify();
+                    }
+
+                    result
+                })
+                .context("starting playout mux worker")?,
+        );
+        self.shared = Some(shared);
+
+        Ok(())
+    }
+
     pub(super) fn clock(&self) -> Option<SharedPlayoutClock> {
         self.shared.as_ref().map(|_| self.clock.clone())
+    }
+
+    pub(super) fn observe_delivery(&self, activity: Arc<PipelineActivity>) {
+        if let Some(shared) = &self.shared {
+            let _ = shared.activity.set(activity);
+        }
     }
 
     pub(super) fn time_base(&self, index: usize) -> Result<Rational> {
@@ -207,24 +293,10 @@ impl MuxOutput {
             if queue.finished || queue.aborted {
                 return Err(anyhow!("output mux worker stopped"));
             }
-            let earliest = queue
-                .packets
-                .iter()
-                .map(|pending| pending.timestamp_us)
-                .min();
-            let latest = queue
-                .packets
-                .iter()
-                .map(|pending| pending.timestamp_us)
-                .max();
+            // Encoder lookahead can span seconds even for a handful of packets.
+            // Keep hard memory/count budgets instead of bounding media skew.
             let full = queue.packets.len() >= MAX_PACKETS
-                || (!queue.packets.is_empty() && queue.bytes.saturating_add(bytes) > MAX_BYTES)
-                || earliest.zip(latest).is_some_and(|(first, last)| {
-                    timestamp_us
-                        .max(last)
-                        .saturating_sub(timestamp_us.min(first))
-                        > MAX_AHEAD_US
-                });
+                || (!queue.packets.is_empty() && queue.bytes.saturating_add(bytes) > MAX_BYTES);
             if !full {
                 break;
             }
@@ -295,17 +367,18 @@ impl Drop for MuxOutput {
 }
 
 fn run(
-    mut output: format::context::Output,
+    mut output: PacketWriter,
     shared: &Shared,
     health: Option<HlsHealth>,
     channel: Option<i32>,
     clock: SharedPlayoutClock,
     active_streams: Vec<usize>,
+    stream_count: usize,
 ) -> Result<()> {
     // HLS write timing is no longer collected. Retain the optional diagnostics
     // for paced network destinations without adding measurements to HLS.
     let mut timing = (shared.pace_packets && log::log_enabled!(log::Level::Trace))
-        .then(|| MuxTiming::new(output.nb_streams() as usize, channel));
+        .then(|| MuxTiming::new(stream_count, channel));
 
     loop {
         let pending = {
@@ -335,13 +408,32 @@ fn run(
                         || queue.packets.len() >= MAX_PACKETS
                         || queue.bytes >= MAX_BYTES
                     {
+                        // Leave the selected packet charged to the queue while
+                        // pacing. Producers cannot fill its reserved capacity,
+                        // and each wakeup reconsiders newly arrived earlier DTS.
+                        // Sparse subtitle timestamps do not advance the clock.
+                        let delay = if active_streams.contains(&first.packet.stream()) {
+                            let mut clock = clock.lock().unwrap_or_else(PoisonError::into_inner);
+                            clock.set_rate(first.rate);
+                            clock.delay_until(Some(first.timestamp_us), rescale::TIME_BASE)
+                        } else {
+                            Duration::ZERO
+                        };
+                        if shared.pace_packets && !delay.is_zero() {
+                            let (next, _) = shared
+                                .changed
+                                .wait_timeout(queue, delay)
+                                .unwrap_or_else(PoisonError::into_inner);
+                            queue = next;
+                            continue;
+                        }
                         let pending = queue.packets.remove(index);
                         queue.bytes -= pending.packet.size();
                         shared.changed.notify_all();
                         break pending;
                     }
                 } else if queue.finished {
-                    output.write_trailer()?;
+                    output.finish()?;
 
                     return Ok(());
                 }
@@ -352,34 +444,6 @@ fn run(
                 queue = next;
             }
         };
-        // Sparse subtitle cues are released by the program scheduler. Their
-        // timestamps must not anchor or advance the audio/video pacing clock.
-        let delay = if active_streams.contains(&pending.packet.stream()) {
-            let mut clock = clock.lock().unwrap_or_else(PoisonError::into_inner);
-            clock.set_rate(pending.rate);
-            clock.delay_until(Some(pending.timestamp_us), rescale::TIME_BASE)
-        } else {
-            Duration::ZERO
-        };
-        let delay = if shared.pace_packets {
-            delay
-        } else {
-            Duration::ZERO
-        };
-        let deadline = Instant::now() + delay;
-        {
-            let mut queue = shared.queue.lock().unwrap_or_else(PoisonError::into_inner);
-            while !queue.aborted && Instant::now() < deadline {
-                let (next, _) = shared
-                    .changed
-                    .wait_timeout(queue, deadline.saturating_duration_since(Instant::now()))
-                    .unwrap_or_else(PoisonError::into_inner);
-                queue = next;
-            }
-            if queue.aborted {
-                return Ok(());
-            }
-        }
         let packet = pending.packet;
         let stream_index = packet.stream();
         #[cfg(test)]
@@ -388,8 +452,8 @@ fn run(
             thread::sleep(delay);
         }
         let started = timing.as_ref().map(|_| Instant::now());
-        packet
-            .write_interleaved(&mut output)
+        output
+            .write(&packet)
             .context("muxing queued output packet")?;
         if let (Some(timing), Some(started)) = (&mut timing, started) {
             timing.record(
@@ -406,11 +470,14 @@ fn run(
             .unwrap_or_else(PoisonError::into_inner)
             .emitted
             .push((stream_index, pending.timestamp_us, Instant::now()));
-        shared
-            .queue
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .delivered = true;
+        let mut queue = shared.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        if !queue.delivered {
+            queue.delivered = true;
+            if let Some(activity) = shared.activity.get() {
+                activity.notify();
+            }
+        }
+        drop(queue);
         if let Some(health) = &health {
             health.mark_muxed();
         }
@@ -485,6 +552,44 @@ mod tests {
     use ffmpeg_next::codec;
 
     use super::*;
+
+    #[test]
+    fn native_packets_retain_dts_order_pacing_and_drain_without_a_container() {
+        struct Sink(
+            Arc<Mutex<Vec<(usize, i64)>>>,
+            Arc<std::sync::atomic::AtomicBool>,
+        );
+        impl PacketSink for Sink {
+            fn write(&mut self, frame: EncodedFrame<'_>) -> Result<()> {
+                assert_eq!(frame.data, &[0; 16]);
+                self.0.lock().unwrap().push((frame.stream, frame.dts_us));
+                Ok(())
+            }
+            fn finish(&mut self) -> Result<()> {
+                self.1.store(true, std::sync::atomic::Ordering::Release);
+                Ok(())
+            }
+        }
+        let received = Arc::new(Mutex::new(Vec::new()));
+        let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut mux =
+            MuxOutput::packets(Box::new(Sink(received.clone(), finished.clone())), 2, None)
+                .unwrap();
+        let start = Instant::now();
+        for timestamp in [0, 40_000, 80_000, 120_000] {
+            send(&mut mux, 0, timestamp);
+        }
+        for timestamp in [0, 20_000, 60_000, 100_000] {
+            send(&mut mux, 1, timestamp);
+        }
+        mux.finish().unwrap();
+        let received = received.lock().unwrap();
+        assert_eq!(received.len(), 8);
+        assert!(received.windows(2).all(|pair| pair[0].1 <= pair[1].1));
+        assert!(start.elapsed() >= Duration::from_millis(100));
+        assert!(finished.load(std::sync::atomic::Ordering::Acquire));
+        assert_eq!(mux.delivery_state(), (true, None));
+    }
 
     fn sink() -> MuxOutput {
         sink_with_subtitles(false)
@@ -695,6 +800,82 @@ mod tests {
         send(&mut mux, 0, 40_000);
         mux.finish().unwrap();
         assert_eq!(shared.queue.lock().unwrap().emitted.len(), 3);
+    }
+
+    #[test]
+    fn paced_packets_remain_within_count_and_byte_budgets() {
+        for (packets, size) in [(MAX_PACKETS, 16), (2, MAX_BYTES / 2)] {
+            let mut mux = sink();
+            let shared = mux.shared.clone().unwrap();
+            send(&mut mux, 0, 0);
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while shared.queue.lock().unwrap().emitted.is_empty() {
+                assert!(Instant::now() < deadline);
+                thread::sleep(Duration::from_millis(2));
+            }
+            let make_packet = move || {
+                let mut packet = Packet::new(size);
+                packet.set_stream(0);
+                packet.set_pts(Some(60_000_000));
+                packet.set_dts(Some(60_000_000));
+                packet
+            };
+            for _ in 0..packets {
+                mux.write(&mut make_packet()).unwrap();
+            }
+            // Give the worker time to enter its future-deadline wait. The
+            // selected packet must still count against the producer's budget.
+            thread::sleep(Duration::from_millis(40));
+            {
+                let queue = shared.queue.lock().unwrap();
+                assert_eq!(queue.packets.len(), packets);
+                assert_eq!(queue.bytes, packets * size);
+            }
+            let (finished, result) = std::sync::mpsc::channel();
+            let producer = thread::spawn(move || {
+                let result = mux.write(&mut make_packet());
+                finished.send(result.is_err()).unwrap();
+            });
+            assert!(result.recv_timeout(Duration::from_millis(40)).is_err());
+            shared.queue.lock().unwrap().aborted = true;
+            shared.changed.notify_all();
+            assert!(result.recv_timeout(Duration::from_secs(2)).unwrap());
+            producer.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn earlier_video_preempts_a_future_audio_pacing_wait() {
+        let mut mux = sink();
+        let shared = mux.shared.clone().unwrap();
+        send(&mut mux, 0, 0);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while shared.queue.lock().unwrap().emitted.is_empty() {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(2));
+        }
+        send(&mut mux, 1, 800_000);
+        thread::sleep(Duration::from_millis(60));
+        send(&mut mux, 0, 80_000);
+        let deadline = Instant::now() + Duration::from_millis(200);
+        loop {
+            if shared
+                .queue
+                .lock()
+                .unwrap()
+                .emitted
+                .iter()
+                .any(|event| event.0 == 0 && event.1 == 80_000)
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "video blocked behind future audio"
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
+        drop(mux);
     }
 
     #[test]

@@ -1,6 +1,6 @@
-//! Codec IDs supported by the current MoQ MPEG-TS importer, independent of encoder names.
-// Keep transport support here, never in the database schema. AV1 requires a compatible
-// import/container path before it can be advertised, even if FFmpeg can encode it.
+//! Validated MoQ codec combinations, independent of encoder names.
+// Direct publishing also has parsers for other codecs. Advertise those only after
+// verifying their encoder initialization and browser playback end to end.
 pub(crate) fn supports_video(codec_id: &str) -> bool {
     matches!(codec_id, "h264" | "hevc")
 }
@@ -14,7 +14,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn importer_capabilities_are_codec_ids_not_encoder_names() {
+    fn publisher_capabilities_are_codec_ids_not_encoder_names() {
         assert!(supports_video("h264"));
         assert!(supports_video("hevc"));
         assert!(!supports_video("av1"));
