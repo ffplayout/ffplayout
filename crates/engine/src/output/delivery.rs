@@ -418,6 +418,12 @@ fn deliver_with_retry(
             Err(anyhow!("destination queue exceeded its bounded capacity"))
         } else {
             match message {
+                #[cfg(test)]
+                Delivery::CheckConnected(reply) => {
+                    let _ = reply.send(output.is_some());
+
+                    Ok(())
+                }
                 Delivery::Packet(packet) => {
                     if let Some(opened) = output.as_mut() {
                         keyframes.forward(packet, |packet| opened.handle_encoded_packet(packet))
@@ -489,11 +495,12 @@ mod tests {
 
     #[test]
     fn native_packet_failures_reconnect_twice_without_opening_a_muxer() {
-        use std::sync::{Arc, atomic::AtomicUsize};
-        #[derive(Debug, Default)]
+        use std::sync::{Arc, Mutex, atomic::AtomicUsize, mpsc};
+        #[derive(Debug)]
         struct Endpoint {
             connections: AtomicUsize,
             fail: Arc<AtomicBool>,
+            allow_open: Mutex<mpsc::Receiver<()>>,
         }
         struct Sink(Arc<AtomicBool>);
         impl crate::PacketSink for Sink {
@@ -517,10 +524,19 @@ mod tests {
                 assert_eq!(streams[1].codec, "aac");
                 assert!(!streams[1].initialization.is_empty());
                 self.connections.fetch_add(1, Ordering::SeqCst);
+                self.allow_open
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(3))?;
                 Ok(Box::new(Sink(self.fail.clone())))
             }
         }
-        let endpoint = Arc::new(Endpoint::default());
+        let (allow_open, opening) = mpsc::channel();
+        let endpoint = Arc::new(Endpoint {
+            connections: AtomicUsize::new(0),
+            fail: Default::default(),
+            allow_open: Mutex::new(opening),
+        });
         endpoint.fail.store(true, Ordering::Release);
         let fixture = Fixture::configured(
             String::new(),
@@ -532,8 +548,14 @@ mod tests {
         );
         fixture.wait("starting");
         fixture.send_media();
+        allow_open.send(()).unwrap();
         fixture.wait("retrying");
         fixture.wait("starting");
+        // Force media to arrive while reconnecting. It is stale by the time
+        // open completes and must be discarded before fresh media is sent.
+        fixture.send_media();
+        allow_open.send(()).unwrap();
+        fixture.wait_connected();
         fixture.send_media();
         fixture.wait("running");
         assert_eq!(endpoint.connections.load(Ordering::SeqCst), 2);
@@ -541,6 +563,9 @@ mod tests {
         fixture.send_media();
         fixture.wait("retrying");
         fixture.wait("starting");
+        fixture.send_media();
+        allow_open.send(()).unwrap();
+        fixture.wait_connected();
         fixture.send_media();
         fixture.wait("running");
         assert_eq!(endpoint.connections.load(Ordering::SeqCst), 3);
@@ -731,6 +756,20 @@ mod tests {
             }
         }
 
+        fn wait_connected(&self) {
+            // Unlike the public "starting" status, this acknowledgement is
+            // processed after open and the stale-packet purge have completed.
+            let (reply, connected) = std::sync::mpsc::sync_channel(1);
+            self.queue
+                .send(Delivery::CheckConnected(reply), 0, None)
+                .unwrap();
+            assert!(
+                connected.recv_timeout(Duration::from_secs(3)).unwrap(),
+                "destination is not connected: {:?}",
+                self.status.snapshot()
+            );
+        }
+
         fn send_media(&self) {
             for packet in &self.packets {
                 let packet = EncodedPacket {
@@ -813,7 +852,7 @@ mod tests {
             assert!(Instant::now() < deadline);
             std::thread::sleep(Duration::from_millis(5));
         }
-        std::thread::sleep(Duration::from_millis(30));
+        fixture.wait_connected();
         fixture.send_media();
         fixture.wait("running");
         fixture.finish();
@@ -875,7 +914,7 @@ mod tests {
         .unwrap();
         assert!(fixture.status.request_retry(1));
         fixture.wait("starting");
-        std::thread::sleep(Duration::from_millis(80));
+        fixture.wait_connected();
         fixture.send_media();
         fixture.wait("running");
         fixture.finish();
@@ -919,7 +958,7 @@ mod tests {
             bytes
         });
         connection.recv_timeout(Duration::from_secs(3)).unwrap();
-        thread::sleep(Duration::from_millis(30));
+        fixture.wait_connected();
         fixture.send_media();
         fixture.wait("running");
         assert!(fixture.status.snapshot()[&1].error.is_none());
@@ -975,11 +1014,11 @@ mod tests {
             Duration::from_secs(2),
         );
         assert_eq!(connection.recv_timeout(Duration::from_secs(3)).unwrap(), 0);
-        thread::sleep(Duration::from_millis(30));
+        fixture.wait_connected();
         fixture.send_media();
         fixture.wait("retrying");
         assert_eq!(connection.recv_timeout(Duration::from_secs(3)).unwrap(), 1);
-        thread::sleep(Duration::from_millis(30));
+        fixture.wait_connected();
         // The same encoded packets/codec parameters are reused; no new EncodingProfile.
         fixture.send_media();
         fixture.wait("running");
@@ -1013,7 +1052,7 @@ mod tests {
         assert!(fixture.status.request_retry(1));
         assert!(!fixture.status.request_retry(1));
         fixture.wait("starting");
-        std::thread::sleep(Duration::from_millis(30));
+        fixture.wait_connected();
         fixture.send_media();
         fixture.wait("running");
         assert_eq!(fixture.status.snapshot()[&2].phase, "running");

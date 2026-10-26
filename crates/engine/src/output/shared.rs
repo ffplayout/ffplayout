@@ -60,6 +60,8 @@ pub(super) fn groups(destinations: &[OutputDestination]) -> Result<Vec<Vec<Outpu
 pub(super) enum Delivery {
     Packet(EncodedPacket),
     Control(Message),
+    #[cfg(test)]
+    CheckConnected(std::sync::mpsc::SyncSender<bool>),
 }
 
 struct Sink {
