@@ -13,7 +13,7 @@
     "format": "prettier --write frontend/src/"
   },
   "dependencies": {
-    "@moq/watch": "^0.6.2",
+    "@moq/watch": "^0.6.6",
     "@tailwindcss/vite": "^4.3.3",
     "@unhead/vue": "^3.4.3",
     "@vueform/multiselect": "^2.6.11",
@@ -21,14 +21,14 @@
     "@vueuse/core": "^15.0.0",
     "bootstrap-icons": "^1.13.2",
     "dayjs": "^1.11.23",
-    "es-toolkit": "^1.52.0",
+    "es-toolkit": "^1.53.0",
     "jwt-decode": "^4.0.0",
     "pinia": "^4.1.0",
     "splitpanes": "^4.1.2",
     "tailwindcss": "^4.3.3",
     "video.js": "^8.24.1",
     "vue": "^3.5.44",
-    "vue-i18n": "^11.4.14",
+    "vue-i18n": "^11.4.16",
     "vue-router": "^5.4.0",
     "vue-virtual-sortable": "^3.1.0"
   },
@@ -40,13 +40,13 @@
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/tsconfig": "^0.9.1",
     "daisyui": "^5.7.50",
-    "eslint": "^10.12.0",
-    "eslint-plugin-vue": "~10.11.1",
+    "eslint": "^10.13.0",
+    "eslint-plugin-vue": "~10.12.0",
     "jiti": "^2.7.0",
-    "npm-run-all2": "^9.0.3",
+    "npm-run-all2": "^9.0.4",
     "prettier": "3.9.10",
     "typescript": "~6.0.3",
-    "vite": "^8.3.4",
+    "vite": "^8.3.5",
     "vite-plugin-vue-devtools": "^8.2.1",
     "vue-tsc": "^3.3.13"
   }
