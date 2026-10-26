@@ -1,6 +1,6 @@
 //! Destination reconnection keeps encoders and the program clock running.
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
@@ -184,9 +184,75 @@ impl Retry {
 }
 
 #[derive(Default)]
-struct Keyframes(BTreeMap<usize, i64>);
+struct Keyframes {
+    starts: BTreeMap<usize, i64>,
+    pending_audio: VecDeque<EncodedPacket>,
+    pending_audio_bytes: usize,
+}
 
 impl Keyframes {
+    // Audio encoding can finish before the first video keyframe. Retain that
+    // audio until its timestamp can be compared with the keyframe, rather than
+    // making the beginning of an output depend on encoder thread scheduling.
+    // Bound storage even when a rendition never produces a usable keyframe.
+    const MAX_PENDING_PACKETS: usize = 512;
+    const MAX_PENDING_BYTES: usize = 32 * 1024 * 1024;
+
+    fn forward(
+        &mut self,
+        packet: EncodedPacket,
+        mut emit: impl FnMut(EncodedPacket) -> Result<()>,
+    ) -> Result<()> {
+        let video = packet.stream & !1;
+
+        if packet.stream != video && !self.starts.contains_key(&video) {
+            let bytes = packet.packet.size();
+
+            if bytes > Self::MAX_PENDING_BYTES {
+                return Ok(());
+            }
+
+            while self.pending_audio.len() >= Self::MAX_PENDING_PACKETS
+                || self.pending_audio_bytes > Self::MAX_PENDING_BYTES - bytes
+            {
+                if let Some(oldest) = self.pending_audio.pop_front() {
+                    self.pending_audio_bytes -= oldest.packet.size();
+                }
+            }
+            self.pending_audio_bytes += bytes;
+            self.pending_audio.push_back(packet);
+
+            return Ok(());
+        }
+
+        if !self.accept(&packet) {
+            return Ok(());
+        }
+
+        let keyframe = packet.stream == video && packet.packet.is_key();
+        emit(packet)?;
+
+        if keyframe {
+            for _ in 0..self.pending_audio.len() {
+                let Some(pending) = self.pending_audio.pop_front() else {
+                    break;
+                };
+
+                if pending.stream & !1 == video {
+                    self.pending_audio_bytes -= pending.packet.size();
+
+                    if self.accept(&pending) {
+                        emit(pending)?;
+                    }
+                } else {
+                    self.pending_audio.push_back(pending);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn accept(&mut self, packet: &EncodedPacket) -> bool {
         let video = packet.stream & !1;
         let timestamp = packet
@@ -195,10 +261,12 @@ impl Keyframes {
             .or_else(|| packet.packet.pts())
             .map(|pts| pts.rescale(packet.time_base, rescale::TIME_BASE));
         if packet.stream == video && packet.packet.is_key() {
-            self.0.entry(video).or_insert(timestamp.unwrap_or(i64::MIN));
+            self.starts
+                .entry(video)
+                .or_insert(timestamp.unwrap_or(i64::MIN));
         }
 
-        self.0
+        self.starts
             .get(&video)
             .is_some_and(|start| timestamp.is_none_or(|pts| pts >= *start))
     }
@@ -352,11 +420,7 @@ fn deliver_with_retry(
             match message {
                 Delivery::Packet(packet) => {
                     if let Some(opened) = output.as_mut() {
-                        if keyframes.accept(&packet) {
-                            opened.handle_encoded_packet(packet)
-                        } else {
-                            Ok(())
-                        }
+                        keyframes.forward(packet, |packet| opened.handle_encoded_packet(packet))
                     } else {
                         Ok(())
                     }
@@ -970,6 +1034,90 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos()
+    }
+
+    #[test]
+    fn audio_encoded_before_video_waits_for_its_renditions_keyframe() {
+        let packet = |stream, timestamp, time_base, key| {
+            let mut packet = ffmpeg_next::Packet::copy(&[1, 2, 3]);
+            packet.set_dts(Some(timestamp));
+
+            if key {
+                packet.set_flags(ffmpeg_next::packet::Flags::KEY);
+            }
+
+            EncodedPacket {
+                packet,
+                stream,
+                time_base,
+            }
+        };
+        let mut gate = Keyframes::default();
+        let mut emitted = Vec::new();
+        let mut emit = |packet: EncodedPacket| {
+            emitted.push((packet.stream, packet.packet.dts().unwrap()));
+
+            Ok(())
+        };
+
+        // Codec priming predates the video start; subsequent audio belongs to
+        // the program even when the video encoder takes longer to produce it.
+        for timestamp in [-1024, 0, 1024, 2048, 3072] {
+            gate.forward(packet(1, timestamp, (1, 48_000).into(), false), &mut emit)
+                .unwrap();
+        }
+        gate.forward(packet(3, 4096, (1, 48_000).into(), false), &mut emit)
+            .unwrap();
+        gate.forward(packet(0, 0, (1, 25).into(), true), &mut emit)
+            .unwrap();
+        // A second rendition must wait for its own keyframe. Its audio is
+        // earlier than that keyframe and must still be discarded on reconnect.
+        gate.forward(packet(2, 3, (1, 25).into(), true), &mut emit)
+            .unwrap();
+        assert_eq!(
+            emitted,
+            [(0, 0), (1, 0), (1, 1024), (1, 2048), (1, 3072), (2, 3)]
+        );
+        assert!(gate.pending_audio.is_empty());
+        assert_eq!(gate.pending_audio_bytes, 0);
+    }
+
+    #[test]
+    fn audio_waiting_for_a_missing_keyframe_has_bounded_storage() {
+        let mut gate = Keyframes::default();
+
+        for timestamp in 0..Keyframes::MAX_PENDING_PACKETS + 5 {
+            let mut packet = ffmpeg_next::Packet::copy(&[1; 16]);
+            packet.set_dts(Some(timestamp as i64));
+            gate.forward(
+                EncodedPacket {
+                    packet,
+                    stream: 1,
+                    time_base: (1, 48_000).into(),
+                },
+                |_| panic!("audio must wait for a video keyframe"),
+            )
+            .unwrap();
+        }
+        assert_eq!(gate.pending_audio.len(), Keyframes::MAX_PENDING_PACKETS);
+        assert_eq!(gate.pending_audio.front().unwrap().packet.dts(), Some(5));
+        assert_eq!(
+            gate.pending_audio_bytes,
+            Keyframes::MAX_PENDING_PACKETS * 16
+        );
+
+        let packet = ffmpeg_next::Packet::copy(&vec![0; Keyframes::MAX_PENDING_BYTES]);
+        gate.forward(
+            EncodedPacket {
+                packet,
+                stream: 1,
+                time_base: (1, 48_000).into(),
+            },
+            |_| panic!("audio must wait for a video keyframe"),
+        )
+        .unwrap();
+        assert_eq!(gate.pending_audio.len(), 1);
+        assert_eq!(gate.pending_audio_bytes, Keyframes::MAX_PENDING_BYTES);
     }
 
     #[test]
