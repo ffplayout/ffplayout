@@ -28,6 +28,9 @@ use crate::{
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod memory;
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod rtmp_recovery;
+
 #[derive(Default)]
 struct CountingOutput {
     video_frames: usize,

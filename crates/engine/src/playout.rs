@@ -960,8 +960,7 @@ fn receive_video_frames<O: FrameOutput>(
             continue;
         }
 
-        let mut scaled = frame::Video::empty();
-        benchmark::measure(Stage::Scale, || video.scaler.run(&raw, &mut scaled))?;
+        let scaled = benchmark::measure(Stage::Scale, || video.scale_frame(&raw, cfg))?;
         let pristine = if video.needs_padding() {
             let mut padded = black_video_frame(video.output_width, video.output_height);
             benchmark::measure(Stage::Scale, || {
@@ -1673,6 +1672,38 @@ impl VideoDecoder {
             last_output_frame: None,
             last_composited_frame: None,
         })
+    }
+
+    fn scale_frame(&mut self, raw: &frame::Video, cfg: &OutputConfig) -> Result<frame::Video> {
+        let input = self.scaler.input();
+        if input.format != raw.format()
+            || input.width != raw.width()
+            || input.height != raw.height()
+        {
+            // Ingest can update its SPS/colour range after the decoder opened.
+            // The received frame, rather than the initial stream metadata,
+            // defines the scaler input and the letterboxing geometry.
+            let scale = VideoScale::new(raw.width(), raw.height(), cfg);
+            self.scaler = scaling::Context::get(
+                raw.format(),
+                raw.width(),
+                raw.height(),
+                Pixel::YUV420P,
+                scale.scaled_width,
+                scale.scaled_height,
+                scaling::flag::Flags::BILINEAR,
+            )?;
+            self.output_width = scale.output_width;
+            self.output_height = scale.output_height;
+            self.scaled_width = scale.scaled_width;
+            self.scaled_height = scale.scaled_height;
+            self.x_offset = scale.x_offset;
+            self.y_offset = scale.y_offset;
+        }
+        let mut scaled = frame::Video::empty();
+        self.scaler.run(raw, &mut scaled)?;
+
+        Ok(scaled)
     }
 
     fn needs_padding(&self) -> bool {
@@ -2862,6 +2893,35 @@ mod tests {
             "unexpected one-second audio output: {} samples",
             output.audio_samples
         );
+    }
+
+    #[test]
+    fn video_scaler_accepts_decoded_resolution_and_pixel_format_changes() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let input = open_media_input(&media_mix_asset("av_sync.mp4")).unwrap();
+        let stream = input.streams().best(media::Type::Video).unwrap();
+        let mut video =
+            VideoDecoder::new(&stream, &cfg, "format change", None, 0, 0, None).unwrap();
+        for (format, width, height, scaled_height, y_offset) in [
+            (Pixel::YUV420P, 640, 480, 240, 0),
+            (Pixel::YUVJ420P, 1280, 720, 180, 30),
+            (Pixel::YUV420P, 640, 480, 240, 0),
+        ] {
+            let mut raw = frame::Video::new(format, width, height);
+            for plane in 0..raw.planes() {
+                raw.data_mut(plane).fill(128);
+            }
+            let scaled = video.scale_frame(&raw, &cfg).unwrap();
+            assert_eq!(
+                (scaled.width(), scaled.height(), scaled.format()),
+                (320, scaled_height, Pixel::YUV420P)
+            );
+            assert_eq!(
+                (video.output_width, video.output_height, video.y_offset),
+                (320, 240, y_offset)
+            );
+            assert_eq!(video.needs_padding(), y_offset != 0);
+        }
     }
 
     #[test]

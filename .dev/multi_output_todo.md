@@ -23,6 +23,15 @@ and [MoQ documentation](../docs/moq.md).
   covers repeated 2.2/4-second pauses, PTS gaps, continuous-PTS bursts and return
   to file playback, verifying decoded video counts and per-track HLS DTS order.
 - [x] Allow changing or activating the desktop window without restarting the channel.
+- [x] Reproduce RTMP `Input changed` on a mid-stream resolution change and
+  rebuild the scaler and letterboxing from actual decoded frame dimensions and
+  pixel format. The full RTMP/HLS test fails before this fix and passes after it.
+- [ ] Diagnose the remaining raw-queue overflow reported at 20:05:33 and
+  20:06:27 on 2026-10-27 despite bounded backpressure (48 720p frames / 64 MiB).
+  Local end-to-end RTMP runs with libfdk_aac, reception pauses, Full-Range
+  video, a sender PTS jump, and a separate ready encoding group have not
+  reproduced that remaining failure; obtain the exact server output, recording
+  and loudness configuration before claiming it fixed.
 - [ ] Profile the remaining paced network delivery/mux boundary before combining
   those workers; preserve independent reconnects, pacing, and bounded buffering.
 - [x] Replace the local MPEG-TS/TCP importer with direct encoded-frame publishing,

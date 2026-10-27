@@ -447,6 +447,28 @@ async executor on blocking workers, and no measurements run unless diagnostics
 are enabled and DEBUG logging is active. Existing periodic development metrics
 remain independent.
 
+### RTMP/HLS recovery regression
+
+For the opt-in end-to-end RTMP/HLS recovery test, run alone with a recent FFmpeg
+CLI providing `-readrate_catchup`, `libx264`, and AAC, and permit local TCP sockets:
+
+```bash
+RUST_LOG=info cargo test -p ff-engine --lib \
+  rtmp_reception_pauses_and_reconnects_feed_three_hls_variants -- --ignored --nocapture
+```
+
+The approximately 90-second run sends 720p H.264/AAC through the real RTMP
+listener and decoder into three HLS variants and an independent stream encoder.
+It pauses/resumes the publisher, requests fourfold catch-up, reconnects with
+Full-Range video, injects a sender PTS jump, and changes resolution mid-stream.
+Output AAC uses `libfdk_aac` when available. Logs and HLS artifacts remain in
+`tmp/rtmp-hls-recovery-<pid>/`. Set `FFPLAYOUT_RTMP_CASE=0`, `1`, `2`, or `3`
+to run only the normal, Full-Range, PTS-jump, or resolution-change case.
+After draining the outputs, the test checks audio/video packet counts and
+strictly increasing per-track DTS in all three HLS variants and the independent
+stream, then decodes both tracks with FFmpeg in strict error mode. Finished HLS
+test playlists receive an end marker so verification reaches EOF.
+
 ### Media analysis and clip resource lifetimes
 
 Metadata probes read stream parameters without opening additional decoders.
