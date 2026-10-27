@@ -7,6 +7,8 @@ use std::{
     time::Instant,
 };
 
+use chrono::{NaiveDate, Timelike};
+use chrono_tz::Tz;
 use log::*;
 use tokio::{
     fs::File,
@@ -18,9 +20,9 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     player::utils::{
         JsonPlaylist, Media, detect_audio_silence, is_close, is_live_source, is_remote,
-        sec_to_time, time_in_seconds, time_to_sec,
+        sec_to_time, time_to_sec,
     },
-    utils::{config::PlayoutConfig, errors::ProcessError},
+    utils::{config::PlayoutConfig, errors::ProcessError, time_machine::time_now},
 };
 
 const MAX_AV_DURATION_DIFFERENCE_SECONDS: f64 = 4.0;
@@ -213,6 +215,28 @@ async fn check_vtt(source: &str, duration: f64, channel_id: i32) -> Result<(), P
     Ok(())
 }
 
+// Playlist positions use wall-clock seconds relative to their broadcast date,
+// including positions after midnight. A playlist loaded before its start must
+// not be mistaken for yesterday's broadcast. Invalid dates disable skipping so
+// validation still inspects the entries.
+fn validation_time(date: &str, timezone: &Option<Tz>, validate_all: bool) -> Option<f64> {
+    // Explicit CLI validation must inspect the entire playlist, even when its
+    // broadcast date or individual entries are already in the past.
+    if validate_all {
+        return None;
+    }
+
+    let date = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
+    let now = time_now(timezone);
+    let days = now.date_naive().signed_duration_since(date).num_days();
+
+    Some(
+        days as f64 * 86_400.0
+            + f64::from(now.num_seconds_from_midnight())
+            + f64::from(now.nanosecond()) / 1_000_000_000.0,
+    )
+}
+
 /// Validate a given playlist, to check if:
 ///
 /// - the source files are existing
@@ -232,13 +256,11 @@ pub async fn validate_playlist(
 
     let mut length = config.playlist.length_sec.unwrap();
     let mut begin = config.playlist.start_sec.unwrap();
-    let mut time_sec = time_in_seconds(&config.channel.timezone);
+    let time_sec = validation_time(&date, &config.channel.timezone, config.general.validate);
+    let mut checked = 0;
+    let mut skipped = 0;
 
     length += begin;
-
-    if time_sec < config.playlist.start_sec.unwrap_or_default() {
-        time_sec += 86400.0;
-    }
 
     debug!(channel = id; "Validate playlist from: <span class=\"log-number\">{date}</span>");
     let timer = Instant::now();
@@ -252,11 +274,14 @@ pub async fn validate_playlist(
 
         let pos = index + 1;
 
-        if begin < time_sec {
+        if time_sec.is_some_and(|time_sec| begin < time_sec) {
             // Do not validate clips that are being passed.
             begin += item.out - item.seek;
+            skipped += 1;
             continue;
         }
+
+        checked += 1;
 
         if !is_remote(&item.source) {
             for path in [&mut item.source, &mut item.audio] {
@@ -352,7 +377,7 @@ pub async fn validate_playlist(
     }
 
     debug!(channel = id;
-        "Validation done, in <span class=\"log-number\">{:.3?}</span>, playlist length: <span class=\"log-number\">{}</span> ...",
+        "Validation done, in <span class=\"log-number\">{:.3?}</span>, checked=<span class=\"log-number\">{checked}</span> skipped=<span class=\"log-number\">{skipped}</span>, playlist length: <span class=\"log-number\">{}</span> ...",
         timer.elapsed(),
         sec_to_time(begin - config.playlist.start_sec.unwrap())
     );
@@ -397,6 +422,84 @@ mod tests {
                 .into_iter()
                 .collect(),
         }
+    }
+
+    #[test]
+    fn validation_positions_use_the_playlists_broadcast_date() {
+        for (now, date, expected) in [
+            ("2026-10-27T05:59:23+01:00", "2026-10-27", 21_563.0),
+            ("2026-10-27T05:59:23+01:00", "2026-10-26", 107_963.0),
+            ("2026-10-26T23:59:23+01:00", "2026-10-27", -37.0),
+            ("2026-10-27T06:01:00+01:00", "2026-10-27", 21_660.0),
+            // Broadcast positions remain wall-clock based across DST changes.
+            ("2026-10-25T05:59:23+01:00", "2026-10-24", 107_963.0),
+        ] {
+            crate::utils::time_machine::with_mock_time(now, || {
+                let position =
+                    super::validation_time(date, &Some(chrono_tz::Europe::Berlin), false).unwrap();
+                assert!((position - expected).abs() < 0.1, "{now}: {position}");
+            });
+        }
+
+        assert!(super::validation_time("invalid", &Some(chrono_tz::UTC), false).is_none());
+    }
+
+    #[test]
+    fn explicit_validation_has_no_time_cutoff() {
+        crate::utils::time_machine::with_mock_time("2026-10-27T12:00:00+01:00", || {
+            let timezone = Some(chrono_tz::Europe::Berlin);
+
+            for date in ["2026-10-20", "2026-10-27", "2026-10-28"] {
+                assert!(super::validation_time(date, &timezone, true).is_none());
+            }
+
+            // Background validation still skips elapsed entries.
+            assert!(super::validation_time("2026-10-20", &timezone, false).unwrap() > 86_400.0);
+        });
+    }
+
+    #[test]
+    fn next_playlist_loaded_before_six_is_probed_from_its_first_entry() {
+        crate::utils::time_machine::with_mock_time("2026-10-27T05:59:23+01:00", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../tests_assets/storage/media_mix/with_audio.mp4");
+                    let item = Media {
+                        source: path.to_string_lossy().into_owned(),
+                        duration: 10.0,
+                        out: 10.0,
+                        ..Media::default()
+                    };
+                    let current_list =
+                        std::sync::Arc::new(tokio::sync::Mutex::new(vec![item.clone()]));
+                    let mut config = super::PlayoutConfig::default();
+                    config.channel.timezone = Some(chrono_tz::Europe::Berlin);
+                    config.playlist.start_sec = Some(21_600.0);
+                    config.playlist.length_sec = Some(10.0);
+                    config.logging.detect_silence = false;
+                    config.processing.vtt_enable = false;
+                    config.general.validate = false;
+                    let playlist = super::JsonPlaylist {
+                        date: "2026-10-27".to_string(),
+                        program: vec![item],
+                        ..super::JsonPlaylist::default()
+                    };
+                    super::validate_playlist(
+                        config,
+                        current_list.clone(),
+                        playlist,
+                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                        tokio_util::sync::CancellationToken::new(),
+                    )
+                    .await;
+
+                    assert!(current_list.lock().await[0].probe.is_some());
+                });
+        });
     }
 
     #[test]
