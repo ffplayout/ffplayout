@@ -16,6 +16,12 @@ and [MoQ documentation](../docs/moq.md).
 - [x] Reproduce and fix track-by-track padding after a live reception gap.
   Repeated video and silent audio now enter the output in timestamp order.
   Preserve the original playback error if fallback also fails.
+- [x] Reproduce a real 720p live catch-up burst overflowing three HLS encoders
+  after a reception pause. Add bounded backpressure (at most 250 ms per incoming
+  frame when all active groups are full); keep count/memory budgets and isolate
+  blocked branches immediately when another group is ready. A real-codec test
+  covers repeated 2.2/4-second pauses, PTS gaps, continuous-PTS bursts and return
+  to file playback, verifying decoded video counts and per-track HLS DTS order.
 - [x] Allow changing or activating the desktop window without restarting the channel.
 - [ ] Profile the remaining paced network delivery/mux boundary before combining
   those workers; preserve independent reconnects, pacing, and bounded buffering.

@@ -33,6 +33,8 @@ const ENCODING_QUEUE_LIMITS: QueueLimits = QueueLimits {
     duration_us: i64::MAX,
 };
 
+const ENCODING_BURST_WAIT: Duration = Duration::from_millis(250);
+
 #[derive(Debug, Clone)]
 pub struct OutputState {
     pub phase: &'static str,
@@ -613,6 +615,27 @@ impl ParallelOutput {
         thread::sleep(delay);
     }
 
+    fn wait_for_encoding_capacity(
+        workers: &[DestinationWorker],
+        bytes: usize,
+        timestamp: Option<i64>,
+    ) {
+        // A live catch-up burst can fill every branch faster than the encoder
+        // threads are scheduled. With no ready branch, apply bounded backpressure
+        // instead of declaring overload immediately. A ready independent output
+        // must never wait for a blocked sibling; that sibling is isolated below.
+        let mut active = workers.iter().filter(|worker| !worker.control.cancelled());
+        if let Some(first) = active.next()
+            && first.queue.would_block(bytes, timestamp)
+            && active.all(|worker| worker.queue.would_block(bytes, timestamp))
+        {
+            // Failure is handled by send below, together with the branch status.
+            let _ = first
+                .queue
+                .wait_for_capacity(bytes, timestamp, ENCODING_BURST_WAIT);
+        }
+    }
+
     pub(crate) fn encode_video(&self, frame: &frame::Video) -> Result<()> {
         self.video_with_logo(frame, None, 0.0)
     }
@@ -637,6 +660,7 @@ impl ParallelOutput {
             workers.is_empty() || workers.iter().any(|worker| !worker.control.cancelled()),
             "all output encoding groups have failed"
         );
+        Self::wait_for_encoding_capacity(&workers, bytes, timestamp);
         let mut consumers = BTreeMap::new();
         if logo.is_some() && opacity > 0.0 {
             for resolution in workers
@@ -669,6 +693,7 @@ impl ParallelOutput {
 
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         self.reconcile(&mut workers)?;
+        Self::wait_for_encoding_capacity(&workers, bytes, timestamp);
         for worker in workers.iter() {
             worker.send(
                 Message::Audio(reference_audio_frame(frame)?),
@@ -1775,6 +1800,44 @@ mod tests {
         }
         assert!(worker.control.cancelled());
         assert_eq!(worker.status.snapshot()[&1].phase, "failed");
+    }
+
+    #[test]
+    fn ready_encoding_branch_is_not_delayed_by_a_blocked_sibling() {
+        let make_worker = |id| {
+            let control = Arc::new(PipelineControl::default());
+            DestinationWorker {
+                encoding_revision: String::new(),
+                gop: 50,
+                subtitles: false,
+                id,
+                ids: vec![id],
+                video_resolutions: Vec::new(),
+                queue: PipelineQueue::new(
+                    QueueLimits {
+                        items: 1,
+                        bytes: 8,
+                        duration_us: i64::MAX,
+                    },
+                    control.clone(),
+                ),
+                control,
+                worker: None,
+                channel: 1,
+                status: OutputStatus::default(),
+            }
+        };
+        let workers = vec![make_worker(1), make_worker(2)];
+        workers[0].send(Message::Rate(1.0), 8, None);
+        let started = std::time::Instant::now();
+        ParallelOutput::wait_for_encoding_capacity(&workers, 8, None);
+        assert!(started.elapsed() < ENCODING_BURST_WAIT / 2);
+        for worker in &workers {
+            worker.send(Message::Rate(1.0), 8, None);
+        }
+        assert!(workers[0].control.cancelled());
+        assert!(!workers[1].control.cancelled());
+        assert!(workers[1].queue.try_recv().unwrap().is_some());
     }
 
     #[test]

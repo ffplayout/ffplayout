@@ -257,6 +257,26 @@ impl<T> PipelineQueue<T> {
         self.full(&state, bytes, timestamp_us)
     }
 
+    /// Let a burst producer wait for the consumer without retaining more media.
+    /// The deadline bounds stalls and cancellation wakes this wait immediately.
+    pub(crate) fn wait_for_capacity(
+        &self,
+        bytes: usize,
+        timestamp_us: Option<i64>,
+        timeout: Duration,
+    ) -> Result<()> {
+        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let (state, _) = self
+            .changed
+            .wait_timeout_while(state, timeout, |state| {
+                !state.closed && !self.control.cancelled() && self.full(state, bytes, timestamp_us)
+            })
+            .unwrap_or_else(PoisonError::into_inner);
+        drop(state);
+
+        self.control.check()
+    }
+
     /// Snapshot only on overflow, keeping formatting out of the media hot path.
     pub(crate) fn capacity_description(
         &self,
@@ -562,6 +582,58 @@ mod tests {
         }
         assert_eq!(queue.recv().unwrap(), None);
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn capacity_wait_wakes_when_a_consumer_drains_or_cancels() {
+        for cancel in [false, true] {
+            let control = Arc::new(PipelineControl::default());
+            let queue = PipelineQueue::new(
+                QueueLimits {
+                    items: 1,
+                    bytes: 8,
+                    duration_us: 100,
+                },
+                control.clone(),
+            );
+            queue.send(1_u8, 8, Some(0)).unwrap();
+            let waiting = queue.clone();
+            let worker = thread::spawn(move || {
+                waiting.wait_for_capacity(8, Some(0), Duration::from_secs(5))
+            });
+            let started = Instant::now();
+            if cancel {
+                control.fail("cancelled capacity wait");
+            } else {
+                assert_eq!(queue.try_recv().unwrap(), Some(1));
+            }
+            let result = worker.join().unwrap();
+            assert!(started.elapsed() < Duration::from_secs(1));
+            assert_eq!(result.is_err(), cancel);
+            if !cancel {
+                assert!(!queue.would_block(8, Some(0)));
+            }
+        }
+    }
+
+    #[test]
+    fn capacity_wait_timeout_does_not_expand_or_disable_a_full_queue() {
+        let control = Arc::new(PipelineControl::default());
+        let queue = PipelineQueue::new(
+            QueueLimits {
+                items: 1,
+                bytes: 8,
+                duration_us: 100,
+            },
+            control.clone(),
+        );
+        queue.send(1_u8, 8, Some(0)).unwrap();
+        queue
+            .wait_for_capacity(8, Some(0), Duration::from_millis(1))
+            .unwrap();
+        assert_eq!(queue.try_send(2, 8, Some(0)).unwrap(), Some(2));
+        assert!(!control.cancelled());
+        assert_eq!(queue.try_recv().unwrap(), Some(1));
     }
 
     #[test]

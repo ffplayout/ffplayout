@@ -270,6 +270,11 @@ recording muxer. Dedicated recording encoding remains separate. MoQ uses the sam
 `output/parallel.rs` owns the program clock and sends referenced program frames
 to the encoding groups. Each raw encoding-group queue is limited to 128 messages
 and 64 MiB. Timestamp gaps during live recovery do not count as queue backlog.
+If all active encoding groups are full, each incoming audio/video frame may
+wait up to 250 ms for consumer progress before normal overload handling applies.
+This bounded backpressure absorbs live catch-up bursts without increasing the
+queue budgets. If another group is ready, it proceeds immediately and the full
+branch is isolated instead. Cancellation wakes a capacity wait immediately.
 Shared profiles reference their compressed packets into separate
 delivery queues, each limited to 512 messages and 32 MiB. Stream/MoQ
 then use the bounded paced mux queue. HLS writes directly in its isolated delivery
