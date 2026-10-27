@@ -288,46 +288,44 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         let duration = duration.min(Duration::from_secs_f64(MAX_LIVE_GAP_SECONDS));
         let video_frames = (duration.as_secs_f64() * f64::from(self.live.fps)).ceil() as i64;
 
-        if let Some(last_video_frame) = self.live.last_video_frame.as_ref() {
-            let last_video_frame = reference_video_frame(last_video_frame)?;
+        let video_end = self.live.video_pts + video_frames;
+        let audio_end = self.live.audio_pts
+            + (duration.as_secs_f64() * f64::from(self.live.sample_rate)).ceil() as i64;
+        let last_video_frame = self
+            .live
+            .last_video_frame
+            .as_ref()
+            .map(reference_video_frame)
+            .transpose()?;
+        let frame_size = self.output.audio_frame_size().max(1) as i64;
 
-            for _ in 0..video_frames {
-                let mut frame = reference_video_frame(&last_video_frame)?;
-                frame.set_pts(Some(self.live.video_pts));
-                self.output.encode_video(&frame)?;
-                self.remember_video_frame(frame, self.live.video_pts);
-                self.live.video_pts += 1;
-            }
-        } else {
-            self.live.video_pts += video_frames;
+        if last_video_frame.is_none() {
+            self.live.video_pts = video_end;
         }
 
-        let mut remaining_samples =
-            (duration.as_secs_f64() * f64::from(self.live.sample_rate)).ceil() as usize;
-        let frame_size = self.output.audio_frame_size().max(1);
-
-        while remaining_samples > 0 {
-            let samples = remaining_samples.min(frame_size);
-            let mut frame = frame::Audio::new(
-                Sample::F32(SampleType::Planar),
-                samples,
-                ChannelLayout::STEREO,
+        // Submit both tracks in timestamp order. Sending seconds of video
+        // before audio creates an artificial queue span and leaves paced muxers
+        // waiting for the audio which the producer has not submitted yet.
+        while self.live.video_pts < video_end || self.live.audio_pts < audio_end {
+            check_playback_control(&self.playback_control)?;
+            let video_sample = seconds_to_audio_pts(
+                self.live.sample_rate,
+                video_seconds(self.live.fps, self.live.video_pts),
             );
-            frame.set_rate(self.live.sample_rate);
-            frame.set_pts(Some(self.live.audio_pts));
+            let send_video = self.live.video_pts < video_end
+                && (self.live.audio_pts >= audio_end || video_sample <= self.live.audio_pts);
 
-            for channel in 0..2 {
-                for sample in frame.plane_mut::<f32>(channel) {
-                    *sample = 0.0;
+            if send_video {
+                if let Some(last_video_frame) = &last_video_frame {
+                    let mut frame = reference_video_frame(last_video_frame)?;
+                    frame.set_pts(Some(self.live.video_pts));
+                    self.output.encode_video(&frame)?;
+                    self.remember_video_frame(frame, self.live.video_pts);
                 }
-            }
-            if self.live.active {
-                self.output.encode_live_audio(&frame)?;
+                self.live.video_pts += 1;
             } else {
-                self.output.encode_audio(&frame)?;
+                self.fill_audio_until((self.live.audio_pts + frame_size).min(audio_end))?;
             }
-            self.remember_audio_frame_end(self.live.audio_pts + samples as i64);
-            remaining_samples -= samples;
         }
 
         self.live.last_media_at = Some(Instant::now());

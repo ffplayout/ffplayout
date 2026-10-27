@@ -708,6 +708,58 @@ fn startup_audio_after_the_first_video_preserves_its_source_offset() {
 }
 
 #[test]
+fn live_disconnect_gap_keeps_audio_and_video_interleaved() {
+    #[derive(Default)]
+    struct GapOutput {
+        timestamps: Vec<i64>,
+    }
+
+    impl FrameOutput for GapOutput {
+        fn audio_frame_size(&self) -> usize {
+            1024
+        }
+
+        fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+            self.timestamps.push(frame.pts().unwrap() * 48_000 / 25);
+            Ok(())
+        }
+
+        fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+            self.timestamps.push(frame.pts().unwrap());
+            Ok(())
+        }
+    }
+
+    let (tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.last_video_frame = Some(frame::Video::new(
+        ffmpeg_next::format::Pixel::YUV420P,
+        16,
+        16,
+    ));
+    live.last_video_output_pts = Some(0);
+    live.last_audio_output_end_pts = Some(1920);
+    live.video_pts = 1;
+    live.audio_pts = 1920;
+    live.last_media_at = Some(Instant::now() - Duration::from_secs(2));
+    let mut output = GapOutput::default();
+    let control = crate::PlaybackControl::default();
+    tx.send(LiveEvent::Ended(0)).unwrap();
+    LiveOverrideOutput::new(&mut output, &mut live, &control)
+        .pump_live()
+        .unwrap();
+
+    assert!(output.timestamps.len() > 100);
+    assert!(
+        output.timestamps.windows(2).all(|pair| pair[1] >= pair[0]),
+        "gap padding submitted a whole track before the other: {:?}",
+        output.timestamps
+    );
+    assert!(!live.active);
+}
+
+#[test]
 fn live_audio_survives_backward_timestamp_outliers_in_either_track() {
     assert_live_audio_recovers_after_timestamp_jump(-258_096, 0);
     assert_live_audio_recovers_after_timestamp_jump(0, -135);

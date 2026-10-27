@@ -25,6 +25,14 @@ use super::{
     encoded::EncodedFormat,
 };
 
+const ENCODING_QUEUE_LIMITS: QueueLimits = QueueLimits {
+    items: 128,
+    bytes: 64 * 1024 * 1024,
+    // Live timestamp gaps and temporary A/V skew are not queue residence
+    // times. Bound retained raw frames by count and memory instead.
+    duration_us: i64::MAX,
+};
+
 #[derive(Debug, Clone)]
 pub struct OutputState {
     pub phase: &'static str,
@@ -254,6 +262,18 @@ pub struct OutputDestination {
 }
 
 impl OutputDestination {
+    pub(super) fn composition_resolution(&self) -> (u32, u32) {
+        if let OutputTarget::Hls { variants, .. } = &self.target
+            && let Some(largest) = variants
+                .iter()
+                .max_by_key(|variant| u64::from(variant.width) * u64::from(variant.height))
+        {
+            return (largest.width, largest.height);
+        }
+
+        (self.config.width, self.config.height)
+    }
+
     pub(super) fn writes_subtitles(&self) -> bool {
         self.config.delivery_enabled
             && matches!(
@@ -321,13 +341,7 @@ impl DestinationWorker {
             .collect::<Vec<_>>();
         let worker_ids = ids.clone();
         let root = &destinations[0];
-        let mut video_resolutions = match &root.target {
-            OutputTarget::Hls { variants, .. } if !variants.is_empty() => variants
-                .iter()
-                .map(|variant| (variant.width, variant.height))
-                .collect(),
-            _ => vec![(root.config.width, root.config.height)],
-        };
+        let mut video_resolutions = vec![root.composition_resolution()];
         if destinations.iter().any(|destination| {
             destination
                 .config
@@ -340,14 +354,7 @@ impl DestinationWorker {
         let mut program = program.clone();
         program.destinations.clear();
         let control = Arc::new(PipelineControl::default());
-        let queue = PipelineQueue::new(
-            QueueLimits {
-                items: 128,
-                bytes: 64 * 1024 * 1024,
-                duration_us: 1_000_000,
-            },
-            control.clone(),
-        );
+        let queue = PipelineQueue::new(ENCODING_QUEUE_LIMITS, control.clone());
         let worker_queue = queue.clone();
         let worker_control = control.clone();
         let id = ids[0];
@@ -410,7 +417,10 @@ impl DestinationWorker {
             Ok(None) => {}
             result => {
                 let reason = match result {
-                    Ok(Some(_)) => "destination queue exceeded its bounded capacity".to_string(),
+                    Ok(Some(_)) => format!(
+                        "encoding group queue exceeded its bounded capacity ({})",
+                        self.queue.capacity_description(bytes, timestamp)
+                    ),
                     Err(error) => error.to_string(),
                     _ => unreachable!(),
                 };
@@ -1735,6 +1745,36 @@ mod tests {
                 .values()
                 .all(|state| state.phase == "stopped")
         );
+    }
+
+    #[test]
+    fn ingest_timestamp_gap_does_not_disable_a_nearly_empty_encoding_queue() {
+        let control = Arc::new(PipelineControl::default());
+        let worker = DestinationWorker {
+            encoding_revision: String::new(),
+            gop: 50,
+            subtitles: false,
+            id: 1,
+            ids: vec![1],
+            video_resolutions: Vec::new(),
+            queue: PipelineQueue::new(ENCODING_QUEUE_LIMITS, control.clone()),
+            control,
+            worker: None,
+            channel: 1,
+            status: OutputStatus::default(),
+        };
+        // Model two tiny media items around the 1.76-second discontinuity
+        // reported during RTMP recovery. There is no meaningful backlog.
+        worker.send(Message::Rate(1.0), 1024, Some(194_061_000));
+        worker.send(Message::Rate(1.0), 1024, Some(195_821_000));
+        assert!(!worker.control.cancelled(), "a PTS gap is not a full queue");
+
+        // The item budget must continue to isolate an actually blocked branch.
+        for _ in 2..=ENCODING_QUEUE_LIMITS.items {
+            worker.send(Message::Rate(1.0), 1024, Some(195_821_000));
+        }
+        assert!(worker.control.cancelled());
+        assert_eq!(worker.status.snapshot()[&1].phase, "failed");
     }
 
     #[test]

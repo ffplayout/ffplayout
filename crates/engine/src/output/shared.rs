@@ -307,6 +307,7 @@ pub(super) fn run(
     control.check()?;
     let root = &destinations[0];
     let config = &root.config;
+    let composition_resolution = root.composition_resolution();
     let variants = match &root.target {
         OutputTarget::Hls { variants, .. } => variants.as_slice(),
         _ => &[],
@@ -460,8 +461,16 @@ pub(super) fn run(
                     log::error!(channel = program.channel_id.unwrap_or_default(); "Recording disabled: {error:#}");
                     recording = None;
                 }
+                // All renditions scale the same composited image. Compositing
+                // separately at each rendition would enlarge the logo relative
+                // to the picture whenever the player selects a smaller one.
+                let prepared = frame
+                    .has_visible_logo()
+                    .then(|| frame.frame(composition_resolution.0, composition_resolution.1))
+                    .transpose()?;
+                let video = prepared.as_ref().unwrap_or(&frame.source);
                 for (index, profile) in profiles.iter_mut().enumerate() {
-                    profile.video(&frame, |packet| emit(index, packet))?;
+                    profile.video_frame(video, |packet| emit(index, packet))?;
                 }
             }
             Message::Audio(frame) => {

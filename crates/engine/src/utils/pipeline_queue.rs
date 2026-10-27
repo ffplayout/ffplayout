@@ -236,6 +236,10 @@ impl<T> PipelineQueue<T> {
             return true;
         }
 
+        if self.limits.duration_us == i64::MAX {
+            return false;
+        }
+
         let range = timestamp_us
             .into_iter()
             .chain(state.entries.iter().filter_map(|entry| entry.timestamp_us));
@@ -251,6 +255,31 @@ impl<T> PipelineQueue<T> {
     pub(crate) fn would_block(&self, bytes: usize, timestamp_us: Option<i64>) -> bool {
         let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         self.full(&state, bytes, timestamp_us)
+    }
+
+    /// Snapshot only on overflow, keeping formatting out of the media hot path.
+    pub(crate) fn capacity_description(
+        &self,
+        incoming_bytes: usize,
+        timestamp_us: Option<i64>,
+    ) -> String {
+        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let range = timestamp_us
+            .into_iter()
+            .chain(state.entries.iter().filter_map(|entry| entry.timestamp_us));
+        let (first, last) = range.fold((i64::MAX, i64::MIN), |(first, last), pts| {
+            (first.min(pts), last.max(pts))
+        });
+        let span = last.saturating_sub(first).max(0);
+
+        format!(
+            "queued_items={} item_limit={} queued_bytes={} byte_limit={} incoming_bytes={incoming_bytes} media_span_ms={:.3}",
+            state.entries.len(),
+            self.limits.items,
+            state.bytes,
+            self.limits.bytes,
+            span as f64 / 1_000.0
+        )
     }
 
     pub(crate) fn try_send(

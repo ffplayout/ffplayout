@@ -268,9 +268,10 @@ recording muxer. Dedicated recording encoding remains separate. MoQ uses the sam
 `config_output` table as other outputs; no separate preview configuration remains.
 
 `output/parallel.rs` owns the program clock and sends referenced program frames
-to the encoding groups. Each raw queue is limited to 128 messages, 64 MiB and one
-second of media. Shared profiles reference their compressed packets into separate
-delivery queues, each limited to 512 messages, 32 MiB and one second. Stream/MoQ
+to the encoding groups. Each raw encoding-group queue is limited to 128 messages
+and 64 MiB. Timestamp gaps during live recovery do not count as queue backlog.
+Shared profiles reference their compressed packets into separate
+delivery queues, each limited to 512 messages and 32 MiB. Stream/MoQ
 then use the bounded paced mux queue. HLS writes directly in its isolated delivery
 worker without another queue or pacing stage. No destination owns the shared encoder.
 
@@ -278,12 +279,17 @@ With a visible logo, video is first scaled to the effective encoding resolution,
 then composited. The decoded logo retains its configured pixel dimensions; its
 position is evaluated against that output's width/height, keeping pixel offsets
 from the edges. Encoders with the same resolution reuse the composited pixels
-for that program frame, including matching HLS renditions. Other resolutions
+for that program frame. Each HLS group composites once at its largest rendition's
+resolution, then scales that image for all smaller renditions. Logo size, position
+and margins therefore remain proportional when a player switches quality.
+The largest rendition need not be listed first. Other output resolutions
 have independent scaler/compositor locks. The cache releases each image after
 its last encoder takes a reference and is bounded by the existing frame lifetime;
 live output changes clear unused scaler states. Hidden logos retain the direct
 encoder scaling path. Shared-encoding destinations receive the already composited
 compressed stream and never blend the logo again.
+After live reception gaps, repeated video and silent audio are submitted in
+timestamp order, preventing an artificial track lead while recovery fills the gap.
 Opening, transport or mux failures disable only the affected destination; other
 destinations keep using the profile. Encoder failure or raw queue overload affects
 the whole encoding group. Compressed queue overload disables that destination
