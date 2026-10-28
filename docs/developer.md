@@ -483,6 +483,15 @@ This exercises encoding sharing and the native delivery boundary, but does not
 start a MoQ relay or connect to an external RTMP server. Source pauses, reconnects,
 format changes, and media verification remain the same.
 
+Add `FFPLAYOUT_RTMP_SYNC_MARKERS=1` for an approximately 25-second run with
+simultaneous white flashes and audio tones at irregular intervals. It removes
+1.8 seconds of video while audio continues, and also pauses/resumes reception.
+Decoded flash and tone onsets must match within 150 ms in all three HLS
+renditions and the shared FLV output. Markers are paired in order, with missing
+or extra markers rejected, so a whole-period shift cannot pass. This checks
+media content alignment in addition to packet timestamps; the native packet
+sink still does not test browser playback or external transport.
+
 For a production encoding-group queue overflow, enable
 `FFPLAYOUT_TIMING_DIAGNOSTICS=true` (or `--timing-diagnostics`). The overflow
 warning then includes the worker's current stage, zero-based rendition index,
@@ -501,6 +510,29 @@ Correction warnings identify `stage=decode` or `stage=playout` and include
 `expected_s`, `reference_s` (the normalized counterpart end timestamp), and
 `offset_s` (the track's active source-to-normalized offset). These are separate
 mapping stages; the previous identical messages could not distinguish them.
+
+Forward gaps up to five seconds also retain their source timestamps when the
+counterpart track has advanced into the gap by more than two frame durations
+since the preceding frame, and a second frame confirms the jump. A small,
+constant audio lead or normal per-frame progress does not confirm a gap.
+The first candidate follows the existing outlier handling; an isolated bad
+timestamp must not shift subsequent frames.
+This avoids permanently compressing a missing video GOP while buffered audio
+continues. Larger unsupported jumps and backward clock resets still use
+discontinuity recovery.
+
+The video scaler is created from the first usable decoded frame, rather than
+potentially incomplete stream metadata. Invalid dimensions or missing pixels
+produce a handled input error. If an accepted input announces video but only
+delivers audio, audio and queue activity cannot extend the ten-second video
+startup deadline. This deadline starts after opening/probing the input; it does
+not limit waiting for a publisher to connect.
+
+FFmpeg reports RTMP publisher stops as `EIO` as well as EOF. For live RTMP/RTMPS
+listeners, an `EIO` packet-read result logs `input disconnected` at info level
+and drains buffered packets before returning to playlist playback. This does
+not distinguish a clean sender stop from a transport interruption. Other
+read errors, other protocols and decoder failures retain their error handling.
 
 ### Media analysis and clip resource lifetimes
 

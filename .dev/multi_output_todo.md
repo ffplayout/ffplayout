@@ -30,12 +30,18 @@ and [MoQ documentation](../docs/moq.md).
   audio/video confirms the original source clock after a reception gap. Cover
   the previously persistent A/V skew, joint clock resets, and distinct PTS on
   frame-rate-converter gap padding with regression tests.
-- [ ] Reproduce the remaining live A/V desynchronization after idle reconnect:
-  freeze, stutter, catch-up and persistent skew, with H.264 reference errors and
-  another ~1.96-second video correction. Clean RTMP pause/reconnect cases and
-  joining the H.264 fixture mid-GOP do not reproduce it. Timestamp correction
-  warnings now distinguish decoder and playout mapping and include expected,
-  counterpart-reference and offset values; collect those from the affected run.
+- [x] Preserve bounded forward video gaps when continuous audio has advanced
+  into the gap but has not caught up yet and a second frame confirms the jump.
+  A small audio lead alone cannot validate an isolated video timestamp outlier.
+  The server's ~1.96-second corrections
+  are covered by regression tests, including repeated marked frame/audio
+  payloads and decoded RTMP flash/tone alignment through three HLS renditions.
+  Irregular markers are paired in order, including checks rejecting whole-period
+  shifts and missing markers.
+  Confirm recovery under actual OBS bandwidth loss on the affected server.
+- [x] Initialize the scaler from the first usable decoded frame instead of
+  incomplete stream headers. Reject zero dimensions without panicking and
+  prevent audio/queue activity from extending video startup indefinitely.
 - [ ] Diagnose the remaining raw-queue overflow reported at 20:05:33 and
   20:06:27 on 2026-10-27 despite bounded backpressure (48 720p frames / 64 MiB).
   Local end-to-end RTMP runs with libfdk_aac, reception pauses, Full-Range

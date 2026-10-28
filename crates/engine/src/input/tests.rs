@@ -1018,6 +1018,86 @@ fn live_tracks_rejoin_after_video_gap_precedes_buffered_audio() {
 }
 
 #[test]
+fn live_content_markers_rejoin_the_source_clock_after_confirmed_video_drops() {
+    #[derive(Default)]
+    struct Markers {
+        video: Vec<(i64, u8)>,
+        audio: Vec<(i64, f32)>,
+    }
+    impl FrameOutput for Markers {
+        fn audio_frame_size(&self) -> usize {
+            1920
+        }
+        fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+            self.video.push((frame.pts().unwrap(), frame.data(0)[0]));
+            Ok(())
+        }
+        fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+            self.audio
+                .push((frame.pts().unwrap(), frame.plane::<f32>(0)[0]));
+            Ok(())
+        }
+    }
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let mut output = Markers::default();
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+    let send_audio = |wrapper: &mut LiveOverrideOutput<'_, Markers>, pts: i64| {
+        let mut audio = audio_frame(pts * 1920, 1920);
+        for channel in 0..2 {
+            audio.plane_mut::<f32>(channel).fill(pts as f32 + 1.0);
+        }
+        wrapper.encode_live_audio_frame(audio).unwrap();
+        assert_eq!(
+            wrapper.output.audio.last().copied(),
+            Some((pts * 1920, pts as f32 + 1.0))
+        );
+    };
+    let send_video = |wrapper: &mut LiveOverrideOutput<'_, Markers>, pts: i64, expected: i64| {
+        let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+        let marker = (pts % 200 + 20) as u8;
+        video.data_mut(0).fill(marker);
+        video.set_pts(Some(pts));
+        wrapper.encode_live_video_frame(video).unwrap();
+        assert_eq!(
+            wrapper.output.video.last().copied(),
+            Some((expected, marker)),
+            "received image content was shifted relative to its source audio"
+        );
+    };
+    let mut next_audio = 0;
+    for cycle in 0..3 {
+        let start = cycle * 100;
+        for pts in start..start + 25 {
+            send_video(&mut wrapper, pts, pts);
+            send_audio(&mut wrapper, pts);
+        }
+        // Audio has advanced by 360 ms; the next received video skips a GOP.
+        for pts in start + 25..start + 34 {
+            send_audio(&mut wrapper, pts);
+        }
+        // Until a second frame confirms the gap, the first candidate is
+        // treated as an isolated outlier. It must not shift subsequent content.
+        send_video(&mut wrapper, start + 75, start + 25);
+        send_video(&mut wrapper, start + 76, start + 76);
+        for pts in start + 34..start + 77 {
+            send_audio(&mut wrapper, pts);
+        }
+        for pts in start + 77..start + 100 {
+            send_video(&mut wrapper, pts, pts);
+            send_audio(&mut wrapper, pts);
+        }
+        next_audio = (start + 100) * 1920;
+    }
+    assert_eq!(wrapper.live.video_pts, 300);
+    assert_eq!(wrapper.live.audio_pts, next_audio);
+}
+
+#[test]
 fn persistent_audio_lag_recovers_without_changing_the_video_anchor() {
     let (_tx, rx) = mpsc::channel();
     let mut live = test_live_receiver(rx);

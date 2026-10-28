@@ -94,7 +94,124 @@ fn publisher_wait(duration: Duration, cancel: &AtomicBool) -> bool {
     true
 }
 
-fn verify_media(path: &Path, minimum_packets: usize) -> Result<()> {
+fn sync_marker_sources() -> (String, String) {
+    // Unequal intervals prevent a whole-period shift from looking synchronized.
+    // No marker lies inside the intentional video-only gap at 6..7.8 seconds.
+    let pulses = [1.0, 2.3, 4.1, 8.5, 10.2, 12.6, 15.1]
+        .into_iter()
+        .map(|time| format!("between(t,{time:.3},{:.3})", time + 0.1))
+        .collect::<Vec<_>>()
+        .join("+");
+
+    (
+        format!(
+            "color=c=black:size=1280x720:rate=30,drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='{pulses}'"
+        ),
+        format!("aevalsrc='if({pulses},0.2*sin(2*PI*1000*t),0)':s=48000"),
+    )
+}
+
+fn verify_sync_markers(log: &str) -> Result<()> {
+    let mut video_time = None;
+    let mut was_bright = false;
+    let mut flashes = Vec::<f64>::new();
+    let mut tones = Vec::<f64>::new();
+    let mut pending_tone = None;
+    for line in log.lines() {
+        if let Some(time) = line
+            .split("pts_time:")
+            .nth(1)
+            .and_then(|value| value.split_whitespace().next())
+            .and_then(|value| value.parse::<f64>().ok())
+        {
+            video_time = Some(time);
+        }
+        if let Some(level) = line
+            .split("lavfi.signalstats.YAVG=")
+            .nth(1)
+            .and_then(|value| value.trim().parse::<f64>().ok())
+        {
+            let bright = level > 180.0;
+            if bright && !was_bright {
+                flashes.push(
+                    video_time.ok_or_else(|| anyhow::anyhow!("flash has no presentation time"))?,
+                );
+            }
+            was_bright = bright;
+        }
+        if let Some(time) = line
+            .split("silence_end:")
+            .nth(1)
+            .and_then(|value| value.split_whitespace().next())
+            .and_then(|value| value.parse::<f64>().ok())
+        {
+            pending_tone = Some(time);
+        }
+
+        // silencedetect also emits silence_end at EOF without a tone.
+        // A marker is a complete pulse followed by another silence interval.
+        if line.contains("silence_start:")
+            && let Some(time) = pending_tone.take()
+        {
+            tones.push(time);
+        }
+    }
+    // The fixture starts with silence/black, so the first onset is present in
+    // both tracks. Pair by ordinal position; never skip unmatched markers or
+    // match a shifted flash to the next tone.
+    ensure!(
+        flashes.len() >= 3 && flashes.len() == tones.len(),
+        "missing or extra sync markers: flashes={flashes:?}, tones={tones:?}"
+    );
+
+    for (index, (flash, tone)) in flashes.iter().zip(&tones).enumerate() {
+        let distance = (tone - flash).abs();
+        ensure!(
+            distance <= 0.15,
+            "sync marker {index}: flash={flash:.3}s tone={tone:.3}s differ by {distance:.3}s"
+        );
+    }
+
+    eprintln!(
+        "Verified {} ordered flash/tone pairs within 150 ms",
+        flashes.len()
+    );
+    Ok(())
+}
+
+#[test]
+fn decoded_marker_check_rejects_offsets_including_a_whole_marker_period() {
+    let make_log = |audio_offset: f64| {
+        [3.0, 6.0, 9.0, 12.0]
+            .into_iter()
+            .map(|time| {
+                format!(
+                    "frame:0 pts_time:{}\nlavfi.signalstats.YAVG=16\n\
+                     frame:1 pts_time:{time}\nlavfi.signalstats.YAVG=235\n\
+                     silence_end: {}\nsilence_start: {}\n",
+                    time - 0.04,
+                    time + audio_offset,
+                    time + audio_offset + 0.1
+                )
+            })
+            .collect::<String>()
+    };
+
+    assert!(verify_sync_markers(&make_log(0.02)).is_ok());
+    assert!(verify_sync_markers(&format!("{}silence_end: 20.0\n", make_log(0.02))).is_ok());
+    for offset in [-3.0, -1.96, 1.96, 3.0] {
+        assert!(
+            verify_sync_markers(&make_log(offset)).is_err(),
+            "offset={offset}"
+        );
+    }
+
+    let missing_flash =
+        make_log(0.02).replacen("lavfi.signalstats.YAVG=235", "lavfi.signalstats.YAVG=16", 1);
+    assert!(verify_sync_markers(&missing_flash).is_err());
+}
+
+fn verify_media(path: &Path, minimum_packets: usize, sync_markers: bool) -> Result<()> {
     let mut input = ffmpeg_next::format::input(path)?;
     let video = input
         .streams()
@@ -145,26 +262,38 @@ fn verify_media(path: &Path, minimum_packets: usize) -> Result<()> {
 
     // Decode both tracks, including delayed frames at EOF. Explicit maps make
     // missing tracks fatal; -xerror also rejects otherwise recoverable errors.
-    let decoded = Command::new("ffmpeg")
+    let mut command = Command::new("ffmpeg");
+    command
         .args([
             "-nostdin",
             "-hide_banner",
             "-loglevel",
-            "error",
+            if sync_markers { "info" } else { "error" },
             "-xerror",
             "-err_detect",
             "explode",
             "-i",
         ])
         .arg(path)
-        .args(["-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"])
-        .output()?;
+        .args(["-map", "0:v:0", "-map", "0:a:0"]);
+    if sync_markers {
+        command.args([
+            "-vf",
+            "signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG",
+            "-af",
+            "silencedetect=noise=-35dB:d=0.05",
+        ]);
+    }
+    let decoded = command.args(["-f", "null", "-"]).output()?;
     ensure!(
         decoded.status.success(),
         "{}: decoding failed: {}",
         path.display(),
         String::from_utf8_lossy(&decoded.stderr)
     );
+    if sync_markers {
+        verify_sync_markers(&String::from_utf8_lossy(&decoded.stderr))?;
+    }
 
     Ok(())
 }
@@ -335,6 +464,7 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
         config,
     );
     let control = PlaybackControl::default();
+    let sync_markers = std::env::var_os("FFPLAYOUT_RTMP_SYNC_MARKERS").is_some();
     let mut completed_cases = 0;
     thread::sleep(Duration::from_millis(300));
     for (case, (full_range, clock_jump, resize)) in [
@@ -346,6 +476,9 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
     .into_iter()
     .enumerate()
     {
+        if sync_markers && case != 0 {
+            continue;
+        }
         if let Ok(selected) = std::env::var("FFPLAYOUT_RTMP_CASE")
             && selected.parse::<usize>()? != case
         {
@@ -426,6 +559,14 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
                     .arg(concat)
                     .args(["-c", "copy", "-f", "flv"]);
             } else {
+                let (video_source, audio_source) = if sync_markers {
+                    sync_marker_sources()
+                } else {
+                    (
+                        "testsrc2=size=1280x720:rate=30".into(),
+                        "sine=frequency=440:sample_rate=48000".into(),
+                    )
+                };
                 command.args([
                     "-hide_banner",
                     "-loglevel",
@@ -436,14 +577,14 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
                     "-f",
                     "lavfi",
                     "-i",
-                    "testsrc2=size=1280x720:rate=30",
+                    &video_source,
                     "-re",
                     "-readrate_catchup",
                     "4",
                     "-f",
                     "lavfi",
                     "-i",
-                    "sine=frequency=440:sample_rate=48000",
+                    &audio_source,
                     "-c:v",
                     "libx264",
                     "-preset",
@@ -459,6 +600,8 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
                     "-vf",
                     if clock_jump {
                         "setpts=PTS+1.96/TB*gte(T\\,3)"
+                    } else if sync_markers {
+                        "select='not(between(t,6,7.8))'"
                     } else {
                         "null"
                     },
@@ -551,7 +694,7 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
         // The production playlist stays resumable. Seal only this finished
         // test artifact so readers stop at EOF rather than waiting for updates.
         fs::write(&path, format!("{playlist}\n#EXT-X-ENDLIST\n"))?;
-        verify_media(&path, completed_cases * 250)?;
+        verify_media(&path, completed_cases * 250, sync_markers)?;
     }
     verify_media(
         &directory.join(if server_profile {
@@ -560,6 +703,7 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
             "independent.ts"
         }),
         completed_cases * 250,
+        sync_markers,
     )?;
     if server_profile {
         let tracks = native.0.lock().unwrap();

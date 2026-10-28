@@ -2,6 +2,7 @@ use std::sync::atomic::Ordering;
 
 use anyhow::anyhow;
 use ffmpeg_next::{Packet, Rational, Rescale, format, rescale};
+use log::info;
 
 use crate::{
     benchmark,
@@ -10,6 +11,17 @@ use crate::{
 };
 
 use super::{NO_TIMESTAMP, WorkerContext, read_rate::ReadRate};
+
+fn is_rtmp_disconnect(label: &str, error: ffmpeg_next::Error) -> bool {
+    // FFmpeg's RTMP reader reports EIO both for an orderly publisher stop and
+    // some transport failures. Treat it as a disconnect, without claiming that
+    // the peer closed cleanly. Other protocols and decoder errors stay errors.
+    (label.starts_with("rtmp://") || label.starts_with("rtmps://"))
+        && error
+            == ffmpeg_next::Error::Other {
+                errno: ffmpeg_next::error::EIO,
+            }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run(
@@ -22,6 +34,7 @@ pub(super) fn run(
     last_video_dts: Option<i64>,
 ) {
     let WorkerContext {
+        cfg,
         label,
         initial,
         control,
@@ -52,6 +65,15 @@ pub(super) fn run(
                 Err(ffmpeg_next::Error::Other { errno }) if errno == ffmpeg_next::error::EAGAIN => {
                     control.wait(POLL_INTERVAL)?;
                     continue;
+                }
+                Err(error) if diagnostics.is_some() && is_rtmp_disconnect(label, error) => {
+                    info!(channel = cfg.channel_id.unwrap_or_default();
+                        "Live listener #{} (RTMP) input disconnected",
+                        diagnostics.map_or(0, |diagnostics| diagnostics.listener_id)
+                    );
+                    // Drain the packets already received just as for EOF;
+                    // cancelling the pipeline would discard the buffered tail.
+                    break;
                 }
                 Err(error) => return Err(anyhow!("reading input {label}: {error}")),
             }
@@ -143,4 +165,34 @@ pub(super) fn run(
     });
     video_packets.close();
     audio_packets.close();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rtmp_eio_is_a_disconnect_but_other_protocols_and_errors_are_not() {
+        let io = ffmpeg_next::Error::Other {
+            errno: ffmpeg_next::error::EIO,
+        };
+        for url in ["rtmp://localhost/live/test", "rtmps://localhost/live/test"] {
+            assert!(is_rtmp_disconnect(url, io));
+            for error in [
+                ffmpeg_next::Error::InvalidData,
+                ffmpeg_next::Error::Other {
+                    errno: ffmpeg_next::error::EINVAL,
+                },
+            ] {
+                assert!(!is_rtmp_disconnect(url, error));
+            }
+        }
+        for url in [
+            "/tmp/clip.flv",
+            "srt://localhost:9000",
+            "http://localhost/live.flv",
+        ] {
+            assert!(!is_rtmp_disconnect(url, io));
+        }
+    }
 }
