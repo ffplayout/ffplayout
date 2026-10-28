@@ -697,6 +697,9 @@ impl LiveFrameSender {
     /// the RTMP reader instead of dropping frames, but the retry loop keeps
     /// checking abort flags so shutdown/restart cannot hang on a blocked send.
     pub(super) fn send_frame(&mut self, event: LiveEvent) -> Result<()> {
+        if matches!(&event, LiveEvent::Video(_, _)) {
+            self.diagnostics.video_frame_ready();
+        }
         self.diagnostics.frame_ready();
         benchmark::measure(Stage::LiveQueue, || {
             send_live_event(
@@ -796,7 +799,10 @@ fn run_live_listener(
 
                 session_id += 1;
                 info!(channel = channel_id; "Live listener #{id} ({backend}) accepted input");
-                let diagnostics = Arc::new(LiveInputDiagnostics::new(id, session_id));
+                let diagnostics = Arc::new(
+                    LiveInputDiagnostics::new(id, session_id)
+                        .requiring_video(ictx.streams().best(media::Type::Video).is_some()),
+                );
                 let watchdog = spawn_live_watchdog(
                     Arc::clone(&diagnostics),
                     Arc::clone(&abort),
@@ -1056,16 +1062,13 @@ pub(super) fn spawn_live_watchdog(
                 return;
             }
 
-            let last_activity_ms = diagnostics.last_activity_ms.load(Ordering::Relaxed);
-            let frame_seen = diagnostics.frame_seen.load(Ordering::Relaxed);
+            let now = monotonic_millis();
+            let (frame_seen, idle_ms) = diagnostics.watchdog_progress(now);
             let timeout = if frame_seen {
                 idle_timeout.duration()
             } else {
                 LIVE_STARTUP_TIMEOUT
             };
-
-            let now = monotonic_millis();
-            let idle_ms = now.saturating_sub(last_activity_ms);
 
             if idle_ms >= timeout.as_millis() as u64 {
                 let listener_id = diagnostics.listener_id;
@@ -1077,7 +1080,7 @@ pub(super) fn spawn_live_watchdog(
                     );
                 } else {
                     warn!(channel = channel_id;
-                        "Live listener #{listener_id} produced no decodable frames; restarting listener (idle={idle_ms} ms, timeout={} ms, {})",
+                        "Live listener #{listener_id} produced no usable startup frames; restarting listener (idle={idle_ms} ms, timeout={} ms, {})",
                         timeout.as_millis(), diagnostics.snapshot(now)
                     );
                 }

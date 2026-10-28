@@ -661,18 +661,8 @@ mod tests {
                     video.data_mut(plane).fill(128);
                 }
                 video.set_pts(Some(index));
-                let prepared = crate::output::composition::ProgramVideo::new(
-                    &video,
-                    std::sync::Arc::new(std::sync::Mutex::new(
-                        crate::output::composition::VideoCompositor::default(),
-                    )),
-                    None,
-                    0.0,
-                    BTreeMap::new(),
-                )
-                .unwrap();
                 profile
-                    .video(&prepared, |packet| {
+                    .video_frame(&video, |packet| {
                         packets.push(packet);
                         Ok(())
                     })

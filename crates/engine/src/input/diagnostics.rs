@@ -40,6 +40,9 @@ pub(crate) struct LiveInputDiagnostics {
     pub(crate) session_id: u64,
     pub(crate) last_activity_ms: AtomicU64,
     pub(crate) frame_seen: AtomicBool,
+    started_ms: u64,
+    video_required: bool,
+    video_frame_seen: AtomicBool,
     activity_source: AtomicU8,
     stage: AtomicU8,
     packet_ms: AtomicU64,
@@ -52,11 +55,15 @@ pub(crate) struct LiveInputDiagnostics {
 
 impl LiveInputDiagnostics {
     pub(crate) fn new(listener_id: i32, session_id: u64) -> Self {
+        let started_ms = monotonic_millis();
         Self {
             listener_id,
             session_id,
-            last_activity_ms: AtomicU64::new(monotonic_millis()),
+            last_activity_ms: AtomicU64::new(started_ms),
             frame_seen: AtomicBool::new(false),
+            started_ms,
+            video_required: false,
+            video_frame_seen: AtomicBool::new(false),
             activity_source: AtomicU8::new(0),
             stage: AtomicU8::new(LiveInputStage::Starting as u8),
             packet_ms: AtomicU64::new(NEVER),
@@ -66,6 +73,31 @@ impl LiveInputDiagnostics {
             backpressure_ms: AtomicU64::new(NEVER),
             queue_wait_ms: AtomicU64::new(NEVER),
         }
+    }
+
+    pub(crate) fn requiring_video(mut self, required: bool) -> Self {
+        self.video_required = required;
+
+        self
+    }
+
+    pub(crate) fn video_frame_ready(&self) {
+        self.video_frame_seen.store(true, Ordering::Relaxed);
+    }
+
+    /// Audio and queue activity cannot keep a video-announcing session in
+    /// startup forever. After the first usable image, normal idle rules apply.
+    pub(crate) fn watchdog_progress(&self, now: u64) -> (bool, u64) {
+        let waiting_for_video =
+            self.video_required && !self.video_frame_seen.load(Ordering::Relaxed);
+        let ready = self.frame_seen.load(Ordering::Relaxed) && !waiting_for_video;
+        let since = if waiting_for_video {
+            self.started_ms
+        } else {
+            self.last_activity_ms.load(Ordering::Relaxed)
+        };
+
+        (ready, now.saturating_sub(since))
     }
 
     pub(crate) fn set_stage(&self, stage: LiveInputStage) {
@@ -153,6 +185,23 @@ impl fmt::Display for ActivityAge {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn audio_and_queue_activity_do_not_extend_video_startup_deadline() {
+        let diagnostics = LiveInputDiagnostics::new(1, 1).requiring_video(true);
+        let started = diagnostics.started_ms;
+        diagnostics.frame_ready();
+        diagnostics.queue_heartbeat();
+        diagnostics
+            .last_activity_ms
+            .store(started + 10_000, Ordering::Relaxed);
+        assert_eq!(
+            diagnostics.watchdog_progress(started + 10_001),
+            (false, 10_001)
+        );
+        diagnostics.video_frame_ready();
+        assert_eq!(diagnostics.watchdog_progress(started + 10_001), (true, 1));
+    }
 
     #[test]
     fn packet_and_decode_tracking_do_not_refresh_the_watchdog() {

@@ -22,8 +22,19 @@ use crate::{
 
 use super::{
     composition::{ProgramVideo, VideoCompositor},
+    diagnostics::EncodingProgress,
     encoded::EncodedFormat,
 };
+
+const ENCODING_QUEUE_LIMITS: QueueLimits = QueueLimits {
+    items: 128,
+    bytes: 64 * 1024 * 1024,
+    // Live timestamp gaps and temporary A/V skew are not queue residence
+    // times. Bound retained raw frames by count and memory instead.
+    duration_us: i64::MAX,
+};
+
+const ENCODING_BURST_WAIT: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone)]
 pub struct OutputState {
@@ -254,6 +265,18 @@ pub struct OutputDestination {
 }
 
 impl OutputDestination {
+    pub(super) fn composition_resolution(&self) -> (u32, u32) {
+        if let OutputTarget::Hls { variants, .. } = &self.target
+            && let Some(largest) = variants
+                .iter()
+                .max_by_key(|variant| u64::from(variant.width) * u64::from(variant.height))
+        {
+            return (largest.width, largest.height);
+        }
+
+        (self.config.width, self.config.height)
+    }
+
     pub(super) fn writes_subtitles(&self) -> bool {
         self.config.delivery_enabled
             && matches!(
@@ -288,6 +311,7 @@ struct DestinationWorker {
     worker: Option<JoinHandle<()>>,
     channel: i32,
     status: OutputStatus,
+    progress: Option<Arc<EncodingProgress>>,
 }
 
 impl DestinationWorker {
@@ -321,13 +345,7 @@ impl DestinationWorker {
             .collect::<Vec<_>>();
         let worker_ids = ids.clone();
         let root = &destinations[0];
-        let mut video_resolutions = match &root.target {
-            OutputTarget::Hls { variants, .. } if !variants.is_empty() => variants
-                .iter()
-                .map(|variant| (variant.width, variant.height))
-                .collect(),
-            _ => vec![(root.config.width, root.config.height)],
-        };
+        let mut video_resolutions = vec![root.composition_resolution()];
         if destinations.iter().any(|destination| {
             destination
                 .config
@@ -340,14 +358,7 @@ impl DestinationWorker {
         let mut program = program.clone();
         program.destinations.clear();
         let control = Arc::new(PipelineControl::default());
-        let queue = PipelineQueue::new(
-            QueueLimits {
-                items: 128,
-                bytes: 64 * 1024 * 1024,
-                duration_us: 1_000_000,
-            },
-            control.clone(),
-        );
+        let queue = PipelineQueue::new(ENCODING_QUEUE_LIMITS, control.clone());
         let worker_queue = queue.clone();
         let worker_control = control.clone();
         let id = ids[0];
@@ -365,11 +376,21 @@ impl DestinationWorker {
             );
         }
         let worker_status = status.clone();
+        let progress = program
+            .output_timing_diagnostics
+            .then(|| Arc::new(EncodingProgress::new()));
+        let worker_progress = progress.clone();
         let worker = thread::Builder::new()
             .name(format!("playout-output-{id}"))
             .spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    super::shared::run(destinations, &program, &worker_queue, &worker_control)
+                    super::shared::run(
+                        destinations,
+                        &program,
+                        &worker_queue,
+                        &worker_control,
+                        worker_progress.as_deref(),
+                    )
                 }))
                 .unwrap_or_else(|_| Err(anyhow::anyhow!("output worker panicked")));
 
@@ -398,6 +419,7 @@ impl DestinationWorker {
             worker: Some(worker),
             channel,
             status,
+            progress,
         })
     }
 
@@ -410,7 +432,16 @@ impl DestinationWorker {
             Ok(None) => {}
             result => {
                 let reason = match result {
-                    Ok(Some(_)) => "destination queue exceeded its bounded capacity".to_string(),
+                    Ok(Some(_)) => {
+                        let progress =
+                            self.progress.as_ref().map_or_else(String::new, |progress| {
+                                format!("; {}", progress.describe())
+                            });
+                        format!(
+                            "encoding group queue exceeded its bounded capacity ({}{progress})",
+                            self.queue.capacity_description(bytes, timestamp)
+                        )
+                    }
                     Err(error) => error.to_string(),
                     _ => unreachable!(),
                 };
@@ -603,6 +634,27 @@ impl ParallelOutput {
         thread::sleep(delay);
     }
 
+    fn wait_for_encoding_capacity(
+        workers: &[DestinationWorker],
+        bytes: usize,
+        timestamp: Option<i64>,
+    ) {
+        // A live catch-up burst can fill every branch faster than the encoder
+        // threads are scheduled. With no ready branch, apply bounded backpressure
+        // instead of declaring overload immediately. A ready independent output
+        // must never wait for a blocked sibling; that sibling is isolated below.
+        let mut active = workers.iter().filter(|worker| !worker.control.cancelled());
+        if let Some(first) = active.next()
+            && first.queue.would_block(bytes, timestamp)
+            && active.all(|worker| worker.queue.would_block(bytes, timestamp))
+        {
+            // Failure is handled by send below, together with the branch status.
+            let _ = first
+                .queue
+                .wait_for_capacity(bytes, timestamp, ENCODING_BURST_WAIT);
+        }
+    }
+
     pub(crate) fn encode_video(&self, frame: &frame::Video) -> Result<()> {
         self.video_with_logo(frame, None, 0.0)
     }
@@ -627,6 +679,7 @@ impl ParallelOutput {
             workers.is_empty() || workers.iter().any(|worker| !worker.control.cancelled()),
             "all output encoding groups have failed"
         );
+        Self::wait_for_encoding_capacity(&workers, bytes, timestamp);
         let mut consumers = BTreeMap::new();
         if logo.is_some() && opacity > 0.0 {
             for resolution in workers
@@ -659,6 +712,7 @@ impl ParallelOutput {
 
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         self.reconcile(&mut workers)?;
+        Self::wait_for_encoding_capacity(&workers, bytes, timestamp);
         for worker in workers.iter() {
             worker.send(
                 Message::Audio(reference_audio_frame(frame)?),
@@ -855,6 +909,7 @@ mod tests {
                 worker: None,
                 channel: 1,
                 status: config.output_status.clone(),
+                progress: None,
             });
         }
         output.context.lock().unwrap().subtitles = Some(("clip.mp4".into(), 0, 0));
@@ -1738,6 +1793,76 @@ mod tests {
     }
 
     #[test]
+    fn ingest_timestamp_gap_does_not_disable_a_nearly_empty_encoding_queue() {
+        let control = Arc::new(PipelineControl::default());
+        let worker = DestinationWorker {
+            encoding_revision: String::new(),
+            gop: 50,
+            subtitles: false,
+            id: 1,
+            ids: vec![1],
+            video_resolutions: Vec::new(),
+            queue: PipelineQueue::new(ENCODING_QUEUE_LIMITS, control.clone()),
+            control,
+            worker: None,
+            channel: 1,
+            status: OutputStatus::default(),
+            progress: None,
+        };
+        // Model two tiny media items around the 1.76-second discontinuity
+        // reported during RTMP recovery. There is no meaningful backlog.
+        worker.send(Message::Rate(1.0), 1024, Some(194_061_000));
+        worker.send(Message::Rate(1.0), 1024, Some(195_821_000));
+        assert!(!worker.control.cancelled(), "a PTS gap is not a full queue");
+
+        // The item budget must continue to isolate an actually blocked branch.
+        for _ in 2..=ENCODING_QUEUE_LIMITS.items {
+            worker.send(Message::Rate(1.0), 1024, Some(195_821_000));
+        }
+        assert!(worker.control.cancelled());
+        assert_eq!(worker.status.snapshot()[&1].phase, "failed");
+    }
+
+    #[test]
+    fn ready_encoding_branch_is_not_delayed_by_a_blocked_sibling() {
+        let make_worker = |id| {
+            let control = Arc::new(PipelineControl::default());
+            DestinationWorker {
+                encoding_revision: String::new(),
+                gop: 50,
+                subtitles: false,
+                id,
+                ids: vec![id],
+                video_resolutions: Vec::new(),
+                queue: PipelineQueue::new(
+                    QueueLimits {
+                        items: 1,
+                        bytes: 8,
+                        duration_us: i64::MAX,
+                    },
+                    control.clone(),
+                ),
+                control,
+                worker: None,
+                channel: 1,
+                status: OutputStatus::default(),
+                progress: None,
+            }
+        };
+        let workers = vec![make_worker(1), make_worker(2)];
+        workers[0].send(Message::Rate(1.0), 8, None);
+        let started = std::time::Instant::now();
+        ParallelOutput::wait_for_encoding_capacity(&workers, 8, None);
+        assert!(started.elapsed() < ENCODING_BURST_WAIT / 2);
+        for worker in &workers {
+            worker.send(Message::Rate(1.0), 8, None);
+        }
+        assert!(workers[0].control.cancelled());
+        assert!(!workers[1].control.cancelled());
+        assert!(workers[1].queue.try_recv().unwrap().is_some());
+    }
+
+    #[test]
     fn a_full_destination_queue_is_disabled_without_blocking_other_destinations() {
         let status = OutputStatus::default();
         let control = Arc::new(PipelineControl::default());
@@ -1761,11 +1886,19 @@ mod tests {
             worker: None,
             channel: 1,
             status: status.clone(),
+            progress: Some(Arc::new(EncodingProgress::new())),
         };
         blocked.send(Message::Rate(1.0), 0, None);
         blocked.send(Message::Rate(1.0), 0, None);
         assert!(blocked.control.cancelled());
         assert_eq!(status.snapshot()[&1].phase, "failed");
+        assert!(
+            status.snapshot()[&1]
+                .error
+                .as_ref()
+                .unwrap()
+                .contains("worker_stage=starting")
+        );
         let healthy_control = Arc::new(PipelineControl::default());
         let healthy = DestinationWorker {
             encoding_revision: String::new(),
@@ -1786,6 +1919,7 @@ mod tests {
             worker: None,
             channel: 1,
             status,
+            progress: None,
         };
         healthy.send(Message::Rate(1.0), 0, None);
         assert!(healthy.queue.try_recv().unwrap().is_some());

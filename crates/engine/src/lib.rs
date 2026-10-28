@@ -950,13 +950,17 @@ fn play_to_output<O: FrameOutput>(
 
                     Ok(ClipResult::Fallback { reason })
                 }
-                Err(error) => classify_fallback_error(error, path),
+                Err(fallback_error) => classify_fallback_error(fallback_error, path, error),
             }
         }
     }
 }
 
-fn classify_fallback_error(error: anyhow::Error, path: &str) -> Result<ClipResult> {
+fn classify_fallback_error(
+    error: anyhow::Error,
+    path: &str,
+    playback_error: anyhow::Error,
+) -> Result<ClipResult> {
     if error.downcast_ref::<PlaybackRestart>().is_some() {
         Err(error)
     } else if error.downcast_ref::<PlaybackSkipped>().is_some() {
@@ -966,7 +970,11 @@ fn classify_fallback_error(error: anyhow::Error, path: &str) -> Result<ClipResul
     } else if error.downcast_ref::<PlaybackStopped>().is_some() {
         Ok(ClipResult::Stopped)
     } else {
-        Err(error.context(format!("failed to generate fallback for {path}")))
+        let context = format!(
+            "playback failed: {playback_error:#}; failed to generate fallback for {path}: {error:#}"
+        );
+
+        Err(playback_error.context(context))
     }
 }
 
@@ -981,18 +989,42 @@ mod tests {
 
     #[test]
     fn restart_during_fallback_remains_a_playout_restart() {
-        let result =
-            classify_fallback_error(anyhow::Error::new(PlaybackRestart), "unavailable.mp4");
+        let result = classify_fallback_error(
+            anyhow::Error::new(PlaybackRestart),
+            "unavailable.mp4",
+            anyhow::anyhow!("original failure"),
+        );
 
         assert!(result.unwrap_err().is::<PlaybackRestart>());
     }
 
     #[test]
     fn playlist_reset_during_fallback_reinitializes_playout() {
-        let result =
-            classify_fallback_error(anyhow::Error::new(PlaybackSkipped), "unavailable.mp4");
+        let result = classify_fallback_error(
+            anyhow::Error::new(PlaybackSkipped),
+            "unavailable.mp4",
+            anyhow::anyhow!("original failure"),
+        );
 
         assert_eq!(result.unwrap(), ClipResult::Skipped);
+    }
+
+    #[test]
+    fn fallback_failure_preserves_the_original_playback_error() {
+        let result = classify_fallback_error(
+            anyhow::anyhow!("all output encoding groups have failed"),
+            "valid.mp4",
+            anyhow::anyhow!("encoding group queue exceeded its bounded capacity"),
+        );
+        let error = result.unwrap_err();
+        let displayed = error.to_string();
+        assert!(displayed.contains("encoding group queue exceeded"));
+        assert!(displayed.contains("all output encoding groups have failed"));
+        assert!(displayed.contains("valid.mp4"));
+        assert_eq!(
+            error.root_cause().to_string(),
+            "encoding group queue exceeded its bounded capacity"
+        );
     }
 
     #[test]

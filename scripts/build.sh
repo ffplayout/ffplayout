@@ -149,7 +149,7 @@ if [[ -z ${CARGO_FEATURES:-} ]]; then
     select_cargo_features
 fi
 
-./scripts/man_create.sh
+build_step "Generate manual" ./scripts/man_create.sh
 
 version=""
 while IFS="= " read -r name value; do
@@ -171,7 +171,8 @@ if [[ $target == "debian-shared" ]]; then
     rm -f "ffplayout_${version}-1_amd64.deb"
     rm -f "ffplayout-v${version}_debian.tar.gz"
 
-    "$container_cli" build --platform linux/amd64 -t rust-debian -f ./docker/shared.Dockerfile .
+    build_step "Prepare Debian shared builder image (cache check/build)" \
+        "$container_cli" build --platform linux/amd64 -t rust-debian -f ./docker/shared.Dockerfile .
     shared_docker_args=(-v "$(pwd)":/src:z)
     container_run_env rust-debian "${shared_docker_args[@]}"
 
@@ -193,7 +194,7 @@ elif [[ $target == "debian-static" ]]; then
         ffmpeg_component_args+=(--build-arg FFMPEG_AVFILTER=1)
     fi
 
-    "$container_cli" build \
+    build_step "Prepare Debian static builder image (cache check/build)" "$container_cli" build \
         --platform linux/amd64 \
         --build-arg FFMPEG_VERSION="${FFMPEG_VERSION:-release/9.0}" \
         --build-arg FFMPEG_VAAPI="${FFMPEG_VAAPI:-0}" \

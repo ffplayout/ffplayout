@@ -88,9 +88,9 @@ package. These two environment variables can also be passed directly or set in
 
 The build script keeps one stopped build container per workspace and target
 (`ffplayout-build-debian-shared-…` / `ffplayout-build-debian-static-…`). Cargo and
-npm download caches inside it survive subsequent builds. Before a build, a
-container older than seven days is removed and recreated; a changed builder image
-also requires recreation. Features, `.env` values and profiling settings are
+npm download caches inside it survive subsequent builds. Containers are reused
+regardless of age; a changed builder image requires recreation.
+Features, `.env` values and profiling settings are
 forwarded afresh on every build. Failed builds preserve the container/cache too.
 An already running build container is left untouched and a concurrent build is
 refused. Containers are stopped after use, so they consume disk space but no CPU.
@@ -100,6 +100,11 @@ interrupts release it. After a forced kill or host crash, check that no build is
 running before removing the leftover lock directory (its `pid` file records the
 owning shell).
 Image layers and the container engine's separate build cache are not pruned.
+Build preparation prints timestamped phases and elapsed seconds for manual
+generation, image preparation, metadata inspection, container creation/start,
+build execution, and shutdown. If a build pauses before `npm ci`, the last
+phase identifies the pending operation. Metadata inspection uses one image
+request and one container request to reduce overhead from remote/VM CLI wrappers.
 
 ### Experimental transcription example
 
@@ -446,6 +451,88 @@ of producing catch-up measurements. Process inspection runs outside the
 async executor on blocking workers, and no measurements run unless diagnostics
 are enabled and DEBUG logging is active. Existing periodic development metrics
 remain independent.
+
+### RTMP/HLS recovery regression
+
+For the opt-in end-to-end RTMP/HLS recovery test, run alone with a recent FFmpeg
+CLI providing `-readrate_catchup`, `libx264`, and AAC, and permit local TCP sockets:
+
+```bash
+RUST_LOG=info cargo test -p ff-engine --lib \
+  rtmp_reception_pauses_and_reconnects_feed_three_hls_variants -- --ignored --nocapture
+```
+
+The approximately 90-second run sends 720p H.264/AAC through the real RTMP
+listener and decoder into three HLS variants and an independent stream encoder.
+It pauses/resumes the publisher, requests fourfold catch-up, reconnects with
+Full-Range video, injects a sender PTS jump, and changes resolution mid-stream.
+Output AAC uses `libfdk_aac` when available. Logs and HLS artifacts remain in
+`tmp/rtmp-hls-recovery-<pid>/`. Set `FFPLAYOUT_RTMP_CASE=0`, `1`, `2`, or `3`
+to run only the normal, Full-Range, PTS-jump, or resolution-change case.
+After draining the outputs, the test checks audio/video packet counts and
+strictly increasing per-track DTS in all three HLS variants and the independent
+stream, then decodes both tracks with FFmpeg in strict error mode. Finished HLS
+test playlists receive an end marker so verification reaches EOF.
+
+Set `FFPLAYOUT_RTMP_SERVER_PROFILE=1` for the recovery configuration with a
+single owning HLS group (720p/480p/240p, CRF 23, faster, zerolatency,
+libfdk_aac when available), six-second HLS segments, VTT, a fixture logo, and
+program-wide loudness processing. A native packet sink shares the 480p rendition
+through the same paced packet interface used by MoQ; an FLV file shares 720p.
+This exercises encoding sharing and the native delivery boundary, but does not
+start a MoQ relay or connect to an external RTMP server. Source pauses, reconnects,
+format changes, and media verification remain the same.
+
+Add `FFPLAYOUT_RTMP_SYNC_MARKERS=1` for an approximately 25-second run with
+simultaneous white flashes and audio tones at irregular intervals. It removes
+1.8 seconds of video while audio continues, and also pauses/resumes reception.
+Decoded flash and tone onsets must match within 150 ms in all three HLS
+renditions and the shared FLV output. Markers are paired in order, with missing
+or extra markers rejected, so a whole-period shift cannot pass. This checks
+media content alignment in addition to packet timestamps; the native packet
+sink still does not test browser playback or external transport.
+
+For a production encoding-group queue overflow, enable
+`FFPLAYOUT_TIMING_DIAGNOSTICS=true` (or `--timing-diagnostics`). The overflow
+warning then includes the worker's current stage, zero-based rendition index,
+stage age, and last consumed audio/video PTS in microseconds. `video_submit` and
+`audio_submit` include waiting for the internal encoder queues; `packet_handoff`
+includes copy-recording and packet fan-out. These failure details work at the
+normal warning level; periodic timing reports still require trace logging.
+Worker tracking is disabled by default and does not emit per-frame logs.
+
+Live timestamp recovery also checks the counterpart track after a suspected
+clock reset. If buffered audio/video confirms the original source timeline,
+the stale negative per-track offset is released without moving output backward.
+The recovery logs `timestamp mapping recovered from counterpart`; an isolated
+timestamp jump must not leave a permanent audio/video offset.
+Correction warnings identify `stage=decode` or `stage=playout` and include
+`expected_s`, `reference_s` (the normalized counterpart end timestamp), and
+`offset_s` (the track's active source-to-normalized offset). These are separate
+mapping stages; the previous identical messages could not distinguish them.
+
+Forward gaps up to five seconds also retain their source timestamps when the
+counterpart track has advanced into the gap by more than two frame durations
+since the preceding frame, and a second frame confirms the jump. A small,
+constant audio lead or normal per-frame progress does not confirm a gap.
+The first candidate follows the existing outlier handling; an isolated bad
+timestamp must not shift subsequent frames.
+This avoids permanently compressing a missing video GOP while buffered audio
+continues. Larger unsupported jumps and backward clock resets still use
+discontinuity recovery.
+
+The video scaler is created from the first usable decoded frame, rather than
+potentially incomplete stream metadata. Invalid dimensions or missing pixels
+produce a handled input error. If an accepted input announces video but only
+delivers audio, audio and queue activity cannot extend the ten-second video
+startup deadline. This deadline starts after opening/probing the input; it does
+not limit waiting for a publisher to connect.
+
+FFmpeg reports RTMP publisher stops as `EIO` as well as EOF. For live RTMP/RTMPS
+listeners, an `EIO` packet-read result logs `input disconnected` at info level
+and drains buffered packets before returning to playlist playback. This does
+not distinguish a clean sender stop from a transport interruption. Other
+read errors, other protocols and decoder failures retain their error handling.
 
 ### Media analysis and clip resource lifetimes
 

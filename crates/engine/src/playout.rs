@@ -1,6 +1,6 @@
 use std::{error::Error, fmt, time::Instant};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, ensure};
 use ffmpeg_next::{
     Rational, Rescale, codec, format, frame, media, rescale,
     software::{resampling, scaling},
@@ -960,8 +960,7 @@ fn receive_video_frames<O: FrameOutput>(
             continue;
         }
 
-        let mut scaled = frame::Video::empty();
-        benchmark::measure(Stage::Scale, || video.scaler.run(&raw, &mut scaled))?;
+        let scaled = benchmark::measure(Stage::Scale, || video.scale_frame(&raw, cfg))?;
         let pristine = if video.needs_padding() {
             let mut padded = black_video_frame(video.output_width, video.output_height);
             benchmark::measure(Stage::Scale, || {
@@ -1255,7 +1254,13 @@ fn receive_audio_frames<O: FrameOutput>(
                     reference_pts,
                     Instant::now(),
                 );
-                update.log_correction("audio", pts, i64::from(converted.rate()), audio.channel_id);
+                update.log_correction(
+                    "decode",
+                    "audio",
+                    pts,
+                    i64::from(converted.rate()),
+                    audio.channel_id,
+                );
                 timeline.live_audio_source_us = Some(
                     update
                         .pts
@@ -1547,7 +1552,7 @@ impl RuntimeTextOverlay {
 
 struct VideoDecoder {
     decoder: codec::decoder::Video,
-    scaler: scaling::Context,
+    scaler: Option<scaling::Context>,
     output_width: u32,
     output_height: u32,
     scaled_width: u32,
@@ -1619,27 +1624,17 @@ impl VideoDecoder {
             );
             fallback
         };
-        let scale = VideoScale::new(decoder.width(), decoder.height(), cfg);
-        let scaler = scaling::Context::get(
-            decoder.format(),
-            decoder.width(),
-            decoder.height(),
-            Pixel::YUV420P,
-            scale.scaled_width,
-            scale.scaled_height,
-            scaling::flag::Flags::BILINEAR,
-        )?;
         let runtime_text =
             RuntimeTextOverlay::new(label, cfg, start_pts, scroll_pts, "runtime text overlay")?;
         Ok(Self {
             decoder,
-            scaler,
-            output_width: scale.output_width,
-            output_height: scale.output_height,
-            scaled_width: scale.scaled_width,
-            scaled_height: scale.scaled_height,
-            x_offset: scale.x_offset,
-            y_offset: scale.y_offset,
+            scaler: None,
+            output_width: cfg.width,
+            output_height: cfg.height,
+            scaled_width: cfg.width,
+            scaled_height: cfg.height,
+            x_offset: 0,
+            y_offset: 0,
             logo: cfg
                 .logo
                 .as_ref()
@@ -1675,6 +1670,50 @@ impl VideoDecoder {
         })
     }
 
+    fn scale_frame(&mut self, raw: &frame::Video, cfg: &OutputConfig) -> Result<frame::Video> {
+        // SAFETY: the borrowed frame owns a valid AVFrame; this only checks
+        // whether its first pixel-plane pointer is null.
+        let no_pixels = unsafe { raw.is_empty() };
+        ensure!(
+            raw.width() > 0 && raw.height() > 0 && raw.format() != Pixel::None && !no_pixels,
+            "decoded video frame has no usable dimensions, format or pixels"
+        );
+        if self.scaler.as_ref().is_none_or(|scaler| {
+            let input = scaler.input();
+            input.format != raw.format()
+                || input.width != raw.width()
+                || input.height != raw.height()
+        }) {
+            // Ingest can update its SPS/colour range after the decoder opened.
+            // The received frame, rather than the initial stream metadata,
+            // defines the scaler input and the letterboxing geometry.
+            let scale = VideoScale::new(raw.width(), raw.height(), cfg)?;
+            let scaler = scaling::Context::get(
+                raw.format(),
+                raw.width(),
+                raw.height(),
+                Pixel::YUV420P,
+                scale.scaled_width,
+                scale.scaled_height,
+                scaling::flag::Flags::BILINEAR,
+            )?;
+            self.scaler = Some(scaler);
+            self.output_width = scale.output_width;
+            self.output_height = scale.output_height;
+            self.scaled_width = scale.scaled_width;
+            self.scaled_height = scale.scaled_height;
+            self.x_offset = scale.x_offset;
+            self.y_offset = scale.y_offset;
+        }
+        let mut scaled = frame::Video::empty();
+        self.scaler
+            .as_mut()
+            .context("video scaler is not initialized")?
+            .run(raw, &mut scaled)?;
+
+        Ok(scaled)
+    }
+
     fn needs_padding(&self) -> bool {
         self.scaled_width != self.output_width
             || self.scaled_height != self.output_height
@@ -1698,7 +1737,7 @@ impl VideoDecoder {
             reference_us,
             Instant::now(),
         );
-        update.log_correction("video", source_us, 1_000_000, channel_id);
+        update.log_correction("decode", "video", source_us, 1_000_000, channel_id);
 
         Some(if update.pts == source_us {
             timestamp
@@ -1719,20 +1758,20 @@ struct VideoScale {
 }
 
 impl VideoScale {
-    fn new(input_width: u32, input_height: u32, cfg: &OutputConfig) -> Self {
+    fn new(input_width: u32, input_height: u32, cfg: &OutputConfig) -> Result<Self> {
         let (scaled_width, scaled_height) =
-            fit_dimensions(cfg.width, cfg.height, input_width, input_height);
+            fit_dimensions(cfg.width, cfg.height, input_width, input_height)?;
         let x_offset = even((cfg.width.saturating_sub(scaled_width)) / 2);
         let y_offset = even((cfg.height.saturating_sub(scaled_height)) / 2);
 
-        Self {
+        Ok(Self {
             output_width: cfg.width,
             output_height: cfg.height,
             scaled_width,
             scaled_height,
             x_offset,
             y_offset,
-        }
+        })
     }
 }
 
@@ -1741,17 +1780,21 @@ fn fit_dimensions(
     max_height: u32,
     aspect_width: u32,
     aspect_height: u32,
-) -> (u32, u32) {
+) -> Result<(u32, u32)> {
+    ensure!(
+        aspect_width > 0 && aspect_height > 0,
+        "video input dimensions must be greater than zero"
+    );
     let max_width = max_width.max(2);
     let max_height = max_height.max(2);
     let width_limited_height =
         ((u64::from(max_width) * u64::from(aspect_height)) / u64::from(aspect_width)) as u32;
     if width_limited_height <= max_height {
-        (even(max_width).max(2), even(width_limited_height).max(2))
+        Ok((even(max_width).max(2), even(width_limited_height).max(2)))
     } else {
         let height_limited_width =
             ((u64::from(max_height) * u64::from(aspect_width)) / u64::from(aspect_height)) as u32;
-        (even(height_limited_width).max(2), even(max_height).max(2))
+        Ok((even(height_limited_width).max(2), even(max_height).max(2)))
     }
 }
 
@@ -2865,6 +2908,73 @@ mod tests {
     }
 
     #[test]
+    fn video_scaler_accepts_decoded_resolution_and_pixel_format_changes() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let input = open_media_input(&media_mix_asset("av_sync.mp4")).unwrap();
+        let stream = input.streams().best(media::Type::Video).unwrap();
+        let mut video =
+            VideoDecoder::new(&stream, &cfg, "format change", None, 0, 0, None).unwrap();
+        for (format, width, height, scaled_height, y_offset) in [
+            (Pixel::YUV420P, 640, 480, 240, 0),
+            (Pixel::YUVJ420P, 1280, 720, 180, 30),
+            (Pixel::YUV420P, 640, 480, 240, 0),
+        ] {
+            let mut raw = frame::Video::new(format, width, height);
+            for plane in 0..raw.planes() {
+                raw.data_mut(plane).fill(128);
+            }
+            let scaled = video.scale_frame(&raw, &cfg).unwrap();
+            assert_eq!(
+                (scaled.width(), scaled.height(), scaled.format()),
+                (320, scaled_height, Pixel::YUV420P)
+            );
+            assert_eq!(
+                (video.output_width, video.output_height, video.y_offset),
+                (320, 240, y_offset)
+            );
+            assert_eq!(video.needs_padding(), y_offset != 0);
+        }
+    }
+
+    #[test]
+    fn video_decoder_accepts_missing_headers_until_a_valid_frame_arrives() {
+        let path =
+            std::env::temp_dir().join(format!("headerless-ingest-{}.flv", std::process::id()));
+        let mut input = ffmpeg_next::format::output_as(&path, "flv").unwrap();
+        let mut parameters = codec::Parameters::new();
+        parameters.set_medium(media::Type::Video);
+        parameters.set_id(codec::Id::H264);
+        let mut stream = input
+            .add_stream(ffmpeg_next::decoder::find(codec::Id::H264))
+            .unwrap();
+        stream.set_parameters(parameters);
+        stream.set_time_base((1, 1000));
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let mut video =
+            VideoDecoder::new(&stream, &cfg, "headerless ingest", None, 0, 0, None).unwrap();
+        assert_eq!((video.decoder.width(), video.decoder.height()), (0, 0));
+        assert!(video.scaler.is_none());
+        assert!(video.scale_frame(&frame::Video::empty(), &cfg).is_err());
+        assert!(video.scaler.is_none());
+        let raw = frame::Video::new(Pixel::YUV420P, 640, 360);
+        let scaled = video.scale_frame(&raw, &cfg).unwrap();
+        assert_eq!((scaled.width(), scaled.height()), (320, 180));
+        assert_eq!(video.y_offset, 30);
+        assert!(video.scale_frame(&frame::Video::empty(), &cfg).is_err());
+        assert!(video.scale_frame(&raw, &cfg).is_ok());
+        drop(video);
+        drop(input);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn video_geometry_rejects_missing_dimensions_without_panicking() {
+        for (width, height) in [(0, 0), (0, 720), (1280, 0)] {
+            assert!(fit_dimensions(1280, 720, width, height).is_err());
+        }
+    }
+
+    #[test]
     fn live_video_outliers_are_repaired_before_frame_rate_conversion() {
         let cfg = OutputConfig::new(320, 240, 25, 48_000);
         let input = open_media_input(&media_mix_asset("av_sync.mp4")).unwrap();
@@ -2909,6 +3019,69 @@ mod tests {
     }
 
     #[test]
+    fn live_video_gap_padding_has_distinct_source_timestamps() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let mut input = open_media_input(&media_mix_asset("av_sync.mp4")).unwrap();
+        let stream = input.streams().best(media::Type::Video).unwrap();
+        let index = stream.index();
+        let time_base = stream.time_base();
+        let mut video = VideoDecoder::new(&stream, &cfg, "gap padding", None, 0, 0, None).unwrap();
+        let mut timeline = Timeline::new();
+        timeline.source_timestamp_mode = true;
+        // Audio is already past the missing video interval, confirming a real gap.
+        timeline.live_audio_source_us = Some(10_000_000);
+        let mut output = RecordingOutput::default();
+        let mut frames = 0;
+        let control = PlaybackControl::default();
+        let mut drain = |video: &mut VideoDecoder, timeline: &mut Timeline| {
+            super::receive_video_frames(
+                &cfg,
+                None,
+                video,
+                timeline,
+                &mut output,
+                &mut frames,
+                None,
+                LogoFadePlan::none(0, &cfg),
+                MediaFadePlan::default(),
+                &control,
+            )
+            .unwrap();
+        };
+        for (stream, mut packet) in input.packets() {
+            if stream.index() != index {
+                continue;
+            }
+            if packet
+                .pts()
+                .is_some_and(|pts| pts.rescale(time_base, Rational(1, 1_000_000)) >= 400_000)
+            {
+                let gap = 1_i64.rescale(Rational(1, 1), time_base);
+                packet.set_pts(packet.pts().map(|pts| pts + gap));
+                packet.set_dts(packet.dts().map(|pts| pts + gap));
+            }
+            video.decoder.send_packet(&packet).unwrap();
+            drain(&mut video, &mut timeline);
+        }
+        video.decoder.send_eof().unwrap();
+        drain(&mut video, &mut timeline);
+        drop(drain);
+        assert_eq!(
+            output.video_frames.len(),
+            775,
+            "the 30-second fixture plus a one-second gap must be padded at 25 fps"
+        );
+        assert!(
+            output
+                .video_frames
+                .windows(2)
+                .all(|pair| pair[1].2 == pair[0].2 + 1),
+            "gap padding reused the resumed frame's PTS: {:?}",
+            output.video_frames
+        );
+    }
+
+    #[test]
     fn source_timestamp_mode_keeps_audio_and_video_on_the_input_timebase() {
         let cfg = OutputConfig::new(320, 240, 25, 48_000);
         let path = media_mix_asset("av_sync.mp4");
@@ -2946,6 +3119,56 @@ mod tests {
             output.video_frames
         );
         assert!(output.audio_pts.windows(2).all(|pts| pts[1] > pts[0]));
+    }
+
+    #[test]
+    fn live_join_mid_gop_waits_for_a_clean_keyframe() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let path = media_mix_asset("av_sync.mp4");
+        let mut input = open_media_input(&path).unwrap();
+        // The fixture has H.264 IDRs at 0, 8.33, 16.67 and 25 seconds.
+        // Join at a non-key packet as a forwarding server can after reconnect.
+        for (stream, packet) in input.packets() {
+            if stream.parameters().medium() == media::Type::Video
+                && !packet.is_key()
+                && packet.pts().is_some_and(|pts| {
+                    pts.rescale(stream.time_base(), Rational(1, 1_000_000)) >= 1_000_000
+                })
+            {
+                break;
+            }
+        }
+        let mut output = RecordingOutput::default();
+        play_opened_input(
+            "rtmp://localhost/live/mid-gop",
+            input,
+            &cfg,
+            &mut Timeline::new(),
+            &mut output,
+            InputPlaybackOptions {
+                seek_seconds: None,
+                duration_seconds: None,
+                subtitles_media_path: None,
+                logo_fade_plan: LogoFadePlan::none(0, &cfg),
+                playback_control: &PlaybackControl::default(),
+                preserve_source_timestamps: true,
+            },
+            None,
+        )
+        .unwrap();
+        let first = output
+            .video_frames
+            .first()
+            .expect("video must recover at the next IDR")
+            .2;
+        assert!(
+            first >= 208,
+            "live takeover admitted an incomplete GOP at {first} instead of waiting for the IDR"
+        );
+        assert!(
+            output.video_frames.last().unwrap().2 >= 740,
+            "the recovered source clock lost its original position"
+        );
     }
 
     #[test]
@@ -3451,12 +3674,12 @@ mod tests {
 
     #[test]
     fn fits_four_by_three_into_sixteen_by_nine() {
-        assert_eq!(fit_dimensions(1024, 576, 640, 480), (768, 576));
+        assert_eq!(fit_dimensions(1024, 576, 640, 480).unwrap(), (768, 576));
     }
 
     #[test]
     fn fits_vertical_video_into_sixteen_by_nine() {
-        assert_eq!(fit_dimensions(1024, 576, 1080, 1920), (324, 576));
+        assert_eq!(fit_dimensions(1024, 576, 1080, 1920).unwrap(), (324, 576));
     }
 
     #[test]
@@ -3509,8 +3732,8 @@ mod tests {
                 .windows(2)
                 .all(|frames| frames[1].2 == frames[0].2 + 1)
         );
-        assert_eq!(fit_dimensions(1280, 720, 768, 576), (960, 720));
-        assert_eq!(fit_dimensions(1280, 720, 720, 1280), (404, 720));
+        assert_eq!(fit_dimensions(1280, 720, 768, 576).unwrap(), (960, 720));
+        assert_eq!(fit_dimensions(1280, 720, 720, 1280).unwrap(), (404, 720));
     }
 
     #[test]

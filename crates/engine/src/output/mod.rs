@@ -438,9 +438,18 @@ mod tests {
 
     #[test]
     fn server_pipeline_keeps_logo_pixels_at_each_output_resolution() {
+        verify_server_logo_outputs(false);
+    }
+
+    #[test]
+    fn hls_variants_each_receive_only_their_own_logo() {
+        verify_server_logo_outputs(true);
+    }
+
+    fn verify_server_logo_outputs(hls: bool) {
         ffmpeg_next::init().unwrap();
         let directory = std::env::temp_dir().join(format!(
-            "server-logo-{}-{}",
+            "server-logo-{hls}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -490,19 +499,56 @@ mod tests {
             opacity: 1.0,
         };
         config.logo = Some(logo_config.clone());
-        let resolutions = [(320, 180), (160, 90)];
+        // The largest rendition need not be listed first.
+        let resolutions = [(240, 136), (320, 180), (160, 90)];
         for (index, (width, height)) in resolutions.into_iter().enumerate() {
+            if hls && index > 0 {
+                break;
+            }
+
             let mut settings = config.clone();
             settings.width = width;
             settings.height = height;
             config.destinations.push(parallel::OutputDestination {
                 id: index as i32 + 1,
                 config: settings,
+                target: if hls {
+                    parallel::OutputTarget::Hls {
+                        playlist: directory.join("master.m3u8").to_string_lossy().into_owned(),
+                        variants: resolutions
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, (width, height))| crate::HlsVariant {
+                                name: format!("output-{index}"),
+                                width,
+                                height,
+                                video_bitrate: 800_000,
+                                audio_bitrate: 128_000,
+                            })
+                            .collect(),
+                        subtitle: None,
+                        segment_seconds: 1,
+                        list_size: 6,
+                    }
+                } else {
+                    parallel::OutputTarget::Stream {
+                        url: directory
+                            .join(format!("output-{index}.ts"))
+                            .to_string_lossy()
+                            .into_owned(),
+                    }
+                },
+            });
+        }
+        if hls {
+            let mut borrowed = config.clone();
+            borrowed.encoding_source = Some((1, 2));
+            borrowed.destinations.clear();
+            config.destinations.push(parallel::OutputDestination {
+                id: 4,
+                config: borrowed,
                 target: parallel::OutputTarget::Stream {
-                    url: directory
-                        .join(format!("output-{index}.ts"))
-                        .to_string_lossy()
-                        .into_owned(),
+                    url: directory.join("borrowed.ts").to_string_lossy().into_owned(),
                 },
             });
         }
@@ -510,17 +556,55 @@ mod tests {
         playout.play(source.to_str().unwrap()).unwrap();
         playout.finish().unwrap();
         let logo = LogoOverlay::load(&logo_config, 320, 180).unwrap();
-        for (index, (width, height)) in resolutions.into_iter().enumerate() {
-            let mut expected = frame::Video::new(Pixel::YUV420P, width, height);
+        let mut outputs: Vec<_> = resolutions
+            .into_iter()
+            .enumerate()
+            .map(|(index, (width, height))| {
+                (
+                    width,
+                    height,
+                    directory.join(format!(
+                        "output-{index}.{}",
+                        if hls { "m3u8" } else { "ts" }
+                    )),
+                )
+            })
+            .collect();
+        if hls {
+            outputs.push((160, 90, directory.join("borrowed.ts")));
+        }
+        for (width, height, path) in outputs {
+            let (composition_width, composition_height) =
+                if hls { (320, 180) } else { (width, height) };
+            let mut expected =
+                frame::Video::new(Pixel::YUV420P, composition_width, composition_height);
             for plane in 0..expected.planes() {
                 expected.data_mut(plane).fill(128);
             }
             let positioned = logo
-                .positioned(Some(&logo_config.position), width, height)
+                .positioned(
+                    Some(&logo_config.position),
+                    composition_width,
+                    composition_height,
+                )
                 .unwrap();
             blend_logo(&mut expected, &positioned, 1.0);
-            let mut input =
-                ffmpeg_next::format::input(&directory.join(format!("output-{index}.ts"))).unwrap();
+            if hls && (width, height) != (composition_width, composition_height) {
+                let mut scaler = ffmpeg_next::software::scaling::Context::get(
+                    Pixel::YUV420P,
+                    composition_width,
+                    composition_height,
+                    Pixel::YUV420P,
+                    width,
+                    height,
+                    ffmpeg_next::software::scaling::flag::Flags::BILINEAR,
+                )
+                .unwrap();
+                let mut scaled = frame::Video::empty();
+                scaler.run(&expected, &mut scaled).unwrap();
+                expected = scaled;
+            }
+            let mut input = ffmpeg_next::format::input(&path).unwrap();
             let stream = input.streams().best(media::Type::Video).unwrap();
             let stream_index = stream.index();
             let mut decoder = codec::context::Context::from_parameters(stream.parameters())

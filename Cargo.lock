@@ -2030,7 +2030,7 @@ dependencies = [
 
 [[package]]
 name = "ff-engine"
-version = "2.7.0"
+version = "2.7.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2084,7 +2084,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "2.7.0"
+version = "2.7.1"
 dependencies = [
  "anyhow",
  "argon2",

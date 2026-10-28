@@ -242,7 +242,7 @@ pub struct Args {
         long,
         hide = true,
         env = "FFPLAYOUT_TIMING_DIAGNOSTICS",
-        help = "Log primary video timing even when MoQ output is disabled (requires trace logging)"
+        help = "Collect output timing and encoding-worker diagnostics (periodic reports require trace logging)"
     )]
     pub timing_diagnostics: bool,
 }

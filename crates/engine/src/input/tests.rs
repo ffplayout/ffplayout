@@ -28,6 +28,9 @@ use crate::{
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod memory;
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod rtmp_recovery;
+
 #[derive(Default)]
 struct CountingOutput {
     video_frames: usize,
@@ -708,6 +711,228 @@ fn startup_audio_after_the_first_video_preserves_its_source_offset() {
 }
 
 #[test]
+fn live_reception_pauses_resume_through_three_real_hls_encoders() {
+    use crate::{
+        HlsVariant, OutputConfig,
+        output::{
+            Output,
+            parallel::{OutputDestination, OutputTarget},
+        },
+    };
+
+    ffmpeg_next::init().unwrap();
+    let directory = std::env::temp_dir().join(format!(
+        "live-hls-recovery-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut config = OutputConfig::new(1280, 720, 25, 48_000);
+    config
+        .video_options
+        .insert("preset".into(), "faster".into());
+    config.video_options.insert("quality".into(), "23".into());
+    config.destinations.push(OutputDestination {
+        id: 5,
+        config: config.clone(),
+        target: OutputTarget::Hls {
+            playlist: directory.join("master.m3u8").to_string_lossy().into_owned(),
+            variants: [(1280, 720), (854, 480), (480, 270)]
+                .into_iter()
+                .enumerate()
+                .map(|(i, (width, height))| HlsVariant {
+                    name: format!("v{i}"),
+                    width,
+                    height,
+                    video_bitrate: 2_000_000,
+                    audio_bitrate: 128_000,
+                })
+                .collect(),
+            subtitle: None,
+            segment_seconds: 1,
+            list_size: 30,
+        },
+    });
+    let status = config.output_status.clone();
+    let mut output = Output::open_parallel(&config).unwrap();
+    let (tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+    let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 1280, 720);
+    for plane in 0..video.planes() {
+        video.data_mut(plane).fill(128);
+    }
+    let mut pts = 0;
+    for (cycle, (pause_ms, gap)) in [(2200, true), (2200, false), (4000, true)]
+        .into_iter()
+        .enumerate()
+    {
+        for _ in 0..25 {
+            let mut frame = crate::utils::ffmpeg::reference_video_frame(&video).unwrap();
+            frame.set_pts(Some(pts));
+            wrapper.encode_live_video_frame(frame).unwrap();
+            wrapper
+                .encode_live_audio_frame(audio_frame(pts * 1920, 1920))
+                .unwrap();
+            pts += 1;
+        }
+        // The same session resumes either with a real PTS gap or a burst of
+        // buffered frames with continuous timestamps (as after SIGSTOP/CONT).
+        thread::sleep(Duration::from_millis(pause_ms));
+        let paused_frames = pause_ms as i64 * 25 / 1000;
+        if gap {
+            pts += paused_frames;
+        }
+        for _ in 0..if gap { 1 } else { paused_frames } {
+            let mut frame = crate::utils::ffmpeg::reference_video_frame(&video).unwrap();
+            frame.set_pts(Some(pts));
+            wrapper.encode_live_video_frame(frame).unwrap();
+            wrapper
+                .encode_live_audio_frame(audio_frame(pts * 1920, 1920))
+                .unwrap();
+            pts += 1;
+        }
+        assert_ne!(
+            status.snapshot()[&5].phase,
+            "failed",
+            "cycle {cycle}: {:?}",
+            status.snapshot()
+        );
+    }
+    // Resume file playback on the existing output, without reopening encoders.
+    wrapper.live.last_media_at = None;
+    tx.send(LiveEvent::Ended(0)).unwrap();
+    wrapper.pump_live().unwrap();
+    assert!(!wrapper.live.active);
+    assert!(
+        wrapper
+            .wait_for_file_playback()
+            .unwrap_err()
+            .is::<super::live::LiveEnded>()
+    );
+    for _ in 0..25 {
+        let mut frame = crate::utils::ffmpeg::reference_video_frame(&video).unwrap();
+        frame.set_pts(Some(pts));
+        wrapper.encode_video(&frame).unwrap();
+        wrapper
+            .encode_audio(&audio_frame(pts * 1920, 1920))
+            .unwrap();
+        pts += 1;
+    }
+    drop(wrapper);
+    output.finish().unwrap();
+    for index in 0..3 {
+        let path = directory.join(format!("v{index}.m3u8"));
+        let playlist = std::fs::read_to_string(&path).unwrap();
+        assert!(playlist.contains("#EXTINF"));
+        // Production leaves a live playlist resumable. Mark this completed
+        // snapshot finite so the verification reader reaches EOF.
+        std::fs::write(&path, format!("{playlist}\n#EXT-X-ENDLIST\n")).unwrap();
+        let mut input = ffmpeg_next::format::input(&path).unwrap();
+        let video_stream = input
+            .streams()
+            .best(ffmpeg_next::media::Type::Video)
+            .unwrap();
+        let video_index = video_stream.index();
+        let mut decoder =
+            ffmpeg_next::codec::context::Context::from_parameters(video_stream.parameters())
+                .unwrap()
+                .decoder()
+                .video()
+                .unwrap();
+        let mut previous_dts = HashMap::new();
+        let mut video_frames = 0;
+        let mut audio_packets = 0;
+        for (stream, packet) in input.packets() {
+            if let Some(dts) = packet.dts()
+                && let Some(previous) = previous_dts.insert(stream.index(), dts)
+            {
+                assert!(dts > previous, "non-monotonic HLS DTS in variant {index}");
+            }
+            if stream.index() == video_index {
+                decoder.send_packet(&packet).unwrap();
+                let mut frame = frame::Video::empty();
+                while decoder.receive_frame(&mut frame).is_ok() {
+                    video_frames += 1;
+                }
+            } else if stream.parameters().medium() == ffmpeg_next::media::Type::Audio {
+                audio_packets += 1;
+            }
+        }
+        decoder.send_eof().unwrap();
+        let mut frame = frame::Video::empty();
+        while decoder.receive_frame(&mut frame).is_ok() {
+            video_frames += 1;
+        }
+        assert_eq!(video_frames, pts, "missing video frames in variant {index}");
+        assert!(
+            audio_packets >= pts * 1920 / 1024,
+            "missing HLS audio in variant {index}"
+        );
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn live_disconnect_gap_keeps_audio_and_video_interleaved() {
+    #[derive(Default)]
+    struct GapOutput {
+        timestamps: Vec<i64>,
+    }
+
+    impl FrameOutput for GapOutput {
+        fn audio_frame_size(&self) -> usize {
+            1024
+        }
+
+        fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+            self.timestamps.push(frame.pts().unwrap() * 48_000 / 25);
+            Ok(())
+        }
+
+        fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+            self.timestamps.push(frame.pts().unwrap());
+            Ok(())
+        }
+    }
+
+    let (tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.last_video_frame = Some(frame::Video::new(
+        ffmpeg_next::format::Pixel::YUV420P,
+        16,
+        16,
+    ));
+    live.last_video_output_pts = Some(0);
+    live.last_audio_output_end_pts = Some(1920);
+    live.video_pts = 1;
+    live.audio_pts = 1920;
+    live.last_media_at = Some(Instant::now() - Duration::from_secs(2));
+    let mut output = GapOutput::default();
+    let control = crate::PlaybackControl::default();
+    tx.send(LiveEvent::Ended(0)).unwrap();
+    LiveOverrideOutput::new(&mut output, &mut live, &control)
+        .pump_live()
+        .unwrap();
+
+    assert!(output.timestamps.len() > 100);
+    assert!(
+        output.timestamps.windows(2).all(|pair| pair[1] >= pair[0]),
+        "gap padding submitted a whole track before the other: {:?}",
+        output.timestamps
+    );
+    assert!(!live.active);
+}
+
+#[test]
 fn live_audio_survives_backward_timestamp_outliers_in_either_track() {
     assert_live_audio_recovers_after_timestamp_jump(-258_096, 0);
     assert_live_audio_recovers_after_timestamp_jump(0, -135);
@@ -744,6 +969,132 @@ fn live_tracks_stay_synchronized_through_joint_clock_resets() {
     assert_eq!(wrapper.live.session_source_start_seconds, Some(0.0));
     assert_eq!(wrapper.output.video_frames, 100);
     assert_eq!(wrapper.output.audio_frames, 100);
+}
+
+#[test]
+fn live_tracks_rejoin_after_video_gap_precedes_buffered_audio() {
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let mut output = CountingOutput::default();
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+    let video = |pts| {
+        let mut frame = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+        frame.set_pts(Some(pts));
+        frame
+    };
+
+    for index in 0..25 {
+        wrapper.encode_live_video_frame(video(index)).unwrap();
+        wrapper
+            .encode_live_audio_frame(audio_frame(index * 1920, 1920))
+            .unwrap();
+    }
+    // Receive two video frames after a two-second hole before the buffered
+    // continuous audio. This initially looks like a confirmed video clock reset.
+    for index in [75, 76] {
+        wrapper.encode_live_video_frame(video(index)).unwrap();
+    }
+    for index in 25..78 {
+        wrapper
+            .encode_live_audio_frame(audio_frame(index * 1920, 1920))
+            .unwrap();
+    }
+    wrapper.encode_live_video_frame(video(77)).unwrap();
+    assert_eq!(wrapper.live.video_pts, 78);
+    assert_eq!(wrapper.live.audio_pts, 78 * 1920);
+
+    for index in 78..100 {
+        wrapper.encode_live_video_frame(video(index)).unwrap();
+        wrapper
+            .encode_live_audio_frame(audio_frame(index * 1920, 1920))
+            .unwrap();
+        assert_eq!(wrapper.live.video_pts, index + 1);
+        assert_eq!(wrapper.live.audio_pts, (index + 1) * 1920);
+    }
+}
+
+#[test]
+fn live_content_markers_rejoin_the_source_clock_after_confirmed_video_drops() {
+    #[derive(Default)]
+    struct Markers {
+        video: Vec<(i64, u8)>,
+        audio: Vec<(i64, f32)>,
+    }
+    impl FrameOutput for Markers {
+        fn audio_frame_size(&self) -> usize {
+            1920
+        }
+        fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+            self.video.push((frame.pts().unwrap(), frame.data(0)[0]));
+            Ok(())
+        }
+        fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+            self.audio
+                .push((frame.pts().unwrap(), frame.plane::<f32>(0)[0]));
+            Ok(())
+        }
+    }
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let mut output = Markers::default();
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+    let send_audio = |wrapper: &mut LiveOverrideOutput<'_, Markers>, pts: i64| {
+        let mut audio = audio_frame(pts * 1920, 1920);
+        for channel in 0..2 {
+            audio.plane_mut::<f32>(channel).fill(pts as f32 + 1.0);
+        }
+        wrapper.encode_live_audio_frame(audio).unwrap();
+        assert_eq!(
+            wrapper.output.audio.last().copied(),
+            Some((pts * 1920, pts as f32 + 1.0))
+        );
+    };
+    let send_video = |wrapper: &mut LiveOverrideOutput<'_, Markers>, pts: i64, expected: i64| {
+        let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+        let marker = (pts % 200 + 20) as u8;
+        video.data_mut(0).fill(marker);
+        video.set_pts(Some(pts));
+        wrapper.encode_live_video_frame(video).unwrap();
+        assert_eq!(
+            wrapper.output.video.last().copied(),
+            Some((expected, marker)),
+            "received image content was shifted relative to its source audio"
+        );
+    };
+    let mut next_audio = 0;
+    for cycle in 0..3 {
+        let start = cycle * 100;
+        for pts in start..start + 25 {
+            send_video(&mut wrapper, pts, pts);
+            send_audio(&mut wrapper, pts);
+        }
+        // Audio has advanced by 360 ms; the next received video skips a GOP.
+        for pts in start + 25..start + 34 {
+            send_audio(&mut wrapper, pts);
+        }
+        // Until a second frame confirms the gap, the first candidate is
+        // treated as an isolated outlier. It must not shift subsequent content.
+        send_video(&mut wrapper, start + 75, start + 25);
+        send_video(&mut wrapper, start + 76, start + 76);
+        for pts in start + 34..start + 77 {
+            send_audio(&mut wrapper, pts);
+        }
+        for pts in start + 77..start + 100 {
+            send_video(&mut wrapper, pts, pts);
+            send_audio(&mut wrapper, pts);
+        }
+        next_audio = (start + 100) * 1920;
+    }
+    assert_eq!(wrapper.live.video_pts, 300);
+    assert_eq!(wrapper.live.audio_pts, next_audio);
 }
 
 #[test]

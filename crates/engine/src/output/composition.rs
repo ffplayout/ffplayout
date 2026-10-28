@@ -313,6 +313,46 @@ mod tests {
     }
 
     #[test]
+    fn independent_output_resolutions_each_receive_only_their_own_logo() {
+        let (_, logo, compositor) = setup();
+        let mut source = frame::Video::new(Pixel::YUV420P, 1280, 720);
+        for plane in 0..source.planes() {
+            source.data_mut(plane).fill(128);
+        }
+        for _ in 0..3 {
+            let program = ProgramVideo::new(
+                &source,
+                compositor.clone(),
+                Some(logo.clone()),
+                0.5,
+                BTreeMap::new(),
+            )
+            .unwrap();
+            for (width, height) in [(1280, 720), (854, 480), (480, 270)] {
+                let actual = program.frame(width, height).unwrap();
+                let mut expected = frame::Video::new(Pixel::YUV420P, width, height);
+                for plane in 0..expected.planes() {
+                    expected.data_mut(plane).fill(128);
+                }
+                let positioned = logo.positioned(Some("W-w-8:H-h-8"), width, height).unwrap();
+                blend_logo(&mut expected, &positioned, 0.5);
+                for plane in 0..actual.planes() {
+                    for row in 0..actual.plane_height(plane) as usize {
+                        let columns = actual.plane_width(plane) as usize;
+                        assert_eq!(
+                            &actual.data(plane)
+                                [row * actual.stride(plane)..row * actual.stride(plane) + columns],
+                            &expected.data(plane)[row * expected.stride(plane)
+                                ..row * expected.stride(plane) + columns],
+                            "{width}x{height}, plane {plane}, row {row}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn same_resolution_reuses_pixels_and_other_resolutions_keep_logo_pixel_size() {
         let (source, logo, compositor) = setup();
         let program = ProgramVideo::new(
