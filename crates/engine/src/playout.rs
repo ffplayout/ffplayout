@@ -1254,7 +1254,13 @@ fn receive_audio_frames<O: FrameOutput>(
                     reference_pts,
                     Instant::now(),
                 );
-                update.log_correction("audio", pts, i64::from(converted.rate()), audio.channel_id);
+                update.log_correction(
+                    "decode",
+                    "audio",
+                    pts,
+                    i64::from(converted.rate()),
+                    audio.channel_id,
+                );
                 timeline.live_audio_source_us = Some(
                     update
                         .pts
@@ -1729,7 +1735,7 @@ impl VideoDecoder {
             reference_us,
             Instant::now(),
         );
-        update.log_correction("video", source_us, 1_000_000, channel_id);
+        update.log_correction("decode", "video", source_us, 1_000_000, channel_id);
 
         Some(if update.pts == source_us {
             timestamp
@@ -2969,6 +2975,69 @@ mod tests {
     }
 
     #[test]
+    fn live_video_gap_padding_has_distinct_source_timestamps() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let mut input = open_media_input(&media_mix_asset("av_sync.mp4")).unwrap();
+        let stream = input.streams().best(media::Type::Video).unwrap();
+        let index = stream.index();
+        let time_base = stream.time_base();
+        let mut video = VideoDecoder::new(&stream, &cfg, "gap padding", None, 0, 0, None).unwrap();
+        let mut timeline = Timeline::new();
+        timeline.source_timestamp_mode = true;
+        // Audio is already past the missing video interval, confirming a real gap.
+        timeline.live_audio_source_us = Some(10_000_000);
+        let mut output = RecordingOutput::default();
+        let mut frames = 0;
+        let control = PlaybackControl::default();
+        let mut drain = |video: &mut VideoDecoder, timeline: &mut Timeline| {
+            super::receive_video_frames(
+                &cfg,
+                None,
+                video,
+                timeline,
+                &mut output,
+                &mut frames,
+                None,
+                LogoFadePlan::none(0, &cfg),
+                MediaFadePlan::default(),
+                &control,
+            )
+            .unwrap();
+        };
+        for (stream, mut packet) in input.packets() {
+            if stream.index() != index {
+                continue;
+            }
+            if packet
+                .pts()
+                .is_some_and(|pts| pts.rescale(time_base, Rational(1, 1_000_000)) >= 400_000)
+            {
+                let gap = 1_i64.rescale(Rational(1, 1), time_base);
+                packet.set_pts(packet.pts().map(|pts| pts + gap));
+                packet.set_dts(packet.dts().map(|pts| pts + gap));
+            }
+            video.decoder.send_packet(&packet).unwrap();
+            drain(&mut video, &mut timeline);
+        }
+        video.decoder.send_eof().unwrap();
+        drain(&mut video, &mut timeline);
+        drop(drain);
+        assert_eq!(
+            output.video_frames.len(),
+            775,
+            "the 30-second fixture plus a one-second gap must be padded at 25 fps"
+        );
+        assert!(
+            output
+                .video_frames
+                .windows(2)
+                .all(|pair| pair[1].2 == pair[0].2 + 1),
+            "gap padding reused the resumed frame's PTS: {:?}",
+            output.video_frames
+        );
+    }
+
+    #[test]
     fn source_timestamp_mode_keeps_audio_and_video_on_the_input_timebase() {
         let cfg = OutputConfig::new(320, 240, 25, 48_000);
         let path = media_mix_asset("av_sync.mp4");
@@ -3006,6 +3075,56 @@ mod tests {
             output.video_frames
         );
         assert!(output.audio_pts.windows(2).all(|pts| pts[1] > pts[0]));
+    }
+
+    #[test]
+    fn live_join_mid_gop_waits_for_a_clean_keyframe() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let path = media_mix_asset("av_sync.mp4");
+        let mut input = open_media_input(&path).unwrap();
+        // The fixture has H.264 IDRs at 0, 8.33, 16.67 and 25 seconds.
+        // Join at a non-key packet as a forwarding server can after reconnect.
+        for (stream, packet) in input.packets() {
+            if stream.parameters().medium() == media::Type::Video
+                && !packet.is_key()
+                && packet.pts().is_some_and(|pts| {
+                    pts.rescale(stream.time_base(), Rational(1, 1_000_000)) >= 1_000_000
+                })
+            {
+                break;
+            }
+        }
+        let mut output = RecordingOutput::default();
+        play_opened_input(
+            "rtmp://localhost/live/mid-gop",
+            input,
+            &cfg,
+            &mut Timeline::new(),
+            &mut output,
+            InputPlaybackOptions {
+                seek_seconds: None,
+                duration_seconds: None,
+                subtitles_media_path: None,
+                logo_fade_plan: LogoFadePlan::none(0, &cfg),
+                playback_control: &PlaybackControl::default(),
+                preserve_source_timestamps: true,
+            },
+            None,
+        )
+        .unwrap();
+        let first = output
+            .video_frames
+            .first()
+            .expect("video must recover at the next IDR")
+            .2;
+        assert!(
+            first >= 208,
+            "live takeover admitted an incomplete GOP at {first} instead of waiting for the IDR"
+        );
+        assert!(
+            output.video_frames.last().unwrap().2 >= 740,
+            "the recovered source clock lost its original position"
+        );
     }
 
     #[test]

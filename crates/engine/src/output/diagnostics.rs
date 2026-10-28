@@ -1,8 +1,103 @@
 //! Optional primary video timing measurements.
-use std::time::{Duration, Instant};
+use std::{
+    sync::{Mutex, PoisonError},
+    time::{Duration, Instant},
+};
 
 use ffmpeg_next::{Rational, Rescale, rescale};
 const REPORT_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Failure-time context, enabled separately from periodic trace logging.
+pub(super) struct EncodingProgress(Mutex<EncodingProgressState>);
+
+struct EncodingProgressState {
+    active: EncodingStage,
+    last_video_pts_us: Option<i64>,
+    last_audio_pts_us: Option<i64>,
+}
+
+#[derive(Clone, Copy)]
+struct EncodingStage {
+    name: &'static str,
+    rendition: Option<usize>,
+    started: Instant,
+}
+
+impl EncodingProgress {
+    pub(super) fn new() -> Self {
+        Self(Mutex::new(EncodingProgressState {
+            active: EncodingStage {
+                name: "starting",
+                rendition: None,
+                started: Instant::now(),
+            },
+            last_video_pts_us: None,
+            last_audio_pts_us: None,
+        }))
+    }
+
+    pub(super) fn frame(&self, video: bool, pts_us: Option<i64>) {
+        let mut state = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if video {
+            state.last_video_pts_us = pts_us;
+        } else {
+            state.last_audio_pts_us = pts_us;
+        }
+    }
+
+    pub(super) fn enter(
+        &self,
+        name: &'static str,
+        rendition: Option<usize>,
+    ) -> EncodingStageGuard<'_> {
+        let mut state = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let previous = state.active;
+        state.active = EncodingStage {
+            name,
+            rendition,
+            started: Instant::now(),
+        };
+
+        EncodingStageGuard {
+            progress: self,
+            previous,
+        }
+    }
+
+    pub(super) fn describe(&self) -> String {
+        let state = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let value =
+            |value: Option<i64>| value.map_or_else(|| "unavailable".into(), |v| v.to_string());
+
+        format!(
+            "worker_stage={} rendition={} stage_age_ms={:.3} last_video_pts_us={} last_audio_pts_us={}",
+            state.active.name,
+            state
+                .active
+                .rendition
+                .map_or_else(|| "none".into(), |index| index.to_string()),
+            state.active.started.elapsed().as_secs_f64() * 1000.0,
+            value(state.last_video_pts_us),
+            value(state.last_audio_pts_us),
+        )
+    }
+}
+
+/// Restore the enclosing operation after packet delivery or a nested encoder call.
+pub(super) struct EncodingStageGuard<'a> {
+    progress: &'a EncodingProgress,
+    previous: EncodingStage,
+}
+
+impl Drop for EncodingStageGuard<'_> {
+    fn drop(&mut self) {
+        self.progress
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .active = self.previous;
+    }
+}
 
 #[derive(Default)]
 struct Stage {
@@ -121,6 +216,24 @@ impl PrimaryTiming {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn encoding_progress_restores_parent_stage_without_reverting_frame_timestamps() {
+        let progress = EncodingProgress::new();
+        let parent = progress.enter("video_submit", Some(1));
+        let started = progress.0.lock().unwrap().active.started;
+        {
+            let _delivery = progress.enter("packet_handoff", Some(1));
+            progress.frame(true, Some(1_000_000));
+            assert!(progress.describe().contains("worker_stage=packet_handoff"));
+        }
+        let description = progress.describe();
+        assert!(description.contains("worker_stage=video_submit rendition=1"));
+        assert!(description.contains("last_video_pts_us=1000000"));
+        assert_eq!(progress.0.lock().unwrap().active.started, started);
+        drop(parent);
+        assert!(progress.describe().contains("worker_stage=starting"));
+    }
+
     #[test]
     fn primary_metrics_only_count_packets_during_video_calls() {
         let mut timing = PrimaryTiming::new(1);

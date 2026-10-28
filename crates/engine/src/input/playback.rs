@@ -477,6 +477,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             Instant::now(),
         );
         update.log_correction(
+            "playout",
             "video",
             source_pts,
             i64::from(self.live.fps),
@@ -532,6 +533,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             now,
         );
         update.log_correction(
+            "playout",
             "audio",
             source_pts,
             i64::from(self.live.sample_rate),

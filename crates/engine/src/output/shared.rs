@@ -21,6 +21,7 @@ use crate::{
 };
 
 use super::{
+    diagnostics::EncodingProgress,
     encoded::EncodedOutput,
     encoding::{EncodedPacket, EncodingProfile, video::hls_gop_size},
     parallel::{Message, OutputDestination, OutputStatus, OutputTarget},
@@ -303,6 +304,7 @@ pub(super) fn run(
     program: &OutputConfig,
     queue: &PipelineQueue<Message>,
     control: &PipelineControl,
+    progress: Option<&EncodingProgress>,
 ) -> Result<()> {
     control.check()?;
     let root = &destinations[0];
@@ -382,6 +384,7 @@ pub(super) fn run(
         &context,
     )?;
     let mut emit = |index: usize, packet: EncodedPacket| -> Result<()> {
+        let _stage = progress.map(|progress| progress.enter("packet_handoff", Some(index)));
         for (rendition, recording) in &mut copies {
             if *rendition != index {
                 continue;
@@ -436,7 +439,13 @@ pub(super) fn run(
         }
         Ok(())
     };
-    while let Some(message) = queue.recv()? {
+    loop {
+        let message = {
+            let _stage = progress.map(|progress| progress.enter("waiting_for_frame", None));
+            queue.recv()?
+        };
+        let Some(message) = message else { break };
+        let _stage = progress.map(|progress| progress.enter("control_update", None));
         control.check()?;
         retired.retain(|_, worker| !worker.is_finished());
         match message {
@@ -450,6 +459,16 @@ pub(super) fn run(
                 )?;
             }
             Message::Video(frame) => {
+                let _stage = progress.map(|progress| {
+                    progress.frame(
+                        true,
+                        frame
+                            .source
+                            .pts()
+                            .map(|pts| pts.rescale(program.video_time_base, rescale::TIME_BASE)),
+                    );
+                    progress.enter("video_composition_or_recording", None)
+                });
                 context.position = frame.source.pts().map(|pts| {
                     pts.rescale(program.video_time_base, ffmpeg_next::Rational(1, 1_000))
                 });
@@ -470,10 +489,21 @@ pub(super) fn run(
                     .transpose()?;
                 let video = prepared.as_ref().unwrap_or(&frame.source);
                 for (index, profile) in profiles.iter_mut().enumerate() {
+                    let _stage =
+                        progress.map(|progress| progress.enter("video_submit", Some(index)));
                     profile.video_frame(video, |packet| emit(index, packet))?;
                 }
             }
             Message::Audio(frame) => {
+                let _stage = progress.map(|progress| {
+                    progress.frame(
+                        false,
+                        frame
+                            .pts()
+                            .map(|pts| pts.rescale(program.audio_time_base, rescale::TIME_BASE)),
+                    );
+                    progress.enter("audio_recording", None)
+                });
                 if let Some(output) = &mut recording
                     && let Err(error) = output.encode_audio(&frame)
                 {
@@ -481,6 +511,8 @@ pub(super) fn run(
                     recording = None;
                 }
                 for (index, profile) in profiles.iter_mut().enumerate() {
+                    let _stage =
+                        progress.map(|progress| progress.enter("audio_submit", Some(index)));
                     profile.audio(&frame, |packet| emit(index, packet))?;
                 }
             }

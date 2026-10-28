@@ -6,7 +6,7 @@ use std::{
     path::Path,
     process::{Child, Command, Stdio},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     thread,
@@ -17,13 +17,51 @@ use anyhow::{Result, ensure};
 
 use super::LiveOverrideOutput;
 use crate::{
-    HlsVariant, OutputConfig, PlaybackControl,
+    HlsSubtitle, HlsVariant, LogoConfig, OutputConfig, PlaybackControl,
+    audio_mixer::{
+        LiveLoudnessConfig, LiveLoudnessControl, LoudnessScope,
+        program::{ProgramAudioOutput, ProgramAudioState},
+    },
     input::live::{LiveIdleTimeout, LiveInputBackend, LiveListenerConfig, spawn_live_listeners},
     output::{
-        Output,
+        FrameOutput, Output,
         parallel::{OutputDestination, OutputTarget},
     },
 };
+
+#[derive(Debug, Default)]
+struct PacketCapture(Mutex<BTreeMap<usize, (usize, i64)>>);
+
+impl crate::OutputEndpoint for Arc<PacketCapture> {
+    fn connect_packets(
+        &self,
+        streams: &[crate::EncodedStream],
+    ) -> Result<Box<dyn crate::PacketSink>> {
+        ensure!(
+            streams.len() == 2 && streams[0].codec == "h264" && streams[1].codec == "aac",
+            "unexpected native stream codecs"
+        );
+        Ok(Box::new(self.clone()))
+    }
+}
+
+impl crate::PacketSink for Arc<PacketCapture> {
+    fn write(&mut self, frame: crate::EncodedFrame<'_>) -> Result<()> {
+        let mut tracks = self.0.lock().unwrap();
+        if let Some((_, previous)) = tracks.get(&frame.stream) {
+            ensure!(frame.dts_us > *previous, "non-monotonic native DTS");
+        }
+        let track = tracks.entry(frame.stream).or_default();
+        track.0 += 1;
+        track.1 = frame.dts_us;
+        ensure!(!frame.data.is_empty(), "empty native access unit");
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
 
 struct Publisher(Child);
 impl Drop for Publisher {
@@ -158,25 +196,77 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
         .video_options
         .insert("preset".into(), "faster".into());
     config.video_options.insert("quality".into(), "23".into());
+    let server_profile = std::env::var_os("FFPLAYOUT_RTMP_SERVER_PROFILE").is_some();
+    if server_profile {
+        config.output_timing_diagnostics = true;
+        config.video_options.insert("maxrate".into(), "2400".into());
+        config
+            .video_options
+            .insert("tune".into(), "zerolatency".into());
+        config.loudness_scope = LoudnessScope::All;
+        config.live_loudness_control = LiveLoudnessControl::new(
+            true,
+            LiveLoudnessConfig {
+                target_lufs: -17.0,
+                dead_band_lu: 1.0,
+                max_gain_db: 8.0,
+                max_attenuation_db: -12.0,
+                gain_up_db_per_second: 0.5,
+                gain_down_db_per_second: 2.0,
+                silence_gate_lufs: -60.0,
+                true_peak_ceiling_dbtp: -1.0,
+                ..LiveLoudnessConfig::default()
+            },
+        );
+        config.logo = Some(LogoConfig {
+            path: Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests_assets/storage/logo.png")
+                .to_string_lossy()
+                .into_owned(),
+            scale: None,
+            opacity: 0.7,
+            position: "W-w-12:12".into(),
+        });
+    }
     config.destinations.push(OutputDestination {
         id: 5,
         config: config.clone(),
         target: OutputTarget::Hls {
             playlist: directory.join("master.m3u8").to_string_lossy().into_owned(),
-            variants: [(1280, 720), (854, 480), (480, 270)]
-                .into_iter()
-                .enumerate()
-                .map(|(i, (width, height))| HlsVariant {
-                    name: format!("v{i}"),
-                    width,
-                    height,
-                    video_bitrate: 2_000_000,
-                    audio_bitrate: 128_000,
-                })
-                .collect(),
-            subtitle: None,
-            segment_seconds: 1,
-            list_size: 120,
+            variants: [
+                (1280, 720),
+                (854, 480),
+                if server_profile {
+                    (426, 240)
+                } else {
+                    (480, 270)
+                },
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(i, (width, height))| HlsVariant {
+                name: format!("v{i}"),
+                width,
+                height,
+                video_bitrate: if server_profile {
+                    [2_400_000, 1_200_000, 400_000][i]
+                } else {
+                    2_000_000
+                },
+                audio_bitrate: if server_profile && i == 2 {
+                    64_000
+                } else {
+                    128_000
+                },
+            })
+            .collect(),
+            subtitle: server_profile.then(|| HlsSubtitle {
+                name: "Deutsch".into(),
+                language: "de-DE".into(),
+                default: false,
+            }),
+            segment_seconds: if server_profile { 6 } else { 1 },
+            list_size: if server_profile { 600 } else { 120 },
         },
     });
     let mut independent = config.clone();
@@ -188,18 +278,50 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
     independent
         .video_options
         .insert("preset".into(), "ultrafast".into());
+    let native = Arc::new(PacketCapture::default());
+    if server_profile {
+        // Same packet API and pacing as MoQ, without starting a public relay.
+        let mut shared = config.clone();
+        shared.destinations.clear();
+        shared.encoding_source = Some((5, 1));
+        shared.stream_endpoint = Some(Arc::new(native.clone()));
+        config.destinations.push(OutputDestination {
+            id: 6,
+            config: shared,
+            target: OutputTarget::Stream { url: String::new() },
+        });
+        independent = config.clone();
+        independent.destinations.clear();
+        independent.encoding_source = Some((5, 0));
+        independent.stream_type = crate::StreamType::Custom;
+        independent.stream_format = "flv".into();
+    }
     config.destinations.push(OutputDestination {
-        id: 6,
+        id: if server_profile { 7 } else { 6 },
         config: independent,
         target: OutputTarget::Stream {
             url: directory
-                .join("independent.ts")
+                .join(if server_profile {
+                    "shared.flv"
+                } else {
+                    "independent.ts"
+                })
                 .to_string_lossy()
                 .into_owned(),
         },
     });
     let status = config.output_status.clone();
     let mut output = Output::open_parallel(&config)?;
+    let mut audio_state = ProgramAudioState::default();
+    let mut program_output = ProgramAudioOutput::new(&mut output, &mut audio_state, &config)?;
+    if server_profile {
+        let vtt = directory.join("captions.vtt");
+        fs::write(
+            &vtt,
+            "WEBVTT\n\n00:00:00.000 --> 00:00:10.000\nRecovery test\n",
+        )?;
+        program_output.write_vtt_subtitles(vtt.to_str().unwrap(), 0, 0)?;
+    }
     let mut live = spawn_live_listeners(
         vec![LiveListenerConfig {
             id: 1,
@@ -377,7 +499,7 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
         let mut accepted = false;
         let reception = (|| -> Result<()> {
             while Instant::now() < deadline {
-                LiveOverrideOutput::new(&mut output, &mut live, &control).pump_live()?;
+                LiveOverrideOutput::new(&mut program_output, &mut live, &control).pump_live()?;
                 accepted |= live.active && live.session_id > previous_session;
                 ensure!(
                     !status
@@ -414,6 +536,8 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
         );
     }
     drop(live);
+    program_output.finish()?;
+    drop(program_output);
     output.finish()?;
     ensure!(completed_cases > 0, "no RTMP test case selected");
     for index in 0..3 {
@@ -429,7 +553,25 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
         fs::write(&path, format!("{playlist}\n#EXT-X-ENDLIST\n"))?;
         verify_media(&path, completed_cases * 250)?;
     }
-    verify_media(&directory.join("independent.ts"), completed_cases * 250)?;
+    verify_media(
+        &directory.join(if server_profile {
+            "shared.flv"
+        } else {
+            "independent.ts"
+        }),
+        completed_cases * 250,
+    )?;
+    if server_profile {
+        let tracks = native.0.lock().unwrap();
+        for index in [0, 1] {
+            ensure!(
+                tracks
+                    .get(&index)
+                    .is_some_and(|(count, _)| *count >= completed_cases * 250),
+                "native output missing media: {tracks:?}"
+            );
+        }
+    }
 
     Ok(())
 }

@@ -972,6 +972,52 @@ fn live_tracks_stay_synchronized_through_joint_clock_resets() {
 }
 
 #[test]
+fn live_tracks_rejoin_after_video_gap_precedes_buffered_audio() {
+    let (_tx, rx) = mpsc::channel();
+    let mut live = test_live_receiver(rx);
+    live.active = true;
+    live.source_has_audio = true;
+    let mut output = CountingOutput::default();
+    let control = crate::PlaybackControl::default();
+    let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
+    wrapper.start_live_session(0.0);
+    let video = |pts| {
+        let mut frame = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+        frame.set_pts(Some(pts));
+        frame
+    };
+
+    for index in 0..25 {
+        wrapper.encode_live_video_frame(video(index)).unwrap();
+        wrapper
+            .encode_live_audio_frame(audio_frame(index * 1920, 1920))
+            .unwrap();
+    }
+    // Receive two video frames after a two-second hole before the buffered
+    // continuous audio. This initially looks like a confirmed video clock reset.
+    for index in [75, 76] {
+        wrapper.encode_live_video_frame(video(index)).unwrap();
+    }
+    for index in 25..78 {
+        wrapper
+            .encode_live_audio_frame(audio_frame(index * 1920, 1920))
+            .unwrap();
+    }
+    wrapper.encode_live_video_frame(video(77)).unwrap();
+    assert_eq!(wrapper.live.video_pts, 78);
+    assert_eq!(wrapper.live.audio_pts, 78 * 1920);
+
+    for index in 78..100 {
+        wrapper.encode_live_video_frame(video(index)).unwrap();
+        wrapper
+            .encode_live_audio_frame(audio_frame(index * 1920, 1920))
+            .unwrap();
+        assert_eq!(wrapper.live.video_pts, index + 1);
+        assert_eq!(wrapper.live.audio_pts, (index + 1) * 1920);
+    }
+}
+
+#[test]
 fn persistent_audio_lag_recovers_without_changing_the_video_anchor() {
     let (_tx, rx) = mpsc::channel();
     let mut live = test_live_receiver(rx);

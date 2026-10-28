@@ -88,9 +88,9 @@ package. These two environment variables can also be passed directly or set in
 
 The build script keeps one stopped build container per workspace and target
 (`ffplayout-build-debian-shared-…` / `ffplayout-build-debian-static-…`). Cargo and
-npm download caches inside it survive subsequent builds. Before a build, a
-container older than seven days is removed and recreated; a changed builder image
-also requires recreation. Features, `.env` values and profiling settings are
+npm download caches inside it survive subsequent builds. Containers are reused
+regardless of age; a changed builder image requires recreation.
+Features, `.env` values and profiling settings are
 forwarded afresh on every build. Failed builds preserve the container/cache too.
 An already running build container is left untouched and a concurrent build is
 refused. Containers are stopped after use, so they consume disk space but no CPU.
@@ -100,6 +100,11 @@ interrupts release it. After a forced kill or host crash, check that no build is
 running before removing the leftover lock directory (its `pid` file records the
 owning shell).
 Image layers and the container engine's separate build cache are not pruned.
+Build preparation prints timestamped phases and elapsed seconds for manual
+generation, image preparation, metadata inspection, container creation/start,
+build execution, and shutdown. If a build pauses before `npm ci`, the last
+phase identifies the pending operation. Metadata inspection uses one image
+request and one container request to reduce overhead from remote/VM CLI wrappers.
 
 ### Experimental transcription example
 
@@ -468,6 +473,34 @@ After draining the outputs, the test checks audio/video packet counts and
 strictly increasing per-track DTS in all three HLS variants and the independent
 stream, then decodes both tracks with FFmpeg in strict error mode. Finished HLS
 test playlists receive an end marker so verification reaches EOF.
+
+Set `FFPLAYOUT_RTMP_SERVER_PROFILE=1` for the recovery configuration with a
+single owning HLS group (720p/480p/240p, CRF 23, faster, zerolatency,
+libfdk_aac when available), six-second HLS segments, VTT, a fixture logo, and
+program-wide loudness processing. A native packet sink shares the 480p rendition
+through the same paced packet interface used by MoQ; an FLV file shares 720p.
+This exercises encoding sharing and the native delivery boundary, but does not
+start a MoQ relay or connect to an external RTMP server. Source pauses, reconnects,
+format changes, and media verification remain the same.
+
+For a production encoding-group queue overflow, enable
+`FFPLAYOUT_TIMING_DIAGNOSTICS=true` (or `--timing-diagnostics`). The overflow
+warning then includes the worker's current stage, zero-based rendition index,
+stage age, and last consumed audio/video PTS in microseconds. `video_submit` and
+`audio_submit` include waiting for the internal encoder queues; `packet_handoff`
+includes copy-recording and packet fan-out. These failure details work at the
+normal warning level; periodic timing reports still require trace logging.
+Worker tracking is disabled by default and does not emit per-frame logs.
+
+Live timestamp recovery also checks the counterpart track after a suspected
+clock reset. If buffered audio/video confirms the original source timeline,
+the stale negative per-track offset is released without moving output backward.
+The recovery logs `timestamp mapping recovered from counterpart`; an isolated
+timestamp jump must not leave a permanent audio/video offset.
+Correction warnings identify `stage=decode` or `stage=playout` and include
+`expected_s`, `reference_s` (the normalized counterpart end timestamp), and
+`offset_s` (the track's active source-to-normalized offset). These are separate
+mapping stages; the previous identical messages could not distinguish them.
 
 ### Media analysis and clip resource lifetimes
 

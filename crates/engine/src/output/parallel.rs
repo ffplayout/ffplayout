@@ -22,6 +22,7 @@ use crate::{
 
 use super::{
     composition::{ProgramVideo, VideoCompositor},
+    diagnostics::EncodingProgress,
     encoded::EncodedFormat,
 };
 
@@ -310,6 +311,7 @@ struct DestinationWorker {
     worker: Option<JoinHandle<()>>,
     channel: i32,
     status: OutputStatus,
+    progress: Option<Arc<EncodingProgress>>,
 }
 
 impl DestinationWorker {
@@ -374,11 +376,21 @@ impl DestinationWorker {
             );
         }
         let worker_status = status.clone();
+        let progress = program
+            .output_timing_diagnostics
+            .then(|| Arc::new(EncodingProgress::new()));
+        let worker_progress = progress.clone();
         let worker = thread::Builder::new()
             .name(format!("playout-output-{id}"))
             .spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    super::shared::run(destinations, &program, &worker_queue, &worker_control)
+                    super::shared::run(
+                        destinations,
+                        &program,
+                        &worker_queue,
+                        &worker_control,
+                        worker_progress.as_deref(),
+                    )
                 }))
                 .unwrap_or_else(|_| Err(anyhow::anyhow!("output worker panicked")));
 
@@ -407,6 +419,7 @@ impl DestinationWorker {
             worker: Some(worker),
             channel,
             status,
+            progress,
         })
     }
 
@@ -419,10 +432,16 @@ impl DestinationWorker {
             Ok(None) => {}
             result => {
                 let reason = match result {
-                    Ok(Some(_)) => format!(
-                        "encoding group queue exceeded its bounded capacity ({})",
-                        self.queue.capacity_description(bytes, timestamp)
-                    ),
+                    Ok(Some(_)) => {
+                        let progress =
+                            self.progress.as_ref().map_or_else(String::new, |progress| {
+                                format!("; {}", progress.describe())
+                            });
+                        format!(
+                            "encoding group queue exceeded its bounded capacity ({}{progress})",
+                            self.queue.capacity_description(bytes, timestamp)
+                        )
+                    }
                     Err(error) => error.to_string(),
                     _ => unreachable!(),
                 };
@@ -890,6 +909,7 @@ mod tests {
                 worker: None,
                 channel: 1,
                 status: config.output_status.clone(),
+                progress: None,
             });
         }
         output.context.lock().unwrap().subtitles = Some(("clip.mp4".into(), 0, 0));
@@ -1787,6 +1807,7 @@ mod tests {
             worker: None,
             channel: 1,
             status: OutputStatus::default(),
+            progress: None,
         };
         // Model two tiny media items around the 1.76-second discontinuity
         // reported during RTMP recovery. There is no meaningful backlog.
@@ -1825,6 +1846,7 @@ mod tests {
                 worker: None,
                 channel: 1,
                 status: OutputStatus::default(),
+                progress: None,
             }
         };
         let workers = vec![make_worker(1), make_worker(2)];
@@ -1864,11 +1886,19 @@ mod tests {
             worker: None,
             channel: 1,
             status: status.clone(),
+            progress: Some(Arc::new(EncodingProgress::new())),
         };
         blocked.send(Message::Rate(1.0), 0, None);
         blocked.send(Message::Rate(1.0), 0, None);
         assert!(blocked.control.cancelled());
         assert_eq!(status.snapshot()[&1].phase, "failed");
+        assert!(
+            status.snapshot()[&1]
+                .error
+                .as_ref()
+                .unwrap()
+                .contains("worker_stage=starting")
+        );
         let healthy_control = Arc::new(PipelineControl::default());
         let healthy = DestinationWorker {
             encoding_revision: String::new(),
@@ -1889,6 +1919,7 @@ mod tests {
             worker: None,
             channel: 1,
             status,
+            progress: None,
         };
         healthy.send(Message::Rate(1.0), 0, None);
         assert!(healthy.queue.try_recv().unwrap().is_some());

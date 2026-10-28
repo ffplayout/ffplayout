@@ -26,12 +26,25 @@ and [MoQ documentation](../docs/moq.md).
 - [x] Reproduce RTMP `Input changed` on a mid-stream resolution change and
   rebuild the scaler and letterboxing from actual decoded frame dimensions and
   pixel format. The full RTMP/HLS test fails before this fix and passes after it.
+- [x] Release a stale per-track timestamp offset when buffered counterpart
+  audio/video confirms the original source clock after a reception gap. Cover
+  the previously persistent A/V skew, joint clock resets, and distinct PTS on
+  frame-rate-converter gap padding with regression tests.
+- [ ] Reproduce the remaining live A/V desynchronization after idle reconnect:
+  freeze, stutter, catch-up and persistent skew, with H.264 reference errors and
+  another ~1.96-second video correction. Clean RTMP pause/reconnect cases and
+  joining the H.264 fixture mid-GOP do not reproduce it. Timestamp correction
+  warnings now distinguish decoder and playout mapping and include expected,
+  counterpart-reference and offset values; collect those from the affected run.
 - [ ] Diagnose the remaining raw-queue overflow reported at 20:05:33 and
   20:06:27 on 2026-10-27 despite bounded backpressure (48 720p frames / 64 MiB).
   Local end-to-end RTMP runs with libfdk_aac, reception pauses, Full-Range
   video, a sender PTS jump, and a separate ready encoding group have not
-  reproduced that remaining failure; obtain the exact server output, recording
-  and loudness configuration before claiming it fixed.
+  reproduced that remaining failure. The supplied server configuration also
+  passes with one HLS encoding group, shared native 480p delivery, shared 720p
+  FLV, VTT, logo, and program loudness; external MoQ/RTMP transport and the exact
+  source stream are not reproduced. Enable timing diagnostics on the server to
+  capture the encoding worker stage/age, rendition and last A/V PTS on overflow.
 - [ ] Profile the remaining paced network delivery/mux boundary before combining
   those workers; preserve independent reconnects, pacing, and bounded buffering.
 - [x] Replace the local MPEG-TS/TCP importer with direct encoded-frame publishing,
