@@ -926,9 +926,10 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
         media_path: &str,
         output_start_ms: i64,
         source_start_ms: i64,
+        source_end_ms: Option<i64>,
     ) -> Result<()> {
         self.output
-            .write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
+            .write_vtt_subtitles(media_path, output_start_ms, source_start_ms, source_end_ms)
     }
 
     fn clear_vtt_subtitles(&mut self) -> Result<()> {

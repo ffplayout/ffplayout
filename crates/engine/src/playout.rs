@@ -588,6 +588,14 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             )
         })
     });
+    let declared_subtitle_duration_us = if video_stream.is_some() {
+        video_duration_us
+    } else {
+        audio_duration_us
+    }
+    .or_else(|| (ictx.duration() > 0).then(|| ictx.duration()));
+    let subtitle_end_ms =
+        subtitle_source_end_ms(seek_us, duration_us, declared_subtitle_duration_us);
     let video_end_pts = video_duration_us.map(|duration_us| {
         let duration_us = duration_us.saturating_sub(seek_us);
         timeline.video_pts
@@ -656,6 +664,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             has_audio,
             seek_us,
             source_origin_us,
+            subtitle_end_ms,
             video_limit_pts,
             audio_limit_pts,
             video_end_pts,
@@ -666,6 +675,21 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             media_fade_plan,
         },
     )
+}
+
+/// Use the earlier source boundary, independently of rounded output frame rates.
+fn subtitle_source_end_ms(
+    seek_us: i64,
+    requested_duration_us: Option<i64>,
+    declared_duration_us: Option<i64>,
+) -> Option<i64> {
+    let requested_end = requested_duration_us.map(|duration| seek_us.saturating_add(duration));
+    let end_us = match (requested_end, declared_duration_us) {
+        (Some(requested), Some(declared)) => Some(requested.min(declared)),
+        (requested, declared) => requested.or(declared),
+    };
+
+    end_us.map(|end| end.max(0) / 1_000)
 }
 
 fn seek_input(ictx: &mut format::context::Input, seek_seconds: f64) -> Result<()> {
@@ -2573,6 +2597,27 @@ mod tests {
         single_frame_repeat_frames, synchronize_after_skip, synchronize_declared_stream_ends,
         video_frame_needs_write, write_padding_video_frames,
     };
+
+    #[test]
+    fn subtitles_end_at_the_earlier_out_point_or_source_duration() {
+        assert_eq!(
+            super::subtitle_source_end_ms(2_000_000, Some(3_000_000), Some(10_000_000)),
+            Some(5_000)
+        );
+        assert_eq!(
+            super::subtitle_source_end_ms(2_000_000, Some(30_000_000), Some(10_000_000)),
+            Some(10_000)
+        );
+        assert_eq!(
+            super::subtitle_source_end_ms(2_000_000, None, Some(10_000_999)),
+            Some(10_000)
+        );
+        assert_eq!(
+            super::subtitle_source_end_ms(2_000_000, Some(3_000_000), None),
+            Some(5_000)
+        );
+        assert_eq!(super::subtitle_source_end_ms(2_000_000, None, None), None);
+    }
 
     #[test]
     fn decoded_audio_callback_receives_normalized_frames() {

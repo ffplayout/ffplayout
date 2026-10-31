@@ -148,6 +148,7 @@ pub(super) struct Plan {
     pub(super) audio: Option<StreamSpec>,
     pub(super) has_audio: bool,
     pub(super) seek_us: i64,
+    pub(super) subtitle_end_ms: Option<i64>,
     pub(super) source_origin_us: i64,
     pub(super) video_limit_pts: Option<i64>,
     pub(super) audio_limit_pts: Option<i64>,
@@ -372,6 +373,7 @@ pub(super) fn play<O: FrameOutput>(
                 media_path,
                 initial.video_pts * 1_000 / i64::from(cfg.fps),
                 plan.seek_us / 1_000,
+                plan.subtitle_end_ms,
             )
         })?;
     }
@@ -546,6 +548,7 @@ mod tests {
                 audio: Some(audio),
                 has_audio: true,
                 seek_us: 0,
+                subtitle_end_ms: Some(200),
                 source_origin_us: 0,
                 video_limit_pts: Some(5),
                 audio_limit_pts: Some(9600),

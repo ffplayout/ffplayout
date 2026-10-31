@@ -637,22 +637,22 @@ impl FrameOutput for DesktopFrameSender {
         media_path: &str,
         output_start_ms: i64,
         source_start_ms: i64,
+        source_end_ms: Option<i64>,
     ) -> Result<()> {
         if let Some(output) = &self.parallel_output {
-            output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)?;
+            output.write_vtt_subtitles(
+                media_path,
+                output_start_ms,
+                source_start_ms,
+                source_end_ms,
+            )?;
         }
-        let vtt_path = vtt::sidecar_path(media_path);
-
-        if !vtt_path.exists() {
-            return Ok(());
-        }
-
-        let subtitles = vtt::parse_file(&vtt_path)?
+        let subtitles = vtt::load_sidecar(media_path, self.channel_id)
             .into_iter()
-            .filter(|cue| cue.end_ms > source_start_ms)
+            .filter_map(|cue| cue.on_timeline(output_start_ms, source_start_ms, source_end_ms))
             .map(|cue| DesktopSubtitleCue {
-                start_ms: output_start_ms + cue.start_ms.saturating_sub(source_start_ms),
-                end_ms: output_start_ms + cue.end_ms - source_start_ms,
+                start_ms: cue.start_ms,
+                end_ms: cue.end_ms,
                 text: cue.text,
             })
             .collect();

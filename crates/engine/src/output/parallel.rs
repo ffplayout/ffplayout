@@ -294,7 +294,7 @@ pub(super) enum Message {
     Audio(frame::Audio),
     Rate(f64),
     Destinations(Vec<OutputDestination>),
-    Subtitles(String, i64, i64),
+    Subtitles(String, i64, i64, Option<i64>),
     ClearSubtitles,
     AdvanceSubtitles(i64),
 }
@@ -476,18 +476,18 @@ impl Drop for DestinationWorker {
 #[derive(Default)]
 struct OutputContext {
     rate: Option<f64>,
-    subtitles: Option<(String, i64, i64)>,
+    subtitles: Option<(String, i64, i64, Option<i64>)>,
     position: Option<i64>,
 }
 
 impl OutputContext {
     fn restore(&self, worker: &DestinationWorker) {
         worker.send(Message::Rate(self.rate.unwrap_or(1.0)), 0, None);
-        if let Some((path, start, source)) = &self.subtitles {
+        if let Some((path, start, source, end)) = &self.subtitles {
             let position = self.position.unwrap_or(*start).max(*start);
             let source = source.saturating_add(position.saturating_sub(*start));
             worker.send(
-                Message::Subtitles(path.clone(), position, source),
+                Message::Subtitles(path.clone(), position, source, *end),
                 path.len(),
                 None,
             );
@@ -834,17 +834,23 @@ impl ParallelOutput {
         }
     }
 
-    pub(crate) fn write_vtt_subtitles(&self, path: &str, start: i64, source: i64) -> Result<()> {
+    pub(crate) fn write_vtt_subtitles(
+        &self,
+        path: &str,
+        start: i64,
+        source: i64,
+        end: Option<i64>,
+    ) -> Result<()> {
         {
             let mut context = self.context.lock().unwrap_or_else(PoisonError::into_inner);
-            context.subtitles = Some((path.to_string(), start, source));
+            context.subtitles = Some((path.to_string(), start, source, end));
             context.position = Some(start);
         }
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         self.reconcile(&mut workers)?;
         for worker in workers.iter() {
             worker.send(
-                Message::Subtitles(path.to_string(), start, source),
+                Message::Subtitles(path.to_string(), start, source, end),
                 path.len(),
                 None,
             );
@@ -1109,7 +1115,7 @@ mod tests {
                 progress: None,
             });
         }
-        output.context.lock().unwrap().subtitles = Some(("clip.mp4".into(), 0, 0));
+        output.context.lock().unwrap().subtitles = Some(("clip.mp4".into(), 0, 0, Some(1_000)));
         output.advance_vtt_subtitles(500).unwrap();
         {
             let workers = output.workers.lock().unwrap();
@@ -1857,11 +1863,16 @@ mod tests {
         let media = dir.path().join("clip.mp4");
         std::fs::write(
             media.with_extension("vtt"),
-            "WEBVTT\n\n00:00:00.000 --> 00:00:00.800\nShared captions\n",
+            concat!(
+                "WEBVTT\n\n",
+                "00:00:00.000 --> 00:00:00.000\nInvalid opening cue\n\n",
+                "00:00:00.000 --> 00:00:00.800\nShared captions\n\n",
+                "00:00:02.000 --> 00:00:01.000\nInvalid trailing cue\n",
+            ),
         )
         .unwrap();
         output
-            .write_vtt_subtitles(media.to_str().unwrap(), 0, 0)
+            .write_vtt_subtitles(media.to_str().unwrap(), 0, 0, Some(400))
             .unwrap();
         for index in 0..30 {
             let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
@@ -1975,9 +1986,14 @@ mod tests {
             })
             .filter(|entry| entry.path() != media.with_extension("vtt"))
             .any(|entry| {
-                std::fs::read_to_string(entry.path())
-                    .unwrap()
-                    .contains("Shared captions")
+                let content = std::fs::read_to_string(entry.path()).unwrap();
+                if content.contains("Shared captions") {
+                    assert!(content.contains("00:00.400"), "{content}");
+                    assert!(!content.contains("00:00.800"), "{content}");
+                    true
+                } else {
+                    false
+                }
             });
         assert!(has_captions);
         assert!(

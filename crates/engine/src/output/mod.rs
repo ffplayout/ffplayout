@@ -147,6 +147,7 @@ pub(crate) trait FrameOutput {
         _media_path: &str,
         _output_start_ms: i64,
         _source_start_ms: i64,
+        _source_end_ms: Option<i64>,
     ) -> Result<()> {
         Ok(())
     }
@@ -382,14 +383,21 @@ impl FrameOutput for Output {
         media_path: &str,
         output_start_ms: i64,
         source_start_ms: i64,
+        source_end_ms: Option<i64>,
     ) -> Result<()> {
         match &mut self.kind {
-            OutputKind::Parallel(output) => {
-                output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
-            }
-            OutputKind::Encoded(output) => {
-                output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
-            }
+            OutputKind::Parallel(output) => output.write_vtt_subtitles(
+                media_path,
+                output_start_ms,
+                source_start_ms,
+                source_end_ms,
+            ),
+            OutputKind::Encoded(output) => output.write_vtt_subtitles(
+                media_path,
+                output_start_ms,
+                source_start_ms,
+                source_end_ms,
+            ),
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => Ok(()),
         }

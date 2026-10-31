@@ -178,8 +178,14 @@ impl<O: FrameOutput> FrameOutput for ProgramGraphicsOutput<'_, O> {
         self.output.pad_audio(samples)
     }
 
-    fn write_vtt_subtitles(&mut self, path: &str, start: i64, source: i64) -> Result<()> {
-        self.output.write_vtt_subtitles(path, start, source)
+    fn write_vtt_subtitles(
+        &mut self,
+        path: &str,
+        start: i64,
+        source: i64,
+        end: Option<i64>,
+    ) -> Result<()> {
+        self.output.write_vtt_subtitles(path, start, source, end)
     }
 
     fn clear_vtt_subtitles(&mut self) -> Result<()> {

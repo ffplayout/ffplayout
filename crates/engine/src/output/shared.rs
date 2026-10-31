@@ -211,7 +211,7 @@ impl Drop for Sink {
 #[derive(Default)]
 struct DeliveryContext {
     rate: Option<f64>,
-    subtitles: Option<(String, i64, i64)>,
+    subtitles: Option<(String, i64, i64, Option<i64>)>,
     position: Option<i64>,
 }
 
@@ -223,12 +223,12 @@ impl DeliveryContext {
             None,
         );
         if sink.subtitles
-            && let Some((path, start, source)) = &self.subtitles
+            && let Some((path, start, source, end)) = &self.subtitles
         {
             let position = self.position.unwrap_or(*start).max(*start);
             let source = source.saturating_add(position.saturating_sub(*start));
             sink.send(
-                Delivery::Control(Message::Subtitles(path.clone(), position, source)),
+                Delivery::Control(Message::Subtitles(path.clone(), position, source, *end)),
                 path.len(),
                 None,
             );
@@ -522,12 +522,12 @@ pub(super) fn run(
                     sink.send(Delivery::Control(Message::Rate(rate)), 0, None);
                 }
             }
-            Message::Subtitles(path, start, source) => {
-                context.subtitles = Some((path.clone(), start, source));
+            Message::Subtitles(path, start, source, end) => {
+                context.subtitles = Some((path.clone(), start, source, end));
                 context.position = Some(start);
                 for (sink, _) in sinks.borrow().iter().filter(|(sink, _)| sink.subtitles) {
                     sink.send(
-                        Delivery::Control(Message::Subtitles(path.clone(), start, source)),
+                        Delivery::Control(Message::Subtitles(path.clone(), start, source, end)),
                         path.len(),
                         None,
                     );
