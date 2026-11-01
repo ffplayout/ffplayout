@@ -71,7 +71,7 @@ struct ProportionalMemory {
 
 #[derive(Default)]
 struct Measurements {
-    system: System,
+    system: Option<System>,
     clips: u64,
     previous_rss: Option<u64>,
     previous_cpu: Option<(Instant, u64)>,
@@ -119,7 +119,17 @@ pub(super) struct ProcessDiagnostics {
 
 impl ProcessDiagnostics {
     pub(super) fn new(channel: i32, control: PlaybackControl) -> Self {
-        let measurements = Arc::new(Mutex::new(Measurements::default()));
+        let system = match System::new() {
+            Ok(system) => Some(system),
+            Err(error) => {
+                log::warn!(channel = channel; "Process diagnostics unavailable: {error}");
+                None
+            }
+        };
+        let measurements = Arc::new(Mutex::new(Measurements {
+            system,
+            ..Measurements::default()
+        }));
         let mut live = control.subscribe_live_status();
         let (clips, mut clip_events) = mpsc::unbounded_channel();
         let periodic_control = control.clone();
@@ -207,7 +217,9 @@ async fn sample(
     let result = tokio::task::spawn_blocking(move || {
         let pid = get_current_pid().ok()?;
         let mut state = measurements.lock().unwrap_or_else(PoisonError::into_inner);
-        state.system.refresh_processes_specifics(
+        let previous_cpu = state.previous_cpu;
+        let system = state.system.as_mut()?;
+        system.refresh_processes_specifics(
             ProcessesToUpdate::Some(&[pid]),
             false,
             ProcessRefreshKind::nothing()
@@ -215,10 +227,10 @@ async fn sample(
                 .with_tasks()
                 .with_cpu(),
         );
-        let process = state.system.process(pid)?;
+        let process = system.process(pid)?;
         let sampled_at = Instant::now();
         let cpu_ms = process.accumulated_cpu_time();
-        let cpu = state.previous_cpu.and_then(|(previous_at, previous_ms)| {
+        let cpu = previous_cpu.and_then(|(previous_at, previous_ms)| {
             let window = sampled_at.saturating_duration_since(previous_at);
 
             cpu_percent(previous_ms, cpu_ms, window).map(|percent| (percent, window))

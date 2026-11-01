@@ -67,6 +67,7 @@ impl TextOverlay {
         self.0.snapshot(program_frame, scroll_frame)
     }
 
+    #[cfg(any(test, feature = "desktop-base"))]
     pub fn blend(&mut self, target: &mut frame::Video, program_frame: i64, scroll_frame: i64) {
         self.0.blend(target, program_frame, scroll_frame);
     }

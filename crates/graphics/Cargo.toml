@@ -27,8 +27,8 @@ ffmpeg-next = { version = "9", optional = true, default-features = false, featur
 libc = "0.2"
 clap = { version = "4", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
-tiny-skia = "0.11.4"
-yuv = { version = "0.8.19", default-features = false, features = ["avx", "sse", "rdm", "professional_mode"] }
+tiny-skia = "0.12"
+yuv = { version = "0.8", default-features = false, features = ["avx", "sse", "rdm", "professional_mode"] }
 
 [[example]]
 name = "frame_blend"

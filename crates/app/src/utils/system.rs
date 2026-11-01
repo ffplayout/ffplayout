@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    ffi::OsStr,
     fmt,
     sync::{Arc, Mutex, PoisonError},
 };
@@ -24,11 +25,11 @@ pub struct SystemStat {
     pub swap: Swap,
     pub system: MySystem,
     #[serde(skip_serializing)]
-    info_disks: Arc<Mutex<Disks>>,
+    info_disks: Arc<Mutex<Option<Disks>>>,
     #[serde(skip_serializing)]
-    info_net: Arc<Mutex<Networks>>,
+    info_net: Arc<Mutex<Option<Networks>>>,
     #[serde(skip_serializing)]
-    info_sys: Arc<Mutex<System>>,
+    info_sys: Arc<Mutex<Option<System>>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -85,16 +86,25 @@ pub struct Swap {
 impl SystemStat {
     pub fn new() -> Self {
         let system = MySystem {
-            name: System::name(),
-            kernel: System::kernel_version(),
-            version: System::os_version(),
+            name: System::name().ok(),
+            kernel: System::kernel_version().ok(),
+            version: System::os_version().ok(),
             ffp_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         };
 
         Self {
-            info_disks: Arc::new(Mutex::new(Disks::new_with_refreshed_list())),
-            info_net: Arc::new(Mutex::new(Networks::new_with_refreshed_list())),
-            info_sys: Arc::new(Mutex::new(System::new_all())),
+            info_disks: Arc::new(Mutex::new(initialize_collector(
+                "disks",
+                Disks::new_with_refreshed_list(),
+            ))),
+            info_net: Arc::new(Mutex::new(initialize_collector(
+                "networks",
+                Networks::new_with_refreshed_list(),
+            ))),
+            info_sys: Arc::new(Mutex::new(initialize_collector(
+                "system",
+                System::new_all(),
+            ))),
             system,
             ..Default::default()
         }
@@ -109,6 +119,10 @@ impl SystemStat {
 
         tokio::task::spawn_blocking(move || {
             let mut sys = info_sys.lock().unwrap_or_else(PoisonError::into_inner);
+
+            let Some(sys) = sys.as_mut() else {
+                return (0, String::from("0.0"));
+            };
 
             sys.refresh_processes_specifics(
                 ProcessesToUpdate::Some(&[pid]),
@@ -142,8 +156,23 @@ impl SystemStat {
                 let mut networks = info_net.lock().unwrap_or_else(PoisonError::into_inner);
                 let mut sys = info_sys.lock().unwrap_or_else(PoisonError::into_inner);
 
-                disks.refresh(true);
-                networks.refresh(true);
+                if let Some(disks) = disks.as_mut() {
+                    disks.refresh(true);
+                }
+                if let Some(networks) = networks.as_mut() {
+                    networks.refresh(true);
+                }
+                let Some(sys) = sys.as_mut() else {
+                    return (
+                        Cpu::default(),
+                        Load::default(),
+                        Memory::default(),
+                        Network::default(),
+                        Storage::default(),
+                        Swap::default(),
+                    );
+                };
+
                 sys.refresh_cpu_usage();
                 sys.refresh_memory();
 
@@ -179,7 +208,7 @@ impl SystemStat {
                 let cores = sys.cpus().len() as f32;
 
                 for cpu in sys.cpus() {
-                    usage += cpu.cpu_usage();
+                    usage += cpu.usage();
                 }
 
                 let cpu = Cpu {
@@ -189,7 +218,7 @@ impl SystemStat {
 
                 let mut storage = Storage::default();
 
-                for disk in &*disks {
+                for disk in disks.iter().flatten() {
                     if disk.mount_point().to_string_lossy().len() > 1
                         && storage_path.starts_with(disk.mount_point())
                     {
@@ -199,12 +228,13 @@ impl SystemStat {
                     }
                 }
 
-                let load_avg = System::load_average();
-                let load = Load {
-                    one: load_avg.one,
-                    five: load_avg.five,
-                    fifteen: load_avg.fifteen,
-                };
+                let load = System::load_average()
+                    .map(|load| Load {
+                        one: load.one,
+                        five: load.five,
+                        fifteen: load.fifteen,
+                    })
+                    .unwrap_or_default();
 
                 let memory = Memory {
                     total: sys.total_memory(),
@@ -214,9 +244,9 @@ impl SystemStat {
 
                 let mut network = Network::default();
 
-                for (interface_name, data) in &*networks {
-                    if !interfaces.is_empty() && interface_name == interfaces[0].0 {
-                        network.name.clone_from(interface_name);
+                for (interface_name, data) in networks.iter().flatten() {
+                    if !interfaces.is_empty() && interface_name == OsStr::new(interfaces[0].0) {
+                        network.name = interface_name.to_string_lossy().into_owned();
                         network.current_in = data.received();
                         network.total_in = data.total_received();
                         network.current_out = data.transmitted();
@@ -256,5 +286,16 @@ impl SystemStat {
 impl fmt::Display for SystemStat {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", serde_json::to_string(self).unwrap())
+    }
+}
+
+fn initialize_collector<T>(name: &str, result: Result<T, sysinfo::Error>) -> Option<T> {
+    match result {
+        Ok(collector) => Some(collector),
+        Err(error) => {
+            log::warn!("System statistics: failed to initialize {name}: {error}");
+
+            None
+        }
     }
 }

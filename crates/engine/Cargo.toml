@@ -41,7 +41,7 @@ ffmpeg-next = { version = "9", default-features = false, features = [
 log = { version = "0.4", features = ["kv"] }
 pollster = { version = "1.0", optional = true }
 regex = "1"
-sysinfo = { version = "0.39", default-features = false, features = ["disk"] }
+sysinfo = { version = "0.40", default-features = false, features = ["disk"] }
 softbuffer = { version = "0.4", optional = true, default-features = false, features = [
     "wayland",
     "wayland-dlopen",
