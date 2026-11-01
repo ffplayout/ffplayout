@@ -32,6 +32,8 @@ mod cpu;
 mod gpu;
 mod graphics;
 mod icon;
+#[cfg(target_os = "macos")]
+mod macos;
 mod render;
 pub(crate) mod thread;
 mod timing;
@@ -1855,6 +1857,11 @@ fn create_desktop_window_app(
             .create_window(attributes)
             .context("creating desktop window")?,
     );
+    #[cfg(target_os = "macos")]
+    if let Err(error) = macos::set_dock_icon() {
+        log::warn!(channel = channel_id; "Could not set desktop Dock icon: {error:#}");
+    }
+
     let size = window.inner_size();
     let shared = Arc::new(Mutex::new(DesktopWindowShared {
         actions: Vec::new(),
