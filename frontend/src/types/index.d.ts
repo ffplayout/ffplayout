@@ -190,6 +190,7 @@ declare global {
         title?: string | null
         source: string
         audio?: string
+        graphics?: unknown
         duration: number
         in: number
         out: number

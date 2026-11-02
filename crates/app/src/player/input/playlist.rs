@@ -865,6 +865,7 @@ impl CurrentProgram {
 /// starts in the middle of their scheduled slot. Still images keep their first
 /// frame for the remaining slot; live transports start at their current edge.
 fn apply_init_seek(node: &mut Media, elapsed: f64) {
+    node.graphics_elapsed += elapsed.max(0.0);
     if is_live_source(&node.source) || is_image_source(&node.source) {
         node.out = (node.out - node.seek - elapsed).max(0.0);
         node.seek = 0.0;
@@ -963,6 +964,7 @@ mod tests {
 
         assert_eq!(node.seek, 0.0);
         assert_eq!(node.out, 7.0);
+        assert_eq!(node.graphics_elapsed, 3.0);
     }
 
     #[test]
@@ -974,6 +976,16 @@ mod tests {
 
         assert_eq!(node.seek, 0.0);
         assert_eq!(node.out, 18.0);
+        assert_eq!(node.graphics_elapsed, 30.0);
+    }
+
+    #[test]
+    fn graphics_clock_offset_is_independent_of_the_media_in_cut() {
+        let mut node = media(12.0, 60.0, 120.0);
+        apply_init_seek(&mut node, 3.0);
+        assert_eq!(node.seek, 15.0);
+        assert_eq!(node.graphics_elapsed, 3.0);
+        assert_eq!(node.out - node.seek + node.graphics_elapsed, 48.0);
     }
 
     #[test]

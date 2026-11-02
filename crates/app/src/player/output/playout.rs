@@ -6,8 +6,8 @@ use std::{
 };
 
 use ff_engine::{
-    AsyncPlayout, AudioLevelCallback, ClipResult, EncodingConfig, HlsHealth, LogLevel, LogoConfig,
-    LogoFade, OutputConfig, RecordingConfig, TextOverlayState,
+    AsyncPlayout, AudioLevelCallback, ClipPlaybackOptions, ClipResult, EncodingConfig, HlsHealth,
+    LogLevel, LogoConfig, LogoFade, OutputConfig, RecordingConfig, TextOverlayState,
 };
 use log::*;
 use tokio::time::sleep;
@@ -127,6 +127,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         .await
         .live_ingest()
         .update_listeners(listeners.clone());
+    let graphics_canvas = (output_config.width, output_config.height);
     playout
         .start_live_listeners(listeners, output_config)
         .await
@@ -137,12 +138,16 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     }
 
     let result = match (parallel, &config.output.mode) {
-        (false, OutputMode::HLS) => play_hls(manager.clone(), &config, &playout).await,
-        _ => play_loop(manager.clone(), &config, &playout, None).await,
+        (false, OutputMode::HLS) => {
+            play_hls(manager.clone(), &config, &playout, graphics_canvas).await
+        }
+        _ => play_loop(manager.clone(), &config, &playout, None, graphics_canvas).await,
     };
 
     drop(demand_watcher);
+    manager.graphics.cancel();
     let finish_result = playout.finish().await.map_err(engine_error);
+    manager.graphics.join(config.general.channel_id).await;
     for attachment in moq_attachments {
         if let Err(error) = attachment.finish().await {
             warn!(channel = config.general.channel_id; "MoQ output shutdown: {error}");
@@ -156,6 +161,7 @@ async fn play_hls(
     manager: ChannelManager,
     config: &PlayoutConfig,
     playout: &AsyncPlayout,
+    graphics_canvas: (u32, u32),
 ) -> Result<(), ServiceError> {
     let hls_duration = u64::from(config.output.hls_segment_duration);
     let hls_health = playout
@@ -175,7 +181,7 @@ async fn play_hls(
             result??;
             Ok(())
         }
-        result = play_loop(manager, config, playout, Some(watchdog_token.clone())) => result,
+        result = play_loop(manager, config, playout, Some(watchdog_token.clone()), graphics_canvas) => result,
     };
 
     watchdog_token.cancel();
@@ -231,12 +237,14 @@ async fn play_loop(
     config: &PlayoutConfig,
     playout: &AsyncPlayout,
     cancel_token: Option<CancellationToken>,
+    graphics_canvas: (u32, u32),
 ) -> Result<(), ServiceError> {
     let id = config.general.channel_id;
     let diagnostics = crate::ARGS
         .process_diagnostics
         .then(|| ProcessDiagnostics::new(manager.id, playout.playback_control()));
     let mut node_sources = source_generator(manager.clone()).await;
+    manager.graphics.resume();
 
     while let Some(node) = node_sources.next().await {
         *manager.current_media.lock().await = Some(node.clone());
@@ -298,17 +306,25 @@ async fn play_loop(
         let duration = playout_duration(&node);
         let is_ad = node.ad;
         match playout
-            .play_with_timing_logo_fade_rate_and_audio(
+            .play_clip(
                 node.source.clone(),
-                (node.seek > 0.0).then_some(node.seek),
-                duration,
-                (!node.audio.is_empty()).then(|| node.audio.clone()),
-                subtitle_media_path(config, &node.source),
-                LogoFade {
-                    fade_in: !is_ad && node.last_ad,
-                    fade_out: !is_ad && node.next_ad,
+                ClipPlaybackOptions {
+                    seek_seconds: (node.seek > 0.0).then_some(node.seek),
+                    duration_seconds: duration,
+                    external_audio_path: (!node.audio.is_empty()).then(|| node.audio.clone()),
+                    subtitles_media_path: subtitle_media_path(config, &node.source),
+                    logo_fade: LogoFade {
+                        fade_in: !is_ad && node.last_ad,
+                        fade_out: !is_ad && node.next_ad,
+                    },
+                    playout_rate: 1.0,
+                    graphics: manager.graphics.for_clip(
+                        &node,
+                        &config.storage.path,
+                        graphics_canvas,
+                        id,
+                    ),
                 },
-                1.0,
             )
             .await
             .map_err(engine_error)?

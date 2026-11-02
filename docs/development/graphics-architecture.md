@@ -17,8 +17,10 @@ The initial extraction retained the current rendering and blending algorithms.
 Follow-up fixes make native text alpha handling explicit and correct, while the
 per-frame YUV blend kernel and production compositing policy remain unchanged.
 The subsequent animated-logo milestone adds bounded image/video source playback.
-It does not introduce a scene controller, a new command queue, a GPU path, Servo,
-or linear-light production compositing. See [Animated logos](../animated_logos.md).
+That animated-logo milestone did not introduce a general scene controller.
+A subsequent internal scene core is described below; it is not yet substituted
+for the production logo/text adapters. No GPU, Servo or linear-light production
+compositor is introduced. See [Animated logos](../animated_logos.md).
 
 ## Modules and contracts
 
@@ -151,11 +153,270 @@ path is unchanged. Independent outputs at different composition resolutions
 still require their own layout; they start from the unmodified program image,
 preventing previously composited logos from appearing a second time.
 
+## Internal scene core
+
+`scene`, `surface` and `playback` now provide a backend-independent first core.
+They are usable/tested with `ffmpeg::scene::CpuScene`. Prepared clip scenes now
+reach production engine output fan-out alongside the compatibility logo/text
+adapters. This does not add frontend controls or public graphics HTTP endpoints.
+
+- `SceneControl::submit` never waits for queue capacity. A full/closed channel
+  returns the command to its caller; receipts carry accepted/rejected outcomes
+  and the published scene revision. Await receipts outside the video thread.
+- `SceneController::advance(program_us)` is the explicit frame boundary. It
+  consumes at most one queue-capacity-sized FIFO batch, expires completed layers,
+  then publishes one immutable revision before acknowledging commands. It creates
+  no workers. Unchanged frames reuse the scene's layer allocation; evaluation
+  returns a borrowed iterator and performs no rasterization or file I/O.
+- Layers have stable IDs, `(z, ID)` ordering, visibility, base opacity, reference
+  canvas pixels and an opaque layout scope. The pipeline remains responsible for
+  choosing composition resolution and scaling its result for HLS renditions.
+- Prepare requests reserve bounded resource slots. Their revisions are globally
+  increasing request IDs **per controller**, even across release/clear/reset.
+  Ready/failed results must match the pending key. Take requires ready metadata
+  and starts its transition at that boundary; loading time never consumes a fade.
+  Starting preparation for a newer revision retains the old active layer.
+- A retake of an active layer is rejected; update changes its layout/base opacity
+  without resetting its timeline. Clear removes it immediately; cached resources
+  may remain. Clear-all also invalidates pending resources. Release removes a
+  resource and layers using that revision. Backwards program time clears state
+  and rejects the queued old epoch; preparation IDs are not reused.
+- `SurfaceStore<T>` owns backend surfaces under count/byte budgets, while scene
+  nodes retain only metadata leases. Old queued snapshots keep pixels available;
+  retirement runs outside per-frame composition once all leases are released.
+  The backend must account actual allocations. This budget excludes the caller's
+  decoder/rasterizer scratch space and is not a total-RSS limit.
+- The initial surface descriptor declares dimensions, layout, alpha convention,
+  color encoding and accounted bytes. It covers current RGBA8/YUVA420 CPU results,
+  not a complete generic plane/stride/HDR/capability schema. There is no CPU byte
+  accessor on the scene resource; future storage adapters need not read pixels back.
+- The CPU scene adapter validates/prepares YUVA420 and reuses the existing text
+  RGBA conversion and SIMD compositor. It supports the exact reference canvas
+  and explicitly matching color policy; unsupported canvases/colors or absent
+  resources skip the affected layer and return counters, without logging per frame
+  or failing playout. The scaled path reuses `ffmpeg::surface` (also the text
+  adapter's surface/cache implementation) and enforces retained cache budgets.
+  The caller supplies an already-writable YUV420 target.
+
+### Repetition and transitions
+
+`Repeat::Count(n)` uses a nonzero **total** play count, including the first play;
+`Repeat::Forever` repeats without an iteration counter or accumulated rounding.
+Source repetition uses exact rational duration before rounding, including
+30000/1001 fps, and declares hide or hold-last on finite completion.
+
+A layer presentation independently supports entrance → hold → exit → repeat pause. A static
+surface holds indefinitely by default. Repeating that transition requires a finite
+hold and a positive visible duration. `pause_us` defaults to zero and retains an
+active transparent presentation between repetitions, so controllers cannot expire
+it during the gap. Finite total duration is visible-duration × count + pause ×
+(count − 1); no pause follows the last presentation. Stopping in a gap cancels
+future repetitions immediately. Durations are integer microseconds on canonical
+program time; future configuration adapters translate seconds. Stop fades from the
+current opacity, repeated stops do not extend it, and stopping during automatic
+exit cannot push its deadline back. Pauses do not advance the clock. Source repeats
+and layer repeats are separate: replaying a fade cycle does not implicitly restart
+an animated source. Existing logo settings still use their established infinite
+source looping; finite repeats are currently an internal capability.
+
+Multi-part lower thirds must be prepared as one graphic before a group fade;
+fading overlapping children independently is not equivalent. No general nested
+scene renderer is implemented. Translation/scale/easing extensions, shared
+asynchronous preparation scheduling, adapter migration and new APIs remain staged
+work, rather than hidden requirements of this increment.
+
+### Scene validation and overhead
+
+Tests cover bounded command/resource capacity, rejection of stale completions,
+immutable snapshots and delayed retirement, ordered layers, visibility/layout
+updates, fades, repeat boundaries, stop/clear and program-clock reset. CPU tests
+compare multiple translucent/fading layers byte-for-byte with the existing blend
+path and check unsupported color/resource failure containment.
+
+```sh
+cargo test -p ff-graphics --all-features
+cargo test -p ff-graphics --no-default-features
+CARGO_PROFILE_BENCH_LTO=thin cargo bench -p ff-graphics --no-default-features --bench scene_evaluation
+```
+
+On the local ARM64 Mac, the optimized metadata-only benchmark measured about
+11/24/81/283 ns per frame for 0/3/16/64 layers (median of seven samples of 100,000
+frames). It includes state advance plus evaluation, not decoding, rasterization,
+resource uploads, blending or output encoding. It is a local overhead measurement,
+not a production CPU-saving claim.
+
+### Clip-local event scheduling
+
+`playlist::ClipSchedule` is an internal adapter over the scene core. It accepts
+ordered events in integer microseconds relative to an item's **effective playback
+start**, after its `in` cut. These are not source-file timestamps or wall time.
+Resources must already be prepared by the matching backend; compilation performs
+no file access or decoding. It reuses scene-command validation, then stores one
+immutable revision per event timestamp. Equal-time actions retain declaration
+order. Count/layer/resource/history budgets bound this control-side work; invalid
+actions and missing resources return a compilation error with event context.
+
+`frame_at(Some(clip_position_us))` borrows the most recent revision and returns its
+evaluation time. Selection performs a binary search without allocation, event
+execution, channels, or mutable cursors. Fades/repeats remain anchored to their
+original event times: pause, forward seek and backwards seek cannot restart them.
+An expired layer ID can be taken again. Clear-all removes only this clip's layers,
+keeping prepared resources available for later events. Stop follows the same
+idempotent fade-out behavior as interactive scene commands.
+
+`frame_at(None)` suppresses clip graphics during live. Resuming uses the current
+scheduled clip position, rather than replaying missed take/stop actions. Positions
+before zero or at/after clip duration produce no scene. A skip, shortening or clip
+replacement must discard that playback occurrence's schedule, even if an old
+position is still available. A repeated playlist item gets a new occurrence.
+Compiled revisions retain leases until the schedule is dropped; queued snapshots
+may retain them longer, so backend retirement must still respect those leases.
+
+Tests cover seek/pause/live clock semantics, equal-time order, opacity/z updates,
+clear/retake, finite/infinite repeats, malformed actions, budgets and lease release.
+A CPU test compares scheduled fade pixels against direct blending, including a
+backwards seek and unchanged cached surfaces.
+
+The `scene_evaluation` benchmark also measures clip selection plus transition
+evaluation, with schedule compilation excluded. A local optimized ARM64 run
+measured about 13/72/269 ns per frame for 3/16/64 layers (seven-sample median,
+100,000 frames per sample). This measures metadata only, not compositing or total
+playout CPU. The empty-schedule case can be heavily optimized by the compiler and
+is not a useful predictor of application overhead.
+
+### Engine playback integration
+
+The engine's `ClipPlaybackOptions` accepts optional `graphics::clip::ClipGraphics`.
+Construct it from a prepared `CpuScene` and compiled `ClipSchedule` outside the
+playback thread, then submit it through `Playout::play_clip` or
+`AsyncPlayout::play_clip`. Existing playback methods supply no clip scene.
+The application now provides an optional `graphics` playlist field and background
+PNG preparation, described below and in [playlist graphics](../playlist_graphics.md).
+The typed engine interface itself still performs no asset I/O.
+
+Program graphics select a clip scene from final video PTS minus the occurrence's
+initial program PTS. A decoder seek implements the media `in` cut and does not
+implicitly move the graphics clock. `ClipGraphics::at_position(item_position_us)`
+is the explicit offset for joining a scheduled item after its effective start;
+the playlist adapter tracks that offset separately from the source seek.
+Seeking within that clock evaluates the original transition, without replaying
+events. Each invocation owns an occurrence and discards it on return, including
+skip/live-end/restart paths. Queued frame snapshots may outlive that invocation.
+
+Live override marks real live and gap-filled frames as suppressing clip graphics;
+actual file video re-enables them. The audio lookahead queue snapshots that flag
+with each frame, so delayed file/live frames cannot pick up a later global flag.
+Program-wide logos and configured/runtime text keep their existing behavior.
+The current draw order is logo → clip scene in `(z, ID)` order → existing texts.
+Full migration of legacy layers into a single z-index domain remains separate.
+
+Shared program frames carry immutable scene/time/asset handles into the existing
+resolution compositor. Matching consumers reuse composed pixels; independent
+resolutions scale each scene surface with cached placement/opacity. HLS still
+composites at the largest rendition and downscales completed video for variants.
+Desktop, recording and encoders use the same `ProgramVideo` mechanism. Direct
+outputs without deferred-graphics support compose once before encoding.
+
+Exact-reference-canvas blending needs no additional scaling cache. Scaled caches
+belong to the prepared clip, not a permanent output: the last queued frame release
+drops them together with its assets. Their map lock covers lookup only; different
+resolutions have independent cache locks. Limits are eight cached resolutions,
+64 MiB retained scaled pixel data per resolution, and 8192 per scaled dimension.
+These exclude source assets, FFmpeg/scaler scratch space and queued program frames;
+they are not a total-RSS limit. Unsupported/missing surfaces are skipped and
+reported at most once per prepared clip, rather than stopping media playback.
+The scene-specific dimension limit is applied through the scene scaling cache;
+legacy text uses the same scaler with its existing wider scrolling surfaces.
+
+Engine tests compare decoded clips with graphics on/off (source seek, nonzero
+program PTS, fixed duration, audio processing enabled/disabled), verify exact
+fade pixels/live suppression/backwards seek/next-clip cleanup, queued asset/cache
+lifetime, and identical shared-resolution pixel references. Existing HLS, desktop,
+recording, live recovery and output-isolation tests remain compatibility checks.
+
+### Application PNG preparation
+
+`player::graphics` owns the JSON event schema and conversion into core events;
+application playlist/storage conventions do not enter the graphics crate. `Media`
+preserves the optional graphics JSON verbatim, including invalid configuration.
+Its JSON is shared through `Arc` so regular media/status snapshots do not copy
+the event payload. The background adapter parses/validates it, so a malformed
+optional field cannot
+invalidate the entire media playlist. Graphics participate in playlist equality,
+allowing a graphics-only edit to be saved, while the runtime elapsed-item offset
+is skipped during serialization. The frontend keeps this field on save/load.
+
+At item selection the adapter acquires one per-channel preparation permit without
+waiting, creates a deferred `ClipGraphics`, and submits a blocking preparation
+job to Tokio's existing worker pool. There is no new per-frame channel, dedicated
+thread, or task for items without graphics. A busy permit omits that occurrence
+with a warning. `ClipGraphicsPreparation` holds only a weak destination; cancelled
+requests are checked between assets. In-progress local I/O/decode is not forcibly
+interrupted. The preparer and its single slot belong to `ChannelManager`, surviving
+playout restarts. Stop cancels preparation/publication and joins the tracked job;
+after a two-second timeout, its handle and occupied slot remain retained until
+the old operation finishes. A restarted playout cannot launch a competing job.
+Normal playout completion performs the same cancellation/join cleanup. Completion
+publishes immutable prepared state through `OnceLock`;
+video only calls its nonblocking `get` and evaluates the current frame's clock.
+Late readiness never shifts a scheduled fade or flashes an already ended graphic.
+
+Paths use the existing channel-storage normalization/containment helper, including
+symlink resolution. The graphics backend decodes only bounded regular PNG files,
+rejects animation, pads odd dimensions transparently, and uses the established
+RGBA-to-YUVA preparation and scaler. Input file, decoded image, prepared-source,
+event and history limits are independent from destination caches. Multiple takes
+of one path/size reuse its resource within the occurrence. A bad asset is omitted
+without suppressing other layers; malformed event logic omits this clip's scene,
+never its media. New templates and animated playlist assets remain future work.
+
+## Audit scope and remaining correctness work
+
+The 2026-11-02 TODO reconciliation treats the existing pipeline investigation as
+complete, not the general scene architecture or arbitrary-format color support.
+The following current assumptions remain explicit:
+
+- Decoder pixel formats depend on the input; the production graphics compositor
+  receives an 8-bit YUV420 program frame and prepared YUVA420 logo/text surfaces.
+  Graphic alpha has full luma resolution; cached chroma coverage averages each
+  2×2 alpha block. Blending writes directly into a writable/refcounted destination
+  selected by the engine, without a full-frame RGB conversion.
+- The production plane kernel uses unassociated source code values and effective
+  coverage: `round((dst * (255 - alpha) + src * alpha) / 255)`. Graphic opacity
+  scales coverage once. This differs in representation from the laboratory's
+  premultiplied RGB/YUV paths; their buffers are not interchangeable.
+- Native text preparation currently uses fixed limited-range RGB-to-YUV
+  coefficients (BT.601-style); logo preparation uses the FFmpeg scaler. Neither
+  constitutes a general per-surface primaries/transfer/matrix/range contract.
+  Matching arbitrary BT.709/full-range inputs, explicit chroma siting and HDR
+  remain correctness/format work rather than completed capabilities.
+- Current layout/clipping aligns graphic positions/regions to 2×2 chroma blocks.
+  Tests cover that existing behaviour; they do not establish exact arbitrary
+  odd-pixel placement. Extending chroma reconstruction needs its own reference.
+- Existing tests establish scalar/SIMD agreement, straight-alpha bitmap
+  source-over, coverage-weighted text chroma and output sharing/layout invariants.
+  The independent f64 laboratory references validate their declared color policy;
+  an end-to-end production YUV reference with explicit quantization tolerances
+  remains separate work.
+
 ## Following stages
 
-Before implementing the scene controller, define backend-independent scene
-revisions, source/layer identifiers, layout contexts and canonical time semantics.
-Do not store backend frame handles or glyph-cache types inside scene nodes.
+The first scene controller establishes revisions, resource/layer identifiers and
+program-time transitions. The next increment integrates existing logo/text
+adapters, preparation ownership and rendition layout contexts. Keep backend frame
+handles and glyph-cache types outside scene nodes.
+
+The minimal core also needs reusable opacity transitions for **static graphics**
+such as PNG lower thirds. Existing logo/text fades are the compatibility baseline.
+A new layer should enter only after its surface is ready, hold indefinitely or
+for an explicit duration, then exit on the program timeline. Separate entrance
+and exit durations must work without decoding/rasterizing unchanged pixels again.
+A stop during entrance fades from its current opacity; clear removes immediately.
+A multi-part lower third must fade as one prepared graphic/group to preserve the
+appearance of overlapping children. The timing core and prepared-surface CPU adapter are implemented; production
+control integration and general group rendering remain open. The detailed
+contract is in Phase 6 of the
+[graphics TODO](../../.dev/graphics_todo.md).
 
 A future general surface descriptor must separate pixel layout, color metadata,
 alpha convention/premultiplication domain, geometry and storage ownership.

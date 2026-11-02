@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
     str::FromStr,
+    sync::Arc,
 };
 
 use chrono::{TimeDelta, prelude::*};
@@ -301,6 +302,14 @@ pub struct Media {
     #[serde(default, skip_serializing_if = "is_empty_string")]
     pub custom_filter: String,
 
+    /// Preserve optional/invalid graphics JSON so a malformed graphic cannot
+    /// prevent media playback or disappear when an existing playlist is saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graphics: Option<Arc<Value>>,
+
+    #[serde(skip)]
+    pub graphics_elapsed: f64,
+
     #[serde(skip_serializing, skip_deserializing)]
     pub probe: Option<MediaProbe>,
 
@@ -359,6 +368,8 @@ impl Media {
             source: src.to_string(),
             audio: String::new(),
             custom_filter: String::new(),
+            graphics: None,
+            graphics_elapsed: 0.0,
             probe,
             probe_audio: None,
             last_ad: false,
@@ -444,6 +455,8 @@ impl Default for Media {
             source: String::new(),
             audio: String::new(),
             custom_filter: String::new(),
+            graphics: None,
+            graphics_elapsed: 0.0,
             probe: None,
             probe_audio: None,
             last_ad: false,
@@ -465,6 +478,7 @@ impl PartialEq for Media {
             && self.ad == other.ad
             && self.audio == other.audio
             && self.custom_filter == other.custom_filter
+            && self.graphics == other.graphics
     }
 }
 

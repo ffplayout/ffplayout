@@ -1,8 +1,10 @@
 //! CPU/GPU-independent logo sizing and placement compatibility rules.
 use anyhow::{Result, anyhow};
 
+#[cfg(any(feature = "ffmpeg", test))]
 use crate::even;
 
+#[cfg(any(feature = "ffmpeg", test))]
 pub(crate) fn logo_dimensions(
     scale: Option<&str>,
     input_width: u32,
@@ -36,6 +38,7 @@ pub(crate) fn logo_dimensions(
     Ok((even(width).max(2), even(height).max(2)))
 }
 
+#[cfg(any(feature = "ffmpeg", test))]
 fn parse_logo_dimension(value: &str, input: u32, output: u32) -> Result<Option<u32>> {
     let value = value.trim();
 

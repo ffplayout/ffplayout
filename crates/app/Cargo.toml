@@ -23,6 +23,7 @@ ffmpeg-filter = ["ff-engine/ffmpeg-filter"]
 ffmpeg-device = ["ff-engine/ffmpeg-device"]
 
 [dependencies]
+ff-graphics = { path = "../graphics", features = ["ffmpeg"] }
 url = "2"
 moq-auth = "=0.2"
 futures-util = { version = "0.3", features = ["sink"] }
@@ -90,7 +91,7 @@ relative-path = "2"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "aws_lc_rs"] }
 sanitize-filename = "0.6"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 sysinfo = { version = "0.40", default-features = false, features = [
     "disk",

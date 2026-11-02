@@ -37,6 +37,7 @@ pub use audio_mixer::{
 };
 pub use control_live::{LiveIngestControl, LiveInputStatus};
 pub use control_playback::{LiveSession, NavigationBlocked, PlaybackControl, PlaylistNavigation};
+pub use graphics::clip::{ClipGraphics, ClipGraphicsPreparation};
 pub use input::live::{
     DEFAULT_LIVE_IDLE_TIMEOUT_MS, LiveIdleTimeout, LiveInputBackend, LiveListenerConfig,
     LiveReceiver, live_protocol_available, spawn_live_listeners, spawn_rtmp_listener,
@@ -102,6 +103,32 @@ pub struct LogoFade {
     pub fade_out: bool,
 }
 
+/// Per-occurrence playback options. Graphics must be prepared before submitting
+/// playback; omitting them preserves the existing logo/text-only path.
+pub struct ClipPlaybackOptions {
+    pub seek_seconds: Option<f64>,
+    pub duration_seconds: Option<f64>,
+    pub external_audio_path: Option<String>,
+    pub subtitles_media_path: Option<String>,
+    pub logo_fade: LogoFade,
+    pub playout_rate: f64,
+    pub graphics: Option<ClipGraphics>,
+}
+
+impl Default for ClipPlaybackOptions {
+    fn default() -> Self {
+        Self {
+            seek_seconds: None,
+            duration_seconds: None,
+            external_audio_path: None,
+            subtitles_media_path: None,
+            logo_fade: LogoFade::default(),
+            playout_rate: 1.0,
+            graphics: None,
+        }
+    }
+}
+
 pub struct Playout {
     config: OutputConfig,
     output: Output,
@@ -139,13 +166,14 @@ impl HlsHealth {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct PlayOptions<'a> {
     seek_seconds: Option<f64>,
     duration_seconds: Option<f64>,
     external_audio_path: Option<&'a str>,
     subtitles_media_path: Option<&'a str>,
     logo_fade: LogoFade,
+    graphics: Option<ClipGraphics>,
 }
 
 #[cfg(feature = "tokio")]
@@ -282,6 +310,7 @@ impl AsyncPlayout {
                 subtitles_media_path: None,
                 logo_fade: LogoFade::default(),
                 playout_rate: 1.0,
+                graphics: None,
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
@@ -340,6 +369,35 @@ impl AsyncPlayout {
         logo_fade: LogoFade,
         playout_rate: f64,
     ) -> Result<ClipResult> {
+        self.play_clip(
+            path,
+            ClipPlaybackOptions {
+                seek_seconds,
+                duration_seconds,
+                external_audio_path,
+                subtitles_media_path,
+                logo_fade,
+                playout_rate,
+                graphics: None,
+            },
+        )
+        .await
+    }
+
+    pub async fn play_clip(
+        &self,
+        path: impl Into<String>,
+        options: ClipPlaybackOptions,
+    ) -> Result<ClipResult> {
+        let ClipPlaybackOptions {
+            seek_seconds,
+            duration_seconds,
+            external_audio_path,
+            subtitles_media_path,
+            logo_fade,
+            playout_rate,
+            graphics,
+        } = options;
         let path = path.into();
         let (response, result) = oneshot::channel();
         self.commands
@@ -351,6 +409,7 @@ impl AsyncPlayout {
                 subtitles_media_path,
                 logo_fade,
                 playout_rate,
+                graphics,
                 response,
             })
             .map_err(|_| anyhow!("playout worker stopped"))?;
@@ -429,6 +488,7 @@ enum AsyncCommand {
         subtitles_media_path: Option<String>,
         logo_fade: LogoFade,
         playout_rate: f64,
+        graphics: Option<ClipGraphics>,
         response: oneshot::Sender<Result<ClipResult>>,
     },
     StartLiveListeners {
@@ -461,16 +521,20 @@ fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<Async
                 subtitles_media_path,
                 logo_fade,
                 playout_rate,
+                graphics,
                 response,
             } => {
-                let result = playout.play_timed_with_live(
+                let result = playout.play_clip(
                     &path,
-                    seek_seconds,
-                    duration_seconds,
-                    external_audio_path.as_deref(),
-                    subtitles_media_path.as_deref(),
-                    logo_fade,
-                    playout_rate,
+                    ClipPlaybackOptions {
+                        seek_seconds,
+                        duration_seconds,
+                        external_audio_path,
+                        subtitles_media_path,
+                        logo_fade,
+                        playout_rate,
+                        graphics,
+                    },
                     &mut live,
                 );
                 let _ = response.send(result);
@@ -680,6 +744,7 @@ impl Playout {
                     external_audio_path: None,
                     subtitles_media_path: None,
                     logo_fade: LogoFade::default(),
+                    graphics: None,
                 },
             );
             let result = result.and_then(|result| {
@@ -768,8 +833,36 @@ impl Playout {
         playout_rate: f64,
         live: &mut Option<LiveReceiver>,
     ) -> Result<ClipResult> {
-        let external_audio_path = external_audio_path.map(str::to_string);
-        let subtitles_media_path = subtitles_media_path.map(str::to_string);
+        self.play_clip(
+            path,
+            ClipPlaybackOptions {
+                seek_seconds,
+                duration_seconds,
+                external_audio_path: external_audio_path.map(str::to_string),
+                subtitles_media_path: subtitles_media_path.map(str::to_string),
+                logo_fade,
+                playout_rate,
+                graphics: None,
+            },
+            live,
+        )
+    }
+
+    pub fn play_clip(
+        &mut self,
+        path: &str,
+        options: ClipPlaybackOptions,
+        live: &mut Option<LiveReceiver>,
+    ) -> Result<ClipResult> {
+        let ClipPlaybackOptions {
+            seek_seconds,
+            duration_seconds,
+            external_audio_path,
+            subtitles_media_path,
+            logo_fade,
+            playout_rate,
+            graphics,
+        } = options;
         self.output.set_playout_rate(playout_rate);
 
         #[cfg(feature = "desktop-base")]
@@ -805,6 +898,7 @@ impl Playout {
                         external_audio_path: external_audio_path.as_deref(),
                         subtitles_media_path: subtitles_media_path.as_deref(),
                         logo_fade,
+                        graphics,
                     },
                 );
 
@@ -853,6 +947,7 @@ impl Playout {
                 external_audio_path: external_audio_path.as_deref(),
                 subtitles_media_path: subtitles_media_path.as_deref(),
                 logo_fade,
+                graphics,
             },
         );
 
@@ -896,9 +991,10 @@ fn play_program_clip<O: FrameOutput>(
     timeline: &mut Timeline,
     fallback_duration: f64,
     playback_control: &PlaybackControl,
-    options: PlayOptions<'_>,
+    mut options: PlayOptions<'_>,
 ) -> Result<ClipResult> {
     let mut graphics = graphics::program::ProgramGraphicsOutput::new(output, graphics, config);
+    graphics.set_clip(options.graphics.take(), timeline.video_pts());
     let mut output = ProgramAudioOutput::new(&mut graphics, state, config)?;
     let result = if let Some(live) = live.as_mut() {
         let mut live_output = LiveOverrideOutput::new(&mut output, live, playback_control);
@@ -1018,6 +1114,91 @@ mod tests {
     };
 
     #[test]
+    fn decoded_clip_graphics_preserve_seek_timestamps_audio_and_duration() {
+        use crate::{
+            ProgramAudioState, audio_mixer::LoudnessScope, graphics::source::ProgramGraphicsState,
+            output::FrameOutput, playout::Timeline,
+        };
+        use ffmpeg_next::frame;
+
+        #[derive(Default)]
+        struct Capture {
+            video: Vec<(i64, Vec<u8>)>,
+            audio: usize,
+        }
+        impl FrameOutput for Capture {
+            fn audio_frame_size(&self) -> usize {
+                1024
+            }
+            fn encode_audio(&mut self, frame: &frame::Audio) -> anyhow::Result<()> {
+                self.audio += frame.samples();
+
+                Ok(())
+            }
+            fn encode_video(&mut self, frame: &frame::Video) -> anyhow::Result<()> {
+                let pixels = (0..frame.height() as usize)
+                    .flat_map(|row| {
+                        frame.data(0)
+                            [row * frame.stride(0)..row * frame.stride(0) + frame.width() as usize]
+                            .iter()
+                            .copied()
+                    })
+                    .collect();
+                self.video.push((frame.pts().unwrap(), pixels));
+
+                Ok(())
+            }
+        }
+        ffmpeg_next::init().unwrap();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests_assets/storage/media_sorted/Cyan_00-00-30.mp4");
+        for scope in [LoudnessScope::Off, LoudnessScope::All] {
+            let config = crate::OutputConfig::new(32, 16, 25, 48_000).with_loudness_scope(scope);
+            let mut captures = Vec::new();
+            for enabled in [false, true] {
+                let mut capture = Capture::default();
+                let mut audio = ProgramAudioState::default();
+                let mut graphics = ProgramGraphicsState::default();
+                let mut timeline = Timeline::new();
+                timeline.reanchor(125, 240_000);
+                let result = super::play_program_clip(
+                    &mut capture,
+                    &mut audio,
+                    &mut graphics,
+                    &mut None,
+                    path.to_str().unwrap(),
+                    &config,
+                    &mut timeline,
+                    1.0,
+                    &PlaybackControl::default(),
+                    super::PlayOptions {
+                        seek_seconds: Some(1.0),
+                        duration_seconds: Some(0.4),
+                        external_audio_path: None,
+                        subtitles_media_path: None,
+                        logo_fade: Default::default(),
+                        graphics: enabled.then(|| crate::graphics::clip::tests::fixture((32, 16))),
+                    },
+                )
+                .unwrap();
+                assert_eq!(result, ClipResult::Played);
+                captures.push(capture);
+            }
+            assert_eq!(captures[0].audio, captures[1].audio);
+            assert_eq!(captures[0].video.len(), 10);
+            assert_eq!(captures[1].video.len(), 10);
+            for index in 0..10 {
+                assert_eq!(captures[0].video[index].0, captures[1].video[index].0);
+                if index == 0 || index >= 8 {
+                    assert_eq!(captures[0].video[index].1, captures[1].video[index].1);
+                } else {
+                    assert_ne!(captures[0].video[index].1, captures[1].video[index].1);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn failure_after_partial_playback_does_not_add_a_second_full_slot() {
         use crate::{LogoFade, OutputConfig, output::FrameOutput, playout::Timeline};
         use anyhow::{Result, anyhow};
@@ -1065,6 +1246,7 @@ mod tests {
                 external_audio_path: None,
                 subtitles_media_path: None,
                 logo_fade: LogoFade::default(),
+                graphics: None,
             },
         )
         .unwrap();
@@ -1169,6 +1351,7 @@ mod tests {
                     subtitles_media_path: None,
                     logo_fade: LogoFade::default(),
                     playout_rate: 1.0,
+                    graphics: None,
                     response,
                 })
                 .unwrap();

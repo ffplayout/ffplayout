@@ -2143,6 +2143,7 @@ dependencies = [
  "derive_more",
  "faccess",
  "ff-engine",
+ "ff-graphics",
  "flexi_logger",
  "futures-util",
  "hang",

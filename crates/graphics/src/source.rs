@@ -1,6 +1,14 @@
 //! Presentation timing for reusable image and video graphics sources.
 //! Times are integer microseconds on a source-local timeline, independent of decoding.
 
+use crate::playback::Repeat;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Completion {
+    Hide,
+    HoldLast,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FrameTiming {
     pub start_us: i64,
@@ -34,6 +42,33 @@ impl LoopDuration {
         }
     }
 
+    /// Finite/forever source playback is independent of a layer's fade cycle.
+    pub fn playback_position(
+        self,
+        elapsed_us: i64,
+        repeat: Repeat,
+        completion: Completion,
+    ) -> Option<i64> {
+        if elapsed_us < 0 {
+            return None;
+        }
+        let scaled = i128::from(elapsed_us) * self.denominator;
+        let finished = match repeat {
+            Repeat::Count(count) => scaled / self.numerator >= i128::from(count.get()),
+            Repeat::Forever => false,
+        };
+        if finished {
+            return match completion {
+                Completion::Hide => None,
+                Completion::HoldLast => {
+                    Some(((self.numerator - 1) / self.denominator).min(i128::from(i64::MAX)) as i64)
+                }
+            };
+        }
+
+        Some(self.position_us(elapsed_us))
+    }
+
     pub fn position_us(self, elapsed_us: i64) -> i64 {
         let remainder = (i128::from(elapsed_us.max(0)) * self.denominator) % self.numerator;
 
@@ -48,6 +83,34 @@ pub fn loop_time(program_us: i64, start_us: i64, duration_us: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_repeat_counts_include_the_first_play_and_can_hold_or_hide_at_eof() {
+        use std::num::NonZeroU32;
+
+        let duration = LoopDuration::from_ticks(2002, 1, 30_000);
+        let twice = Repeat::Count(NonZeroU32::new(2).unwrap());
+        assert_eq!(
+            duration.playback_position(-1, twice, Completion::Hide),
+            None
+        );
+        assert_eq!(
+            duration.playback_position(133_466, twice, Completion::Hide),
+            Some(66_732)
+        );
+        assert_eq!(
+            duration.playback_position(133_467, twice, Completion::Hide),
+            None
+        );
+        assert_eq!(
+            duration.playback_position(133_467, twice, Completion::HoldLast),
+            Some(66_733)
+        );
+        assert_eq!(
+            duration.playback_position(2_002_000_000, Repeat::Forever, Completion::Hide),
+            Some(0)
+        );
+    }
 
     #[test]
     fn fractional_frame_rate_loops_do_not_accumulate_microsecond_rounding_error() {

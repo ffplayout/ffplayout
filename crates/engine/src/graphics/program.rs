@@ -13,14 +13,28 @@ use crate::{
     },
 };
 
-use super::source::ProgramGraphicsState;
+use super::{
+    clip::{ClipGraphics, ClipSceneFrame},
+    source::ProgramGraphicsState,
+};
 
-pub(crate) struct ProgramGraphicsOutput<'a, O> {
+pub(crate) struct ProgramGraphicsOutput<'a, O: FrameOutput> {
     output: &'a mut O,
     state: &'a mut ProgramGraphicsState,
     time_base: Rational,
     opacity: f64,
     texts: TextOverlays,
+    clip: Option<ClipGraphics>,
+    clip_start_pts: i64,
+    clip_visible: bool,
+}
+
+impl<O: FrameOutput> Drop for ProgramGraphicsOutput<'_, O> {
+    fn drop(&mut self) {
+        // Output queues own their frame snapshots; the next occurrence must not
+        // retain this clip merely through the output's last deferred metadata.
+        self.output.defer_clip_scene(None);
+    }
 }
 
 impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
@@ -45,7 +59,15 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
             time_base: config.video_time_base,
             opacity: 1.0,
             texts: Default::default(),
+            clip: None,
+            clip_start_pts: 0,
+            clip_visible: true,
         }
+    }
+
+    pub(crate) fn set_clip(&mut self, clip: Option<ClipGraphics>, start_pts: i64) {
+        self.clip = clip;
+        self.clip_start_pts = start_pts;
     }
 
     fn prepare(&mut self, source: &frame::Video) -> Result<Option<frame::Video>> {
@@ -56,22 +78,38 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
         self.state.set_visible(self.opacity > 0.0);
         let logo = self.state.at(time);
         let logo = logo.filter(|_| self.opacity > 0.0);
+        let scene = self
+            .clip
+            .as_ref()
+            .filter(|_| self.clip_visible)
+            .and_then(|clip| {
+                let elapsed = source
+                    .pts()?
+                    .checked_sub(self.clip_start_pts)?
+                    .rescale(self.time_base, Rational(1, 1_000_000));
+
+                clip.frame_at(elapsed).filter(ClipSceneFrame::visible)
+            });
         let logo_deferred = if let Some(logo) = &logo {
             self.output.defer_shared_logo_overlay(logo, self.opacity)
         } else {
             self.output.clear_logo_overlay();
             true
         };
-        if logo_deferred && self.output.defer_text_overlays(&self.texts) {
+        let text_deferred = self.output.defer_text_overlays(&self.texts);
+        let scene_deferred = self.output.defer_clip_scene(scene.as_ref());
+        if logo_deferred && text_deferred && (scene_deferred || scene.is_none()) {
             return Ok(None);
         }
         let has_text = self.texts.iter().any(Option::is_some);
-        if logo.is_none() && !has_text {
+        if logo.is_none() && !has_text && scene.is_none() {
             return Ok(None);
         }
         // An immediate compositor must own both layers so that text is always
         // above the logo. Never defer a logo beneath text already in the pixels.
         self.output.clear_logo_overlay();
+        self.output.defer_text_overlays(&Default::default());
+        self.output.defer_clip_scene(None);
         let mut prepared = reference_video_frame(source)?;
         make_video_frame_writable(&mut prepared)?;
         if let Some(logo) = logo {
@@ -84,6 +122,9 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
                 },
             );
         }
+        if let Some(scene) = scene {
+            scene.blend(&mut prepared);
+        }
         super::text_adapter::blend_text_overlays(&mut prepared, &self.texts);
 
         Ok(Some(prepared))
@@ -91,6 +132,9 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
 }
 
 impl<O: FrameOutput> FrameOutput for ProgramGraphicsOutput<'_, O> {
+    fn set_clip_graphics_visible(&mut self, visible: bool) {
+        self.clip_visible = visible;
+    }
     fn retains_text_overlays(&self) -> bool {
         true
     }
@@ -209,6 +253,97 @@ mod tests {
 
     use super::*;
     use crate::{graphics::logo_adapter::LogoOverlay, utils::config::LogoConfig};
+
+    #[test]
+    fn clip_clock_live_suppression_seek_and_next_clip_have_correct_pixels() {
+        #[derive(Default)]
+        struct Pixels(Vec<u8>);
+        impl FrameOutput for Pixels {
+            fn audio_frame_size(&self) -> usize {
+                1024
+            }
+            fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
+                Ok(())
+            }
+            fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+                self.0.push(frame.data(0)[2 * frame.stride(0) + 2]);
+
+                Ok(())
+            }
+        }
+        let cfg = OutputConfig::new(32, 16, 25, 48_000);
+        let mut state = ProgramGraphicsState::default();
+        let mut capture = Pixels::default();
+        let mut source = frame::Video::new(Pixel::YUV420P, 32, 16);
+        for plane in 0..3 {
+            source.data_mut(plane).fill(128);
+        }
+        {
+            let mut output = ProgramGraphicsOutput::new(&mut capture, &mut state, &cfg);
+            output.set_clip(Some(crate::graphics::clip::tests::fixture((32, 16))), 100);
+            for (pts, visible) in [
+                (100, true),
+                (101, true),
+                (103, true),
+                (104, false),
+                (105, true),
+                (109, true),
+                (101, true),
+            ] {
+                source.set_pts(Some(pts));
+                output.set_clip_graphics_visible(visible);
+                output.encode_video(&source).unwrap();
+            }
+        }
+        source.set_pts(Some(110));
+        ProgramGraphicsOutput::new(&mut capture, &mut state, &cfg)
+            .encode_video(&source)
+            .unwrap();
+        assert_eq!(capture.0, [128, 147, 166, 128, 166, 128, 147, 128]);
+        assert!(source.data(0).iter().all(|byte| *byte == 128));
+    }
+
+    #[test]
+    fn leaving_a_clip_clears_deferred_metadata_but_keeps_queued_snapshots_valid() {
+        #[derive(Default)]
+        struct Deferred {
+            current: Option<ClipSceneFrame>,
+            queued: Vec<ClipSceneFrame>,
+        }
+        impl FrameOutput for Deferred {
+            fn audio_frame_size(&self) -> usize {
+                1024
+            }
+            fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
+                Ok(())
+            }
+            fn defer_text_overlays(&mut self, _: &TextOverlays) -> bool {
+                true
+            }
+            fn defer_clip_scene(&mut self, scene: Option<&ClipSceneFrame>) -> bool {
+                self.current = scene.cloned();
+
+                true
+            }
+            fn encode_video(&mut self, _: &frame::Video) -> Result<()> {
+                self.queued.push(self.current.clone().unwrap());
+
+                Ok(())
+            }
+        }
+        let cfg = OutputConfig::new(32, 16, 25, 48_000);
+        let mut state = ProgramGraphicsState::default();
+        let mut capture = Deferred::default();
+        let mut source = frame::Video::new(Pixel::YUV420P, 32, 16);
+        source.set_pts(Some(3));
+        {
+            let mut output = ProgramGraphicsOutput::new(&mut capture, &mut state, &cfg);
+            output.set_clip(Some(crate::graphics::clip::tests::fixture((32, 16))), 0);
+            output.encode_video(&source).unwrap();
+        }
+        assert!(capture.current.is_none());
+        assert!(capture.queued[0].visible());
+    }
 
     #[derive(Default)]
     struct Capture {
@@ -391,6 +526,7 @@ mod tests {
         let mut output = ProgramGraphicsOutput::new(&mut pixels, &mut state, &config);
         output.set_text_overlays([Some(text), None]);
         output.encode_video(&source).unwrap();
+        drop(output);
         assert_eq!(pixels.0, expected.data(0));
         assert!(source.data(0).iter().all(|value| *value == 128));
     }
@@ -443,6 +579,7 @@ mod tests {
         output.encode_video(&frame).unwrap();
         output.set_text_overlays(Default::default());
         output.encode_video(&frame).unwrap();
+        drop(output);
         assert_eq!(capture.visible, [true, false]);
     }
 

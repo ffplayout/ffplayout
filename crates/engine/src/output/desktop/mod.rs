@@ -46,7 +46,7 @@ use crate::{
     },
     audio_mixer::{AudioEffectChain, AudioEffectsControl},
     benchmark::{self, BenchHandle, Stage},
-    graphics::logo_adapter::LogoOverlay,
+    graphics::{clip::ClipSceneFrame, logo_adapter::LogoOverlay},
     utils::{
         config::{DesktopControlCallback, DesktopControlCommand, OutputConfig},
         ffmpeg::reference_video_frame,
@@ -186,6 +186,7 @@ pub(crate) struct DesktopFrameSender {
     loudness_meter: LoudnessMeter,
     deferred_logo: Option<(Arc<LogoOverlay>, f64)>,
     deferred_texts: crate::graphics::text_adapter::TextOverlays,
+    deferred_scene: Option<ClipSceneFrame>,
     compositor: Arc<Mutex<VideoCompositor>>,
     parallel_output: Option<Arc<super::parallel::ParallelOutput>>,
     recording_sender: Option<SyncSender<DesktopRecordingMessage>>,
@@ -500,6 +501,7 @@ impl DesktopOutput {
                     loudness_meter: LoudnessMeter::new(audio_sample_rate, loudness_meter_control),
                     deferred_logo: None,
                     deferred_texts: Default::default(),
+                    deferred_scene: None,
                     compositor,
                     parallel_output,
                     recording_sender,
@@ -574,6 +576,12 @@ impl DesktopOutput {
 }
 
 impl FrameOutput for DesktopFrameSender {
+    fn defer_clip_scene(&mut self, scene: Option<&ClipSceneFrame>) -> bool {
+        self.deferred_scene = scene.cloned();
+
+        true
+    }
+
     fn defer_text_overlays(&mut self, texts: &crate::graphics::text_adapter::TextOverlays) -> bool {
         self.deferred_texts = texts.clone();
         true
@@ -721,16 +729,23 @@ impl DesktopFrameSender {
                 (Some(logo.clone()), *opacity)
             });
         if let Some(output) = &self.parallel_output {
-            return output.prepare_desktop_video(frame, logo, opacity, self.deferred_texts.clone());
+            return output.prepare_desktop_video(
+                frame,
+                logo,
+                opacity,
+                self.deferred_texts.clone(),
+                self.deferred_scene.clone(),
+            );
         }
 
-        ProgramVideo::with_texts(
+        ProgramVideo::with_graphics(
             frame,
             self.compositor.clone(),
             logo,
             opacity,
             BTreeMap::new(),
             self.deferred_texts.clone(),
+            self.deferred_scene.clone(),
         )
     }
 
@@ -2336,6 +2351,7 @@ mod tests {
                 loudness_meter: LoudnessMeter::new(48_000, Default::default()),
                 deferred_logo: None,
                 deferred_texts: Default::default(),
+                deferred_scene: None,
                 compositor: Arc::new(Mutex::new(VideoCompositor::default())),
                 parallel_output: None,
                 recording_sender: Some(recording_sender),
@@ -2543,6 +2559,7 @@ mod tests {
             loudness_meter: LoudnessMeter::new(48_000, Default::default()),
             deferred_logo: None,
             deferred_texts: Default::default(),
+            deferred_scene: None,
             compositor: Arc::new(Mutex::new(VideoCompositor::default())),
             recording_sender: Some(recording_sender),
             recording_active: Some(Arc::new(AtomicBool::new(true))),
@@ -2676,6 +2693,7 @@ mod tests {
             loudness_meter: LoudnessMeter::new(48_000, Default::default()),
             deferred_logo: None,
             deferred_texts: Default::default(),
+            deferred_scene: None,
             compositor: Arc::new(Mutex::new(VideoCompositor::default())),
             recording_sender: Some(recording_sender),
             recording_active: Some(Arc::new(AtomicBool::new(true))),

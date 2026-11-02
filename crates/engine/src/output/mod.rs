@@ -24,7 +24,7 @@ use crate::benchmark::BenchHandle;
 use crate::{
     HlsHealth,
     clock::SharedPlayoutClock,
-    graphics::{logo_adapter::LogoOverlay, text_adapter::TextOverlays},
+    graphics::{clip::ClipSceneFrame, logo_adapter::LogoOverlay, text_adapter::TextOverlays},
     input::diagnostics::LiveInputDiagnostics,
     utils::config::{HlsSubtitle, HlsVariant, OutputConfig},
 };
@@ -46,6 +46,13 @@ impl fmt::Display for PlaybackStopped {
 impl Error for PlaybackStopped {}
 
 pub(crate) trait FrameOutput {
+    /// Snapshot together with video when lookahead delays submission.
+    fn set_clip_graphics_visible(&mut self, _visible: bool) {}
+
+    fn defer_clip_scene(&mut self, _scene: Option<&ClipSceneFrame>) -> bool {
+        false
+    }
+
     fn set_text_overlays(&mut self, _overlays: TextOverlays) {}
 
     fn retains_text_overlays(&self) -> bool {
@@ -166,6 +173,7 @@ pub(crate) trait FrameOutput {
 }
 
 pub(crate) struct Output {
+    deferred_scene: Option<ClipSceneFrame>,
     deferred_logo: Option<(Arc<LogoOverlay>, f64)>,
     deferred_texts: TextOverlays,
     kind: OutputKind,
@@ -183,6 +191,7 @@ impl Output {
         Ok(Self {
             deferred_logo: None,
             deferred_texts: Default::default(),
+            deferred_scene: None,
             kind: OutputKind::Parallel(Box::new(parallel::ParallelOutput::new(cfg)?)),
         })
     }
@@ -191,6 +200,7 @@ impl Output {
         Ok(Self {
             deferred_logo: None,
             deferred_texts: Default::default(),
+            deferred_scene: None,
             kind: OutputKind::Encoded(Box::new(
                 EncodedOutput::open(path, cfg, EncodedFormat::Auto)?.threaded()?,
             )),
@@ -201,6 +211,7 @@ impl Output {
         Ok(Self {
             deferred_logo: None,
             deferred_texts: Default::default(),
+            deferred_scene: None,
             kind: OutputKind::Encoded(Box::new(
                 EncodedOutput::open(
                     path,
@@ -226,6 +237,7 @@ impl Output {
         Ok(Self {
             deferred_logo: None,
             deferred_texts: Default::default(),
+            deferred_scene: None,
             kind: OutputKind::Encoded(Box::new(
                 EncodedOutput::open_with_hls_health(
                     path,
@@ -248,6 +260,7 @@ impl Output {
         Ok(Self {
             deferred_logo: None,
             deferred_texts: Default::default(),
+            deferred_scene: None,
             kind: OutputKind::Desktop(Box::new(DesktopOutput::open(cfg)?)),
         })
     }
@@ -271,7 +284,13 @@ impl Output {
                     .map_or((None, 0.0), |(logo, opacity)| {
                         (Some(logo.clone()), *opacity)
                     });
-                output.video_with_graphics(frame, logo, opacity, self.deferred_texts.clone())
+                output.video_with_graphics(
+                    frame,
+                    logo,
+                    opacity,
+                    self.deferred_texts.clone(),
+                    self.deferred_scene.clone(),
+                )
             }
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.encode_video(frame),
@@ -326,6 +345,15 @@ impl Output {
 }
 
 impl FrameOutput for Output {
+    fn defer_clip_scene(&mut self, scene: Option<&ClipSceneFrame>) -> bool {
+        if matches!(self.kind, OutputKind::Parallel(_)) {
+            self.deferred_scene = scene.cloned();
+            return true;
+        }
+
+        false
+    }
+
     fn defer_text_overlays(&mut self, texts: &TextOverlays) -> bool {
         if matches!(self.kind, OutputKind::Parallel(_)) {
             self.deferred_texts = texts.clone();

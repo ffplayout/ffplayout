@@ -359,6 +359,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                     let mut frame = reference_video_frame(last_video_frame)?;
                     frame.set_pts(Some(self.live.video_pts));
                     self.apply_frame_texts(&mut frame, self.live.last_video_texts.clone())?;
+                    self.output.set_clip_graphics_visible(false);
                     self.output.encode_video(&frame)?;
                     self.remember_video_frame(frame, self.live.video_pts);
                 }
@@ -386,6 +387,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             let mut frame = reference_video_frame(&last_video_frame)?;
             frame.set_pts(Some(fill_pts));
             self.apply_frame_texts(&mut frame, self.live.last_video_texts.clone())?;
+            self.output.set_clip_graphics_visible(false);
             self.output.encode_video(&frame)?;
             self.remember_video_frame(frame, fill_pts);
             fill_pts += 1;
@@ -550,6 +552,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             self.pad_missing_live_audio()?;
 
             self.output.set_logo_opacity(1.0);
+            self.output.set_clip_graphics_visible(false);
             if self.output.try_encode_video(&frame)? {
                 break;
             }
@@ -851,6 +854,7 @@ impl<O: FrameOutput> FrameOutput for LiveOverrideOutput<'_, O> {
         frame.set_pts(Some(pts));
         self.live.last_video_texts = self.file_texts.clone();
         self.apply_frame_texts(&mut frame, self.live.last_video_texts.clone())?;
+        self.output.set_clip_graphics_visible(true);
         self.output.encode_video(&frame)?;
         self.remember_video_frame(frame, pts);
         self.live.video_pts = pts + 1;

@@ -28,7 +28,7 @@ use crate::{
     ARGS,
     db::{handles, models::Channel},
     file::{init_storage, local::LocalStorage},
-    player::{output::player, utils::Media},
+    player::{graphics::GraphicsPreparer, output::player, utils::Media},
     utils::{
         config::PlayoutConfig, errors::ServiceError, logging::Target, system::SystemStat,
         text::text_config,
@@ -104,6 +104,7 @@ pub struct ChannelManager {
     pub current_date: Arc<Mutex<String>>,
     pub list_init: Arc<AtomicBool>,
     pub current_media: Arc<Mutex<Option<Media>>>,
+    pub(crate) graphics: Arc<GraphicsPreparer>,
     pub current_list: Arc<Mutex<Vec<Media>>>,
     pub filler_list: Arc<Mutex<Vec<Media>>>,
     pub current_index: Arc<AtomicUsize>,
@@ -208,6 +209,7 @@ impl ChannelManager {
             channel: Arc::new(Mutex::new(channel)),
             list_init: Arc::new(AtomicBool::new(true)),
             current_media: Arc::new(Mutex::new(None)),
+            graphics: Arc::new(GraphicsPreparer::new()),
             current_list: Arc::new(Mutex::new(vec![Media::default()])),
             filler_list: Arc::new(Mutex::new(vec![])),
             current_index: Arc::new(AtomicUsize::new(0)),
@@ -747,10 +749,12 @@ impl ChannelManager {
         }
 
         self.is_alive.store(false, Ordering::SeqCst);
+        self.graphics.cancel();
         self.playback_control.lock().await.skip_current();
         // Restarts and shutdown must also cancel an in-flight validator, not
         // only permanent stops. Its blocking FFmpeg analysis owns resources.
         self.stop_validation().await;
+        self.graphics.join(channel_id).await;
         self.stop_task(
             "task_runner",
             &self.task_runner_handle,
