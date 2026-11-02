@@ -1273,6 +1273,39 @@ fn live_reception_pauses_resume_through_three_real_hls_encoders() {
         },
     };
 
+    // This test covers recovery and complete HLS delivery, rather than overload.
+    // Pace the encoder input, including frames generated to fill reception gaps:
+    // otherwise a synthetic multi-second burst can overflow the bounded mux
+    // queue when other CI tests compete for CPU or filesystem access.
+    struct RealtimeOutput(Output);
+
+    impl FrameOutput for RealtimeOutput {
+        fn audio_frame_size(&self) -> usize {
+            self.0.audio_frame_size()
+        }
+
+        fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+            self.0.encode_video(frame)?;
+            thread::sleep(Duration::from_millis(40));
+
+            Ok(())
+        }
+
+        fn try_encode_video(&mut self, frame: &frame::Video) -> Result<bool> {
+            let accepted = self.0.try_encode_video(frame)?;
+
+            if accepted {
+                thread::sleep(Duration::from_millis(40));
+            }
+
+            Ok(accepted)
+        }
+
+        fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+            self.0.encode_audio(frame)
+        }
+    }
+
     ffmpeg_next::init().unwrap();
     let directory = std::env::temp_dir().join(format!(
         "live-hls-recovery-{}-{}",
@@ -1310,7 +1343,7 @@ fn live_reception_pauses_resume_through_three_real_hls_encoders() {
         },
     });
     let status = config.output_status.clone();
-    let mut output = Output::open_parallel(&config).unwrap();
+    let mut output = RealtimeOutput(Output::open_parallel(&config).unwrap());
     let (tx, rx) = mpsc::channel();
     let mut live = test_live_receiver(rx);
     live.active = true;
@@ -1380,7 +1413,9 @@ fn live_reception_pauses_resume_through_three_real_hls_encoders() {
         pts += 1;
     }
     drop(wrapper);
-    output.finish().unwrap();
+    output.0.finish().unwrap();
+    let finished = status.snapshot();
+    assert_eq!(finished[&5].phase, "stopped", "{finished:?}");
     for index in 0..3 {
         let path = directory.join(format!("v{index}.m3u8"));
         let playlist = std::fs::read_to_string(&path).unwrap();
