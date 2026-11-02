@@ -309,6 +309,7 @@ pub(super) fn play<O: FrameOutput>(
     options: InputPlaybackOptions<'_>,
     external_audio: Option<&mut ExternalAudioInput>,
     plan: Plan,
+    prefetched: Vec<Packet>,
 ) -> Result<()> {
     let generation = NEXT_GENERATION.fetch_add(1, Ordering::Relaxed);
     let control = Arc::new(PipelineControl::default());
@@ -433,6 +434,7 @@ pub(super) fn play<O: FrameOutput>(
                 audio_index,
                 audio_end_us,
                 last_video_dts,
+                prefetched,
             );
         });
         // All FFmpeg input/decoder state belongs exclusively to the workers.
@@ -559,6 +561,7 @@ mod tests {
                 logo_fade_plan,
                 media_fade_plan: MediaFadePlan::default(),
             },
+            Vec::new(),
         )
         .unwrap();
         let audio = capture.first_audio.unwrap();

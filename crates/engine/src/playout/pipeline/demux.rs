@@ -32,6 +32,7 @@ pub(super) fn run(
     audio_index: Option<(usize, Rational)>,
     audio_end_us: Option<i64>,
     last_video_dts: Option<i64>,
+    prefetched: Vec<Packet>,
 ) {
     let WorkerContext {
         cfg,
@@ -50,6 +51,7 @@ pub(super) fn run(
         benchmark::activate(benchmark.clone());
     }
     run_worker(control, || {
+        let mut prefetched = prefetched.into_iter();
         loop {
             control.check()?;
 
@@ -59,23 +61,28 @@ pub(super) fn run(
 
             let mut packet = Packet::empty();
 
-            match packet.read(&mut input) {
-                Ok(()) => {}
-                Err(ffmpeg_next::Error::Eof) => break,
-                Err(ffmpeg_next::Error::Other { errno }) if errno == ffmpeg_next::error::EAGAIN => {
-                    control.wait(POLL_INTERVAL)?;
-                    continue;
-                }
-                Err(error) if diagnostics.is_some() && is_rtmp_disconnect(label, error) => {
-                    info!(channel = cfg.channel_id.unwrap_or_default();
-                        "Live listener #{} (RTMP) input disconnected",
-                        diagnostics.map_or(0, |diagnostics| diagnostics.listener_id)
-                    );
-                    // Drain the packets already received just as for EOF;
-                    // cancelling the pipeline would discard the buffered tail.
-                    break;
-                }
-                Err(error) => return Err(anyhow!("reading input {label}: {error}")),
+            match prefetched.next() {
+                Some(prefetched) => packet = prefetched,
+                None => match packet.read(&mut input) {
+                    Ok(()) => {}
+                    Err(ffmpeg_next::Error::Eof) => break,
+                    Err(ffmpeg_next::Error::Other { errno })
+                        if errno == ffmpeg_next::error::EAGAIN =>
+                    {
+                        control.wait(POLL_INTERVAL)?;
+                        continue;
+                    }
+                    Err(error) if diagnostics.is_some() && is_rtmp_disconnect(label, error) => {
+                        info!(channel = cfg.channel_id.unwrap_or_default();
+                            "Live listener #{} (RTMP) input disconnected",
+                            diagnostics.map_or(0, |diagnostics| diagnostics.listener_id)
+                        );
+                        // Drain the packets already received just as for EOF;
+                        // cancelling the pipeline would discard the buffered tail.
+                        break;
+                    }
+                    Err(error) => return Err(anyhow!("reading input {label}: {error}")),
+                },
             }
 
             if let Some(diagnostics) = diagnostics {

@@ -942,6 +942,7 @@ fn play_to_output<O: FrameOutput>(
     playback_control: &PlaybackControl,
     options: PlayOptions<'_>,
 ) -> Result<ClipResult> {
+    let start = *timeline;
     match playout::play_clip_with_external_audio(
         path,
         options.external_audio_path,
@@ -961,11 +962,19 @@ fn play_to_output<O: FrameOutput>(
         Err(error) if error.downcast_ref::<PlaybackStopped>().is_some() => Ok(ClipResult::Stopped),
         Err(error) => {
             let reason = format!("{error:#}");
-            let duration = options
+            let (duration, fallback_start) = options
                 .duration_seconds
                 .filter(|duration| duration.is_finite() && *duration > 0.0)
-                .unwrap_or(fallback_duration);
-            match write_fallback(path, config, timeline, output, duration, playback_control) {
+                .map_or((fallback_duration, *timeline), |duration| (duration, start));
+            match write_fallback(
+                path,
+                config,
+                timeline,
+                output,
+                fallback_start,
+                duration,
+                playback_control,
+            ) {
                 Ok(()) => {
                     timeline.finish_logo_fade(options.logo_fade);
 
@@ -1007,6 +1016,63 @@ mod tests {
     use super::{
         ClipResult, PlaybackControl, PlaybackRestart, PlaybackSkipped, classify_fallback_error,
     };
+
+    #[test]
+    fn failure_after_partial_playback_does_not_add_a_second_full_slot() {
+        use crate::{LogoFade, OutputConfig, output::FrameOutput, playout::Timeline};
+        use anyhow::{Result, anyhow};
+        use ffmpeg_next::frame;
+        #[derive(Default)]
+        struct FailOnce {
+            video: Vec<i64>,
+            audio: usize,
+            failed: bool,
+        }
+        impl FrameOutput for FailOnce {
+            fn audio_frame_size(&self) -> usize {
+                1024
+            }
+            fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+                if self.video.len() == 5 && !self.failed {
+                    self.failed = true;
+                    return Err(anyhow!(
+                        "injected decoder/output failure after partial playback"
+                    ));
+                }
+                self.video.push(frame.pts().unwrap());
+                Ok(())
+            }
+            fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
+                self.audio += frame.samples();
+                Ok(())
+            }
+        }
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests_assets/storage/media_mix/with_audio.mp4"
+        );
+        let mut output = FailOnce::default();
+        let result = super::play_to_output(
+            path,
+            &OutputConfig::new(64, 36, 25, 48_000),
+            &mut Timeline::new(),
+            &mut output,
+            10.0,
+            &PlaybackControl::default(),
+            super::PlayOptions {
+                seek_seconds: Some(2.0),
+                duration_seconds: Some(1.0),
+                external_audio_path: None,
+                subtitles_media_path: None,
+                logo_fade: LogoFade::default(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(result, ClipResult::Fallback { .. }));
+        assert!(output.failed);
+        assert_eq!(output.video, (0..25).collect::<Vec<_>>());
+        assert_eq!(output.audio, 48_000);
+    }
 
     #[test]
     fn restart_during_fallback_remains_a_playout_restart() {

@@ -9,6 +9,7 @@ use ffmpeg_next::{
 use log::{debug, trace, warn};
 
 mod pipeline;
+mod seek;
 
 use crate::{
     LogoFade, PlaybackControl,
@@ -545,14 +546,23 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             .unwrap_or(0)
     };
 
-    if let Some(seek_seconds) = seek_seconds {
+    let prefetched = if let Some(seek_seconds) = seek_seconds {
         if has_invalid_time_base {
             return Err(anyhow!(
                 "cannot seek {label}: its selected stream has an invalid time base"
             ));
         }
-        seek_input_at(&mut ictx, seek_seconds, source_origin_us)?;
-    }
+        seek::prepare(
+            &mut ictx,
+            label,
+            seek_seconds,
+            source_origin_us,
+            external_audio.is_some(),
+            options.playback_control,
+        )?
+    } else {
+        Vec::new()
+    };
 
     let video_stream = ictx.streams().best(media::Type::Video);
     let audio_stream = ictx.streams().best(media::Type::Audio);
@@ -674,6 +684,7 @@ pub(crate) fn play_opened_input<O: FrameOutput>(
             logo_fade_plan,
             media_fade_plan,
         },
+        prefetched,
     )
 }
 
@@ -2125,11 +2136,18 @@ pub(crate) fn write_fallback<O: FrameOutput>(
     cfg: &OutputConfig,
     timeline: &mut Timeline,
     output: &mut O,
+    start: Timeline,
     duration: f64,
     playback_control: &PlaybackControl,
 ) -> Result<()> {
-    let video_end = timeline.video_pts + (duration * f64::from(cfg.fps)).ceil() as i64;
-    let audio_end = timeline.audio_pts + (duration * f64::from(cfg.sample_rate)).ceil() as i64;
+    // Keep the original per-track boundaries after a partially written clip.
+    // Adding the requested duration to the current timeline extends its slot.
+    let video_end = start
+        .video_pts
+        .saturating_add((duration * f64::from(cfg.fps)).ceil() as i64);
+    let audio_end = start
+        .audio_pts
+        .saturating_add((duration * f64::from(cfg.sample_rate)).ceil() as i64);
     let mut overlays = FallbackOverlays::new(
         label,
         cfg,
@@ -2658,6 +2676,32 @@ mod tests {
         events: Vec<&'static str>,
         reset_on_skip: bool,
         skip_target: Option<(i64, i64)>,
+    }
+
+    #[test]
+    fn fallback_fills_only_the_remaining_part_of_each_track() {
+        let cfg = OutputConfig::new(64, 36, 25, 48_000);
+        let mut start = Timeline::new();
+        start.reanchor(250, 480_000);
+        for (video, audio) in [(5, 19_200), (25, 48_000), (10, 0), (0, 24_000)] {
+            let mut timeline = start;
+            timeline.video_pts += video;
+            timeline.audio_pts += audio;
+            let mut output = RecordingOutput::default();
+            super::write_fallback(
+                "broken.ts",
+                &cfg,
+                &mut timeline,
+                &mut output,
+                start,
+                1.0,
+                &PlaybackControl::default(),
+            )
+            .unwrap();
+            assert_eq!((timeline.video_pts, timeline.audio_pts), (275, 528_000));
+            assert_eq!(output.video_frames.len(), (25 - video) as usize);
+            assert_eq!(output.audio_samples, (48_000 - audio) as usize);
+        }
     }
 
     #[test]
