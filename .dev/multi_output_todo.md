@@ -1,9 +1,14 @@
-# Multi-output TODO
+# Multi-output — completed
+
+Closed on 2026-11-02 after the maintainer reported no remaining problems in
+current testing and the final regression/acceptance runs below passed. This file
+is retained as the implementation and validation record, not an active backlog.
+MoQ retains its experimental designation.
 
 Current behavior is documented in the [output documentation](../docs/output.md)
 and [MoQ documentation](../docs/moq.md).
 
-## Future improvements
+## Completed implementation
 
 - [x] Compose the logo once at the largest HLS rendition's resolution, then
   scale it with the picture for smaller renditions. Pixel comparisons cover
@@ -42,36 +47,68 @@ and [MoQ documentation](../docs/moq.md).
 - [x] Initialize the scaler from the first usable decoded frame instead of
   incomplete stream headers. Reject zero dimensions without panicking and
   prevent audio/queue activity from extending video startup indefinitely.
-- [ ] Diagnose the remaining raw-queue overflow reported at 20:05:33 and
-  20:06:27 on 2026-10-27 despite bounded backpressure (48 720p frames / 64 MiB).
-  Local end-to-end RTMP runs with libfdk_aac, reception pauses, Full-Range
-  video, a sender PTS jump, and a separate ready encoding group have not
-  reproduced that remaining failure. The supplied server configuration also
-  passes with one HLS encoding group, shared native 480p delivery, shared 720p
-  FLV, VTT, logo, and program loudness; external MoQ/RTMP transport and the exact
-  source stream are not reproduced. Enable timing diagnostics on the server to
-  capture the encoding worker stage/age, rendition and last A/V PTS on overflow.
-- [ ] Profile the remaining paced network delivery/mux boundary before combining
-  those workers; preserve independent reconnects, pacing, and bounded buffering.
+- [x] Close the historical raw-queue overflow report from 2026-10-27.
+  The exact server/source failure was not reproduced, so its original cause
+  cannot be claimed as proven. Subsequent timestamp/scaler fixes, real-codec
+  live pause/burst regressions, and current maintainer testing have not exposed
+  a remaining failure. Count/memory bounds, branch isolation, bounded
+  backpressure, and worker-stage/age/PTS diagnostics remain in place. A new
+  occurrence should be investigated with those diagnostics and its source dump.
+- [x] Decide the delivery/mux worker boundary: retain independently paced workers
+  and bounded queues. Worker consolidation is not part of this work package;
+  it needs a measured benefit before risking independent retry/isolation.
+  No performance improvement from consolidation is claimed or required for closure.
 - [x] Replace the local MPEG-TS/TCP importer with direct encoded-frame publishing,
   preserving codec initialization, media timestamps, pacing and isolated retries.
 
-## Validation
+## Final validation, 2026-11-02
 
-- [ ] Verify the 2026-10-27 RTMP failure scenario on the affected server with
-  repeated reception interruptions and reconnects. Local deterministic
-  regressions reproduce the two corrected failure mechanisms, but do not prove
-  the server had no additional bottleneck. Check for duplicate logos in its HLS
-  configuration. Track RSS and glibc used/free memory: the supplied log ended
-  near 1.17 GB RSS, with about 288 MB allocated and 882 MB free inside arenas;
-  this alone does not establish a live-allocation leak.
+- [x] Run the complete non-desktop engine suite on macOS: **437 passed, 6
+  intentionally ignored**. Coverage includes real RTMP ingest resolution changes,
+  encrypted SRT ingest, reception pauses through three HLS encoders, source-clock
+  A/V marker alignment, queue overload/isolation, shared rendition composition,
+  independent output changes, and automatic/manual reconnects.
+- [x] Add a permanent regression for **two complete retry-exhaustion/manual-resume
+  cycles using the same encoded stream**, checking that no automatic connection
+  attempts continue after exhaustion. Existing tests cover automatic repeated
+  reconnects, the production 15-second / 3-minute policy, and resetting the budget
+  after successful delivery.
+- [x] Run all **9 MoQ publisher tests**, including shared HLS encoding with video
+  lookahead, H.264 B-frame timestamps, HEVC decoder configuration, on-demand audio
+  meters, and independent HLS/MoQ toggles without reopening unrelated encoders.
+- [x] Add a permanent **36-second / 12-clip** shared HLS/MoQ regression. Alternate
+  files with and without VTT, seek into cues, and include invalid zero-duration
+  cues alongside valid ones. Verify one continuous MoQ publication, increasing
+  media timestamps, A/V tail separation below 100 ms, all **900 HLS video frames**,
+  monotonic per-track DTS, retained valid captions, and discarded invalid cues.
+  MoQ duration markers are read through the library's container reader rather
+  than mistaken for duplicate video frames.
+- [x] Run a **72-second / 24-clip** acceptance test with real local FFmpeg RTMP and
+  SRT receivers borrowing one HLS encoder. Both receivers exit and restart twice;
+  all three sessions per protocol receive media. The unaffected HLS destination
+  remains running, retains all **1,800 video frames**, and finishes with less
+  than 100 ms A/V tail separation. All HLS/RTMP/SRT recordings have monotonic DTS.
+- [x] Retain deterministic coverage for delayed/blocked branches and the shared
+  program clock. HLS performs no second realtime wait or write-speed correction;
+  the application retains its playlist synchronization/stop-threshold handling.
+- [x] Run formatting, Clippy with all features/targets, and whitespace checks.
 
-- [ ] Run a sustained multi-output test covering clip transitions, live takeover,
-  slow or disconnected destinations, and long-term audio/video timing.
-- [ ] Verify sustained browser audio/video playback with the multi-output runtime.
-- [ ] Test sustained recovery with external RTMP/SRT servers, including a second
-  outage after a successful reconnect and manual reconnect after retry exhaustion.
-- [ ] Verify HLS timing over several hours with shared MoQ encoding, including
-  temporary write delays and playlist stop-threshold handling.
-- [ ] Verify HLS/WebVTT clip transitions and seeking with alternating files with
-  and without subtitles during a sustained run.
+Reproduction artifacts are in `tmp/multi-output-final/`: `engine.log`, `moq.log`,
+`retry.log`, `clippy.log`, plus the network runner (`acceptance.rs`, `network.py`),
+receiver logs, recordings, packet reports, and verification results. The temporary
+Rust acceptance example is not kept in production sources. Permanent regressions
+live beside the delivery and MoQ publisher implementations.
+
+## Scope and continuing operational QA
+
+The runs above are bounded functional/continuity tests, not a new multi-hour
+endurance run or an exhaustive browser/device matrix. The maintainer's existing
+field tests supplement them. Native MoQ tests verify codec configuration and
+published media; they do not claim to exercise browser rendering or WebTransport
+through every reverse proxy.
+
+Long-duration browser playback, several-hour HLS timing under filesystem delays,
+and memory behaviour on the affected production server remain useful routine QA,
+not unfinished implementation tasks in this work package. A high RSS after
+reconnects alone does not prove a live-allocation leak: compare allocator used/free
+memory and reproduce with a heap profile before attributing it to multi-output.

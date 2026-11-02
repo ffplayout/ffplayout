@@ -579,6 +579,86 @@ mod tests {
     }
 
     #[test]
+    fn repeated_outages_can_exhaust_and_manually_resume_the_same_encoded_stream() {
+        use std::sync::{Arc, atomic::AtomicUsize};
+
+        #[derive(Debug, Default)]
+        struct Endpoint {
+            unavailable: Arc<AtomicBool>,
+            attempts: AtomicUsize,
+            connections: AtomicUsize,
+        }
+
+        struct Sink(Arc<AtomicBool>);
+
+        impl crate::PacketSink for Sink {
+            fn write(&mut self, _: crate::EncodedFrame<'_>) -> Result<()> {
+                if self.0.load(Ordering::Acquire) {
+                    return Err(anyhow!("destination unavailable"));
+                }
+
+                Ok(())
+            }
+
+            fn finish(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        impl crate::OutputEndpoint for Endpoint {
+            fn connect_packets(
+                &self,
+                _: &[crate::EncodedStream],
+            ) -> Result<Box<dyn crate::PacketSink>> {
+                self.attempts.fetch_add(1, Ordering::SeqCst);
+
+                if self.unavailable.load(Ordering::Acquire) {
+                    return Err(anyhow!("destination unavailable"));
+                }
+
+                self.connections.fetch_add(1, Ordering::SeqCst);
+
+                Ok(Box::new(Sink(self.unavailable.clone())))
+            }
+        }
+
+        let endpoint = Arc::new(Endpoint::default());
+        let fixture = Fixture::configured(
+            String::new(),
+            Duration::from_millis(30),
+            Duration::from_millis(180),
+            |destination| destination.config.stream_endpoint = Some(endpoint.clone()),
+        );
+        fixture.wait("starting");
+        fixture.wait_connected();
+        fixture.send_media();
+        fixture.wait("running");
+
+        // Reuse one EncodingProfile through two complete failure windows.
+        // A successful manual recovery must not inherit the exhausted budget.
+        for expected_connections in 2..=3 {
+            endpoint.unavailable.store(true, Ordering::Release);
+            fixture.send_media();
+            fixture.wait("failed");
+            let attempts = endpoint.attempts.load(Ordering::SeqCst);
+            endpoint.unavailable.store(false, Ordering::Release);
+            std::thread::sleep(Duration::from_millis(90));
+            assert_eq!(endpoint.attempts.load(Ordering::SeqCst), attempts);
+            assert!(fixture.status.request_retry(1));
+            fixture.wait("starting");
+            fixture.wait_connected();
+            fixture.send_media();
+            fixture.wait("running");
+            assert_eq!(
+                endpoint.connections.load(Ordering::SeqCst),
+                expected_connections
+            );
+        }
+
+        fixture.finish();
+    }
+
+    #[test]
     fn retries_are_spaced_and_stop_before_the_three_minute_deadline() {
         let start = Instant::now();
         let mut retry = Retry::default();
