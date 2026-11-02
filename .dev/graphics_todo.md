@@ -45,8 +45,10 @@ The architecture must support both an optimized YUV compositing path and an opti
 Extraction is complete. The first internal scene core now provides bounded
 commands, immutable revisions, ready-resource leases and program-time fades/repeats.
 Prepared clip scenes now run through the engine's shared output compositor via
-typed engine playback options. Full logo/text controller migration, general
-color/plane descriptors and asset preparation scheduling are not complete.
+typed engine playback options. Ready logo/text/clip snapshots now share one
+ordered layer handoff and composition dispatch. Native logo/text activation,
+replacement and resource states now use `SceneController`. General color/plane
+descriptors and asset preparation scheduling are not complete.
 GPU, Servo, templates and new HTTP/frontend graphics APIs are not implemented.
 
 ---
@@ -68,8 +70,9 @@ Sources of evidence:
   and `crates/engine/src/output/composition.rs`.
 
 **Current milestone:** the first minimal scene/layer core is implemented internally
-and tested through the CPU compositor. Existing production logo/text paths are
-still the compatibility baseline and have not been switched to the new controller.
+and tested through the CPU compositor. Native logo/text resource state now runs
+through the common controller; their established scroll/fade and source-frame
+clocks remain the compatibility baseline.
 The engine accepts prepared clip scenes, evaluates their clip-local clock and
 passes immutable snapshots through output fan-out. Existing logo/text ordering
 and HLS rendition/layout behaviour remain the compatibility baseline. The optional
@@ -103,10 +106,72 @@ completed extraction or scheduling/engine integration.
   with existing blending. A separate `scene_evaluation` benchmark measures only
   metadata advance/evaluation, not rasterization or full-frame performance.
 
-**Still open in this milestone:** migrate existing logo/text controls and per-frame
-snapshots to the common model, connect preparation/cancellation ownership to the
-controller, and complete generic plane/color/capability/layout contracts as needed
-by that integration. Group fades currently operate on one already-prepared surface;
+### Common program-frame handoff delivered
+
+- [x] Map ready logo, clip-scene groups, configured text and runtime text to
+  backend-independent ordered `FrameLayers`; retain stable group IDs and the
+  existing logo → clip graphics → configured text → runtime text order.
+- [x] Replace independent deferred logo/text/clip setters with one atomic
+  `GraphicsFrame` snapshot, retained by parallel, desktop and recording outputs.
+- [x] Use the same composition dispatch for immediate and deferred outputs;
+  preserve destination-pixel logo placement, reference-canvas text scaling and
+  largest-rendition HLS composition. No new workers, pixel copies or per-frame
+  allocations for the layer container.
+- [x] Clear deferred metadata on occurrence completion while queued frames retain
+  ready resources; test four-group pixel compatibility, layout invalidation,
+  layer ordering and cache/resource lifetime.
+
+### Native controller integration delivered
+
+- [x] Track program logo, configured text and runtime text as three bounded
+  controller layers/resources. Translate native controls at frame boundaries;
+  publish controller-approved layers through the existing shared snapshots.
+- [x] Provide single-owner frame-boundary batches without control queues or
+  receipt allocation. Keep the queued control API for other adapters and explicitly
+  retain its ordering, acknowledgements and stale-epoch behavior.
+- [x] Tag logo producer results by source generation. Track loading/active/failed
+  replacements, keep good pixels while replacements load/fail, and reject retired
+  results after replacement/clear. Expose old active resource status independently
+  of its newer loading/failed replacement.
+- [x] Keep decoding/rasterization with existing native source/decoder owners;
+  cancellation/join still happens at their lifetime boundary. Frame snapshots
+  retain only ready pixels. No new preparation workers or per-frame decoding,
+  rasterization, pixel copies or resource-generation changes are introduced.
+- [x] Preserve animated-logo source clocks and legacy text scroll/fade evaluation;
+  avoid applying a second controller fade. Release text on occurrence completion,
+  preserve the program logo across clips/live, and rebind resources on clock rewind.
+- [x] Test batched publication, loading/failed replacement, stale results, queued
+  resource lifetime, stop/clear, resource reuse across animation/scroll frames,
+  channel isolation, backwards clocks and native/scaled pixel compatibility.
+
+### Asynchronous preparation and shared resource budgets delivered
+
+- [x] Prepare configured and runtime native text on one lazy, persistent CPU
+  preparation worker per channel. Frame processing polls ready cells, retains
+  last-good text during replacement, and never waits for rasterization.
+- [x] Keep only the latest text request per producer; drop/clear/replacement
+  invalidates old completion tickets. Retry a busy queue at most every 250 ms;
+  late results evaluate the original program fade/scroll phase.
+- [x] Share a 256 MiB pixel/workspace reservation budget, 1024 resource leases
+  and 16 queued/running job permits across native text, logo preparation and
+  application playlist graphics. Preserve tighter source-specific limits.
+- [x] Carry leases with cached source/scaled pixels, including queued frame
+  references. Logo repositioning shares its lease. Last-reference destruction
+  releases budget without a retirement queue or per-frame pixel copies.
+- [x] Reserve text/PNG workspace before large allocations. Bound text input and
+  canvas size; skip a failed destination graphic instead of stopping media.
+- [x] Cancel queued text work and invalidate running publication on shutdown;
+  join outside frame processing with a deadline, retain unfinished worker handles,
+  and prohibit overlapping replacements across restarts. Logo streaming and
+  playlist preparation retain their existing owned, cancellable worker lifetimes.
+- [x] Test stale/cleared text, failures, overload/retry, worker reuse, panic
+  containment, shutdown deadlines, restart exclusion, shared leases and pixel
+  equality with the established synchronous text path.
+
+**Still open in this milestone:** plane/color/capability/layout contracts and
+adapters for future independent scene sources. The shared budget bounds accounted
+graphics pixels/workspace and jobs, not FFmpeg/font-library internals or total
+process RSS. Group fades currently operate on one already-prepared surface;
 no nested-scene renderer or source crossfade is implied.
 
 ---
@@ -191,8 +256,8 @@ CPU compositor / future GPU compositor
 - [ ] Tag preparation/render jobs with resource and scene revisions so stale completions cannot reactivate replaced or cleared graphics.
 - [ ] Define cancellation and explicit shutdown/join behavior for preparation workers.
 - [ ] Ensure the video processing thread never waits for HTTP, database access, template parsing, or file I/O.
-- [x] Support cached static/animated logo sources and prepared text. General multi-layer resource scheduling remains open.
-- [ ] Define ownership and lifetime of graphical resources.
+- [x] Support cached static/animated logo sources and prepared text, with shared native preparation admission/budgets. Future renderer scheduling remains separate.
+- [x] Define native resource ownership, shared leases, cancellation and worker lifetime; future backend contracts remain separate.
 - [ ] Ensure errors in individual graphics do not terminate playout.
 - [x] Require ready surfaces before take; pending/failed preparation cannot replace an active surface. Missing/unsupported backend resources hide that layer. Keep existing animated-source last-good-frame policy.
 - [ ] Never wait for an unfinished render job or backend synchronization on the video thread; consume ready results and apply the late-frame policy.
@@ -570,8 +635,8 @@ Adapt paths and naming to existing project conventions.
 
 ### Tasks
 
-- [ ] Map existing logo control to graphics layers; preserve existing fade semantics.
-- [ ] Map existing text overlays to graphics layers.
+- [x] Map existing native logo control to controller layers; preserve existing fade semantics.
+- [x] Map existing configured/runtime text overlays to controller layers; preserve their clocks.
 - [ ] Preserve existing API endpoints.
 - [ ] Add graphics state inspection.
 - [ ] Allow layer updates and take/stop fades without restarting the playout pipeline.

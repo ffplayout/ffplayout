@@ -7,8 +7,9 @@ use ffmpeg_next::{frame, util::format::pixel::Pixel};
 use crate::{
     animation::{TextPlayback, TextPreparation},
     bitmap::StraightRgbaBitmap,
+    preparation::ResourceBudget,
     style::TextStyle,
-    text::rasterize_overlay_text,
+    text::rasterize_overlay_text_bounded,
 };
 
 use super::overlay::{OverlayFrame, alpha_bounds, chroma_alpha, prepare_execution};
@@ -24,12 +25,34 @@ impl TextOverlay {
         text: &str,
         context: TextPreparation,
     ) -> Result<Option<Self>> {
+        Self::prepare_budgeted(style, text, context, None)
+    }
+
+    pub fn prepare_budgeted(
+        style: &TextStyle,
+        text: &str,
+        context: TextPreparation,
+        budget: Option<&ResourceBudget>,
+    ) -> Result<Option<Self>> {
         if text.trim().is_empty() {
             return Ok(None);
         }
-        let bitmap =
-            rasterize_overlay_text(style, text, context.canvas_width, context.canvas_height)?;
+        let bitmap = rasterize_overlay_text_bounded(
+            style,
+            text,
+            context.canvas_width,
+            context.canvas_height,
+            budget,
+        )?;
         let playback = TextPlayback::new(style, context, (bitmap.width, bitmap.height));
+        let _workspace = budget
+            .map(|budget| budget.reserve(bitmap.pixels.len()))
+            .transpose()?;
+        let prepared_bytes =
+            (bitmap.width as usize).div_ceil(128) * 128 * bitmap.height as usize * 3;
+        let lease = budget
+            .map(|budget| budget.reserve(prepared_bytes))
+            .transpose()?;
         let prepared = rgba_to_yuva420p(&bitmap).context("failed to create text overlay frame")?;
         let alpha = chroma_alpha(&prepared, bitmap.width, bitmap.height);
         let bounds = alpha_bounds(&prepared);
@@ -39,6 +62,7 @@ impl TextOverlay {
 
         Ok(Some(Self {
             overlay: Arc::new(OverlayFrame {
+                lease,
                 bounds,
                 frame: prepared,
                 chroma_alpha: alpha,

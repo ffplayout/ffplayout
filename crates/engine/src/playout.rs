@@ -14,7 +14,7 @@ mod seek;
 use crate::{
     LogoFade, PlaybackControl,
     benchmark::{self, Stage},
-    graphics::text_adapter::{TextOverlay, TextPreparation, TextTiming},
+    graphics::text_adapter::{AsyncTextOverlay, TextPreparation, TextTiming},
     input::timestamps::LiveTimestampTracker,
     output::FrameOutput,
     utils::{
@@ -1151,15 +1151,11 @@ fn apply_overlays(
     output.apply_text_overlays(
         frame,
         [
-            video
-                .text
-                .as_ref()
-                .and_then(|text| text.snapshot(timeline.video_pts, timeline.text_pts)),
+            video.text.snapshot(timeline.video_pts, timeline.text_pts),
             video
                 .runtime_text
                 .overlay
-                .as_ref()
-                .and_then(|text| text.snapshot(timeline.video_pts, timeline.text_pts)),
+                .snapshot(timeline.video_pts, timeline.text_pts),
         ],
     );
 
@@ -1497,10 +1493,39 @@ fn fallback_video_time_base(
     Ok(Rational(frame_rate.denominator(), frame_rate.numerator()))
 }
 
+fn prepare_static_text(
+    cfg: &OutputConfig,
+    label: &str,
+    start_pts: i64,
+    end_pts: Option<i64>,
+) -> Result<AsyncTextOverlay> {
+    let mut overlay = AsyncTextOverlay::default();
+    if cfg.text.is_some() {
+        overlay.request(
+            &cfg.graphics_preparation,
+            cfg.text.as_ref(),
+            label,
+            TextPreparation {
+                canvas_width: cfg.width,
+                canvas_height: cfg.height,
+                frames_per_second: cfg.fps,
+                timing: TextTiming {
+                    fade_start_frame: start_pts,
+                    scroll_start_frame: 0,
+                    end_frame: end_pts,
+                },
+            },
+        )?;
+    }
+
+    Ok(overlay)
+}
+
 struct RuntimeTextOverlay {
     state: TextOverlayState,
     revision: u64,
-    overlay: Option<TextOverlay>,
+    overlay: AsyncTextOverlay,
+    preparation: ff_graphics::preparation::PreparationService,
     label: String,
     width: u32,
     height: u32,
@@ -1518,32 +1543,29 @@ impl RuntimeTextOverlay {
         context: &'static str,
     ) -> Result<Self> {
         let snapshot = cfg.text_overlay_state.snapshot_at(scroll_pts);
-        let overlay = snapshot
-            .config
-            .as_ref()
-            .map(|text| {
-                TextOverlay::prepare(
-                    text,
-                    label,
-                    TextPreparation {
-                        canvas_width: cfg.width,
-                        canvas_height: cfg.height,
-                        frames_per_second: cfg.fps,
-                        timing: TextTiming {
-                            fade_start_frame: start_pts,
-                            scroll_start_frame: snapshot.start_pts.unwrap_or(scroll_pts),
-                            end_frame: None,
-                        },
-                    },
-                )
-            })
-            .transpose()?
-            .flatten();
+        let preparation = cfg.graphics_preparation.clone();
+        let mut overlay = AsyncTextOverlay::default();
+        overlay.request(
+            &preparation,
+            snapshot.config.as_ref(),
+            label,
+            TextPreparation {
+                canvas_width: cfg.width,
+                canvas_height: cfg.height,
+                frames_per_second: cfg.fps,
+                timing: TextTiming {
+                    fade_start_frame: start_pts,
+                    scroll_start_frame: snapshot.start_pts.unwrap_or(scroll_pts),
+                    end_frame: None,
+                },
+            },
+        )?;
 
         Ok(Self {
             state: cfg.text_overlay_state.clone(),
             revision: snapshot.revision,
             overlay,
+            preparation,
             label: label.to_string(),
             width: cfg.width,
             height: cfg.height,
@@ -1561,28 +1583,23 @@ impl RuntimeTextOverlay {
         }
 
         self.revision = snapshot.revision;
-        self.overlay = snapshot.config.and_then(|config| {
-            TextOverlay::prepare(
-                &config,
-                &self.label,
-                TextPreparation {
-                    canvas_width: self.width,
-                    canvas_height: self.height,
-                    frames_per_second: self.fps,
-                    timing: TextTiming {
-                        fade_start_frame: pts,
-                        scroll_start_frame: snapshot.start_pts.unwrap_or(scroll_pts),
-                        end_frame: None,
-                    },
+        if let Err(error) = self.overlay.request(
+            &self.preparation,
+            snapshot.config.as_ref(),
+            &self.label,
+            TextPreparation {
+                canvas_width: self.width,
+                canvas_height: self.height,
+                frames_per_second: self.fps,
+                timing: TextTiming {
+                    fade_start_frame: pts,
+                    scroll_start_frame: snapshot.start_pts.unwrap_or(scroll_pts),
+                    end_frame: None,
                 },
-            )
-            .map_err(|error| {
-                debug!(channel = self.channel_id; "failed to render {}: {error:#}", self.context);
-                error
-            })
-            .ok()
-            .flatten()
-        });
+            },
+        ) {
+            debug!(channel = self.channel_id; "failed to schedule {}: {error:#}", self.context);
+        }
     }
 }
 
@@ -1595,7 +1612,7 @@ struct VideoDecoder {
     scaled_height: u32,
     x_offset: u32,
     y_offset: u32,
-    text: Option<TextOverlay>,
+    text: AsyncTextOverlay,
     runtime_text: RuntimeTextOverlay,
     frame_rate_converter: FrameRateConverter,
     live_timestamps: LiveTimestampTracker,
@@ -1670,27 +1687,7 @@ impl VideoDecoder {
             scaled_height: cfg.height,
             x_offset: 0,
             y_offset: 0,
-            text: cfg
-                .text
-                .as_ref()
-                .map(|text| {
-                    TextOverlay::prepare(
-                        text,
-                        label,
-                        TextPreparation {
-                            canvas_width: cfg.width,
-                            canvas_height: cfg.height,
-                            frames_per_second: cfg.fps,
-                            timing: TextTiming {
-                                fade_start_frame: start_pts,
-                                scroll_start_frame: 0,
-                                end_frame: end_pts,
-                            },
-                        },
-                    )
-                })
-                .transpose()?
-                .flatten(),
+            text: prepare_static_text(cfg, label, start_pts, end_pts)?,
             runtime_text,
             frame_rate_converter: FrameRateConverter::new(
                 input_time_base,
@@ -2385,7 +2382,7 @@ fn write_black_frames<O: FrameOutput>(
 }
 
 struct FallbackOverlays {
-    text: Option<TextOverlay>,
+    text: AsyncTextOverlay,
     runtime_text: RuntimeTextOverlay,
 }
 
@@ -2406,27 +2403,7 @@ impl FallbackOverlays {
         )?;
 
         Ok(Self {
-            text: cfg
-                .text
-                .as_ref()
-                .map(|text| {
-                    TextOverlay::prepare(
-                        text,
-                        label,
-                        TextPreparation {
-                            canvas_width: cfg.width,
-                            canvas_height: cfg.height,
-                            frames_per_second: cfg.fps,
-                            timing: TextTiming {
-                                fade_start_frame: fade_start_pts,
-                                scroll_start_frame: 0,
-                                end_frame: end_pts,
-                            },
-                        },
-                    )
-                })
-                .transpose()?
-                .flatten(),
+            text: prepare_static_text(cfg, label, fade_start_pts, end_pts)?,
             runtime_text,
         })
     }
@@ -2442,13 +2419,10 @@ impl FallbackOverlays {
         output.apply_text_overlays(
             frame,
             [
-                self.text
-                    .as_ref()
-                    .and_then(|text| text.snapshot(timeline.video_pts, timeline.text_pts)),
+                self.text.snapshot(timeline.video_pts, timeline.text_pts),
                 self.runtime_text
                     .overlay
-                    .as_ref()
-                    .and_then(|text| text.snapshot(timeline.video_pts, timeline.text_pts)),
+                    .snapshot(timeline.video_pts, timeline.text_pts),
             ],
         );
 

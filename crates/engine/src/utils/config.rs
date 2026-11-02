@@ -280,6 +280,8 @@ pub struct OutputConfig {
     pub logo: Option<LogoConfig>,
     pub text: Option<TextConfig>,
     pub text_overlay_state: TextOverlayState,
+    /// Channel-owned bounded graphics preparation and pixel leases.
+    pub graphics_preparation: ff_graphics::preparation::PreparationService,
     pub stream_type: StreamType,
     pub stream_format: String,
     pub video_codec: String,
@@ -1398,6 +1400,7 @@ impl OutputConfig {
             logo: None,
             text: None,
             text_overlay_state: TextOverlayState::default(),
+            graphics_preparation: Default::default(),
             stream_type: StreamType::Rtmp,
             stream_format: String::new(),
             video_codec: "libx264".to_string(),

@@ -19,7 +19,13 @@ use log::warn;
 
 use crate::utils::{config::LogoConfig, helper::is_network_url};
 
-use super::logo_adapter::LogoOverlay;
+use super::{
+    clip::ClipSceneFrame,
+    control::{LogoUpdate, ProgramScene, ReadyLogo},
+    frame::GraphicsFrame,
+    logo_adapter::LogoOverlay,
+    text_adapter::TextOverlays,
+};
 
 const CACHE_BYTES: usize = 64 * 1024 * 1024;
 const CACHE_FRAMES: usize = 256;
@@ -45,9 +51,11 @@ struct Shared {
     requested: AtomicI64,
     stop: AtomicBool,
     visible: AtomicBool,
+    failed: AtomicBool,
 }
 
 pub(super) struct LogoSource {
+    generation: u64,
     shared: Arc<Shared>,
     worker: Option<JoinHandle<()>>,
     origin_us: Option<i64>,
@@ -56,20 +64,34 @@ pub(super) struct LogoSource {
 }
 
 impl LogoSource {
-    fn open(config: LogoConfig, width: u32, height: u32, channel: Option<i32>) -> Result<Self> {
+    fn open(
+        config: LogoConfig,
+        width: u32,
+        height: u32,
+        channel: Option<i32>,
+        generation: u64,
+        budget: Option<ff_graphics::preparation::ResourceBudget>,
+    ) -> Result<Self> {
+        let permit = budget
+            .as_ref()
+            .map(ff_graphics::preparation::ResourceBudget::job)
+            .transpose()?;
         let shared = Arc::new(Shared {
             visible: AtomicBool::new(true),
             ..Shared::default()
         });
         let state = shared.clone();
         let worker = thread::Builder::new().name("ffplayout-graphics".into()).spawn(move || {
-            if let Err(error) = prepare(&config, width, height, &state)
+            let _permit = permit;
+            if let Err(error) = prepare(&config, width, height, &state, budget.as_ref())
                 && !state.stop.load(Ordering::Relaxed) {
+                state.failed.store(true, Ordering::Release);
                 warn!(channel = channel.unwrap_or_default(); "Logo source {} failed; retaining its last available surface: {error:#}", config.path);
             }
         }).context("starting graphics preparation worker")?;
 
         Ok(Self {
+            generation,
             shared,
             worker: Some(worker),
             origin_us: None,
@@ -157,9 +179,16 @@ struct SourceKey {
 pub(crate) struct ProgramGraphicsState {
     key: Option<SourceKey>,
     source: Option<LogoSource>,
+    generation: u64,
+    budget: Option<ff_graphics::preparation::ResourceBudget>,
+    scene: ProgramScene,
 }
 
 impl ProgramGraphicsState {
+    pub(super) fn set_budget(&mut self, budget: ff_graphics::preparation::ResourceBudget) {
+        self.budget = Some(budget);
+    }
+
     pub(super) fn configure(
         &mut self,
         logo: Option<&LogoConfig>,
@@ -182,8 +211,16 @@ impl ProgramGraphicsState {
         // Dropping the old source cancels and joins its preparation worker.
         self.source = None;
         self.key = key;
+        self.generation = self.generation.saturating_add(1);
         if let Some(logo) = logo.filter(|logo| logo.opacity > 0.0) {
-            match LogoSource::open(logo.clone(), width, height, channel) {
+            match LogoSource::open(
+                logo.clone(),
+                width,
+                height,
+                channel,
+                self.generation,
+                self.budget.clone(),
+            ) {
                 Ok(source) => self.source = Some(source),
                 Err(error) => {
                     warn!(channel = channel.unwrap_or_default(); "Logo preparation unavailable: {error:#}");
@@ -198,6 +235,7 @@ impl ProgramGraphicsState {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn has_source(&self) -> bool {
         self.source.is_some()
     }
@@ -207,9 +245,64 @@ impl ProgramGraphicsState {
             .as_mut()
             .and_then(|source| source.at(program_us))
     }
+
+    pub(super) fn frame(
+        &mut self,
+        program_us: i64,
+        canvas: (u32, u32),
+        opacity: f64,
+        texts: TextOverlays,
+        clip: Option<ClipSceneFrame>,
+    ) -> GraphicsFrame {
+        self.set_visible(opacity > 0.0);
+        let selected = self.at(program_us);
+        let logo = self
+            .source
+            .as_ref()
+            .zip(selected)
+            .map(|(source, surface)| ReadyLogo {
+                generation: source.generation,
+                surface,
+            });
+        // An enabled request still exists if its worker could not be spawned.
+        // Treat that as a failed replacement, not as explicit logo removal.
+        let generation = self
+            .key
+            .as_ref()
+            .filter(|key| key.config.opacity > 0.0)
+            .map(|_| self.generation);
+        let failed = generation.is_some()
+            && self
+                .source
+                .as_ref()
+                .is_none_or(|source| source.shared.failed.load(Ordering::Acquire));
+
+        self.scene.frame(
+            program_us,
+            canvas,
+            LogoUpdate {
+                generation,
+                ready: logo,
+                failed,
+                opacity,
+            },
+            texts,
+            clip,
+        )
+    }
+
+    pub(super) fn end_occurrence(&mut self) {
+        self.scene.end_occurrence();
+    }
 }
 
-fn prepare(config: &LogoConfig, width: u32, height: u32, shared: &Arc<Shared>) -> Result<()> {
+fn prepare(
+    config: &LogoConfig,
+    width: u32,
+    height: u32,
+    shared: &Arc<Shared>,
+    budget: Option<&ff_graphics::preparation::ResourceBudget>,
+) -> Result<()> {
     // Persistent network streams have no finite loop or bounded shutdown.
     // Logo assets are local files; their decoder is opened only on this worker.
     ensure!(
@@ -289,7 +382,15 @@ fn prepare(config: &LogoConfig, width: u32, height: u32, shared: &Arc<Shared>) -
             !eof && (complete || capacity && end_us <= local.saturating_add(LOOKAHEAD_US));
         if can_decode {
             match decoder.next_frame_with_cancel(|| shared.stop.load(Ordering::Relaxed))? {
-                Some(frame) => {
+                Some(mut frame) => {
+                    if let Some(budget) = budget {
+                        frame.surface = Arc::new(
+                            frame
+                                .surface
+                                .positioned(None, width, height)?
+                                .with_budget(budget)?,
+                        );
+                    }
                     let size = frame.surface.storage_bytes();
                     ensure!(
                         size <= CACHE_BYTES,
@@ -404,7 +505,8 @@ mod tests {
     #[test]
     fn cached_animation_selects_by_time_and_finishes_its_worker() {
         let frames = reference("animated-logo.gif");
-        let mut source = LogoSource::open(config("animated-logo.gif"), 64, 64, None).unwrap();
+        let mut source =
+            LogoSource::open(config("animated-logo.gif"), 64, 64, None, 0, None).unwrap();
         wait(&mut source, 0, frames[0].surface.frame.data(0));
         let deadline = Instant::now() + Duration::from_secs(5);
         while !source.worker.as_ref().unwrap().is_finished() {
@@ -440,7 +542,8 @@ mod tests {
     #[test]
     fn long_video_streams_with_bounded_cache_and_repeats_after_eof() {
         let frames = reference("animated-logo-video.mkv");
-        let mut source = LogoSource::open(config("animated-logo-video.mkv"), 64, 64, None).unwrap();
+        let mut source =
+            LogoSource::open(config("animated-logo-video.mkv"), 64, 64, None, 0, None).unwrap();
         wait(&mut source, 0, frames[0].surface.frame.data(0));
         source.set_visible(false);
         source.at(7_900_000);
@@ -485,7 +588,7 @@ mod tests {
     fn single_frame_cache_rewinds_after_evicting_the_last_frame() {
         let mut config = config("animated-logo.gif");
         config.scale = Some("4096:3072".into());
-        let mut source = LogoSource::open(config, 4096, 3072, None).unwrap();
+        let mut source = LogoSource::open(config, 4096, 3072, None, 0, None).unwrap();
         let mut first = None;
         let mut previous = None;
         for time in [0, 100_000, 400_000, 600_000, 700_000] {
@@ -544,6 +647,53 @@ mod tests {
         ));
         state.configure(None, 64, 64, None);
         assert!(state.at(0).is_none());
+    }
+
+    #[test]
+    fn failed_worker_replacement_keeps_good_pixels_until_the_logo_is_cleared() {
+        let mut state = ProgramGraphicsState::default();
+        let config = config("animated-logo.gif");
+        state.configure(Some(&config), 64, 64, None);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let queued = loop {
+            let snapshot = state.frame(0, (64, 64), 1.0, Default::default(), None);
+            if !snapshot.is_empty() {
+                break snapshot;
+            }
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(1));
+        };
+        let weak = Arc::downgrade(queued.logo().unwrap().0);
+        let mut missing = config;
+        missing.path.push_str(".missing");
+        state.configure(Some(&missing), 64, 64, None);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !state
+            .source
+            .as_ref()
+            .unwrap()
+            .shared
+            .failed
+            .load(Ordering::Acquire)
+        {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(1));
+        }
+        let retained = state.frame(1, (64, 64), 1.0, Default::default(), None);
+        assert!(Arc::ptr_eq(
+            queued.logo().unwrap().0,
+            retained.logo().unwrap().0
+        ));
+        state.configure(None, 64, 64, None);
+        assert!(
+            state
+                .frame(2, (64, 64), 1.0, Default::default(), None)
+                .is_empty()
+        );
+        drop(retained);
+        assert!(weak.upgrade().is_some());
+        drop(queued);
+        assert!(weak.upgrade().is_none());
     }
 
     #[test]

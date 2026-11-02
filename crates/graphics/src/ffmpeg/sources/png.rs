@@ -15,7 +15,7 @@ use crate::{
     surface::{ColorEncoding, Resource, ResourceKey},
 };
 
-use super::{scene::CpuScene, text::rgba_to_yuva420p};
+use crate::ffmpeg::{compositor::scene::CpuScene, text::rgba_to_yuva420p};
 
 impl CpuScene {
     /// Odd native sizes are padded transparently at the right/bottom for YUVA420.
@@ -53,6 +53,11 @@ impl CpuScene {
             file.metadata()?.is_file(),
             "graphics source must be a regular file"
         );
+        let _file_workspace = self
+            .budget
+            .as_ref()
+            .map(|budget| budget.reserve(MAX_FILE_BYTES as usize + 1))
+            .transpose()?;
         let mut encoded = Vec::new();
         file.take(MAX_FILE_BYTES + 1).read_to_end(&mut encoded)?;
         ensure!(
@@ -75,6 +80,14 @@ impl CpuScene {
             u64::from(width) * u64::from(height) * 4 <= 64 * 1024 * 1024,
             "decoded PNG exceeds 64 MiB"
         );
+        let input_workspace = width as usize * height as usize * 16;
+        let output_workspace =
+            size.map_or(0, |(width, height)| width as usize * height as usize * 4);
+        let _pixel_workspace = self
+            .budget
+            .as_ref()
+            .map(|budget| budget.reserve(input_workspace + output_workspace))
+            .transpose()?;
         let rgba = DynamicImage::from_decoder(decoder)?.into_rgba8();
         let mut pixels = vec![0; width as usize * height as usize * 4];
         for (y, row) in rgba.rows().enumerate() {

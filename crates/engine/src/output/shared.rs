@@ -483,10 +483,12 @@ pub(super) fn run(
                 // All renditions scale the same composited image. Compositing
                 // separately at each rendition would enlarge the logo relative
                 // to the picture whenever the player selects a smaller one.
-                let prepared = frame
-                    .has_visible_graphics()
-                    .then(|| frame.frame(composition_resolution.0, composition_resolution.1))
-                    .transpose()?;
+                let prepared = if frame.has_visible_graphics() {
+                    Some(frame.frame(composition_resolution.0, composition_resolution.1)?)
+                } else {
+                    frame.retire_graphics(composition_resolution.0, composition_resolution.1);
+                    None
+                };
                 let video = prepared.as_ref().unwrap_or(&frame.source);
                 for (index, profile) in profiles.iter_mut().enumerate() {
                     let _stage =

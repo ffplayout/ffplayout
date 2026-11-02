@@ -4,15 +4,17 @@ use std::sync::Arc;
 use anyhow::{Result, ensure};
 use ffmpeg_next::{format::Pixel, frame};
 
+use crate::surface::{Alpha, ColorEncoding, PixelLayout, SurfaceDescriptor};
+
 use super::overlay::{OverlayFrame, alpha_bounds, blend_overlay, chroma_alpha};
 
 /// Immutable pixels and per-program-frame placement; safe to retain in bounded queues.
 #[derive(Clone)]
 pub struct SurfaceFrame {
-    pub(super) surface: Arc<OverlayFrame>,
-    pub(super) x: i32,
-    pub(super) y: i32,
-    pub(super) opacity: f64,
+    pub(in crate::ffmpeg) surface: Arc<OverlayFrame>,
+    pub(in crate::ffmpeg) x: i32,
+    pub(in crate::ffmpeg) y: i32,
+    pub(in crate::ffmpeg) opacity: f64,
 }
 
 pub struct SurfaceScaleCache {
@@ -36,7 +38,7 @@ impl Default for SurfaceScaleCache {
 }
 
 impl SurfaceScaleCache {
-    pub(super) fn storage_bytes(&self) -> usize {
+    pub(in crate::ffmpeg) fn storage_bytes(&self) -> usize {
         self.scaled.as_ref().map_or(0, |surface| {
             (0..surface.frame.planes())
                 .map(|plane| surface.frame.data(plane).len())
@@ -45,13 +47,51 @@ impl SurfaceScaleCache {
         })
     }
 
-    pub(super) fn set_limits(&mut self, bytes: usize, max_dimension: u32) {
+    pub(in crate::ffmpeg) fn set_limits(&mut self, bytes: usize, max_dimension: u32) {
         self.budget = bytes;
         self.max_dimension = max_dimension;
     }
 }
 
 impl SurfaceFrame {
+    pub fn same_surface(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.surface, &other.surface)
+    }
+
+    /// Refresh only evaluated placement/fade, retaining the prepared pixel lease.
+    /// A different bitmap must go through resource preparation/activation first.
+    pub fn update_presentation(&mut self, other: &Self) -> bool {
+        if !self.same_surface(other) {
+            return false;
+        }
+        self.x = other.x;
+        self.y = other.y;
+        self.opacity = other.opacity;
+
+        true
+    }
+
+    /// Ready metadata only: no pixel scan, conversion or rasterization.
+    pub fn descriptor(&self, color: ColorEncoding) -> SurfaceDescriptor {
+        SurfaceDescriptor {
+            width: self.surface.width,
+            height: self.surface.height,
+            layout: PixelLayout::Yuva420p8,
+            alpha: Alpha::Straight,
+            color,
+            storage_bytes: (0..self.surface.frame.planes())
+                .map(|plane| self.surface.frame.data(plane).len())
+                .sum::<usize>()
+                + self.surface.chroma_alpha.len(),
+        }
+    }
+
+    pub fn with_opacity_factor(mut self, factor: f64) -> Self {
+        self.opacity *= factor.clamp(0.0, 1.0);
+
+        self
+    }
+
     pub fn dimensions(&self) -> (u32, u32) {
         (self.surface.width, self.surface.height)
     }
@@ -103,6 +143,14 @@ impl SurfaceFrame {
                 "scaled surface exceeds cache budget"
             );
             let (width, height) = (width as u32, height as u32);
+            let _workspace = self
+                .surface
+                .lease
+                .as_ref()
+                .map(|lease| {
+                    lease.reserve_related((width * height * 3) as usize + height as usize * 256)
+                })
+                .transpose()?;
             let mut scaler = ffmpeg_next::software::scaling::Context::get(
                 Pixel::YUVA420P,
                 self.surface.width,
@@ -114,7 +162,18 @@ impl SurfaceFrame {
             )?;
             let mut prepared = frame::Video::empty();
             scaler.run(&self.surface.frame, &mut prepared)?;
+            let bytes = (0..prepared.planes())
+                .map(|plane| prepared.data(plane).len())
+                .sum::<usize>()
+                + width as usize * height as usize / 4;
+            let lease = self
+                .surface
+                .lease
+                .as_ref()
+                .map(|lease| lease.reserve_related(bytes))
+                .transpose()?;
             let scaled = Arc::new(OverlayFrame {
+                lease,
                 bounds: alpha_bounds(&prepared),
                 chroma_alpha: chroma_alpha(&prepared, width, height),
                 frame: prepared,

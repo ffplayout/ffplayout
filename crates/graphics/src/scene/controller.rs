@@ -1,4 +1,4 @@
-//! Bounded scene control. Only `advance` changes state, at a program-frame boundary.
+//! Bounded command admission and publication at program-frame boundaries.
 use std::{
     collections::BTreeMap,
     sync::{
@@ -12,63 +12,9 @@ use crate::{
     surface::{Resource, ResourceKey},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct LayerId(pub u64);
-
-/// The pipeline selects a scope and supplies its reference canvas. No output
-/// protocol or encoder identifier is part of the graphics model.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Scope(pub u64);
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LayerSpec {
-    pub id: LayerId,
-    pub resource: ResourceKey,
-    pub z: i32,
-    pub scope: Scope,
-    pub canvas: (u32, u32),
-    /// Reference-canvas pixels; backends apply their documented chroma alignment.
-    pub position: (i32, i32),
-    pub opacity: f64,
-}
-
-#[derive(Clone, Debug)]
-pub struct Layer {
-    pub spec: LayerSpec,
-    pub resource: Arc<Resource>,
-    pub presentation: Presentation,
-    pub visible: bool,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct SceneRevision {
-    pub number: u64,
-    pub layers: Arc<[Layer]>,
-}
-
-pub struct EvaluatedLayer<'a> {
-    pub layer: &'a Layer,
-    pub opacity: f64,
-}
-
-impl SceneRevision {
-    /// Borrows ready surfaces in deterministic (z, layer ID) order. No allocation,
-    /// rasterization, I/O, mutex or mutable animation clock is involved.
-    pub fn evaluate(
-        &self,
-        program_us: i64,
-        scope: Scope,
-    ) -> impl Iterator<Item = EvaluatedLayer<'_>> {
-        self.layers.iter().filter_map(move |layer| {
-            if !layer.visible || layer.spec.scope != scope {
-                return None;
-            }
-            let opacity = layer.presentation.opacity(program_us)? * layer.spec.opacity;
-
-            (opacity > 0.0).then_some(EvaluatedLayer { layer, opacity })
-        })
-    }
-}
+#[cfg(test)]
+use super::Scope;
+use super::{Layer, LayerId, LayerSpec, SceneRevision};
 
 #[derive(Clone, Debug)]
 pub enum Command {
@@ -154,7 +100,7 @@ pub enum ResourceStatus {
 }
 
 pub struct SceneController {
-    receiver: Receiver<Envelope>,
+    receiver: Option<Receiver<Envelope>>,
     max_commands: usize,
     max_layers: usize,
     max_resources: usize,
@@ -176,25 +122,40 @@ impl SceneController {
 
         (
             SceneControl { sender },
-            Self {
-                receiver,
-                max_commands: capacity,
-                max_layers,
-                max_resources,
-                resources: BTreeMap::new(),
-                layers: BTreeMap::new(),
-                snapshot: SceneRevision::default(),
-                last_time: None,
-                last_preparation: None,
-            },
+            Self::with_receiver(Some(receiver), capacity, max_layers, max_resources),
         )
     }
 
+    /// A single-owner driver publishes local updates at frame boundaries. It
+    /// needs neither a control queue nor per-command receipt channels.
+    pub fn new_local(max_layers: usize, max_resources: usize) -> Self {
+        Self::with_receiver(None, 0, max_layers, max_resources)
+    }
+
+    fn with_receiver(
+        receiver: Option<Receiver<Envelope>>,
+        max_commands: usize,
+        max_layers: usize,
+        max_resources: usize,
+    ) -> Self {
+        Self {
+            receiver,
+            max_commands,
+            max_layers,
+            max_resources,
+            resources: BTreeMap::new(),
+            layers: BTreeMap::new(),
+            snapshot: SceneRevision::default(),
+            last_time: None,
+            last_preparation: None,
+        }
+    }
+
     pub fn resource_status(&self, key: ResourceKey) -> Option<ResourceStatus> {
-        let slot = self.resources.get(&key.id).filter(|slot| slot.key == key)?;
         if self.layers.values().any(|layer| layer.spec.resource == key) {
             return Some(ResourceStatus::Active);
         }
+        let slot = self.resources.get(&key.id).filter(|slot| slot.key == key)?;
 
         Some(if slot.failed {
             ResourceStatus::Failed
@@ -202,6 +163,29 @@ impl SceneController {
             ResourceStatus::Ready
         } else {
             ResourceStatus::Loading
+        })
+    }
+
+    /// Single-owner adapter path, called only at a program-frame boundary.
+    /// Previously queued commands are handled first, including stale-epoch
+    /// rejection after a clock rewind. Local results are acknowledged together
+    /// after publication, without allocating channels/receipts for each command.
+    /// Like queued commands, commands in the batch are individually accepted or
+    /// rejected in order; this is not an all-or-nothing transaction.
+    pub fn apply_at_frame<const N: usize>(
+        &mut self,
+        program_us: i64,
+        commands: [Command; N],
+    ) -> [Acknowledgement; N] {
+        self.advance(program_us);
+        let outcomes = commands.map(|command| self.apply(command, program_us));
+        if outcomes.iter().any(Result::is_ok) {
+            self.publish();
+        }
+
+        outcomes.map(|outcome| Acknowledgement {
+            scene_revision: self.snapshot.number,
+            outcome,
         })
     }
 
@@ -222,7 +206,10 @@ impl SceneController {
         let mut replies = Vec::new();
         // One bounded batch per frame also prevents a busy producer starving video.
         for _ in 0..self.max_commands {
-            let Ok(envelope) = self.receiver.try_recv() else {
+            let Some(receiver) = &self.receiver else {
+                break;
+            };
+            let Ok(envelope) = receiver.try_recv() else {
                 break;
             };
             let outcome = if reset {
@@ -235,12 +222,7 @@ impl SceneController {
         }
 
         if changed {
-            let mut layers = self.layers.values().cloned().collect::<Vec<_>>();
-            layers.sort_by_key(|layer| (layer.spec.z, layer.spec.id));
-            self.snapshot = SceneRevision {
-                number: self.snapshot.number.saturating_add(1),
-                layers: layers.into(),
-            };
+            self.publish();
         }
 
         for (reply, outcome) in replies {
@@ -251,6 +233,15 @@ impl SceneController {
         }
 
         self.snapshot.clone()
+    }
+
+    fn publish(&mut self) {
+        let mut layers = self.layers.values().cloned().collect::<Vec<_>>();
+        layers.sort_by_key(|layer| (layer.spec.z, layer.spec.id));
+        self.snapshot = SceneRevision {
+            number: self.snapshot.number.saturating_add(1),
+            layers: layers.into(),
+        };
     }
 
     fn apply(&mut self, command: Command, now: i64) -> Result<(), Rejection> {
@@ -433,6 +424,103 @@ mod tests {
     }
 
     #[test]
+    fn local_batches_publish_together_and_unchanged_frames_reuse_the_revision() {
+        let mut controller = SceneController::new_local(1, 1);
+        let key = ResourceKey { id: 1, revision: 1 };
+        let resource = Arc::new(Resource {
+            key,
+            descriptor: SurfaceDescriptor {
+                width: 2,
+                height: 2,
+                layout: PixelLayout::Rgba8,
+                alpha: Alpha::Straight,
+                color: ColorEncoding::Srgb,
+                storage_bytes: 16,
+            },
+        });
+        let acknowledgements = controller.apply_at_frame(
+            100,
+            [
+                Command::Prepare(key),
+                Command::Ready(resource),
+                Command::Take {
+                    layer: spec(1, key, 0),
+                    transition: Transition::default(),
+                },
+            ],
+        );
+        assert!(
+            acknowledgements
+                .iter()
+                .all(|ack| ack.outcome.is_ok() && ack.scene_revision == 1)
+        );
+        let first = controller.advance(100);
+        let later = controller.advance(200);
+        assert!(Arc::ptr_eq(&first.layers, &later.layers));
+        assert_eq!(
+            controller.resource_status(key),
+            Some(ResourceStatus::Active)
+        );
+        controller.advance(50);
+        let [stale] = controller.apply_at_frame(50, [Command::Prepare(key)]);
+        assert_eq!(stale.outcome, Err(Rejection::Stale));
+        assert!(controller.advance(50).layers.is_empty());
+    }
+
+    #[test]
+    fn active_resource_remains_inspectable_while_its_replacement_loads_or_fails() {
+        let (control, mut controller) = SceneController::new(4, 1, 1);
+        let resource = ready(&control, &mut controller, 1, 1);
+        controller.apply_at_frame(
+            10,
+            [Command::Take {
+                layer: spec(1, resource.key, 0),
+                transition: Transition::default(),
+            }],
+        );
+        let replacement = ResourceKey { id: 1, revision: 2 };
+        controller.apply_at_frame(20, [Command::Prepare(replacement)]);
+        assert_eq!(
+            controller.resource_status(resource.key),
+            Some(ResourceStatus::Active)
+        );
+        assert_eq!(
+            controller.resource_status(replacement),
+            Some(ResourceStatus::Loading)
+        );
+        controller.apply_at_frame(30, [Command::Failed(replacement)]);
+        assert_eq!(
+            controller.resource_status(resource.key),
+            Some(ResourceStatus::Active)
+        );
+        assert_eq!(
+            controller.resource_status(replacement),
+            Some(ResourceStatus::Failed)
+        );
+        assert_eq!(controller.advance(30).layers.len(), 1);
+        controller.apply_at_frame(40, [Command::ClearAll]);
+        let [late] = controller.apply_at_frame(50, [Command::Ready(resource)]);
+        assert_eq!(late.outcome, Err(Rejection::Stale));
+    }
+
+    #[test]
+    fn local_boundary_updates_reject_queued_old_epoch_results_before_applying_new_work() {
+        let (control, mut controller) = SceneController::new(2, 1, 1);
+        controller.advance(100);
+        let stale = control
+            .submit(Command::Prepare(ResourceKey { id: 1, revision: 1 }))
+            .unwrap();
+        let key = ResourceKey { id: 1, revision: 2 };
+        let [fresh] = controller.apply_at_frame(50, [Command::Prepare(key)]);
+        assert_eq!(stale.recv().unwrap().outcome, Err(Rejection::Stale));
+        assert_eq!(fresh.outcome, Ok(()));
+        assert_eq!(
+            controller.resource_status(key),
+            Some(ResourceStatus::Loading)
+        );
+    }
+
+    #[test]
     fn frame_boundaries_publish_immutable_sorted_snapshots_and_reuse_unchanged_storage() {
         let (control, mut controller) = SceneController::new(8, 8, 8);
         let resource = ready(&control, &mut controller, 1, 1);
@@ -599,6 +687,7 @@ mod tests {
                 .evaluate(100, Scope::default())
                 .next()
                 .unwrap()
+                .content
                 .opacity,
             0.25
         );
@@ -646,6 +735,7 @@ mod tests {
                 .evaluate(50, Scope::default())
                 .next()
                 .unwrap()
+                .content
                 .opacity,
             0.25
         );
@@ -676,6 +766,7 @@ mod tests {
                 .evaluate(100, Scope::default())
                 .next()
                 .unwrap()
+                .content
                 .opacity,
             0.5
         );

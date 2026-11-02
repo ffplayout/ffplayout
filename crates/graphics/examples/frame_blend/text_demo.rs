@@ -1,5 +1,5 @@
 //! Engine-like text example: cosmic-text + Swash (same stack as
-//! src/text.rs), then independent cached linear SIMD overlays.
+//! src/rendering/text/mod.rs), then independent cached linear SIMD overlays.
 use std::{fs, hint::black_box, path::Path, time::Instant};
 
 use anyhow::{Result, ensure};
@@ -340,6 +340,7 @@ fn run_yuv(
             }
         }
         prepared_text.push(OverlayFrame {
+            lease: None,
             bounds: alpha_bounds(&frame),
             chroma_alpha: chroma_alpha(&frame, roi.w as u32, roi.h as u32),
             frame,

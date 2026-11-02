@@ -53,6 +53,7 @@ fn apply_outputs(
         playout::desktop_control_callback(manager.clone()),
     )?;
     program.output_status = manager.output_status.clone();
+    program.graphics_preparation = manager.graphics.preparation();
     program.output_timing_diagnostics = crate::ARGS.timing_diagnostics;
     let mut attachments = Vec::new();
     let recording_owner = manager

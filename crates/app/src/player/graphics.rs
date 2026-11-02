@@ -119,6 +119,7 @@ fn microseconds(seconds: f64) -> Result<i64> {
 /// without graphics. A weak completion ticket cancels work after a skip/restart.
 #[derive(Debug)]
 pub(crate) struct GraphicsPreparer {
+    preparation: ff_graphics::preparation::PreparationService,
     active: Arc<Semaphore>,
     state: StdMutex<PreparationState>,
 }
@@ -138,6 +139,7 @@ struct PreparationJob {
 impl GraphicsPreparer {
     pub(crate) fn new() -> Self {
         Self {
+            preparation: Default::default(),
             active: Arc::new(Semaphore::new(1)),
             state: StdMutex::new(PreparationState {
                 accepting: true,
@@ -146,7 +148,14 @@ impl GraphicsPreparer {
         }
     }
 
+    pub(crate) fn preparation(&self) -> ff_graphics::preparation::PreparationService {
+        self.preparation.clone()
+    }
+
     pub(crate) fn resume(&self) {
+        // Remember the channel's intent even while the old text worker is
+        // finishing. Admission retries recovery after that worker exits.
+        self.preparation.resume();
         self.state
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -154,6 +163,7 @@ impl GraphicsPreparer {
     }
 
     pub(crate) fn cancel(&self) {
+        self.preparation.cancel();
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         state.accepting = false;
         if let Some(job) = &state.job {
@@ -162,6 +172,13 @@ impl GraphicsPreparer {
     }
 
     pub(crate) async fn join(&self, channel: i32) {
+        let preparation = self.preparation.clone();
+        let stopped = tokio::task::spawn_blocking(move || preparation.join(Duration::from_secs(2)))
+            .await
+            .unwrap_or(false);
+        if !stopped {
+            warn!(channel = channel; "Graphics preparation still stopping; retaining its worker slot");
+        }
         self.join_with_timeout(channel, Duration::from_secs(2))
             .await;
     }
@@ -197,16 +214,20 @@ impl GraphicsPreparer {
 
     fn spawn(&self, operation: impl FnOnce(CancellationToken) + Send + 'static) -> bool {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
-        if !state.accepting {
+        if !state.accepting || !self.preparation.ready() {
             return false;
         }
         let Ok(permit) = self.active.clone().try_acquire_owned() else {
+            return false;
+        };
+        let Ok(job_permit) = self.preparation.budget().job() else {
             return false;
         };
         let cancellation = CancellationToken::new();
         let worker_cancellation = cancellation.clone();
         let task = tokio::task::spawn_blocking(move || {
             let _permit = permit;
+            let _job_permit = job_permit;
             operation(worker_cancellation);
         });
         state.job = Some(Arc::new(PreparationJob {
@@ -245,13 +266,20 @@ impl GraphicsPreparer {
         let data = data.clone();
         let root = root.to_path_buf();
         let (pending, completion) = ClipGraphics::deferred();
+        let budget = self.preparation.budget();
         let started = self.spawn(move |cancellation| {
             if cancellation.is_cancelled() || completion.is_cancelled() {
                 return;
             }
-            let result = prepare_scene(&data, &root, canvas, duration_us, channel, || {
-                cancellation.is_cancelled() || completion.is_cancelled()
-            });
+            let result = prepare_scene_budgeted(
+                &data,
+                &root,
+                canvas,
+                duration_us,
+                channel,
+                || cancellation.is_cancelled() || completion.is_cancelled(),
+                Some(budget),
+            );
             if cancellation.is_cancelled() || completion.is_cancelled() {
                 return;
             }
@@ -280,6 +308,7 @@ struct Asset {
     size: Option<(u32, u32)>,
 }
 
+#[cfg(test)]
 fn prepare_scene(
     data: &Value,
     root: &Path,
@@ -287,6 +316,18 @@ fn prepare_scene(
     duration_us: i64,
     channel: i32,
     cancelled: impl Fn() -> bool,
+) -> Result<(CpuScene, ClipSchedule)> {
+    prepare_scene_budgeted(data, root, canvas, duration_us, channel, cancelled, None)
+}
+
+fn prepare_scene_budgeted(
+    data: &Value,
+    root: &Path,
+    canvas: (u32, u32),
+    duration_us: i64,
+    channel: i32,
+    cancelled: impl Fn() -> bool,
+    budget: Option<ff_graphics::preparation::ResourceBudget>,
 ) -> Result<(CpuScene, ClipSchedule)> {
     let array = data
         .as_array()
@@ -298,6 +339,9 @@ fn prepare_scene(
     let parsed: Vec<GraphicEvent> =
         serde_json::from_value(data.clone()).context("invalid graphics event")?;
     let mut renderer = CpuScene::new(64, 64 * 1024 * 1024);
+    if let Some(budget) = budget {
+        renderer = renderer.with_budget(budget);
+    }
     let mut assets: BTreeMap<Asset, Option<Arc<Resource>>> = BTreeMap::new();
     let mut layers: BTreeMap<u64, Option<LayerSpec>> = BTreeMap::new();
     let mut events = Vec::new();
@@ -478,7 +522,7 @@ mod tests {
             .scene
             .evaluate(frame.position_us, Scope::default())
             .next()
-            .map(|layer| layer.opacity)
+            .map(|layer| layer.content.opacity)
     }
 
     #[test]
@@ -665,6 +709,59 @@ mod tests {
             ..Media::default()
         };
         assert!(preparer.for_clip(&node, &root(), (1280, 720), 1).is_none());
+    }
+
+    #[tokio::test]
+    async fn restart_recovers_automatically_after_a_slow_text_worker_finishes() {
+        let preparer = GraphicsPreparer::new();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let signals = Arc::new(StdMutex::new(Some((entered_tx, release_rx))));
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        let pending = loop {
+            let signals = signals.clone();
+            if let Ok(pending) = preparer.preparation.submit(move |_, _| {
+                let (entered_tx, release_rx) = signals.lock().unwrap().take().unwrap();
+                entered_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                Ok(())
+            }) {
+                break pending;
+            }
+            // Nonblocking admission may race the freshly started worker's
+            // queue lock; preserve the operation and retry test setup.
+            assert!(tokio::time::Instant::now() < deadline);
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        };
+        entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        preparer.cancel();
+        assert!(!preparer.preparation.join(Duration::ZERO));
+        preparer.resume();
+        assert!(!preparer.spawn(|_| panic!("cannot overlap the old worker")));
+        release_tx.send(()).unwrap();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        loop {
+            let ran = ran.clone();
+            if preparer.spawn(move |_| {
+                ran.store(true, std::sync::atomic::Ordering::Release);
+            }) {
+                break;
+            }
+            assert!(tokio::time::Instant::now() < deadline);
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        while !ran.load(std::sync::atomic::Ordering::Acquire) {
+            assert!(tokio::time::Instant::now() < deadline);
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        assert!(
+            pending.result().is_none(),
+            "old cancelled work must never publish into the restarted channel"
+        );
+        preparer.cancel();
+        preparer.join(1).await;
+        assert!(!preparer.spawn(|_| panic!("explicitly stopped channel must stay stopped")));
     }
 
     #[tokio::test]

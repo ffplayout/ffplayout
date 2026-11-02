@@ -6,9 +6,13 @@ use std::sync::{
 use ffmpeg_next::frame;
 use rayon::{ThreadPool, ThreadPoolBuilder, prelude::*};
 
-use crate::blend::{Plane, PlaneMut, blend_plane};
+use crate::{
+    blend::{Plane, PlaneMut, blend_plane},
+    preparation::ResourceLease,
+};
 
 pub struct OverlayFrame {
+    pub lease: Option<ResourceLease>,
     pub frame: frame::Video, // YUVA420P
     pub chroma_alpha: Vec<u8>,
     /// Recompute after modifying the alpha plane. Prepared surfaces are immutable while used.
@@ -399,6 +403,7 @@ mod tests {
                     }
                 }
                 let mut overlay = OverlayFrame {
+                    lease: None,
                     bounds: alpha_bounds(&source),
                     chroma_alpha: chroma_alpha(&source, width, height),
                     frame: source,
@@ -463,6 +468,7 @@ mod tests {
             }
         );
         let mut overlay = OverlayFrame {
+            lease: None,
             bounds,
             chroma_alpha: chroma_alpha(&source, 50, 20),
             frame: source,
@@ -527,6 +533,7 @@ mod tests {
         let bounds = alpha_bounds(&source);
         assert_eq!((bounds.width, bounds.height), (0, 0));
         let overlay = OverlayFrame {
+            lease: None,
             bounds,
             chroma_alpha: chroma_alpha(&source, 8, 6),
             frame: source,
@@ -572,6 +579,7 @@ mod tests {
             assert!(pool.current_num_threads() <= 4);
         }
         let overlay = OverlayFrame {
+            lease: None,
             bounds,
             chroma_alpha: chroma_alpha(&source, width, height),
             frame: source,

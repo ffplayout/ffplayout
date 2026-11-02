@@ -290,6 +290,7 @@ pub(crate) mod tests {
                 .evaluate(selected.position_us, Scope::default())
                 .next()
                 .unwrap()
+                .content
                 .opacity,
             0.5
         );

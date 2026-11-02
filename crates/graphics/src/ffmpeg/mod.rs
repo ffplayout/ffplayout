@@ -2,13 +2,13 @@
 use anyhow::{Context, Result};
 use ffmpeg_next::{ffi, frame};
 
-pub mod logo;
-pub mod overlay;
-pub mod png;
-pub mod scene;
-pub mod source;
-pub mod surface;
+pub mod compositor;
+pub mod sources;
 pub mod text;
+
+// Keep the established backend paths available to engine adapters and examples.
+pub use compositor::{overlay, scene, surface};
+pub use sources::{decoder as source, logo, png};
 
 pub fn reference_video_frame(source: &frame::Video) -> Result<frame::Video> {
     let mut referenced = frame::Video::empty();

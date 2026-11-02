@@ -1,6 +1,8 @@
 //! CPU/GPU-independent logo sizing and placement compatibility rules.
 use anyhow::{Result, anyhow};
 
+pub mod style;
+
 #[cfg(any(feature = "ffmpeg", test))]
 use crate::even;
 

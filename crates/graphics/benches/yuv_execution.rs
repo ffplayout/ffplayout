@@ -37,6 +37,7 @@ fn main() -> Result<()> {
                 .fill(if plane == 3 { 179 } else { 90 });
         }
         let overlay = OverlayFrame {
+            lease: None,
             bounds: alpha_bounds(&source),
             chroma_alpha: chroma_alpha(&source, width, height),
             frame: source,

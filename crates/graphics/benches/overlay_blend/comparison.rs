@@ -235,6 +235,7 @@ fn prepare_yuva(rgba: &RgbaImage, color: Color) -> OverlayFrame {
         }
     }
     OverlayFrame {
+        lease: None,
         bounds: frame_alpha_bounds(&frame),
         chroma_alpha: chroma_alpha(&frame, width, height),
         frame,

@@ -3,20 +3,22 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow};
 use ffmpeg_next::{codec, frame, media, software::scaling, util::format::pixel::Pixel};
 
-use super::{
-    overlay::{
-        OverlayBounds, OverlayRef, alpha_bounds, blend_overlay, chroma_alpha, prepare_execution,
-    },
-    reference_video_frame,
-};
 use crate::{
     even,
+    ffmpeg::{
+        compositor::overlay::{
+            OverlayBounds, OverlayRef, alpha_bounds, blend_overlay, chroma_alpha, prepare_execution,
+        },
+        reference_video_frame,
+    },
     layout::{logo_dimensions, logo_position},
+    preparation::{ResourceBudget, ResourceLease},
     style::LogoStyle,
 };
 
 #[derive(Clone)]
 pub struct LogoOverlay {
+    lease: Option<ResourceLease>,
     pub frame: frame::Video, // YUVA420P
     chroma_alpha: Arc<[u8]>,
     bounds: OverlayBounds,
@@ -37,6 +39,7 @@ impl LogoOverlay {
         };
 
         Ok(Self {
+            lease: self.lease.clone(),
             frame: reference_video_frame(&self.frame)?,
             chroma_alpha: self.chroma_alpha.clone(),
             bounds: self.bounds,
@@ -130,6 +133,7 @@ impl LogoOverlay {
         }
 
         Ok(Self {
+            lease: None,
             chroma_alpha: chroma_alpha(&frame, width, height).into(),
             bounds,
             frame,
@@ -165,6 +169,7 @@ impl LogoOverlay {
         }
 
         Ok(Self {
+            lease: None,
             chroma_alpha: chroma_alpha(&frame, width, height).into(),
             bounds,
             frame,
@@ -174,6 +179,12 @@ impl LogoOverlay {
             height,
             opacity: (config.opacity * 255.0).round() as u8,
         })
+    }
+
+    pub fn with_budget(mut self, budget: &ResourceBudget) -> Result<Self> {
+        self.lease = Some(budget.reserve(self.storage_bytes())?);
+
+        Ok(self)
     }
 
     pub fn storage_bytes(&self) -> usize {

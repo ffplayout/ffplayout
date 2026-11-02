@@ -3,5 +3,7 @@ pub mod clip;
 pub mod logo_adapter;
 pub mod text_adapter;
 
+pub(crate) mod control;
+pub(crate) mod frame;
 pub(crate) mod program;
 pub(crate) mod source;

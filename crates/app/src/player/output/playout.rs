@@ -53,6 +53,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         manager.text_overlay.clone(),
         desktop_control_callback(manager.clone()),
     )?;
+    output_config.graphics_preparation = manager.graphics.preparation();
     output_config.output_timing_diagnostics = crate::ARGS.timing_diagnostics;
     let mut moq_attachments = Vec::new();
     manager.output_status.clear();

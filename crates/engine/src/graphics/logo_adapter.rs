@@ -9,6 +9,7 @@ use ffmpeg_next::frame;
 use ff_graphics::ffmpeg::logo::LogoOverlay as PreparedLogoOverlay;
 #[cfg(test)]
 use ff_graphics::style::LogoStyle;
+use ff_graphics::surface::{Alpha, ColorEncoding, PixelLayout, SurfaceDescriptor};
 
 #[cfg(test)]
 use crate::utils::{config::LogoConfig, helper::open_media_input};
@@ -17,6 +18,17 @@ use crate::utils::{config::LogoConfig, helper::open_media_input};
 pub struct LogoOverlay(pub(super) Arc<PreparedLogoOverlay>);
 
 impl LogoOverlay {
+    pub(super) fn descriptor(&self) -> SurfaceDescriptor {
+        SurfaceDescriptor {
+            width: self.width(),
+            height: self.height(),
+            layout: PixelLayout::Yuva420p8,
+            alpha: Alpha::Straight,
+            color: ColorEncoding::Unspecified,
+            storage_bytes: self.0.storage_bytes(),
+        }
+    }
+
     #[cfg(test)]
     pub fn load(config: &LogoConfig, width: u32, height: u32) -> Result<Self> {
         let style = LogoStyle {

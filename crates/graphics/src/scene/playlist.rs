@@ -260,7 +260,7 @@ mod tests {
             frame
                 .scene
                 .evaluate(frame.position_us, Scope::default())
-                .map(|layer| (layer.layer.spec.id.0, layer.opacity))
+                .map(|layer| (layer.id.0, layer.content.opacity))
                 .collect()
         })
     }

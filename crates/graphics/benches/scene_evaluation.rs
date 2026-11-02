@@ -60,7 +60,7 @@ fn main() {
                 let scene = controller.advance(black_box(time));
                 let total: f64 = scene
                     .evaluate(time, black_box(Scope::default()))
-                    .map(|layer| layer.opacity)
+                    .map(|layer| layer.content.opacity)
                     .sum();
                 black_box(total);
             }
@@ -116,7 +116,7 @@ fn main() {
                         selected
                             .scene
                             .evaluate(selected.position_us, black_box(Scope::default()))
-                            .map(|layer| layer.opacity)
+                            .map(|layer| layer.content.opacity)
                             .sum()
                     });
                 black_box(total);

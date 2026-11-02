@@ -342,7 +342,9 @@ mod tests {
             assert_eq!(storage.path, disk.name().to_string_lossy());
             assert_eq!(storage.total, disk.total_space());
             assert!(storage.total > 0);
-            assert_eq!(storage.free, disk.available_space());
+            // available_space() can query live filesystem state; concurrent
+            // writes may change it between these two observations.
+            assert!(storage.free <= storage.total);
         }
 
         fs::remove_dir_all(directory).unwrap();

@@ -296,7 +296,7 @@ This produces `composite.png`, `composite.yuv`, three diagnostic text bitmaps,
 and `text-blend-report.md`. The three black sentences use 24/12/48 pt at a
 defined 96 DPI (32/16/64 raster pixels), with bold and italic spans.
 Text is shaped and rasterized by **cosmic-text and Swash**, the same stack as
-`crates/graphics/src/text.rs`, using a shared font system and glyph
+`crates/graphics/src/rendering/text/mod.rs`, using a shared font system and glyph
 cache. The demo uses rich text spans and a prepared linear overlay adapter;
 the current production text compositor itself is not replaced.
 

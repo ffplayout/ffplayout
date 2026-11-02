@@ -13,12 +13,15 @@ use crate::{
     HlsSubtitle, HlsVariant, OutputConfig,
     analysis::{audio_level::AudioLevelMeter, loudness::LoudnessMeter},
     clock::{PlayoutClock, SharedPlayoutClock},
-    graphics::{clip::ClipSceneFrame, logo_adapter::LogoOverlay},
+    graphics::frame::GraphicsFrame,
     utils::{
         ffmpeg::reference_audio_frame,
         pipeline_queue::{PipelineActivity, PipelineControl, PipelineQueue, QueueLimits},
     },
 };
+
+#[cfg(test)]
+use crate::graphics::logo_adapter::LogoOverlay;
 
 use super::{
     composition::{ProgramVideo, VideoCompositor},
@@ -667,47 +670,39 @@ impl ParallelOutput {
         logo: Option<Arc<LogoOverlay>>,
         opacity: f64,
     ) -> Result<()> {
-        self.video_with_graphics(frame, logo, opacity, Default::default(), None)
+        self.video_with_graphics(
+            frame,
+            GraphicsFrame::new(
+                (frame.width(), frame.height()),
+                logo,
+                opacity,
+                Default::default(),
+                None,
+            ),
+        )
     }
 
     pub(crate) fn video_with_graphics(
         &self,
         frame: &frame::Video,
-        logo: Option<Arc<LogoOverlay>>,
-        opacity: f64,
-        texts: crate::graphics::text_adapter::TextOverlays,
-        scene: Option<ClipSceneFrame>,
+        graphics: GraphicsFrame,
     ) -> Result<()> {
         self.pace(frame.pts(), self.video_time_base);
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         self.reconcile(&mut workers)?;
-        let consumers = Self::video_consumers(
-            &workers,
-            &logo,
-            opacity,
-            texts.iter().any(Option::is_some) || scene.is_some(),
-        );
-        let prepared = ProgramVideo::with_graphics(
-            frame,
-            self.compositor.clone(),
-            logo,
-            opacity,
-            consumers,
-            texts,
-            scene,
-        )?;
+        let consumers = Self::video_consumers(&workers, !graphics.is_empty());
+        let prepared =
+            ProgramVideo::with_graphics(frame, self.compositor.clone(), graphics, consumers)?;
 
         self.dispatch_video(&workers, prepared)
     }
 
     fn video_consumers(
         workers: &[DestinationWorker],
-        logo: &Option<Arc<LogoOverlay>>,
-        opacity: f64,
-        has_text: bool,
+        has_graphics: bool,
     ) -> BTreeMap<(u32, u32), usize> {
         let mut consumers = BTreeMap::new();
-        if (logo.is_some() && opacity > 0.0) || has_text {
+        if has_graphics {
             for resolution in workers
                 .iter()
                 .filter(|worker| !worker.control.cancelled())
@@ -729,37 +724,21 @@ impl ParallelOutput {
     pub(super) fn prepare_desktop_video(
         &self,
         frame: &frame::Video,
-        logo: Option<Arc<LogoOverlay>>,
-        opacity: f64,
-        texts: crate::graphics::text_adapter::TextOverlays,
-        scene: Option<ClipSceneFrame>,
+        graphics: GraphicsFrame,
     ) -> Result<Arc<ProgramVideo>> {
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         if let Err(error) = self.reconcile(&mut workers) {
             // A failed encoded destination must not stop the desktop or recording.
             log::warn!(channel = self.config.channel_id.unwrap_or_default(); "Parallel output update: {error:#}");
         }
-        let mut consumers = Self::video_consumers(
-            &workers,
-            &logo,
-            opacity,
-            texts.iter().any(Option::is_some) || scene.is_some(),
-        );
+        let mut consumers = Self::video_consumers(&workers, !graphics.is_empty());
         // A cache slot is useful only if an encoder also consumes this size.
         // The desktop passes the same prepared pixels directly to recording.
         if let Some(count) = consumers.get_mut(&(frame.width(), frame.height())) {
             *count += 1;
         }
 
-        ProgramVideo::with_graphics(
-            frame,
-            self.compositor.clone(),
-            logo,
-            opacity,
-            consumers,
-            texts,
-            scene,
-        )
+        ProgramVideo::with_graphics(frame, self.compositor.clone(), graphics, consumers)
     }
 
     #[cfg(feature = "desktop-base")]
@@ -1053,7 +1032,16 @@ mod tests {
         }
         source.set_pts(Some(42));
         let program = output
-            .prepare_desktop_video(&source, Some(logo.clone()), 0.5, Default::default(), None)
+            .prepare_desktop_video(
+                &source,
+                GraphicsFrame::new(
+                    (320, 180),
+                    Some(logo.clone()),
+                    0.5,
+                    Default::default(),
+                    None,
+                ),
+            )
             .unwrap();
         let desktop = program.frame(320, 180).unwrap();
         // Preparing/trying a desktop frame alone must not advance another output.

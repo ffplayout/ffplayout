@@ -6,6 +6,8 @@ use ffmpeg_next::{format::Pixel, frame};
 
 use crate::{
     bitmap::StraightRgbaBitmap,
+    ffmpeg::text::rgba_to_yuva420p,
+    preparation::ResourceBudget,
     scene::{LayerId, SceneRevision, Scope},
     surface::{
         Alpha, ColorEncoding, PixelLayout, Resource, ResourceKey, SurfaceDescriptor, SurfaceStore,
@@ -15,11 +17,11 @@ use crate::{
 use super::{
     overlay::{OverlayFrame, alpha_bounds, blend_overlay, chroma_alpha, prepare_execution},
     surface::{SurfaceFrame, SurfaceScaleCache},
-    text::rgba_to_yuva420p,
 };
 
 pub struct CpuScene {
     surfaces: SurfaceStore<OverlayFrame>,
+    pub(in crate::ffmpeg) budget: Option<ResourceBudget>,
 }
 
 /// One cache per output resolution. Unchanged surfaces are scaled only once;
@@ -58,7 +60,14 @@ impl CpuScene {
     pub fn new(max_surfaces: usize, max_bytes: usize) -> Self {
         Self {
             surfaces: SurfaceStore::new(max_surfaces, max_bytes),
+            budget: None,
         }
+    }
+
+    pub fn with_budget(mut self, budget: ResourceBudget) -> Self {
+        self.budget = Some(budget);
+
+        self
     }
 
     /// Prepare once outside frame composition. Matches existing native text
@@ -137,7 +146,13 @@ impl CpuScene {
         };
         let bounds = alpha_bounds(&frame);
         prepare_execution(bounds);
+        let lease = self
+            .budget
+            .as_ref()
+            .map(|budget| budget.reserve(descriptor.storage_bytes))
+            .transpose()?;
         let surface = Arc::new(OverlayFrame {
+            lease,
             frame,
             bounds,
             chroma_alpha: alpha,
@@ -164,6 +179,7 @@ impl CpuScene {
     ) -> CompositionReport {
         let mut report = CompositionReport::default();
         for evaluated in scene.evaluate(program_us, scope) {
+            let evaluated = evaluated.content;
             let layer = evaluated.layer;
             let Some(surface) = self.surfaces.get(&layer.resource) else {
                 report.missing += 1;
@@ -212,6 +228,7 @@ impl CpuScene {
             .sum();
         let mut report = CompositionReport::default();
         for evaluated in scene.evaluate(position_us, scope) {
+            let evaluated = evaluated.content;
             let layer = evaluated.layer;
             if target.format() != Pixel::YUV420P || layer.resource.descriptor.color != color {
                 report.unsupported += 1;

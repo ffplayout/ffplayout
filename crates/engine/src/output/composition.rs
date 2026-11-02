@@ -8,13 +8,12 @@ use anyhow::Result;
 use ffmpeg_next::{format::Pixel, frame, software::scaling};
 
 use crate::{
-    graphics::{
-        clip::ClipSceneFrame,
-        logo_adapter::{LogoOverlay, blend_logo},
-        text_adapter::TextOverlays,
-    },
+    graphics::frame::{GraphicsCache, GraphicsFrame},
     utils::ffmpeg::{make_video_frame_writable, reference_video_frame},
 };
+
+#[cfg(test)]
+use crate::graphics::logo_adapter::LogoOverlay;
 
 type Resolution = (u32, u32);
 
@@ -25,11 +24,9 @@ pub(super) struct VideoCompositor {
 }
 
 struct ResolutionCompositor {
-    text_cache: [ff_graphics::ffmpeg::text::TextScaleCache; 2],
+    graphics: GraphicsCache,
     scaler: Option<scaling::Context>,
     frame: frame::Video,
-    source_logo: Option<Arc<LogoOverlay>>,
-    logo: Option<LogoOverlay>,
     position: Option<String>,
 }
 
@@ -54,11 +51,9 @@ impl VideoCompositor {
             .entry(resolution)
             .or_insert_with(|| {
                 Arc::new(Mutex::new(ResolutionCompositor {
-                    text_cache: Default::default(),
+                    graphics: GraphicsCache::default(),
                     scaler: None,
                     frame: frame::Video::empty(),
-                    source_logo: None,
-                    logo: None,
                     position: self.position.clone(),
                 }))
             })
@@ -70,41 +65,13 @@ impl ResolutionCompositor {
     fn prepare(
         &mut self,
         source: &frame::Video,
-        logo: Option<&Arc<LogoOverlay>>,
-        texts: &TextOverlays,
-        scene: Option<&ClipSceneFrame>,
-        opacity: f64,
+        graphics: &GraphicsFrame,
         (width, height): Resolution,
     ) -> Result<frame::Video> {
-        if let Some(logo) = logo {
-            if !self
-                .source_logo
-                .as_ref()
-                .is_some_and(|previous| Arc::ptr_eq(previous, logo))
-            {
-                self.logo = Some(logo.positioned(self.position.as_deref(), width, height)?);
-                self.source_logo = Some(logo.clone());
-            }
-        } else {
-            self.logo = None;
-            self.source_logo = None;
-        }
         if source.width() == width && source.height() == height {
             let mut prepared = reference_video_frame(source)?;
             make_video_frame_writable(&mut prepared)?;
-            if let Some(logo) = &self.logo {
-                blend_logo(&mut prepared, logo, opacity);
-            }
-            if let Some(scene) = scene {
-                scene.blend(&mut prepared);
-            }
-            for (index, (text, cache)) in texts.iter().zip(&mut self.text_cache).enumerate() {
-                if let Some(text) = text {
-                    crate::graphics::text_adapter::measure_text(index, text, || {
-                        text.blend_scaled(&mut prepared, (source.width(), source.height()), cache)
-                    })?;
-                }
-            }
+            graphics.blend(&mut prepared, self.position.as_deref(), &mut self.graphics)?;
 
             return Ok(prepared);
         }
@@ -133,19 +100,11 @@ impl ResolutionCompositor {
             scaler.run(source, &mut self.frame)?;
         }
         self.frame.set_pts(source.pts());
-        if let Some(logo) = &self.logo {
-            blend_logo(&mut self.frame, logo, opacity);
-        }
-        if let Some(scene) = scene {
-            scene.blend(&mut self.frame);
-        }
-        for (index, (text, cache)) in texts.iter().zip(&mut self.text_cache).enumerate() {
-            if let Some(text) = text {
-                crate::graphics::text_adapter::measure_text(index, text, || {
-                    text.blend_scaled(&mut self.frame, (source.width(), source.height()), cache)
-                })?;
-            }
-        }
+        graphics.blend(
+            &mut self.frame,
+            self.position.as_deref(),
+            &mut self.graphics,
+        )?;
 
         reference_video_frame(&self.frame)
     }
@@ -155,10 +114,7 @@ impl ResolutionCompositor {
 pub(super) struct ProgramVideo {
     pub(super) source: frame::Video,
     compositor: Arc<Mutex<VideoCompositor>>,
-    logo: Option<Arc<LogoOverlay>>,
-    opacity: f64,
-    texts: TextOverlays,
-    scene: Option<ClipSceneFrame>,
+    graphics: GraphicsFrame,
     prepared: BTreeMap<Resolution, Mutex<PreparedFrame>>,
 }
 
@@ -169,9 +125,7 @@ struct PreparedFrame {
 
 impl ProgramVideo {
     pub(super) fn has_visible_graphics(&self) -> bool {
-        (self.opacity > 0.0 && self.logo.as_ref().is_some_and(|logo| logo.opacity() > 0))
-            || self.texts.iter().any(Option::is_some)
-            || self.scene.is_some()
+        !self.graphics.is_empty()
     }
 
     #[cfg(test)]
@@ -185,30 +139,27 @@ impl ProgramVideo {
         Self::with_graphics(
             source,
             compositor,
-            logo,
-            opacity,
+            GraphicsFrame::new(
+                (source.width(), source.height()),
+                logo,
+                opacity,
+                Default::default(),
+                None,
+            ),
             consumers,
-            Default::default(),
-            None,
         )
     }
 
     pub(super) fn with_graphics(
         source: &frame::Video,
         compositor: Arc<Mutex<VideoCompositor>>,
-        logo: Option<Arc<LogoOverlay>>,
-        opacity: f64,
+        graphics: GraphicsFrame,
         consumers: BTreeMap<Resolution, usize>,
-        texts: TextOverlays,
-        scene: Option<ClipSceneFrame>,
     ) -> Result<Arc<Self>> {
         Ok(Arc::new(Self {
             source: reference_video_frame(source)?,
             compositor,
-            logo,
-            opacity,
-            texts,
-            scene,
+            graphics,
             prepared: consumers
                 .into_iter()
                 .filter(|(_, remaining)| *remaining > 1)
@@ -226,16 +177,13 @@ impl ProgramVideo {
     }
 
     pub(super) fn frame(&self, width: u32, height: u32) -> Result<frame::Video> {
-        let logo = self
-            .logo
-            .as_ref()
-            .filter(|logo| self.opacity > 0.0 && logo.opacity() > 0);
-        if logo.is_none() && self.texts.iter().all(Option::is_none) && self.scene.is_none() {
+        if self.graphics.is_empty() {
+            self.retire_graphics(width, height);
             return reference_video_frame(&self.source);
         }
         let key = (width, height);
         let Some(slot) = self.prepared.get(&key) else {
-            return self.prepare(logo, key);
+            return self.prepare(key);
         };
         let mut slot = slot.lock().unwrap_or_else(PoisonError::into_inner);
         slot.remaining = slot.remaining.saturating_sub(1);
@@ -248,7 +196,7 @@ impl ProgramVideo {
             return Ok(result);
         }
 
-        let frame = self.prepare(logo, key)?;
+        let frame = self.prepare(key)?;
         // The last consumer owns a reference. Other resolutions must not retain
         // this cached image merely because their output is slower.
         if slot.remaining == 0 {
@@ -260,11 +208,20 @@ impl ProgramVideo {
         Ok(result)
     }
 
-    fn prepare(
-        &self,
-        logo: Option<&Arc<LogoOverlay>>,
-        resolution: Resolution,
-    ) -> Result<frame::Video> {
+    pub(super) fn retire_graphics(&self, width: u32, height: u32) {
+        if !self.graphics.is_empty() {
+            return;
+        }
+        // Also called by encoded outputs which bypass frame() without graphics.
+        // In-flight compositors retain their own Arc until that frame finishes.
+        self.compositor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .resolutions
+            .remove(&(width, height));
+    }
+
+    fn prepare(&self, resolution: Resolution) -> Result<frame::Video> {
         // Hold the map lock only for lookup; scaling at different resolutions
         // must not serialize otherwise independent encoding groups.
         let compositor = self
@@ -275,14 +232,7 @@ impl ProgramVideo {
         compositor
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .prepare(
-                &self.source,
-                logo,
-                &self.texts,
-                self.scene.as_ref(),
-                self.opacity,
-                resolution,
-            )
+            .prepare(&self.source, &self.graphics, resolution)
     }
 }
 
@@ -291,7 +241,97 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::utils::config::LogoConfig;
+    use crate::{
+        graphics::logo_adapter::{LogoOverlay, blend_logo},
+        utils::config::LogoConfig,
+    };
+
+    #[test]
+    fn removing_the_last_graphic_retires_destination_caches_but_keeps_queued_snapshots() {
+        let (source, logo, compositor) = setup();
+        let old = Arc::downgrade(&logo);
+        let queued = ProgramVideo::new(
+            &source,
+            compositor.clone(),
+            Some(logo),
+            1.0,
+            BTreeMap::new(),
+        )
+        .unwrap();
+        drop(queued.frame(320, 180).unwrap());
+        drop(queued.frame(160, 90).unwrap());
+        let cleared = ProgramVideo::with_graphics(
+            &source,
+            compositor.clone(),
+            GraphicsFrame::default(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        // Model the encoded-output fast path, which does not request a frame.
+        cleared.retire_graphics(320, 180);
+        assert_eq!(compositor.lock().unwrap().resolutions.len(), 1);
+        drop(cleared.frame(160, 90).unwrap());
+        assert!(compositor.lock().unwrap().resolutions.is_empty());
+        assert!(
+            old.upgrade().is_some(),
+            "queued frames still own their original graphics"
+        );
+        assert!(queued.has_visible_graphics());
+        drop(queued);
+        assert!(
+            old.upgrade().is_none(),
+            "the running compositor no longer retains retired resources"
+        );
+        assert!(cleared.frame(320, 180).unwrap().data(0) == source.data(0));
+    }
+
+    #[test]
+    fn clearing_scaled_text_releases_its_budget_after_queued_frames_are_dropped() {
+        use ff_graphics::{
+            animation::TextPreparation, ffmpeg::text::TextOverlay, preparation::ResourceBudget,
+            style::TextStyle,
+        };
+        let budget = ResourceBudget::new(4 * 1024 * 1024, 16, 1);
+        let text = TextOverlay::prepare_budgeted(
+            &TextStyle::default(),
+            "MMM",
+            TextPreparation {
+                canvas_width: 320,
+                canvas_height: 180,
+                frames_per_second: 25,
+                timing: Default::default(),
+            },
+            Some(&budget),
+        )
+        .unwrap()
+        .unwrap();
+        let (source, _, compositor) = setup();
+        let queued = ProgramVideo::with_graphics(
+            &source,
+            compositor.clone(),
+            GraphicsFrame::new((320, 180), None, 0.0, [text.snapshot(0, 0), None], None),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        drop(text);
+        drop(queued.frame(160, 90).unwrap());
+        let cached = budget.usage().0;
+        let cleared = ProgramVideo::with_graphics(
+            &source,
+            compositor.clone(),
+            GraphicsFrame::default(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        drop(cleared.frame(160, 90).unwrap());
+        assert!(
+            budget.usage().0 < cached,
+            "scaled cache retired before original queued pixels"
+        );
+        assert!(budget.usage().0 > 0);
+        drop(queued);
+        assert_eq!(budget.usage(), (0, 0, 0));
+    }
 
     #[test]
     fn scrolling_text_wider_than_8192_pixels_keeps_scaled_outputs_running() {
@@ -326,11 +366,14 @@ mod tests {
         let program = ProgramVideo::with_graphics(
             &source,
             Arc::new(Mutex::new(VideoCompositor::default())),
-            None,
-            0.0,
+            GraphicsFrame::new(
+                (source.width(), source.height()),
+                None,
+                0.0,
+                [overlay.snapshot(500, 500), None],
+                None,
+            ),
             BTreeMap::from([((1280, 720), 2)]),
-            [overlay.snapshot(500, 500), None],
-            None,
         )
         .unwrap();
         let first = program.frame(1280, 720).unwrap();
@@ -358,11 +401,14 @@ mod tests {
         let program = ProgramVideo::with_graphics(
             &source,
             compositor.clone(),
-            None,
-            0.0,
+            GraphicsFrame::new(
+                (source.width(), source.height()),
+                None,
+                0.0,
+                Default::default(),
+                Some(scene.clone()),
+            ),
             BTreeMap::from([((320, 180), 2)]),
-            Default::default(),
-            Some(scene.clone()),
         )
         .unwrap();
         let first = program.frame(320, 180).unwrap();
@@ -391,11 +437,14 @@ mod tests {
         let without_scene = ProgramVideo::with_graphics(
             &source,
             compositor,
-            None,
-            0.0,
+            GraphicsFrame::new(
+                (source.width(), source.height()),
+                None,
+                0.0,
+                Default::default(),
+                None,
+            ),
             BTreeMap::new(),
-            Default::default(),
-            None,
         )
         .unwrap();
         assert!(!without_scene.has_visible_graphics());
@@ -522,11 +571,14 @@ mod tests {
         let program = ProgramVideo::with_graphics(
             &source,
             compositor.clone(),
-            Some(logo.clone()),
-            1.0,
+            GraphicsFrame::new(
+                (source.width(), source.height()),
+                Some(logo.clone()),
+                1.0,
+                texts.clone(),
+                None,
+            ),
             BTreeMap::new(),
-            texts.clone(),
-            None,
         )
         .unwrap();
         assert!(program.has_visible_graphics());
@@ -573,11 +625,14 @@ mod tests {
         let hidden = ProgramVideo::with_graphics(
             &source,
             compositor.clone(),
-            None,
-            0.0,
+            GraphicsFrame::new(
+                (source.width(), source.height()),
+                None,
+                0.0,
+                Default::default(),
+                None,
+            ),
             BTreeMap::new(),
-            Default::default(),
-            None,
         )
         .unwrap();
         assert!(!hidden.has_visible_graphics());
@@ -585,11 +640,8 @@ mod tests {
         let text_only = ProgramVideo::with_graphics(
             &source,
             compositor,
-            None,
-            0.0,
+            GraphicsFrame::new((source.width(), source.height()), None, 0.0, texts, None),
             BTreeMap::new(),
-            texts,
-            None,
         )
         .unwrap();
         assert!(text_only.has_visible_graphics());
@@ -658,7 +710,7 @@ mod tests {
         let compositor = compositor.lock().unwrap();
         for ((width, height), state) in &compositor.resolutions {
             let state = state.lock().unwrap();
-            let logo = state.logo.as_ref().unwrap();
+            let logo = state.graphics.logo().unwrap();
             assert_eq!((logo.width(), logo.height()), (32, 16));
             assert_eq!(
                 (logo.position().0, logo.position().1),

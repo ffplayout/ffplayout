@@ -15,6 +15,7 @@ use crate::{
 
 use super::{
     clip::{ClipGraphics, ClipSceneFrame},
+    frame::{GraphicsCache, GraphicsFrame},
     source::ProgramGraphicsState,
 };
 
@@ -27,13 +28,15 @@ pub(crate) struct ProgramGraphicsOutput<'a, O: FrameOutput> {
     clip: Option<ClipGraphics>,
     clip_start_pts: i64,
     clip_visible: bool,
+    cache: GraphicsCache,
 }
 
 impl<O: FrameOutput> Drop for ProgramGraphicsOutput<'_, O> {
     fn drop(&mut self) {
         // Output queues own their frame snapshots; the next occurrence must not
         // retain this clip merely through the output's last deferred metadata.
-        self.output.defer_clip_scene(None);
+        let _ = self.output.defer_graphics(GraphicsFrame::default());
+        self.state.end_occurrence();
     }
 }
 
@@ -43,15 +46,13 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
         state: &'a mut ProgramGraphicsState,
         config: &OutputConfig,
     ) -> Self {
+        state.set_budget(config.graphics_preparation.budget());
         state.configure(
             config.logo.as_ref(),
             config.width,
             config.height,
             config.channel_id,
         );
-        if !state.has_source() {
-            output.clear_logo_overlay();
-        }
 
         Self {
             output,
@@ -62,6 +63,7 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
             clip: None,
             clip_start_pts: 0,
             clip_visible: true,
+            cache: GraphicsCache::default(),
         }
     }
 
@@ -75,9 +77,6 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
             .pts()
             .unwrap_or_default()
             .rescale(self.time_base, Rational(1, 1_000_000));
-        self.state.set_visible(self.opacity > 0.0);
-        let logo = self.state.at(time);
-        let logo = logo.filter(|_| self.opacity > 0.0);
         let scene = self
             .clip
             .as_ref()
@@ -90,42 +89,23 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
 
                 clip.frame_at(elapsed).filter(ClipSceneFrame::visible)
             });
-        let logo_deferred = if let Some(logo) = &logo {
-            self.output.defer_shared_logo_overlay(logo, self.opacity)
-        } else {
-            self.output.clear_logo_overlay();
-            true
+        let graphics = self.state.frame(
+            time,
+            (source.width(), source.height()),
+            self.opacity,
+            self.texts.clone(),
+            scene,
+        );
+        let Some(graphics) = self.output.defer_graphics(graphics) else {
+            return Ok(None);
         };
-        let text_deferred = self.output.defer_text_overlays(&self.texts);
-        let scene_deferred = self.output.defer_clip_scene(scene.as_ref());
-        if logo_deferred && text_deferred && (scene_deferred || scene.is_none()) {
+        if graphics.is_empty() {
+            self.cache.clear();
             return Ok(None);
         }
-        let has_text = self.texts.iter().any(Option::is_some);
-        if logo.is_none() && !has_text && scene.is_none() {
-            return Ok(None);
-        }
-        // An immediate compositor must own both layers so that text is always
-        // above the logo. Never defer a logo beneath text already in the pixels.
-        self.output.clear_logo_overlay();
-        self.output.defer_text_overlays(&Default::default());
-        self.output.defer_clip_scene(None);
         let mut prepared = reference_video_frame(source)?;
         make_video_frame_writable(&mut prepared)?;
-        if let Some(logo) = logo {
-            crate::benchmark::measure_overlay(
-                crate::benchmark::Stage::LogoOverlay,
-                logo.width(),
-                logo.height(),
-                || {
-                    super::logo_adapter::blend_logo(&mut prepared, &logo, self.opacity);
-                },
-            );
-        }
-        if let Some(scene) = scene {
-            scene.blend(&mut prepared);
-        }
-        super::text_adapter::blend_text_overlays(&mut prepared, &self.texts);
+        graphics.blend(&mut prepared, None, &mut self.cache)?;
 
         Ok(Some(prepared))
     }
@@ -317,13 +297,10 @@ mod tests {
             fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
                 Ok(())
             }
-            fn defer_text_overlays(&mut self, _: &TextOverlays) -> bool {
-                true
-            }
-            fn defer_clip_scene(&mut self, scene: Option<&ClipSceneFrame>) -> bool {
-                self.current = scene.cloned();
+            fn defer_graphics(&mut self, graphics: GraphicsFrame) -> Option<GraphicsFrame> {
+                self.current = graphics.clip().cloned();
 
-                true
+                None
             }
             fn encode_video(&mut self, _: &frame::Video) -> Result<()> {
                 self.queued.push(self.current.clone().unwrap());
@@ -368,19 +345,14 @@ mod tests {
             Ok(())
         }
 
-        fn defer_text_overlays(&mut self, texts: &TextOverlays) -> bool {
-            texts.iter().all(Option::is_none)
-        }
-
-        fn defer_shared_logo_overlay(&mut self, logo: &Arc<LogoOverlay>, opacity: f64) -> bool {
-            self.logo = Some(logo.clone());
+        fn defer_graphics(&mut self, graphics: GraphicsFrame) -> Option<GraphicsFrame> {
+            let (logo, opacity) = graphics
+                .logo()
+                .map_or((None, 0.0), |(logo, opacity)| (Some(logo.clone()), opacity));
+            self.logo = logo;
             self.opacity = opacity;
 
-            true
-        }
-
-        fn clear_logo_overlay(&mut self) {
-            self.logo = None;
+            None
         }
     }
 
@@ -414,7 +386,7 @@ mod tests {
         }
         assert_eq!(capture.unmodified_header, unsafe { frame.as_ptr() }
             as usize);
-        let first = capture.logo.clone().unwrap();
+        let first = capture.frames.last().unwrap().0.clone().unwrap();
         let first_pixels = first.0.frame.data(0).to_vec();
         // The next wrapper represents another file clip or a live resume.
         {
@@ -433,7 +405,10 @@ mod tests {
             frame.set_pts(Some(15)); // 600 ms: the original first surface repeats.
             output.encode_video(&frame).unwrap();
         }
-        assert!(Arc::ptr_eq(&first, capture.logo.as_ref().unwrap()));
+        assert!(Arc::ptr_eq(
+            &first,
+            capture.frames.last().unwrap().0.as_ref().unwrap()
+        ));
         assert_eq!(
             first.0.frame.data(0),
             first_pixels,
@@ -526,8 +501,17 @@ mod tests {
         let mut output = ProgramGraphicsOutput::new(&mut pixels, &mut state, &config);
         output.set_text_overlays([Some(text), None]);
         output.encode_video(&source).unwrap();
+        assert_eq!(output.output.0, expected.data(0));
+        assert!(output.cache.logo().is_some());
+        output.set_text_overlays(Default::default());
+        output.set_logo_opacity(0.0);
+        output.encode_video(&source).unwrap();
+        assert!(
+            output.cache.logo().is_none(),
+            "empty immediate snapshots must retire cached logo references"
+        );
         drop(output);
-        assert_eq!(pixels.0, expected.data(0));
+        assert_eq!(pixels.0, source.data(0));
         assert!(source.data(0).iter().all(|value| *value == 128));
     }
 
@@ -538,7 +522,7 @@ mod tests {
         };
         #[derive(Default)]
         struct Deferred {
-            texts: TextOverlays,
+            graphics: GraphicsFrame,
             visible: Vec<bool>,
         }
         impl FrameOutput for Deferred {
@@ -548,12 +532,12 @@ mod tests {
             fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
                 Ok(())
             }
-            fn defer_text_overlays(&mut self, texts: &TextOverlays) -> bool {
-                self.texts = texts.clone();
-                true
+            fn defer_graphics(&mut self, graphics: GraphicsFrame) -> Option<GraphicsFrame> {
+                self.graphics = graphics;
+                None
             }
             fn encode_video(&mut self, _: &frame::Video) -> Result<()> {
-                self.visible.push(self.texts.iter().any(Option::is_some));
+                self.visible.push(!self.graphics.is_empty());
                 Ok(())
             }
         }

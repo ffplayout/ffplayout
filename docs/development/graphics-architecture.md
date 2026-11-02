@@ -18,11 +18,38 @@ Follow-up fixes make native text alpha handling explicit and correct, while the
 per-frame YUV blend kernel and production compositing policy remain unchanged.
 The subsequent animated-logo milestone adds bounded image/video source playback.
 That animated-logo milestone did not introduce a general scene controller.
-A subsequent internal scene core is described below; it is not yet substituted
-for the production logo/text adapters. No GPU, Servo or linear-light production
+The scene controller now handles native logo/text admission and resource revisions,
+while their compatibility adapters retain the established timing and layout rules. No GPU, Servo or linear-light production
 compositor is introduced. See [Animated logos](../animated_logos.md).
 
 ## Modules and contracts
+
+Implementation files are grouped by responsibility:
+
+```text
+crates/graphics/src/
+├── scene/                    # layer/revision models, controller, frame snapshots, playlist scheduling
+├── resources/
+│   ├── surface.rs            # descriptors and bounded backend surface storage
+│   └── preparation/          # executor, budget leases, cancellation and result tickets
+├── rendering/
+│   ├── bitmap.rs             # straight-alpha bitmap preparation
+│   ├── blend.rs              # scalar/SIMD plane kernels
+│   └── text/                 # native rasterization and bounded glyph-cache eviction
+├── timing/                   # presentations, source intervals and text fade/scroll clocks
+├── layout/                   # logo geometry and renderer-independent styles
+└── ffmpeg/
+    ├── compositor/           # YUVA kernels, scene composition and scaling caches
+    ├── sources/              # logo surfaces, incremental decoder and static PNG loading
+    └── text.rs               # native bitmap-to-YUVA preparation
+```
+
+`lib.rs` and `ffmpeg/mod.rs` re-export established module paths such as
+`ff_graphics::text`, `ff_graphics::scene::SceneController` and
+`ff_graphics::ffmpeg::source`. Existing engine, application, benchmark and example
+imports remain compatible. This organization does not change algorithms,
+threading, pixel ownership or feature requirements. Backend-neutral modules do
+not import FFmpeg types. Unit tests stay beside the implementation they verify.
 
 | Module | Responsibility |
 | --- | --- |
@@ -68,8 +95,9 @@ without any FFmpeg dependency. Backends apply their own pixel alignment rules.
 ## Compatibility adapters in the engine
 
 `crates/engine/src/graphics/` contains `logo_adapter.rs`, `text_adapter.rs`,
-`source.rs` (owned preparation/cache lifecycle) and `program.rs` (selection before
-output fan-out); rendering and blending live in `ff-graphics`.
+`source.rs` (owned preparation/cache lifecycle), `program.rs` (selection before
+output fan-out), and `frame.rs` (ready-layer snapshots and composition dispatch).
+Rasterization, decoding and blend kernels live in `ff-graphics`.
 
 - `LogoConfig` retains its source path and existing public fields. The adapter
   passes local file inputs and a `LogoStyle` to the graphics backend on its
@@ -81,7 +109,7 @@ output fan-out); rendering and blending live in `ff-graphics`.
   engine resolves content and passes the resulting string with a `TextStyle`.
   Immutable text snapshots retain placement and opacity with each video frame
   through file/live queues and loudness lookahead. The final compositor blends
-  video, logo, configured text, then runtime text; scaled text bitmaps are cached
+  video, logo, clip graphics, configured text, then runtime text; scaled text bitmaps are cached
   per composition resolution.
 - Existing exported color/position/weight types are re-exported through the
   engine, preserving callers' import paths.
@@ -152,6 +180,130 @@ resolution, then scale that image for the smaller variants. Its variant encoder
 path is unchanged. Independent outputs at different composition resolutions
 still require their own layout; they start from the unmodified program image,
 preventing previously composited logos from appearing a second time.
+
+### Common ready-layer snapshots
+
+`ff_graphics::scene::FrameLayers` stores small immutable, already evaluated layer
+sets in a fixed array, sorted by `(z, layer ID)`. It requires no per-frame heap
+allocation and keeps backend content outside the scene module. It complements
+`SceneRevision`: existing text/logo clocks can publish ready layers without
+submitting new control commands or allocating command receipts every video frame.
+
+The engine's `GraphicsFrame` maps logo, clip graphics, configured text and runtime
+text into this model. The clip scene is a group with its own layer IDs and z-order;
+the outer group order deliberately preserves existing configuration/API behavior.
+This does not expose a new global z-index setting for legacy logo/text.
+
+`FrameOutput::defer_graphics` replaces the entire snapshot atomically. Parallel,
+desktop and recording paths retain that same snapshot with the video, instead of
+independently attaching logo, text and clip metadata. Outputs needing immediate
+composition use the same dispatch and kernels. A rejected deferred snapshot
+therefore cannot leave some layers deferred and others already blended.
+
+`GraphicsCache` belongs to a composition resolution. Logo placement still keeps
+destination-pixel sizing and evaluates its existing position expression; text
+uses the program reference canvas; clip layers use their declared canvas. Cached
+logo placement is invalidated by source, destination or position changes. Ready
+surface references, not workers or decoders, travel with frames. Leaving a clip
+clears all deferred metadata; already queued frames keep their own resources.
+Preparation cancellation/join remains with the existing source/clip owners.
+
+### Native control and preparation state
+
+`graphics/control.rs::ProgramScene` owns a `SceneController::new_local(3, 3)`
+for the program logo, configured text and runtime text. Local adapters apply
+small ordered command batches through `apply_at_frame`; publication and explicit
+acknowledgements happen after the batch. There are no per-frame command queues,
+receipt channels or preparation workers. The existing queued API remains available;
+queued commands are handled before a local batch, with stale-epoch rejection on
+clock rewind. Batches acknowledge commands individually, not transactionally.
+
+Each logo source has a monotonic generation. A replacement reserves a loading
+resource; its ready result must match that generation before activation. Failure
+marks the pending resource failed while the previous active image remains visible.
+Explicit removal clears both the active layer and pending slot. Source owners
+cancel and join the previous decoder worker before replacement/removal, so an old
+job cannot publish into a new source. Ready results are still generation-checked
+at the controller adapter. A source that fails after producing pixels retains its
+last-good-frame policy. No crossfade between sources is introduced.
+
+Animated logo frames change ready pixels within one resource generation. Text
+placement and opacity can likewise change while the prepared bitmap identity
+remains the same. These updates do not create new controller revisions or restart
+presentation timing. Existing native fade/scroll evaluation supplies the final
+pose; controller presentations use an indefinite, unfaded hold. The evaluated
+controller layer controls admission, visibility and ordering of the ready pixels.
+Text descriptors name the existing BT.601-limited preparation policy; logo color
+metadata remains explicitly unspecified. This does not implement color negotiation.
+
+On clip completion, text resources are released but the program logo survives.
+Queued snapshots keep their own ready pixels. Clock rewind clears the old epoch
+and rebinds current native assets under fresh resource revisions. Each channel
+owns its own controller and native preparation owners. Native text rasterization
+now runs on the bounded preparation service described below.
+
+### Asynchronous text and channel resource budgets
+
+`ff_graphics::preparation::PreparationService` provides one lazily started CPU
+worker per channel, bounded admission, weak completion destinations, cancellation
+and explicit shutdown/join. `OutputConfig::graphics_preparation` shares that
+service across file/live/fallback decoder instances. The application keeps it on
+`GraphicsPreparer` across playout restarts and supplies the same service to dynamic
+output updates. Channels without text preparation start no text worker.
+
+Configured and runtime text submit owned settings and preparation context.
+The video path polls `OnceLock` results; it does not rasterize, acquire the font
+renderer lock or wait for a job. A replacement keeps the last-good text. Removing
+text clears immediately and drops its completion ticket. A newer request or ended
+decoder invalidates old publication. A completed empty text clears the old image;
+a render failure logs once and keeps it. Busy admission is retried at most every
+250 ms, with only one desired request retained per producer. A first runtime
+request may lazily start the worker; subsequent requests reuse it. Queue/setup
+locks use `try_lock`, so contention rejects admission instead of blocking video.
+
+Text fades/scrolling keep the original program-frame context. Late preparation
+does not restart timing; a short-lived clip may end before its text is ready.
+File/live/fallback transitions own separate completion tickets, while cached ready
+frames survive for queued consumers. The previous synchronous preparation API
+remains available for tests, examples and non-program uses.
+
+All native adapters share a channel `ResourceBudget`: 256 MiB reserved pixels and
+workspace, 1024 resource reservations, and 16 queued/running preparation jobs.
+Text raster/convert workspace is reserved before large allocations; PNG decoding
+reserves bounded input/pixel workspace. Ready YUVA surfaces and scaled text/scene
+surfaces carry leases. Native logo cache frames carry the same leases, shared by
+repositioned headers. Queued video keeps those reservations until its last pixel
+reference is released. Existing per-source limits (logo cache, playlist PNG and
+scene scale caches) remain in force. Reservations may conservatively include
+stride/alignment headroom. They do not bound library-internal FFmpeg/font caches,
+encoder memory, or total process RSS. Destination text scaling failure skips that
+graphic and warns instead of failing the output.
+
+An empty graphics snapshot retires the destination's composition-cache entry
+without copying video pixels. Immediate composition clears its local graphics
+cache as well. In-flight frames retain their own references, so retiring the last
+graphic releases its budget once those consumers finish rather than retaining it
+until another graphic appears.
+
+The text worker shares job admission and memory accounting with the long-lived
+logo decoder and existing playlist preparation worker; streaming a logo does not
+occupy the text executor. These adapters keep their different cancellation needs
+and owned handles. Stop cancels queued text, invalidates running publication and
+waits outside frame processing for up to two seconds. A timed-out handle remains
+tracked; resume cannot create a second worker until it finishes. A resume request
+is retained if the old worker is still exiting; subsequent text submissions and
+playlist admission retry recovery automatically. Joining the old worker does not
+cancel that newer resume intent. An explicitly stopped service stays stopped.
+Local font
+rendering and PNG reads cannot be forcibly interrupted mid-call; cancellation is
+checked before work and before publication. Final service destruction joins its
+worker rather than detaching it. Renderer panics are contained by the worker;
+failed results do not replace an active surface.
+
+Regression tests compare all four groups against the previous explicit blend
+sequence at native and scaled sizes, exercise layout invalidation and queued
+resource lifetime, and retain the existing HLS, desktop/recording, animated-logo,
+wide scrolling-text and shared-resolution tests.
 
 ## Internal scene core
 
@@ -401,10 +553,13 @@ The following current assumptions remain explicit:
 
 ## Following stages
 
-The first scene controller establishes revisions, resource/layer identifiers and
-program-time transitions. The next increment integrates existing logo/text
-adapters, preparation ownership and rendition layout contexts. Keep backend frame
-handles and glyph-cache types outside scene nodes.
+Native logo/text activation, resource revisions and preparation states now use
+the scene controller and share the ready-layer handoff with clip scenes. Existing
+text scroll/fade and animated-logo clocks intentionally remain in their
+compatibility adapters. Text preparation and shared native asset budgets are now
+implemented. Next work can address richer native/playlist layer sources independently.
+General rendition-layout and color contracts remain separate work. Keep backend
+frame handles and glyph-cache types outside scene nodes.
 
 The minimal core also needs reusable opacity transitions for **static graphics**
 such as PNG lower thirds. Existing logo/text fades are the compatibility baseline.
