@@ -135,6 +135,7 @@ impl AsyncTextOverlay {
 }
 
 impl TextOverlay {
+    #[cfg(any(test, feature = "desktop-base"))]
     pub fn prepare(
         config: &TextConfig,
         media_path: &str,
