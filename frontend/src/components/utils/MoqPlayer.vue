@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { onMounted, onBeforeUnmount, computed, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type MoqWatch from '@moq/watch/element'
 import { authFetch } from '@/composables/authFetch'
 import type { moqDiagnostics } from '@/composables/moqDiagnostics'
-import { refreshMoqTicketOnFailure } from '@/composables/moqTicketRefresh'
+import { refreshMoqTicketOnDisconnect } from '@/composables/moqTicketRefresh'
+import { resumeMoqAudio } from '@/composables/moqAudioResume'
 import { synchronizeMoqAudioLevel } from '@/composables/moqAudioLevelSync'
 import { moqRelayUrl, type MoqBootstrap } from '@/composables/moqConnection'
 
@@ -19,11 +20,20 @@ const diagnosticsEnabled =
 const host = ref<HTMLElement>()
 const status = ref('')
 const error = ref(false)
+const connectionState = ref<'connecting' | 'waiting' | ''>('connecting')
+const connectionMessage = computed(() =>
+    error.value
+        ? status.value
+        : connectionState.value === 'waiting'
+          ? t('config.moqWaiting')
+          : connectionState.value === 'connecting'
+            ? t('config.moqConnecting')
+            : '',
+)
 const measurements = shallowRef<ReturnType<typeof moqDiagnostics>>()
 const report = ref('')
 let player: MoqWatch | undefined
 let disposed = false
-let connecting = false
 
 async function loadConfig(signal?: AbortSignal): Promise<MoqBootstrap> {
     const path = `${props.publicAccess ? '/moq/config' : '/api/moq/config'}?channel=${props.channel}`
@@ -36,8 +46,7 @@ async function loadConfig(signal?: AbortSignal): Promise<MoqBootstrap> {
 }
 
 async function connect(prefetched?: MoqBootstrap, signal?: AbortSignal) {
-    if (disposed || connecting) return
-    connecting = true
+    if (disposed) return
     error.value = false
     try {
         const config = prefetched ?? (await loadConfig(signal))
@@ -52,8 +61,6 @@ async function connect(prefetched?: MoqBootstrap, signal?: AbortSignal) {
             status.value = reason instanceof Error ? reason.message : String(reason)
         }
         throw reason
-    } finally {
-        connecting = false
     }
 }
 
@@ -68,6 +75,7 @@ onMounted(async () => {
         // The library renders this button inside its shadow root without a CSS part.
         const buttonStyle = document.createElement('style')
         buttonStyle.textContent = `
+            .watch-ui__offline-indicator { display: none !important; }
             .center-play {
                 width: 3.5rem;
                 height: 3.5rem;
@@ -91,6 +99,12 @@ onMounted(async () => {
         player.paused = true
         player.muted = false
         player.buffer = 100 as MoqWatch['buffer']
+        player.signals.run((effect) => {
+            const state = effect.get(player!.connection.status)
+            const broadcast = effect.get(player!.broadcast.out.status)
+            connectionState.value = state !== 'connected' ? 'connecting' : broadcast === 'offline' ? 'waiting' : ''
+        })
+        resumeMoqAudio(player.signals, player.audio.out.context, player.controls, document, window)
         if (diagnosticsEnabled) {
             const { moqDiagnostics } = await import('@/composables/moqDiagnostics')
             if (disposed) return
@@ -113,7 +127,7 @@ onMounted(async () => {
             synchronizeMoqAudioLevel(player, (level) => emit('audioLevel', level))
         }
         if (!props.publicAccess) {
-            refreshMoqTicketOnFailure(player.signals, player.connection, (signal) => connect(undefined, signal))
+            refreshMoqTicketOnDisconnect(player.signals, player.connection, (signal) => connect(undefined, signal))
         }
         await connect(config)
     } catch (reason) {
@@ -143,8 +157,18 @@ async function copyDiagnostics() {
 }
 </script>
 <template>
-    <div class="moq-player w-full">
-        <div ref="host" class="w-full" />
+    <div class="moq-player relative w-full">
+        <div class="relative">
+            <div ref="host" class="w-full" />
+            <div
+                v-if="connectionMessage"
+                role="status"
+                aria-live="polite"
+                class="absolute inset-0 flex items-center justify-center pointer-events-none p-4 text-center text-sm text-white"
+            >
+                <span class="rounded bg-black/70 px-3 py-2">{{ connectionMessage }}</span>
+            </div>
+        </div>
         <p v-if="diagnosticsEnabled && status" role="status" class="text-sm mt-1" :class="{ 'text-error': error }">
             {{ status }}
         </p>

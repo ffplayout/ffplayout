@@ -439,20 +439,9 @@ function runControl(button: PlayerControlButton) {
                             v-else-if="configStore.showPlayer && configStore.channels[configStore.i]"
                             :key="configStore.i"
                             class="live-player"
-                            reference="httpStream"
-                            :options="{
-                                liveui: true,
-                                controls: true,
-                                suppressNotSupportedError: true,
-                                autoplay: false,
-                                preload: 'auto',
-                                sources: [
-                                    {
-                                        type: 'application/x-mpegURL',
-                                        src: configStore.channels[configStore.i]?.preview_url,
-                                    },
-                                ],
-                            }"
+                            live
+                            :src="configStore.channels[configStore.i]?.preview_url ?? ''"
+                            type="application/x-mpegURL"
                         />
                     </div>
                 </div>

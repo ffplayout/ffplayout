@@ -11,7 +11,17 @@ export default defineConfig({
         chunkSizeWarningLimit: 1600,
     },
     root: './frontend',
-    plugins: [tailwindcss(), vue(), vueDevTools()],
+    plugins: [
+        tailwindcss(),
+        vue({
+            template: {
+                compilerOptions: {
+                    isCustomElement: (tag) => tag === 'hlsjs-video',
+                },
+            },
+        }),
+        vueDevTools(),
+    ],
     resolve: {
         alias: {
             '@': fileURLToPath(new URL('./frontend/src', import.meta.url)),

@@ -2,13 +2,17 @@ use std::{
     collections::HashSet,
     ffi::OsStr,
     fmt,
+    path::Path,
     sync::{Arc, Mutex, PoisonError},
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 
 use local_ip_address::list_afinet_netifas;
 use serde::Serialize;
 use sysinfo::{
-    Disks, Networks, Process, ProcessRefreshKind, ProcessesToUpdate, System, get_current_pid,
+    Disk, Disks, Networks, Process, ProcessRefreshKind, ProcessesToUpdate, System, get_current_pid,
 };
 
 use crate::utils::{config::PlayoutConfig, sizeof_fmt};
@@ -216,17 +220,7 @@ impl SystemStat {
                     usage: usage * cores / 100.0,
                 };
 
-                let mut storage = Storage::default();
-
-                for disk in disks.iter().flatten() {
-                    if disk.mount_point().to_string_lossy().len() > 1
-                        && storage_path.starts_with(disk.mount_point())
-                    {
-                        storage.path = disk.name().to_string_lossy().to_string();
-                        storage.total = disk.total_space();
-                        storage.free = disk.available_space();
-                    }
-                }
+                let storage = storage_for_path(&storage_path, disks.as_deref().unwrap_or_default());
 
                 let load = System::load_average()
                     .map(|load| Load {
@@ -289,6 +283,28 @@ impl fmt::Display for SystemStat {
     }
 }
 
+fn storage_for_path(path: &Path, disks: &[Disk]) -> Storage {
+    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    // macOS firmlinks (e.g. /Users -> the Data volume) are not resolved by
+    // canonicalize. The filesystem's device ID identifies the actual volume.
+    #[cfg(unix)]
+    let device = path.metadata().ok().map(|metadata| metadata.dev());
+    #[cfg(not(unix))]
+    let device: Option<u64> = None;
+
+    let same_device = |disk: &Disk| device.is_some_and(|id| disk.id() == Some(id));
+    let disk = disks
+        .iter()
+        .filter(|disk| same_device(disk) || path.starts_with(disk.mount_point()))
+        .max_by_key(|disk| (same_device(disk), disk.mount_point().components().count()));
+
+    disk.map_or_else(Storage::default, |disk| Storage {
+        path: disk.name().to_string_lossy().into_owned(),
+        total: disk.total_space(),
+        free: disk.available_space(),
+    })
+}
+
 fn initialize_collector<T>(name: &str, result: Result<T, sysinfo::Error>) -> Option<T> {
     match result {
         Ok(collector) => Some(collector),
@@ -297,5 +313,52 @@ fn initialize_collector<T>(name: &str, result: Result<T, sysinfo::Error>) -> Opt
 
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn storage_uses_the_filesystem_device_for_relative_and_symlinked_paths() {
+        use std::{fs, os::unix::fs::symlink};
+
+        let disks = Disks::new_with_refreshed_list().unwrap();
+        let directory = std::env::temp_dir().join(format!(
+            "system-storage-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let link = directory.join("media");
+        symlink(std::env::current_dir().unwrap(), &link).unwrap();
+
+        for path in [Path::new("."), link.as_path()] {
+            let device = path.metadata().unwrap().dev();
+            let disk = disks.iter().find(|disk| disk.id() == Some(device)).unwrap();
+            let storage = storage_for_path(path, &disks);
+            assert_eq!(storage.path, disk.name().to_string_lossy());
+            assert_eq!(storage.total, disk.total_space());
+            assert!(storage.total > 0);
+            assert_eq!(storage.free, disk.available_space());
+        }
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn storage_reports_the_root_filesystem() {
+        let disks = Disks::new_with_refreshed_list().unwrap();
+        let root = std::env::current_dir()
+            .unwrap()
+            .ancestors()
+            .last()
+            .unwrap()
+            .to_path_buf();
+        let storage = storage_for_path(&root, &disks);
+        assert!(storage.total > 0);
+        assert!(!storage.path.is_empty());
     }
 }

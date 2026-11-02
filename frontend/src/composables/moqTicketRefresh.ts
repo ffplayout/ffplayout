@@ -7,37 +7,85 @@ function retryable(reason: unknown): boolean {
     return true
 }
 
-/** Refresh credentials only after the library has stopped reconnecting this URL. */
-export function refreshMoqTicketOnFailure(
+/** A private ticket is single-use: obtain a new URL as soon as its session drops. */
+export function refreshMoqTicketOnDisconnect(
     signals: Effect,
-    connection: { url: Getter<URL | undefined>; error: Getter<Error | undefined> },
+    connection: {
+        url: Getter<URL | undefined>
+        status: Getter<'connecting' | 'connected' | 'disconnected'>
+        error: Getter<Error | undefined>
+    },
     refresh: (signal: AbortSignal) => Promise<void>,
 ) {
-    return signals.run((effect) => {
-        const url = effect.get(connection.url)
-        const failure = effect.get(connection.error)
-        if (!url || !failure) return
+    let firstUrl = true
+    return signals.run((scope) => {
+        if (!scope.get(connection.url)) return
 
-        const controller = new AbortController()
-        effect.cleanup(() => controller.abort())
-        let delay = 2000
+        const initialUrl = firstUrl
+        firstUrl = false
+        const inheritedFailure = connection.error.peek()
+        let attempted = false
+        let controller: AbortController | undefined
+        let timer: ReturnType<typeof setTimeout> | undefined
+        let active = false
+        let denied = false
+        let closed = false
+        let delay = 500
+        function cancel() {
+            clearTimeout(timer)
+            timer = undefined
+            controller?.abort()
+            controller = undefined
+            active = false
+        }
+        scope.cleanup(() => {
+            closed = true
+            cancel()
+        })
         async function attempt() {
+            timer = undefined
+            const request = new AbortController()
+            controller = request
             try {
-                await refresh(controller.signal)
+                // The callback installs a fresh URL and checks this signal
+                // before doing so. URL changes dispose this entire recovery.
+                await refresh(request.signal)
             } catch (reason) {
-                if (controller.signal.aborted || !retryable(reason)) return
-                // A temporary bootstrap outage must not strand the terminal URL.
-                // Retry serially, with a bounded backoff, until access is restored.
-                delay = Math.min(delay * 2, 30_000)
-                effect.timer(() => {
-                    void attempt()
-                }, delay)
+                if (closed || request.signal.aborted) return
+                if (!retryable(reason)) {
+                    denied = true
+                    active = false
+                    return
+                }
+                timer = setTimeout(() => void attempt(), delay)
+                delay = Math.min(delay * 2, 5000)
             }
         }
-        // Recovery, a changed URL or unmount cancels both waits and in-flight fetches.
-        // Transient media disconnects belong to the library's own reconnect loop.
-        effect.timer(() => {
-            void attempt()
-        }, delay)
+        scope.run((state) => {
+            const status = state.get(connection.status)
+            const failure = state.get(connection.error)
+            if (status === 'connecting') {
+                attempted = true
+                return
+            }
+            if (status === 'connected' && !failure) {
+                attempted = true
+                cancel()
+                denied = false
+                delay = 500
+            } else if (
+                ((status === 'disconnected' && attempted) ||
+                    (failure && (initialUrl || failure !== inheritedFailure))) &&
+                !active &&
+                !denied
+            ) {
+                active = true
+                timer = setTimeout(() => void attempt(), 0)
+            }
+            // A new URL can briefly expose the old disconnected/error state.
+            // Let it attempt a handshake before renewing that fresh ticket.
+            // The library may start another attempt meanwhile. Do not cancel
+            // a slow credential fetch on a transition back to "connecting".
+        })
     })
 }
