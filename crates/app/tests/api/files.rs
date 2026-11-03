@@ -42,6 +42,43 @@ async fn selection_browser_enforces_channel_access_and_lists_file_details() {
             assert_eq!(value["files"][1]["size"], 10);
         }
     }
+    // Graphic metadata distinguishes static images from timed sources.
+    for (name, width, height, duration) in [
+        ("lower-third.png", 3840, 2160, serde_json::Value::Null),
+        ("animated-logo.gif", 32, 32, json!(0.6)),
+    ] {
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests_assets/storage/media_images")
+            .join(name);
+        tokio::fs::copy(source, fixture.root.join("storage").join(name))
+            .await
+            .unwrap();
+        let response = fixture
+            .app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                "/api/file/1/media-info",
+                Some(user.as_str()),
+                json!({"source": name}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let value: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap()).unwrap();
+        assert_eq!(value["width"], width);
+        assert_eq!(value["height"], height);
+        assert_eq!(value["source_duration"], duration);
+        assert_eq!(
+            value["duration"],
+            if duration.is_null() {
+                json!(10.0)
+            } else {
+                duration
+            }
+        );
+    }
     // One second of mono PCM; duration probing must run only for the selected file.
     let samples = 48_000_u32;
     let data_size = samples * 2;

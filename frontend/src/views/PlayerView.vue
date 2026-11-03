@@ -713,6 +713,7 @@ async function deletePlaylist(del: boolean) {
                             v-model="newSource.graphics"
                             :duration="Math.max(0, newSource.out - newSource.in)"
                             :load="loadSourcePaths"
+                            :channel="configStore.channels[configStore.i]?.id"
                             @validity="graphicsValid = $event"
                         />
                     </fieldset>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { authFetch } from '@/composables/authFetch'
 import { useI18n } from 'vue-i18n'
 import FileBrowserModal from '@/components/utils/FileBrowserModal.vue'
 import type { BrowserLoader } from '@/composables/fileBrowser'
@@ -7,7 +8,7 @@ import { graphicActions, newGraphicEvent, type GraphicAction, type GraphicEvent 
 import { usePlaylistGraphicsValidation } from '@/composables/playlistGraphicsValidation'
 
 const model = defineModel<unknown>()
-const props = defineProps<{ duration: number; load: BrowserLoader }>()
+const props = defineProps<{ duration: number; channel: number; load: BrowserLoader }>()
 const emit = defineEmits<{ validity: [valid: boolean] }>()
 const { t } = useI18n()
 const { modified, events, issues, canSave } = usePlaylistGraphicsValidation(
@@ -20,6 +21,38 @@ const beyondEnd = computed(() => events.value?.some((event) => event.at >= props
 const repeats = ['repeat', 'source_repeat'] as const
 const transitions = ['fade_in', 'duration', 'fade_out', 'pause'] as const
 const extensions = ['png', 'gif', 'mov', 'qt', 'mp4', 'm4v', 'mkv', 'webm', 'avi', 'ts', 'm2ts', 'mts']
+
+const mediaInfo = ref<{ width: number | null; height: number | null; source_duration: number | null }>()
+const sourcePath = computed(() => {
+    const event = selected.value === undefined ? undefined : events.value?.[selected.value]
+    return event?.action === 'take' ? event.source?.trim() : undefined
+})
+watch(
+    () => [props.channel, sourcePath.value] as const,
+    ([channel, path], _, onCleanup) => {
+        mediaInfo.value = undefined
+        if (!path) return
+        const controller = new AbortController()
+        const timer = setTimeout(async () => {
+            try {
+                const info = await authFetch<NonNullable<typeof mediaInfo.value>>(`/api/file/${channel}/media-info`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source: path }),
+                    signal: controller.signal,
+                })
+                if (!controller.signal.aborted) mediaInfo.value = info
+            } catch {
+                // Metadata is optional; an unavailable source remains editable.
+            }
+        }, 250)
+        onCleanup(() => {
+            clearTimeout(timer)
+            controller.abort()
+        })
+    },
+    { immediate: true },
+)
 
 watch(canSave, (valid) => emit('validity', valid), { immediate: true, flush: 'sync' })
 
@@ -208,6 +241,17 @@ function source(path: string) {
                         >
                             <i class="bi-folder2-open" /></button
                     ></span>
+                    <span v-if="mediaInfo" class="text-xs text-base-content/70 tabular-nums" role="status">
+                        <span v-if="mediaInfo.width && mediaInfo.height">
+                            {{ t('graphicsEditor.sourceResolution') }}: {{ mediaInfo.width }} ×
+                            {{ mediaInfo.height }} px
+                        </span>
+                        <span v-if="mediaInfo.source_duration != null">
+                            {{ mediaInfo.width && mediaInfo.height ? ' · ' : ''
+                            }}{{ t('graphicsEditor.sourceDuration') }}:
+                            {{ mediaInfo.source_duration.toLocaleString(undefined, { maximumFractionDigits: 3 }) }} s
+                        </span>
+                    </span>
                 </label>
                 <template v-if="event.action === 'take' || event.action === 'update'">
                     <div class="fieldset sm:col-span-2">

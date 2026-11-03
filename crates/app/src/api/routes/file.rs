@@ -21,7 +21,7 @@ use crate::{
     db::models::Role,
     file::{
         MoveObject, PathObject, UploadStatus, UploadStatusQuery, norm_abs_path,
-        selection::{BrowseRequest, Listing},
+        selection::{BrowseRequest, Listing, SelectionMediaInfo},
     },
     player::utils::import::import_file,
     utils::errors::ServiceError,
@@ -100,7 +100,7 @@ pub async fn selection_media_info(
     user: AuthUser,
     details: AuthDetails<Role>,
     Json(data): Json<BrowseRequest>,
-) -> Result<Json<serde_json::Value>, ServiceError> {
+) -> Result<Json<SelectionMediaInfo>, ServiceError> {
     ensure_any_authority(
         &details,
         &[&Role::GlobalAdmin, &Role::ChannelAdmin, &Role::User],
@@ -112,9 +112,9 @@ pub async fn selection_media_info(
         .await
         .get(id)
         .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
-    let duration = manager.storage.selection_duration(&data.source).await?;
+    let info = manager.storage.selection_media_info(&data.source).await?;
 
-    Ok(Json(serde_json::json!({ "duration": duration })))
+    Ok(Json(info))
 }
 
 /// **Create Folder**

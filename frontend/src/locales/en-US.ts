@@ -1,5 +1,7 @@
 export default {
     graphicsEditor: {
+        sourceResolution: 'Source resolution',
+        sourceDuration: 'Source duration',
         title: 'Graphics',
         experimental: 'Experimental',
         help: 'Times are seconds from the clip start after its In cut. Positions use the program canvas. Save the playlist and start the clip again to test; the file preview does not show graphics.',

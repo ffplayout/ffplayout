@@ -20,6 +20,15 @@ pub struct BrowseRequest {
 }
 
 #[derive(Serialize)]
+pub struct SelectionMediaInfo {
+    /// Keep the existing default duration for playlist clip selection.
+    pub duration: f64,
+    pub source_duration: Option<f64>,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+}
+
+#[derive(Serialize)]
 pub struct Entry {
     pub name: String,
     pub path: String,
@@ -60,7 +69,10 @@ fn selection_path(root: &Path, source: &str) -> Result<PathBuf, ServiceError> {
 }
 
 impl LocalStorage {
-    pub async fn selection_duration(&self, source: &str) -> Result<f64, ServiceError> {
+    pub async fn selection_media_info(
+        &self,
+        source: &str,
+    ) -> Result<SelectionMediaInfo, ServiceError> {
         let root = self.root.read().await.clone();
         let path = selection_path(&root, source)?;
 
@@ -73,11 +85,23 @@ impl LocalStorage {
                 ServiceError::BadRequest(format!("Cannot inspect media: {error}"))
             })?;
 
-            Ok(probe
+            let video = probe.video.first();
+            let source_duration = probe
                 .format
                 .duration
-                .filter(|duration| duration.is_finite() && *duration > 0.0)
-                .unwrap_or(10.0))
+                .or_else(|| video.and_then(|stream| stream.duration))
+                .filter(|duration| duration.is_finite() && *duration > 0.0);
+
+            Ok(SelectionMediaInfo {
+                duration: source_duration.unwrap_or(10.0),
+                source_duration,
+                width: video
+                    .and_then(|stream| stream.width)
+                    .filter(|value| *value > 0),
+                height: video
+                    .and_then(|stream| stream.height)
+                    .filter(|value| *value > 0),
+            })
         })
         .await
         .map_err(|error| ServiceError::BadRequest(format!("Media inspection failed: {error}")))?

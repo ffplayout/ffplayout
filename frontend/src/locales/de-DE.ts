@@ -1,5 +1,7 @@
 export default {
     graphicsEditor: {
+        sourceResolution: 'Quellauflösung',
+        sourceDuration: 'Quelldauer',
         title: 'Grafiken',
         experimental: 'Experimentell',
         help: 'Zeiten gelten in Sekunden ab Clipbeginn nach dem In-Schnitt. Positionen beziehen sich auf die Programmauflösung. Zum Testen die Playliste speichern und den Clip neu starten; die Dateivorschau zeigt keine Grafiken.',

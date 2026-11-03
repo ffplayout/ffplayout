@@ -1,5 +1,7 @@
 export default {
     graphicsEditor: {
+        sourceResolution: 'Resolução da fonte',
+        sourceDuration: 'Duração da fonte',
         title: 'Gráficos',
         experimental: 'Experimental',
         help: 'Os tempos são segundos desde o início do clipe após o corte de entrada. As posições usam a resolução do programa. Salve a playlist e reinicie o clipe para testar; a prévia do arquivo não mostra gráficos.',
