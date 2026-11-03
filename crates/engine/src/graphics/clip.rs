@@ -147,9 +147,14 @@ impl ClipGraphics {
 
     pub(crate) fn frame_at(&self, elapsed_us: i64) -> Option<ClipSceneFrame> {
         let prepared = self.prepared.get()?;
-        let selected = prepared
-            .schedule
-            .frame_at(Some(self.position_us.checked_add(elapsed_us)?))?;
+        let position_us = self.position_us.checked_add(elapsed_us)?;
+        let frozen =
+            prepared
+                .renderer
+                .freeze_schedule(&prepared.schedule, position_us, Scope::default())?;
+        let selected = prepared.schedule.frame_at(Some(position_us))?;
+        #[cfg(not(test))]
+        let _ = selected;
 
         Some(ClipSceneFrame {
             #[cfg(test)]
@@ -157,11 +162,7 @@ impl ClipGraphics {
             #[cfg(test)]
             position_us: selected.position_us,
             prepared: prepared.clone(),
-            frozen: prepared.snapshot(prepared.renderer.freeze(
-                selected.scene,
-                selected.position_us,
-                Scope::default(),
-            )),
+            frozen: prepared.snapshot(frozen),
         })
     }
 }
@@ -408,6 +409,79 @@ pub(crate) mod tests {
         assert!(service.budget().usage().0 > 0);
         drop(queued);
         assert_eq!(service.budget().usage().0, 0);
+    }
+
+    #[test]
+    fn a_scheduled_stream_prepares_before_the_first_take_without_publishing_graphics() {
+        use ff_graphics::{
+            ffmpeg::sources::animation::AnimationOptions, playback::Repeat,
+            preparation::PreparationService, source::Completion,
+        };
+        use std::{
+            path::Path,
+            time::{Duration, Instant},
+        };
+        let service = PreparationService::default();
+        let mut renderer = CpuScene::new(1, 64 * 1024 * 1024).with_preparation(&service);
+        let resource = renderer
+            .prepare_animation(
+                ResourceKey { id: 1, revision: 1 },
+                &Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests_assets/storage/media_images/animated-logo-video.mkv"),
+                AnimationOptions {
+                    size: Some((16, 16)),
+                    repeat: Repeat::Forever,
+                    completion: Completion::Hide,
+                },
+                || false,
+            )
+            .unwrap();
+        let poster_bytes = resource.descriptor.storage_bytes;
+        let schedule = ClipSchedule::compile(
+            5_000_000,
+            &[Event {
+                at_us: 2_000_000,
+                action: Action::Take {
+                    layer: LayerSpec {
+                        id: LayerId(1),
+                        resource: resource.key,
+                        z: 0,
+                        scope: Scope::default(),
+                        canvas: (32, 32),
+                        position: (0, 0),
+                        opacity: 1.0,
+                    },
+                    transition: Transition::default(),
+                },
+            }],
+            &[resource],
+            Limits::default(),
+        )
+        .unwrap();
+        let graphics = ClipGraphics::new(renderer, schedule);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            assert!(
+                graphics.frame_at(1_600_000).is_none(),
+                "preparation must not publish future graphics"
+            );
+            if service.budget().usage().0 > poster_bytes {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "no decoder work before first take"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let queued = graphics.frame_at(2_000_000).unwrap();
+        assert!(queued.visible());
+        drop(queued);
+        graphics.suspend();
+        drop(graphics);
+        assert!(service.join(Duration::from_secs(2)));
+        assert_eq!(service.budget().usage(), (0, 0, 0));
+        assert!(service.shutdown(Duration::from_secs(2)));
     }
 
     #[test]

@@ -177,6 +177,18 @@ without joining on the video thread. Channel shutdown joins tracked workers
 outside frame processing and retains handles after a timeout. Ready queued frames
 remain valid after cancellation. A decoding error retains the last ready image
 and logs a warning; it never stops playout.
+Scheduled takes, visibility entrances and fade repeats request their first visible
+source position up to 500 ms in advance. During that short window, a streamed
+source retains its bounded decoded lookahead; the first visible program frame
+selects the matching source image from it, even with different source/program
+FPS. This does not advance the take or restart the animation clock. Outside the
+window, longer invisible intervals still park the decoder and release its cache.
+Current visible presentations take precedence over a future retake on the same
+layer. A seek/live return or late asset preparation can bypass the lead window;
+in that case the established ready/poster/last-good behavior remains in effect.
+No new worker or pixel copy is added by this scheduling step; lookahead references
+share the existing channel-budgeted frames. It is not a hard decoding deadline.
+
 Repeated takes of the same path/size/source-playback options reuse prepared pixels
 within the clip. Different source-repeat/end options currently use separate assets.
 

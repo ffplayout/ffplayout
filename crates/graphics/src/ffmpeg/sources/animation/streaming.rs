@@ -38,6 +38,8 @@ struct Request {
     frame_epoch: AtomicI64,
     ready: ArcSwapOption<OverlayFrame>,
     ready_elapsed: AtomicI64,
+    preparing: AtomicBool,
+    prepared: ArcSwapOption<Vec<(FrameTiming, Arc<OverlayFrame>)>>,
 }
 
 struct Shared {
@@ -153,7 +155,20 @@ impl StreamSource {
         self.task.cancel();
     }
 
-    pub fn at(&self, mut elapsed: i64, instance: Instance) -> Option<Arc<OverlayFrame>> {
+    pub fn prewarm(&self, elapsed: i64, instance: Instance) {
+        self.request(elapsed, instance, true);
+    }
+
+    pub fn at(&self, elapsed: i64, instance: Instance) -> Option<Arc<OverlayFrame>> {
+        self.request(elapsed, instance, false)
+    }
+
+    fn request(
+        &self,
+        mut elapsed: i64,
+        instance: Instance,
+        preparing: bool,
+    ) -> Option<Arc<OverlayFrame>> {
         if elapsed < 0 {
             return None;
         }
@@ -170,6 +185,20 @@ impl StreamSource {
         }
         let requests = self.shared.requests.load();
         if let Some(request) = requests.get(&instance) {
+            let was_preparing = request.preparing.load(Ordering::Acquire);
+            // Retain the matching lookahead image before waking the worker for
+            // the visible timestamp: it may retire this window immediately.
+            let prepared = if !preparing && was_preparing {
+                request.prepared.swap(None).and_then(|frames| {
+                    frames
+                        .iter()
+                        .find(|(timing, _)| timing.contains(elapsed))
+                        .map(|(_, surface)| surface.clone())
+                })
+            } else {
+                None
+            };
+            request.preparing.store(preparing, Ordering::Release);
             let epoch = self.shared.frame_epoch.load(Ordering::Acquire);
             if request.frame_epoch.swap(epoch, Ordering::AcqRel) != epoch
                 && request.ready_elapsed.load(Ordering::Acquire) != elapsed
@@ -180,6 +209,14 @@ impl StreamSource {
                 && !self.shared.failed.load(Ordering::Acquire)
             {
                 self.task.wake();
+            }
+
+            // The first visible program tick may fall in a later source frame
+            // than the entrance (different FPS/variable frame durations). Use
+            // the already decoded lookahead without a worker round trip.
+            if let Some(surface) = prepared {
+                request.ready.store(Some(surface.clone()));
+                return Some(surface);
             }
 
             return request.ready.load_full().or_else(|| {
@@ -217,6 +254,8 @@ impl StreamSource {
                     frame_epoch: AtomicI64::new(self.shared.frame_epoch.load(Ordering::Acquire)),
                     ready: ArcSwapOption::empty(),
                     ready_elapsed: AtomicI64::new(-1),
+                    preparing: AtomicBool::new(preparing),
+                    prepared: ArcSwapOption::empty(),
                 }),
             );
             self.shared.requests.store(Arc::new(requests));
@@ -266,6 +305,7 @@ fn run(
         if shared.inactive.load(Ordering::Acquire) {
             for request in shared.requests.load().values() {
                 request.ready.store(None);
+                request.prepared.store(None);
                 request.ready_elapsed.store(-1, Ordering::Release);
             }
             cache.clear();
@@ -472,6 +512,13 @@ fn run(
                         .map(|(_, frame)| (frame, elapsed))
                 });
             if let Some((frame, completed)) = candidate {
+                if request.preparing.load(Ordering::Acquire) {
+                    request
+                        .prepared
+                        .store(Some(Arc::new(cache.iter().cloned().collect())));
+                } else {
+                    request.prepared.store(None);
+                }
                 request.ready.store(Some(frame.clone()));
                 request.ready_elapsed.store(completed, Ordering::Release);
             }

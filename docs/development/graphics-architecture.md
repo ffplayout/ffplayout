@@ -696,3 +696,23 @@ a temporary budget shortage pauses the decoder, not video. The source's poster
 counts towards scene admission, while dynamic pixels count towards the shared
 channel budget. These are accounted graphics limits, not process RSS limits.
 See `docs/playlist_graphics.md` for finite completion, error behavior and limits.
+
+### Scheduled animation preparation
+
+CPU scene evaluation requests bounded background preparation up to 500 ms before
+known takes, visibility entrances and repeating fade entrances. `ClipSchedule`
+exposes immutable upcoming boundary states; it does not execute future commands.
+`Presentation::next_visible_us` excludes cancelled/finished cycles. Current layers
+claim their IDs before future states, so a future retake cannot evict an active
+presentation's decoder request. Same-timestamp events use their final snapshot.
+
+A preparation request holds its source-local target fixed until activation. The
+worker publishes refcounted lookahead frames (within the existing 16-frame/64 MiB
+cache limits), allowing the first visible program tick to choose the correct
+source frame without waiting for a decoder round trip. This matters when source
+and program frame boundaries differ. Ready windows share accounted pixel leases;
+there is no extra decoding thread or pixel copy. Long gaps outside the lead window
+still suspend demand and release cache/ready windows. Clip disposal, live suppression
+and channel shutdown keep their established cancellation and join boundaries.
+Unplanned seeks, late preparation or immediate controls retain last-good/poster
+fallbacks; the lead window is a preparation opportunity, not a hard latency bound.

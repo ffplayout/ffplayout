@@ -65,6 +65,12 @@ impl PreparedSurface {
         self.at(elapsed_us).cloned()
     }
 
+    pub(in crate::ffmpeg) fn prewarm(&self, elapsed_us: i64, instance: (u64, u64, i64)) {
+        if let Some(stream) = &self.stream {
+            stream.prewarm(elapsed_us, instance);
+        }
+    }
+
     pub(in crate::ffmpeg) fn begin_frame(&self, epoch: i64) {
         if let Some(stream) = &self.stream {
             stream.begin_frame(epoch);
@@ -718,6 +724,515 @@ mod tests {
         drop(resource);
         cpu.retire();
         assert_eq!(service.budget().usage().0, 0);
+    }
+
+    #[test]
+    fn future_retake_preparation_never_replaces_a_visible_presentations_request() {
+        use crate::{
+            playlist::{Action, ClipSchedule, Event, Limits},
+            preparation::PreparationService,
+        };
+        let service = PreparationService::default();
+        let mut cpu = CpuScene::new(1, 1024 * 1024).with_preparation(&service);
+        let resource = cpu
+            .prepare_animation(
+                ResourceKey { id: 1, revision: 1 },
+                &path("animated-logo-video.mkv"),
+                options(),
+                || false,
+            )
+            .unwrap();
+        let spec = scene(resource.clone(), 0).layers[0].spec;
+        let schedule = ClipSchedule::compile(
+            2_000_000,
+            &[
+                Event {
+                    at_us: 0,
+                    action: Action::Take {
+                        layer: spec,
+                        transition: Transition {
+                            fade_out_us: 400_000,
+                            ..Default::default()
+                        },
+                    },
+                },
+                Event {
+                    at_us: 500_000,
+                    action: Action::Stop(spec.id),
+                },
+                Event {
+                    at_us: 880_000,
+                    action: Action::Clear(spec.id),
+                },
+                Event {
+                    at_us: 1_000_000,
+                    action: Action::Take {
+                        layer: spec,
+                        transition: Transition::default(),
+                    },
+                },
+            ],
+            std::slice::from_ref(&resource),
+            Limits::default(),
+        )
+        .unwrap();
+        let source = cpu.surfaces.get(&resource).unwrap();
+        let stream = source.stream.as_ref().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !stream.ready_at(600_000, (0, 1, 0)) {
+            let _ = cpu
+                .freeze_schedule(&schedule, 600_000, Scope::default())
+                .unwrap();
+            assert!(
+                Instant::now() < deadline,
+                "future retake displaced the current request"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(!stream.ready_at(0, (0, 1, 1_000_000)));
+        let queued = cpu
+            .freeze_schedule(&schedule, 600_000, Scope::default())
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !stream.ready_at(0, (0, 1, 1_000_000)) {
+            assert!(
+                cpu.freeze_schedule(&schedule, 950_000, Scope::default())
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(
+                Instant::now() < deadline,
+                "cleared layer did not prepare its retake"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(
+            !cpu.freeze_schedule(&schedule, 1_000_000, Scope::default())
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            !queued.is_empty(),
+            "future preparation must not change queued output"
+        );
+        cpu.stop_streams();
+        assert!(service.join(Duration::from_secs(2)));
+        drop(queued);
+        drop(schedule);
+        drop(resource);
+        cpu.retire();
+        assert_eq!(service.budget().usage(), (0, 0, 0));
+        assert!(service.shutdown(Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn scheduled_take_and_repeat_prewarm_ready_pixels_but_long_gaps_park_the_decoder() {
+        use crate::{
+            ffmpeg::surface::SurfaceFrame,
+            playlist::{Action, ClipSchedule, Event, Limits},
+            preparation::PreparationService,
+        };
+        let service = PreparationService::default();
+        let mut cpu = CpuScene::new(2, 1024 * 1024).with_preparation(&service);
+        let resource = cpu
+            .prepare_animation(
+                ResourceKey { id: 1, revision: 1 },
+                &path("animated-logo-video.mkv"),
+                options(),
+                || false,
+            )
+            .unwrap();
+        let spec = scene(resource.clone(), 0).layers[0].spec;
+        let transition = Transition {
+            fade_in_us: 40_000,
+            hold_us: Some(200_000),
+            fade_out_us: 60_000,
+            pause_us: 2_090_000,
+            repeat: Repeat::Count(NonZeroU32::new(2).unwrap()),
+        };
+        let schedule = ClipSchedule::compile(
+            10_000_000,
+            &[Event {
+                at_us: 2_000_000,
+                action: Action::Take {
+                    layer: spec,
+                    transition,
+                },
+            }],
+            std::slice::from_ref(&resource),
+            Limits::default(),
+        )
+        .unwrap();
+        let source = cpu.surfaces.get(&resource).unwrap();
+        let stream = source.stream.as_ref().unwrap();
+        let instance = (0, 1, 2_000_000);
+        let warm = |now, elapsed| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let frozen = cpu
+                    .freeze_schedule(&schedule, now, Scope::default())
+                    .unwrap();
+                assert!(
+                    frozen.is_empty(),
+                    "preparation must not take the layer early"
+                );
+                if stream.ready_at(elapsed, instance) {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "scheduled pixels were not prepared"
+                );
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        };
+        assert!(
+            cpu.freeze_schedule(&schedule, 1_000_000, Scope::default())
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            stream.stats().0,
+            0,
+            "must not decode outside the preparation horizon"
+        );
+        warm(1_600_000, 1);
+        assert!(
+            !cpu.freeze_schedule(&schedule, 2_020_000, Scope::default())
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            cpu.freeze_schedule(&schedule, 2_800_000, Scope::default())
+                .unwrap()
+                .is_empty()
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while stream.stats().1 != 0 {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let idle = stream.stats().0;
+        std::thread::sleep(Duration::from_millis(20));
+        assert_eq!(stream.stats().0, idle);
+        warm(4_000_000, 2_390_001);
+        let decoded = stream.stats().0;
+        // Holding a fixed future request must not continuously advance decoding.
+        for now in [4_020_000, 4_100_000, 4_200_000] {
+            assert!(
+                cpu.freeze_schedule(&schedule, now, Scope::default())
+                    .unwrap()
+                    .is_empty()
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(stream.stats().0, decoded);
+        let primed = source.select(2_400_000, instance).unwrap();
+        let input = format::input(&path("animated-logo-video.mkv")).unwrap();
+        let mut reference = LogoDecoder::new(
+            input,
+            LogoStyle {
+                scale: Some("16:16".into()),
+                opacity: 1.0,
+                position: "0:0".into(),
+            },
+            2,
+            2,
+        )
+        .unwrap();
+        let reference = loop {
+            let frame = reference.next_frame().unwrap().unwrap();
+            if frame.timing.contains(2_400_000) {
+                break frame;
+            }
+        };
+        for plane in 0..4 {
+            for row in 0..primed.frame.plane_height(plane) as usize {
+                let width = primed.frame.plane_width(plane) as usize;
+                assert_eq!(
+                    &primed.frame.data(plane)[row * primed.frame.stride(plane)
+                        ..row * primed.frame.stride(plane) + width],
+                    &reference.surface.frame.data(plane)[row * reference.surface.frame.stride(plane)
+                        ..row * reference.surface.frame.stride(plane) + width],
+                    "prewarming changed the animation phase"
+                );
+            }
+        }
+        let frozen = cpu
+            .freeze_schedule(&schedule, 4_400_000, Scope::default())
+            .unwrap();
+        let mut actual = frame::Video::new(Pixel::YUV420P, 32, 32);
+        let mut expected = frame::Video::new(Pixel::YUV420P, 32, 32);
+        for plane in 0..3 {
+            actual.data_mut(plane).fill(128);
+            expected.data_mut(plane).fill(128);
+        }
+        assert_eq!(
+            frozen
+                .blend(&mut actual, ColorEncoding::Bt601Limited)
+                .blended,
+            1
+        );
+        SurfaceFrame {
+            surface: primed.clone(),
+            x: 0,
+            y: 0,
+            opacity: 0.25,
+        }
+        .blend(&mut expected);
+        for plane in 0..3 {
+            assert_eq!(actual.data(plane), expected.data(plane));
+        }
+        assert!(
+            cpu.freeze_schedule(&schedule, 5_000_000, Scope::default())
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            cpu.freeze_schedule(&schedule, 10_000_000, Scope::default())
+                .is_none()
+        );
+        cpu.stop_streams();
+        assert!(service.join(Duration::from_secs(2)));
+        drop(frozen);
+        drop(primed);
+        drop(schedule);
+        drop(resource);
+        cpu.retire();
+        assert_eq!(service.budget().usage(), (0, 0, 0));
+        assert!(service.shutdown(Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn overlapping_animation_fades_match_independent_frame_selection_at_multiple_program_rates() {
+        use crate::ffmpeg::surface::SurfaceFrame;
+        let budget = ResourceBudget::new(1024 * 1024, 32, 2);
+        let mut cpu = CpuScene::new(4, 1024 * 1024).with_budget(budget.clone());
+        let resource = cpu
+            .prepare_animation(
+                ResourceKey { id: 1, revision: 1 },
+                &path("animated-logo.gif"),
+                options(),
+                || false,
+            )
+            .unwrap();
+        let source = cpu.surfaces.get(&resource).unwrap();
+        let transition = Transition {
+            fade_in_us: 80_000,
+            hold_us: Some(240_000),
+            fade_out_us: 120_000,
+            pause_us: 160_000,
+            repeat: Repeat::Forever,
+        };
+        let layers = (0..3)
+            .map(|id| {
+                let mut layer = scene(resource.clone(), id * 90_000).layers[0].clone();
+                layer.spec.id = LayerId(id as u64);
+                layer.spec.position = (id as i32 * 4, id as i32 * 2);
+                layer.spec.z = id as i32;
+                layer.spec.opacity = 0.7;
+                layer.presentation = Presentation::new(id * 90_000, transition).unwrap();
+                layer
+            })
+            .collect::<Vec<_>>();
+        let scene = SceneRevision {
+            number: 1,
+            layers: layers.into(),
+        };
+        let retained = budget.usage();
+
+        for fps in [24, 25, 30, 50, 60] {
+            for index in 0..fps * 20 {
+                let time = i64::from(index) * 1_000_000 / i64::from(fps);
+                let mut actual = frame::Video::new(Pixel::YUV420P, 32, 32);
+                let mut expected = frame::Video::new(Pixel::YUV420P, 32, 32);
+                for plane in 0..3 {
+                    actual.data_mut(plane).fill(128);
+                    expected.data_mut(plane).fill(128);
+                }
+                for layer in scene.layers.iter() {
+                    if let Some(opacity) = layer.presentation.opacity(time).filter(|v| *v > 0.0) {
+                        let elapsed = layer.presentation.elapsed_us(time) % 600_000;
+                        // Fixture delays are 100/300/200 ms; selection is independent
+                        // of the source's production timeline lookup.
+                        let selected = if elapsed < 100_000 {
+                            0
+                        } else if elapsed < 400_000 {
+                            1
+                        } else {
+                            2
+                        };
+                        SurfaceFrame {
+                            surface: source.frames[selected].1.clone(),
+                            x: layer.spec.position.0,
+                            y: layer.spec.position.1,
+                            opacity: opacity * layer.spec.opacity,
+                        }
+                        .blend(&mut expected);
+                    }
+                }
+                let report = cpu.blend(
+                    &scene,
+                    time,
+                    Scope::default(),
+                    &mut actual,
+                    ColorEncoding::Bt601Limited,
+                );
+                assert_eq!((report.missing, report.unsupported), (0, 0));
+                for plane in 0..3 {
+                    assert_eq!(
+                        actual.data(plane),
+                        expected.data(plane),
+                        "fps={fps}, frame={index}, plane={plane}"
+                    );
+                }
+                assert_eq!(
+                    budget.usage(),
+                    retained,
+                    "cached loops must not accumulate resources"
+                );
+            }
+        }
+        drop(scene);
+        drop(resource);
+        cpu.retire();
+        assert_eq!(budget.usage(), (0, 0, 0));
+    }
+
+    #[test]
+    fn repeated_stream_take_stop_clear_and_live_suspension_release_all_resources() {
+        use crate::{
+            preparation::PreparationService,
+            scene::{Command, SceneController},
+        };
+        let service = PreparationService::default();
+        let budget = service.budget();
+
+        for cycle in 0..20 {
+            let mut cpu = CpuScene::new(2, 1024 * 1024).with_preparation(&service);
+            let resource = cpu
+                .prepare_animation(
+                    ResourceKey {
+                        id: 1,
+                        revision: cycle + 1,
+                    },
+                    &path("animated-logo-video.mkv"),
+                    options(),
+                    || false,
+                )
+                .unwrap();
+            let source = cpu.surfaces.get(&resource).unwrap();
+            let stream = source.stream.as_ref().unwrap();
+            let mut controller = SceneController::new_local(2, 2);
+            let spec = scene(resource.clone(), 0).layers[0].spec;
+            let outcomes = controller.apply_at_frame(
+                0,
+                [
+                    Command::Prepare(resource.key),
+                    Command::Ready(resource.clone()),
+                    Command::Take {
+                        layer: spec,
+                        transition: Transition {
+                            fade_out_us: 40_000,
+                            ..Default::default()
+                        },
+                    },
+                ],
+            );
+            assert!(outcomes.iter().all(|ack| ack.outcome.is_ok()));
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let queued = loop {
+                let frozen =
+                    cpu.freeze(&controller.advance(2_100_000), 2_100_000, Scope::default());
+                if stream.ready_at(2_100_000, (0, 1, 0)) {
+                    break frozen;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "cycle {cycle} never became ready"
+                );
+                std::thread::sleep(Duration::from_millis(1));
+            };
+            // Live takeover suppresses demand while queued outputs still own pixels.
+            cpu.suspend_streams();
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while stream.stats().1 != 0 {
+                assert!(
+                    Instant::now() < deadline,
+                    "live suppression did not empty cache"
+                );
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let decoded = stream.stats().0;
+            std::thread::sleep(Duration::from_millis(10));
+            assert_eq!(stream.stats().0, decoded, "inactive decoder kept running");
+            assert!(
+                controller.apply_at_frame(2_200_000, [Command::Stop(spec.id)])[0]
+                    .outcome
+                    .is_ok()
+            );
+            assert!(
+                cpu.freeze(&controller.advance(2_240_000), 2_240_000, Scope::default())
+                    .is_empty()
+            );
+            assert!(
+                controller.apply_at_frame(
+                    2_250_000,
+                    [Command::Take {
+                        layer: spec,
+                        transition: Transition::default(),
+                    }]
+                )[0]
+                .outcome
+                .is_ok()
+            );
+            assert!(
+                controller.apply_at_frame(2_260_000, [Command::Clear(spec.id)])[0]
+                    .outcome
+                    .is_ok()
+            );
+            // Retake must request its own source origin rather than an old ready frame.
+            assert!(
+                controller.apply_at_frame(
+                    3_000_000,
+                    [Command::Take {
+                        layer: spec,
+                        transition: Transition::default()
+                    }]
+                )[0]
+                .outcome
+                .is_ok()
+            );
+            let retaken = cpu.freeze(&controller.advance(3_000_000), 3_000_000, Scope::default());
+            assert!(!retaken.is_empty());
+            assert!(
+                controller.apply_at_frame(3_100_000, [Command::ClearAll])[0]
+                    .outcome
+                    .is_ok()
+            );
+            assert!(
+                cpu.freeze(&controller.advance(3_100_000), 3_100_000, Scope::default())
+                    .is_empty()
+            );
+            cpu.stop_streams();
+            assert!(
+                service.join(Duration::from_secs(2)),
+                "worker did not join in cycle {cycle}"
+            );
+            assert_eq!(budget.usage().2, 0);
+            drop(retaken);
+            drop(controller);
+            drop(resource);
+            cpu.retire();
+            assert!(budget.usage().0 > 0, "queued output lost pixel ownership");
+            drop(queued);
+            assert_eq!(
+                budget.usage(),
+                (0, 0, 0),
+                "cycle {cycle} leaked reservations"
+            );
+        }
+        assert!(service.shutdown(Duration::from_secs(2)));
     }
 
     #[test]

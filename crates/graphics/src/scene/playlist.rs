@@ -187,6 +187,33 @@ impl ClipSchedule {
         })
     }
 
+    pub fn contains_position(&self, position_us: i64) -> bool {
+        (0..self.duration_us).contains(&position_us)
+    }
+
+    /// Future states within a bounded preparation horizon. No events are executed;
+    /// callers must not publish these snapshots as the current visible scene.
+    pub fn upcoming(
+        &self,
+        position_us: i64,
+        horizon_us: i64,
+    ) -> impl Iterator<Item = ScheduledFrame<'_>> {
+        let start = self
+            .boundaries
+            .partition_point(|boundary| boundary.at_us <= position_us);
+        let end = position_us.saturating_add(horizon_us.max(0));
+
+        self.boundaries[start..]
+            .iter()
+            .take_while(move |boundary| {
+                self.contains_position(position_us) && boundary.at_us <= end
+            })
+            .map(|boundary| ScheduledFrame {
+                scene: &boundary.scene,
+                position_us: boundary.at_us,
+            })
+    }
+
     /// `None` suppresses clip graphics during a live takeover. On return, pass
     /// the current scheduled clip position: missed events are not replayed.
     /// Seeking in either direction immediately selects the corresponding state.
@@ -218,6 +245,54 @@ mod tests {
         scene::Scope,
         surface::{Alpha, ColorEncoding, PixelLayout, ResourceKey, SurfaceDescriptor},
     };
+
+    #[test]
+    fn upcoming_preparation_uses_final_boundary_states_and_valid_clip_positions() {
+        let schedule = ClipSchedule::compile(
+            4_000_000,
+            &[
+                Event {
+                    at_us: 1_000_000,
+                    action: Action::Take {
+                        layer: layer(1, 0),
+                        transition: Transition::default(),
+                    },
+                },
+                Event {
+                    at_us: 1_000_000,
+                    action: Action::Visibility {
+                        layer: LayerId(1),
+                        visible: false,
+                    },
+                },
+                Event {
+                    at_us: 2_000_000,
+                    action: Action::Visibility {
+                        layer: LayerId(1),
+                        visible: true,
+                    },
+                },
+            ],
+            &[resource()],
+            Limits::default(),
+        )
+        .unwrap();
+        assert!(schedule.frame_at(Some(600_000)).is_none());
+        let pending = schedule.upcoming(600_000, 500_000).collect::<Vec<_>>();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].position_us, 1_000_000);
+        assert!(!pending[0].scene.layers[0].visible);
+        assert_eq!(schedule.upcoming(1_500_000, 499_999).count(), 0);
+        let visible = schedule.upcoming(1_500_000, 500_000).next().unwrap();
+        assert!(visible.scene.layers[0].visible);
+        assert_eq!(
+            visible.scene.layers[0].presentation.elapsed_us(2_000_000),
+            1_000_000
+        );
+        assert_eq!(schedule.upcoming(-1, i64::MAX).count(), 0);
+        assert_eq!(schedule.upcoming(4_000_000, i64::MAX).count(), 0);
+        assert_eq!(schedule.upcoming(600_000, -1).count(), 0);
+    }
 
     fn resource() -> Arc<Resource> {
         Arc::new(Resource {

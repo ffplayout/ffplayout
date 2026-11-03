@@ -8,6 +8,7 @@ use crate::{
     bitmap::StraightRgbaBitmap,
     ffmpeg::sources::animation::PreparedSurface,
     ffmpeg::text::rgba_to_yuva420p,
+    playlist::{ClipSchedule, ScheduledFrame},
     preparation::{PreparationService, PreparationWeak, ResourceBudget},
     scene::{LayerId, LayerSpec, SceneRevision, Scope},
     surface::{ColorEncoding, Resource, ResourceKey, SurfaceStore},
@@ -18,6 +19,8 @@ use super::{
     overlay::{OverlayFrame, alpha_bounds, chroma_alpha, prepare_execution},
     surface::{SurfaceFrame, SurfaceScaleCache},
 };
+
+const PREPARATION_LEAD_US: i64 = 500_000;
 
 pub struct CpuScene {
     pub(in crate::ffmpeg) surfaces: SurfaceStore<PreparedSurface>,
@@ -177,6 +180,38 @@ impl CpuScene {
     /// Select ready pixels on the program thread, before lookahead/fan-out.
     /// The fixed layer container allocates no storage per frame.
     pub fn freeze(&self, scene: &SceneRevision, program_us: i64, scope: Scope) -> FrozenScene {
+        self.freeze_with_upcoming(Some(scene), program_us, scope, std::iter::empty())
+    }
+
+    /// Prepare scheduled entrances without displaying them, including before the
+    /// first take. Dropped/live-suppressed clips must not call this method.
+    pub fn freeze_schedule(
+        &self,
+        schedule: &ClipSchedule,
+        position_us: i64,
+        scope: Scope,
+    ) -> Option<FrozenScene> {
+        if !schedule.contains_position(position_us) {
+            return None;
+        }
+        let selected = schedule.frame_at(Some(position_us));
+        let scene = selected.as_ref().map(|selected| selected.scene);
+
+        Some(self.freeze_with_upcoming(
+            scene,
+            position_us,
+            scope,
+            schedule.upcoming(position_us, PREPARATION_LEAD_US),
+        ))
+    }
+
+    fn freeze_with_upcoming<'a>(
+        &self,
+        scene: Option<&SceneRevision>,
+        program_us: i64,
+        scope: Scope,
+        upcoming: impl Iterator<Item = ScheduledFrame<'a>>,
+    ) -> FrozenScene {
         for source in self.surfaces.values() {
             source.begin_frame(program_us);
         }
@@ -185,7 +220,11 @@ impl CpuScene {
             report: CompositionReport::default(),
             policy: self.color_policy,
         };
-        for (index, evaluated) in scene.evaluate(program_us, scope).enumerate() {
+        for (index, evaluated) in scene
+            .into_iter()
+            .flat_map(|scene| scene.evaluate(program_us, scope))
+            .enumerate()
+        {
             if index >= frozen.layers.len() {
                 frozen.report.unsupported += 1;
                 continue;
@@ -215,6 +254,52 @@ impl CpuScene {
             });
         }
 
+        // One request per layer: a future retake must never replace the current
+        // presentation's decoder request. Fixed storage keeps this frame-side work bounded.
+        let mut claimed = [None; 32];
+        let mut count = 0;
+        let horizon = program_us.saturating_add(PREPARATION_LEAD_US);
+        for (candidate, at_us) in scene
+            .into_iter()
+            .map(|scene| (scene, program_us))
+            .chain(upcoming.map(|next| (next.scene, next.position_us)))
+        {
+            for layer in candidate.layers.iter() {
+                if count == claimed.len() {
+                    break;
+                }
+                if !layer.visible
+                    || layer.spec.scope != scope
+                    || layer.spec.opacity <= 0.0
+                    || claimed[..count].contains(&Some(layer.spec.id))
+                {
+                    continue;
+                }
+                let visible_us = if layer
+                    .presentation
+                    .opacity(at_us)
+                    .is_some_and(|opacity| opacity > 0.0)
+                {
+                    Some(at_us)
+                } else {
+                    layer.presentation.next_visible_us(at_us)
+                };
+                let Some(visible_us) = visible_us.filter(|time| *time <= horizon) else {
+                    continue;
+                };
+                claimed[count] = Some(layer.spec.id);
+                count += 1;
+                if visible_us > program_us
+                    && let Some(source) = self.surfaces.get(&layer.resource)
+                {
+                    let elapsed = layer.presentation.elapsed_us(visible_us);
+                    source.prewarm(
+                        elapsed,
+                        (scope.0, layer.spec.id.0, visible_us.saturating_sub(elapsed)),
+                    );
+                }
+            }
+        }
         for source in self.surfaces.values() {
             source.end_frame();
         }

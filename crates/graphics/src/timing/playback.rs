@@ -136,6 +136,50 @@ impl Presentation {
             .opacity((i128::from(program_us) - i128::from(self.start_us)) as u128)
     }
 
+    /// Earliest positive-opacity microsecond for entrance preparation.
+    /// Stopped presentations never schedule another entrance; a still-visible
+    /// exit fade remains the caller's normal visible-frame responsibility.
+    pub fn next_visible_us(self, program_us: i64) -> Option<i64> {
+        if self.stopped.is_some() {
+            return None;
+        }
+        if self
+            .opacity(program_us)
+            .is_some_and(|opacity| opacity > 0.0)
+        {
+            return Some(program_us);
+        }
+        let start = i128::from(self.start_us);
+        let now = i128::from(program_us);
+        let mut next = start;
+        if now >= start {
+            if self.transition.hold_us.is_some() {
+                let active = self.transition.active_duration() as i128;
+                let cycle = active + i128::from(self.transition.pause_us);
+                if active == 0 || cycle == 0 {
+                    return None;
+                }
+                let elapsed = now - start;
+                let iteration = elapsed / cycle;
+                next = start + iteration * cycle;
+                if elapsed % cycle >= active {
+                    next += cycle;
+                }
+            } else {
+                next = now;
+            }
+        }
+        // The entrance itself is transparent when a fade-in is configured.
+        if self.transition.fade_in_us > 0 {
+            next += 1;
+        }
+        let next = i64::try_from(next).ok()?;
+
+        self.opacity(next)
+            .filter(|opacity| *opacity > 0.0)
+            .map(|_| next)
+    }
+
     /// Idempotent: repeated stops never prolong an exit or restart a fade.
     pub fn stop(&mut self, program_us: i64) {
         if self.stopped.is_none() {
@@ -160,6 +204,50 @@ impl Presentation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn next_visibility_respects_pauses_finite_cycles_stops_and_clock_limits() {
+        let mut p = Presentation::new(
+            1_000,
+            Transition {
+                fade_in_us: 100,
+                hold_us: Some(200),
+                fade_out_us: 100,
+                pause_us: 2_000,
+                repeat: Repeat::Count(NonZeroU32::new(2).unwrap()),
+            },
+        )
+        .unwrap();
+        assert_eq!(p.next_visible_us(-500), Some(1_001));
+        assert_eq!(p.next_visible_us(1_000), Some(1_001));
+        assert_eq!(p.next_visible_us(1_050), Some(1_050));
+        assert_eq!(p.next_visible_us(1_400), Some(3_401));
+        assert_eq!(p.next_visible_us(3_399), Some(3_401));
+        assert_eq!(p.next_visible_us(3_800), None);
+        p.stop(1_400);
+        assert_eq!(p.next_visible_us(1_450), None);
+        let p = Presentation::new(
+            i64::MAX,
+            Transition {
+                fade_in_us: 10,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(p.next_visible_us(i64::MAX - 1), None);
+        let p = Presentation::new(10, Transition::default()).unwrap();
+        assert_eq!(p.next_visible_us(-10), Some(10));
+        assert_eq!(p.next_visible_us(10), Some(10));
+        let p = Presentation::new(
+            0,
+            Transition {
+                hold_us: Some(0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(p.next_visible_us(0), None);
+    }
 
     #[test]
     fn static_graphic_holds_and_stops_from_its_current_opacity() {

@@ -49,3 +49,8 @@ required-features = ["ffmpeg"]
 [[bench]]
 name = "scene_evaluation"
 harness = false
+
+[[bench]]
+name = "animated_scene"
+harness = false
+required-features = ["ffmpeg"]
