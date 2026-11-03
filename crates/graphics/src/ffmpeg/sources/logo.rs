@@ -6,6 +6,7 @@ use ffmpeg_next::{codec, frame, media, software::scaling, util::format::pixel::P
 use crate::{
     even,
     ffmpeg::{
+        compositor::metadata::describe_yuva,
         compositor::overlay::{
             OverlayBounds, OverlayRef, alpha_bounds, blend_overlay, chroma_alpha, prepare_execution,
         },
@@ -14,6 +15,7 @@ use crate::{
     layout::{logo_dimensions, logo_position},
     preparation::{ResourceBudget, ResourceLease},
     style::LogoStyle,
+    surface::{ColorEncoding, SurfaceDescriptor},
 };
 
 #[derive(Clone)]
@@ -30,6 +32,15 @@ pub struct LogoOverlay {
 }
 
 impl LogoOverlay {
+    pub fn descriptor(&self) -> SurfaceDescriptor {
+        describe_yuva(
+            &self.frame,
+            self.bounds,
+            self.chroma_alpha.len(),
+            ColorEncoding::Unspecified,
+        )
+    }
+
     /// Reuse the decoded logo pixels; only placement depends on the destination.
     pub fn positioned(&self, position: Option<&str>, width: u32, height: u32) -> Result<Self> {
         let (x, y) = if let Some(position) = position {

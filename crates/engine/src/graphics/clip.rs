@@ -3,14 +3,14 @@ use std::{
     collections::BTreeMap,
     sync::{
         Arc, Mutex, OnceLock, PoisonError, Weak,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
 use ff_graphics::{
-    ffmpeg::scene::{CompositionReport, CpuScene, SceneScaleCache},
+    ffmpeg::scene::{CompositionReport, CpuScene, FrozenScene, SceneScaleCache},
     playlist::ClipSchedule,
-    scene::{SceneRevision, Scope},
+    scene::Scope,
     surface::ColorEncoding,
 };
 use ffmpeg_next::frame;
@@ -22,6 +22,69 @@ struct Prepared {
     schedule: ClipSchedule,
     reported_failure: AtomicBool,
     caches: Mutex<ResolutionCaches>,
+    snapshots: Mutex<Vec<Arc<FrozenScene>>>,
+    owners: AtomicUsize,
+}
+
+impl Prepared {
+    fn snapshot(&self, frozen: FrozenScene) -> Arc<FrozenScene> {
+        // Recycle metadata storage after queued consumers release it. Contention
+        // must never make the program thread wait for another output.
+        if let Ok(mut snapshots) = self.snapshots.try_lock() {
+            // A temporary queue peak must not leave old video-sized graphics
+            // pinned in metadata slots that are no longer needed.
+            for snapshot in snapshots.iter_mut() {
+                if let Some(slot) = Arc::get_mut(snapshot) {
+                    slot.clear();
+                }
+            }
+            for snapshot in snapshots.iter_mut() {
+                if let Some(slot) = Arc::get_mut(snapshot) {
+                    *slot = frozen;
+                    return snapshot.clone();
+                }
+            }
+            let snapshot = Arc::new(frozen);
+            if snapshots.len() < 64 {
+                snapshots.push(snapshot.clone());
+            }
+
+            return snapshot;
+        }
+
+        Arc::new(frozen)
+    }
+}
+
+/// Playback handles own slots; queued frames own only ready scene pixels/state.
+/// Multiple slots may share prepared data after asynchronous publication.
+struct PreparedSlot(OnceLock<Arc<Prepared>>);
+
+impl PreparedSlot {
+    fn get(&self) -> Option<&Arc<Prepared>> {
+        self.0.get()
+    }
+
+    fn publish(&self, prepared: Arc<Prepared>) -> bool {
+        prepared.owners.fetch_add(1, Ordering::AcqRel);
+        match self.0.set(prepared) {
+            Ok(()) => true,
+            Err(prepared) => {
+                prepared.owners.fetch_sub(1, Ordering::AcqRel);
+                false
+            }
+        }
+    }
+}
+
+impl Drop for PreparedSlot {
+    fn drop(&mut self) {
+        if let Some(prepared) = self.0.get()
+            && prepared.owners.fetch_sub(1, Ordering::AcqRel) == 1
+        {
+            prepared.renderer.stop_streams();
+        }
+    }
 }
 
 /// Prepared immutable assets and schedule for one clip occurrence. Construct on
@@ -29,19 +92,24 @@ struct Prepared {
 /// performed during rendering. Dropping a clip leaves only queued frame leases.
 #[derive(Clone)]
 pub struct ClipGraphics {
-    prepared: Arc<OnceLock<Arc<Prepared>>>,
+    prepared: Arc<PreparedSlot>,
     position_us: i64,
 }
 
 impl ClipGraphics {
     pub fn new(renderer: CpuScene, schedule: ClipSchedule) -> Self {
+        let prepared = Arc::new(PreparedSlot(OnceLock::new()));
+        prepared.publish(Arc::new(Prepared {
+            renderer,
+            schedule,
+            reported_failure: AtomicBool::new(false),
+            caches: Mutex::new(BTreeMap::new()),
+            snapshots: Mutex::new(Vec::new()),
+            owners: AtomicUsize::new(0),
+        }));
+
         Self {
-            prepared: Arc::new(OnceLock::from(Arc::new(Prepared {
-                renderer,
-                schedule,
-                reported_failure: AtomicBool::new(false),
-                caches: Mutex::new(BTreeMap::new()),
-            }))),
+            prepared,
             position_us: 0,
         }
     }
@@ -49,7 +117,7 @@ impl ClipGraphics {
     /// Publish preparation asynchronously without a channel or a video-thread wait.
     /// Late results use the current clip position; they never restart event fades.
     pub fn deferred() -> (Self, ClipGraphicsPreparation) {
-        let prepared = Arc::new(OnceLock::new());
+        let prepared = Arc::new(PreparedSlot(OnceLock::new()));
         let completion = ClipGraphicsPreparation {
             destination: Arc::downgrade(&prepared),
         };
@@ -71,6 +139,12 @@ impl ClipGraphics {
         self
     }
 
+    pub(crate) fn suspend(&self) {
+        if let Some(prepared) = self.prepared.get() {
+            prepared.renderer.suspend_streams();
+        }
+    }
+
     pub(crate) fn frame_at(&self, elapsed_us: i64) -> Option<ClipSceneFrame> {
         let prepared = self.prepared.get()?;
         let selected = prepared
@@ -78,16 +152,23 @@ impl ClipGraphics {
             .frame_at(Some(self.position_us.checked_add(elapsed_us)?))?;
 
         Some(ClipSceneFrame {
-            prepared: prepared.clone(),
+            #[cfg(test)]
             scene: selected.scene.clone(),
+            #[cfg(test)]
             position_us: selected.position_us,
+            prepared: prepared.clone(),
+            frozen: prepared.snapshot(prepared.renderer.freeze(
+                selected.scene,
+                selected.position_us,
+                Scope::default(),
+            )),
         })
     }
 }
 
 /// Weak completion ticket: preparation does not extend a cancelled clip's lifetime.
 pub struct ClipGraphicsPreparation {
-    destination: Weak<OnceLock<Arc<Prepared>>>,
+    destination: Weak<PreparedSlot>,
 }
 
 impl ClipGraphicsPreparation {
@@ -103,7 +184,7 @@ impl ClipGraphicsPreparation {
             return false;
         };
 
-        destination.set(prepared.clone()).is_ok()
+        destination.publish(prepared.clone())
     }
 }
 
@@ -111,33 +192,22 @@ impl ClipGraphicsPreparation {
 #[derive(Clone)]
 pub(crate) struct ClipSceneFrame {
     prepared: Arc<Prepared>,
-    scene: SceneRevision,
+    frozen: Arc<FrozenScene>,
+    #[cfg(test)]
+    scene: ff_graphics::scene::SceneRevision,
+    #[cfg(test)]
     position_us: i64,
 }
 
 impl ClipSceneFrame {
     pub(crate) fn visible(&self) -> bool {
-        self.scene
-            .evaluate(self.position_us, Scope::default())
-            .next()
-            .is_some()
+        !self.frozen.is_empty()
     }
 
     pub(crate) fn blend(&self, target: &mut frame::Video) {
         let resolution = (target.width(), target.height());
-        let report = if self
-            .scene
-            .layers
-            .iter()
-            .all(|layer| layer.spec.canvas == resolution)
-        {
-            self.prepared.renderer.blend(
-                &self.scene,
-                self.position_us,
-                Scope::default(),
-                target,
-                ColorEncoding::Bt601Limited,
-            )
+        let report = if self.frozen.matches_canvas(resolution) {
+            self.frozen.blend(target, ColorEncoding::Bt601Limited)
         } else {
             self.blend_scaled(target, resolution)
         };
@@ -172,14 +242,8 @@ impl ClipSceneFrame {
         };
         let mut cache = cache.lock().unwrap_or_else(PoisonError::into_inner);
 
-        self.prepared.renderer.blend_scaled(
-            &self.scene,
-            self.position_us,
-            Scope::default(),
-            target,
-            ColorEncoding::Bt601Limited,
-            &mut cache,
-        )
+        self.frozen
+            .blend_scaled(target, ColorEncoding::Bt601Limited, &mut cache)
     }
 }
 
@@ -269,6 +333,108 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn publishing_a_stream_keeps_its_worker_until_playback_ends_but_queued_pixels_survive() {
+        use ff_graphics::{
+            ffmpeg::sources::animation::AnimationOptions, playback::Repeat,
+            preparation::PreparationService, source::Completion,
+        };
+        use std::{
+            path::Path,
+            time::{Duration, Instant},
+        };
+        let service = PreparationService::default();
+        let mut renderer = CpuScene::new(1, 64 * 1024 * 1024).with_preparation(&service);
+        let resource = renderer
+            .prepare_animation(
+                ResourceKey { id: 1, revision: 1 },
+                &Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests_assets/storage/media_images/animated-logo-video.mkv"),
+                AnimationOptions {
+                    size: Some((16, 16)),
+                    repeat: Repeat::Forever,
+                    completion: Completion::Hide,
+                },
+                || false,
+            )
+            .unwrap();
+        let schedule = ClipSchedule::compile(
+            20_000_000,
+            &[Event {
+                at_us: 0,
+                action: Action::Take {
+                    layer: LayerSpec {
+                        id: LayerId(1),
+                        resource: resource.key,
+                        z: 0,
+                        scope: Scope::default(),
+                        canvas: (32, 32),
+                        position: (0, 0),
+                        opacity: 1.0,
+                    },
+                    transition: Transition::default(),
+                },
+            }],
+            &[resource],
+            Limits::default(),
+        )
+        .unwrap();
+        let (pending, completion) = ClipGraphics::deferred();
+        let graphics = ClipGraphics::new(renderer, schedule);
+        assert!(completion.publish(graphics.clone()));
+        drop(graphics);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let queued = loop {
+            let queued = pending.frame_at(6_100_000).unwrap();
+            if queued.visible() {
+                break queued;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "publication must not cancel the decoder"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        drop(pending);
+        assert!(
+            service.join(Duration::from_secs(2)),
+            "clip end must stop its worker even with queued frames"
+        );
+        assert_eq!(service.budget().usage().2, 0);
+        let mut target = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 32, 32);
+        for plane in 0..3 {
+            target.data_mut(plane).fill(128);
+        }
+        queued.blend(&mut target);
+        assert!(service.budget().usage().0 > 0);
+        drop(queued);
+        assert_eq!(service.budget().usage().0, 0);
+    }
+
+    #[test]
+    fn recycled_snapshot_slots_release_pixels_after_a_temporary_queue_peak() {
+        let graphics = fixture((32, 16));
+        let queued = [40_000, 80_000, 120_000].map(|time| graphics.frame_at(time).unwrap());
+        assert_eq!(
+            graphics
+                .prepared
+                .get()
+                .unwrap()
+                .snapshots
+                .lock()
+                .unwrap()
+                .len(),
+            3
+        );
+        drop(queued);
+        let _current = graphics.frame_at(160_000).unwrap();
+        let pool = graphics.prepared.get().unwrap().snapshots.lock().unwrap();
+        assert_eq!(
+            pool.iter().filter(|snapshot| !snapshot.is_empty()).count(),
+            1
+        );
+    }
+
+    #[test]
     fn joining_inside_clip_preserves_phase_and_never_restarts_after_end() {
         let graphics = fixture((32, 16)).at_position(40_000);
         assert_eq!(graphics.frame_at(0).unwrap().position_us, 40_000);
@@ -306,6 +472,7 @@ pub(crate) mod tests {
         let mut graphics = fixture((32, 16));
         let prepared = Arc::get_mut(&mut graphics.prepared)
             .unwrap()
+            .0
             .get_mut()
             .unwrap();
         Arc::get_mut(prepared).unwrap().renderer = CpuScene::new(0, 0);

@@ -47,8 +47,8 @@ commands, immutable revisions, ready-resource leases and program-time fades/repe
 Prepared clip scenes now run through the engine's shared output compositor via
 typed engine playback options. Ready logo/text/clip snapshots now share one
 ordered layer handoff and composition dispatch. Native logo/text activation,
-replacement and resource states now use `SceneController`. General color/plane
-descriptors and asset preparation scheduling are not complete.
+replacement and resource states now use `SceneController`. CPU plane/color descriptors and bounded native preparation are implemented;
+general backend negotiation and new asset renderers remain separate work.
 GPU, Servo, templates and new HTTP/frontend graphics APIs are not implemented.
 
 ---
@@ -76,7 +76,7 @@ clocks remain the compatibility baseline.
 The engine accepts prepared clip scenes, evaluates their clip-local clock and
 passes immutable snapshots through output fan-out. Existing logo/text ordering
 and HLS rendition/layout behaviour remain the compatibility baseline. The optional
-playlist JSON adapter now prepares static PNG assets asynchronously. Templates,
+playlist JSON adapter now prepares static PNGs and bounded GIF/video assets asynchronously. Templates,
 new HTTP controls, SVG, GPU and Servo remain separate work. Do not repeat the
 completed extraction or scheduling/engine integration.
 
@@ -168,11 +168,53 @@ completed extraction or scheduling/engine integration.
   containment, shutdown deadlines, restart exclusion, shared leases and pixel
   equality with the established synchronous text path.
 
-**Still open in this milestone:** plane/color/capability/layout contracts and
-adapters for future independent scene sources. The shared budget bounds accounted
-graphics pixels/workspace and jobs, not FFmpeg/font-library internals or total
-process RSS. Group fades currently operate on one already-prepared surface;
-no nested-scene renderer or source crossfade is implied.
+### CPU surface/layout contracts — 2026-11-03
+
+- [x] Describe prepared CPU plane dimensions, byte strides/storage, visible alpha
+  bounds and actual matrix/primaries/transfer/range/chroma tags. Validate their
+  consistency; preserve unknown tags explicitly and avoid guessing by resolution.
+- [x] Tag native text/PNG matrix/range and preserve metadata through pure YUVA
+  resizing. Logo descriptors read prepared-frame metadata.
+- [x] Preserve fast SIMD/Rayon YUVA signal blending as the production compatibility
+  policy. Add optional strict SDR/color/siting admission for CPU scenes; unsupported
+  layers are reported/skipped without failing video. No new UI setting.
+- [x] Introduce backend-neutral reference/destination pixel layout contexts, checked
+  scaling arithmetic and explicit YUVA alignment/clipping rules. Use the context
+  for shared text/scene scaling; preserve logo placement and HLS rendition behavior.
+- [x] Test padded planes, metadata validation/preservation, unsupported color and
+  alpha combinations, differing aspect ratios and negative/overflowing coordinates.
+
+**Still open in this milestone:** generalized anchors/normalized coordinates,
+renderer capability negotiation and conversion planning beyond current CPU SDR,
+and adapters for future independent scene sources. The shared budget bounds
+accounted graphics pixels/workspace and jobs, not FFmpeg/font-library internals
+or total process RSS. Group fades operate on one prepared surface; no nested-scene
+renderer or source crossfade is implied.
+
+---
+
+### Hybrid animated playlist sources — 2026-11-03
+
+- [x] Support GIF and local video playlist assets through the existing logo decoder
+  and common CPU scene compositor, with source timestamps independent of playout FPS.
+- [x] Cache sources within 256 frames/five seconds/64 MiB completely; switch larger
+  assets to tracked background decoding with up to 500 ms/16 frames/64 MiB lookahead.
+  Restrict inputs to regular local files and non-nesting demuxers; check cancellation.
+- [x] Coalesce up to 32 presentation requests per streaming asset, support worker-side
+  seek/looping, discard inactive/obsolete work and park satisfied/hidden sources.
+- [x] Freeze selected surfaces before audio lookahead/output fan-out; recycle bounded
+  frame metadata and retain queued pixels independently from playback owners.
+- [x] Cancel on final playback-owner disposal; join media workers through the channel
+  service off the video thread, with tracked handles and restart exclusion.
+- [x] Separate `source_repeat`/`source_end` from fade repeats; allow finite/forever,
+  hide/hold-last, deterministic seek/live return and a fresh clock on every take.
+- [x] Account cached/poster pixels through scene admission and all dynamic pixels through shared channel leases;
+  snapshots keep caches alive until the final consumer releases them.
+- [x] Test GIF timing, multiple playout FPS, retakes, finite completion, local video,
+  cancellation, partial budget failure, scaled composition and playlist JSON.
+
+Animated PNGs and further decoder/source unification remain separate work.
+Single frames exceeding 64 MiB still require smaller dimensions. Program-logo streaming is unchanged.
 
 ---
 
@@ -304,15 +346,15 @@ Create an abstraction that supports different graphics surfaces and compositing 
 - [x] Compare YUVA420/YUVA444 in the blend laboratory. Production remains YUVA420; general capability/format negotiation remains open.
 - [x] Support full-resolution alpha in existing straight RGBA bitmaps and prepared YUVA420 surfaces; chroma uses separately prepared coverage.
 - [ ] Avoid irreversible chroma subsampling during initial graphics rendering whenever practical.
-- [ ] Define explicit pixel-format and plane-layout metadata.
+- [x] Define explicit pixel-format and CPU plane-layout metadata; opaque backend storage remains optional.
 - [ ] Support correct chroma location and subsampling behavior.
 - [ ] Preserve color primaries, transfer characteristics, matrix coefficients, and signal range.
 - [ ] Design for future 10-bit and HDR support without requiring immediate implementation.
-- [ ] Establish explicit handling of straight versus premultiplied alpha.
+- [x] Distinguish straight, encoded-premultiplied and linear-premultiplied alpha; the CPU YUVA path accepts straight alpha only.
 - [ ] Ensure alpha is not incorrectly applied to offset-encoded YUV components.
-- [ ] Describe surfaces with independent format, color, alpha, geometry, and storage metadata.
+- [x] Describe current CPU surfaces with independent format, color, alpha, geometry and storage metadata.
 - [ ] Specify the domain of premultiplication (linear or encoded RGB) explicitly; pixel format alone does not determine alpha semantics.
-- [ ] Include full-resolution alpha, visible bounds, plane dimensions/strides, and chroma siting where applicable.
+- [x] Describe current full-resolution alpha, visible bounds, plane dimensions/strides and actual chroma siting; arbitrary-siting composition remains open.
 - [ ] Implement owned/shared CPU surfaces first, without making CPU byte access a requirement of every surface.
 - [ ] Leave storage extensible to opaque backend resource references with explicit lifetime and readiness contracts. Do not implement placeholder GPU resource types yet.
 
@@ -738,8 +780,8 @@ compilation before rendering. Empty schedules produce no graphics.
   configuration omits graphics, preserves its JSON and leaves media playing.
 - [x] Document usage and limits as experimental in `docs/playlist_graphics.md`.
 
-This first adapter supports static PNGs. A visual frontend editor, templates,
-animated playlist sources and migration of all legacy layers into one z-index
+This adapter supports static PNGs plus cached/streamed GIF/video assets. A visual frontend editor, templates,
+animated PNGs and migration of all legacy layers into one z-index
 domain remain separate work. Existing animated program logos remain supported.
 No database migration or new HTTP endpoint is introduced.
 

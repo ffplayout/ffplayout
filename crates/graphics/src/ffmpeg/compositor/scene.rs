@@ -6,21 +6,23 @@ use ffmpeg_next::{format::Pixel, frame};
 
 use crate::{
     bitmap::StraightRgbaBitmap,
+    ffmpeg::sources::animation::PreparedSurface,
     ffmpeg::text::rgba_to_yuva420p,
-    preparation::ResourceBudget,
-    scene::{LayerId, SceneRevision, Scope},
-    surface::{
-        Alpha, ColorEncoding, PixelLayout, Resource, ResourceKey, SurfaceDescriptor, SurfaceStore,
-    },
+    preparation::{PreparationService, PreparationWeak, ResourceBudget},
+    scene::{LayerId, LayerSpec, SceneRevision, Scope},
+    surface::{ColorEncoding, Resource, ResourceKey, SurfaceStore},
 };
 
 use super::{
-    overlay::{OverlayFrame, alpha_bounds, blend_overlay, chroma_alpha, prepare_execution},
+    metadata::{ColorPolicy, color_properties, yuva_descriptor},
+    overlay::{OverlayFrame, alpha_bounds, chroma_alpha, prepare_execution},
     surface::{SurfaceFrame, SurfaceScaleCache},
 };
 
 pub struct CpuScene {
-    surfaces: SurfaceStore<OverlayFrame>,
+    pub(in crate::ffmpeg) surfaces: SurfaceStore<PreparedSurface>,
+    color_policy: ColorPolicy,
+    pub(in crate::ffmpeg) preparation: Option<PreparationWeak>,
     pub(in crate::ffmpeg) budget: Option<ResourceBudget>,
 }
 
@@ -60,8 +62,23 @@ impl CpuScene {
     pub fn new(max_surfaces: usize, max_bytes: usize) -> Self {
         Self {
             surfaces: SurfaceStore::new(max_surfaces, max_bytes),
+            color_policy: ColorPolicy::LegacySignal,
+            preparation: None,
             budget: None,
         }
+    }
+
+    pub fn with_color_policy(mut self, policy: ColorPolicy) -> Self {
+        self.color_policy = policy;
+
+        self
+    }
+
+    pub fn with_preparation(mut self, service: &PreparationService) -> Self {
+        self.budget = Some(service.budget());
+        self.preparation = Some(service.downgrade());
+
+        self
     }
 
     pub fn with_budget(mut self, budget: ResourceBudget) -> Self {
@@ -133,18 +150,8 @@ impl CpuScene {
         }
         let (width, height) = (frame.width(), frame.height());
         let alpha = chroma_alpha(&frame, width, height);
-        let descriptor = SurfaceDescriptor {
-            width,
-            height,
-            layout: PixelLayout::Yuva420p8,
-            alpha: Alpha::Straight,
-            color,
-            storage_bytes: (0..frame.planes())
-                .map(|plane| frame.data(plane).len())
-                .sum::<usize>()
-                + alpha.len(),
-        };
         let bounds = alpha_bounds(&frame);
+        let descriptor = yuva_descriptor(&frame, bounds, alpha.len(), color)?;
         prepare_execution(bounds);
         let lease = self
             .budget
@@ -163,12 +170,70 @@ impl CpuScene {
             opacity: 255,
         });
 
-        self.surfaces.insert(key, descriptor, surface)
+        self.surfaces
+            .insert(key, descriptor, Arc::new(PreparedSurface::still(surface)))
     }
 
-    /// Target must already be writable. Composition happens at the scope's
-    /// reference resolution; the pipeline scales that result for HLS renditions.
-    /// Missing/unsupported layers are skipped, never an input/output failure.
+    /// Select ready pixels on the program thread, before lookahead/fan-out.
+    /// The fixed layer container allocates no storage per frame.
+    pub fn freeze(&self, scene: &SceneRevision, program_us: i64, scope: Scope) -> FrozenScene {
+        for source in self.surfaces.values() {
+            source.begin_frame(program_us);
+        }
+        let mut frozen = FrozenScene {
+            layers: std::array::from_fn(|_| None),
+            report: CompositionReport::default(),
+            policy: self.color_policy,
+        };
+        for (index, evaluated) in scene.evaluate(program_us, scope).enumerate() {
+            if index >= frozen.layers.len() {
+                frozen.report.unsupported += 1;
+                continue;
+            }
+            let evaluated = evaluated.content;
+            let layer = evaluated.layer;
+            let Some(source) = self.surfaces.get(&layer.resource) else {
+                frozen.report.missing += 1;
+                continue;
+            };
+            let elapsed = layer.presentation.elapsed_us(program_us);
+            let Some(surface) = source.select(
+                elapsed,
+                (scope.0, layer.spec.id.0, program_us.saturating_sub(elapsed)),
+            ) else {
+                continue;
+            };
+            frozen.layers[index] = Some(FrozenLayer {
+                spec: layer.spec,
+                color: layer.resource.descriptor.color,
+                frame: SurfaceFrame {
+                    surface,
+                    x: layer.spec.position.0 & !1,
+                    y: layer.spec.position.1 & !1,
+                    opacity: evaluated.opacity,
+                },
+            });
+        }
+
+        for source in self.surfaces.values() {
+            source.end_frame();
+        }
+
+        frozen
+    }
+
+    pub fn suspend_streams(&self) {
+        for source in self.surfaces.values() {
+            source.suspend();
+        }
+    }
+
+    pub fn stop_streams(&self) {
+        for source in self.surfaces.values() {
+            source.stop();
+        }
+    }
+
     pub fn blend(
         &self,
         scene: &SceneRevision,
@@ -177,38 +242,13 @@ impl CpuScene {
         target: &mut frame::Video,
         color: ColorEncoding,
     ) -> CompositionReport {
-        let mut report = CompositionReport::default();
-        for evaluated in scene.evaluate(program_us, scope) {
-            let evaluated = evaluated.content;
-            let layer = evaluated.layer;
-            let Some(surface) = self.surfaces.get(&layer.resource) else {
-                report.missing += 1;
-                continue;
-            };
-            if target.format() != Pixel::YUV420P
-                || layer.spec.canvas != (target.width(), target.height())
-                || layer.resource.descriptor.color != color
-            {
-                report.unsupported += 1;
-                continue;
-            }
-            let mut overlay = surface.as_ref().as_ref();
-            overlay.x = layer.spec.position.0 & !1;
-            overlay.y = layer.spec.position.1 & !1;
-            blend_overlay(target, overlay, evaluated.opacity);
-            report.blended += 1;
-        }
-
-        report
+        self.freeze(scene, program_us, scope).blend(target, color)
     }
 
     pub fn retire(&mut self) {
         self.surfaces.retire();
     }
 
-    /// Composite at the destination's reference resolution. HLS callers compose
-    /// at their largest rendition and scale the completed program for smaller ones.
-    /// Scaling failures skip only the affected graphic, never fail media playback.
     pub fn blend_scaled(
         &self,
         scene: &SceneRevision,
@@ -218,38 +258,100 @@ impl CpuScene {
         color: ColorEncoding,
         cache: &mut SceneScaleCache,
     ) -> CompositionReport {
-        cache
-            .layers
-            .retain(|id, _| scene.layers.iter().any(|layer| layer.spec.id == *id));
+        self.freeze(scene, position_us, scope)
+            .blend_scaled(target, color, cache)
+    }
+}
+
+#[derive(Clone)]
+struct FrozenLayer {
+    spec: LayerSpec,
+    color: ColorEncoding,
+    frame: SurfaceFrame,
+}
+
+/// Immutable program-frame selection. Output queues retain pixels only; no
+/// decoder requests or source-clock changes occur while an encoder consumes it.
+#[derive(Clone)]
+pub struct FrozenScene {
+    layers: [Option<FrozenLayer>; 32],
+    report: CompositionReport,
+    policy: ColorPolicy,
+}
+
+impl FrozenScene {
+    /// Release old pixel leases when the caller recycles unreferenced metadata.
+    pub fn clear(&mut self) {
+        for layer in &mut self.layers {
+            *layer = None;
+        }
+        self.report = CompositionReport::default();
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.layers.iter().all(Option::is_none)
+    }
+
+    pub fn matches_canvas(&self, canvas: (u32, u32)) -> bool {
+        self.layers
+            .iter()
+            .flatten()
+            .all(|layer| layer.spec.canvas == canvas)
+    }
+
+    fn supported(&self, layer: &FrozenLayer, target: &frame::Video, color: ColorEncoding) -> bool {
+        target.format() == Pixel::YUV420P
+            && layer.color == color
+            && (self.policy == ColorPolicy::LegacySignal
+                || self.policy.supports(
+                    color_properties(&layer.frame.surface.frame),
+                    color_properties(target),
+                ))
+    }
+
+    pub fn blend(&self, target: &mut frame::Video, color: ColorEncoding) -> CompositionReport {
+        let mut report = self.report;
+        for layer in self.layers.iter().flatten() {
+            if !self.supported(layer, target, color)
+                || layer.spec.canvas != (target.width(), target.height())
+            {
+                report.unsupported += 1;
+                continue;
+            }
+            layer.frame.blend(target);
+            report.blended += 1;
+        }
+
+        report
+    }
+
+    pub fn blend_scaled(
+        &self,
+        target: &mut frame::Video,
+        color: ColorEncoding,
+        cache: &mut SceneScaleCache,
+    ) -> CompositionReport {
+        cache.layers.retain(|id, _| {
+            self.layers
+                .iter()
+                .flatten()
+                .any(|layer| layer.spec.id == *id)
+        });
         let mut cache_bytes: usize = cache
             .layers
             .values()
             .map(SurfaceScaleCache::storage_bytes)
             .sum();
-        let mut report = CompositionReport::default();
-        for evaluated in scene.evaluate(position_us, scope) {
-            let evaluated = evaluated.content;
-            let layer = evaluated.layer;
-            if target.format() != Pixel::YUV420P || layer.resource.descriptor.color != color {
+        let mut report = self.report;
+        for layer in self.layers.iter().flatten() {
+            if !self.supported(layer, target, color) {
                 report.unsupported += 1;
                 continue;
             }
-            let Some(surface) = self.surfaces.get(&layer.resource) else {
-                report.missing += 1;
-                continue;
-            };
-            let snapshot = SurfaceFrame {
-                surface: surface.clone(),
-                x: layer.spec.position.0 & !1,
-                y: layer.spec.position.1 & !1,
-                opacity: evaluated.opacity,
-            };
             let scaled = cache.layers.entry(layer.spec.id).or_default();
             cache_bytes -= scaled.storage_bytes();
-            // Scene assets have a tighter policy than legacy scrolling text,
-            // whose bitmap can be several program canvases wide.
             scaled.set_limits(cache.max_bytes.saturating_sub(cache_bytes), 8192);
-            let result = snapshot.blend_scaled(target, layer.spec.canvas, scaled);
+            let result = layer.frame.blend_scaled(target, layer.spec.canvas, scaled);
             cache_bytes += scaled.storage_bytes();
             if result.is_err() {
                 report.unsupported += 1;
@@ -264,6 +366,7 @@ impl CpuScene {
 
 #[cfg(test)]
 mod tests {
+    use super::super::overlay::blend_overlay;
     use super::*;
     use crate::{
         playback::Transition,
@@ -456,7 +559,7 @@ mod tests {
                 &mut actual,
                 ColorEncoding::Bt601Limited,
             );
-            let mut overlay = pixels.as_ref().as_ref();
+            let mut overlay = pixels.at(0).unwrap().as_ref().as_ref();
             overlay.x = 2;
             overlay.y = 2;
             blend_overlay(&mut expected, overlay, opacity);
@@ -518,7 +621,14 @@ mod tests {
             );
             assert_eq!(report.blended, 3);
             for resource in &resources {
-                let mut overlay = cpu.surfaces.get(resource).unwrap().as_ref().as_ref();
+                let mut overlay = cpu
+                    .surfaces
+                    .get(resource)
+                    .unwrap()
+                    .at(0)
+                    .unwrap()
+                    .as_ref()
+                    .as_ref();
                 overlay.x = 2;
                 overlay.y = 2;
                 blend_overlay(
@@ -589,6 +699,21 @@ mod tests {
                 Scope::default(),
                 &mut target,
                 ColorEncoding::Bt709Limited
+            )
+            .unsupported,
+            1
+        );
+        assert_eq!(target.data(0), before);
+        // Strict admission also checks the actual target tags, rather than
+        // trusting the caller's compatibility label for an untagged frame.
+        let cpu = cpu.with_color_policy(ColorPolicy::MatchingSignal);
+        assert_eq!(
+            cpu.blend(
+                &scene,
+                0,
+                Scope::default(),
+                &mut target,
+                ColorEncoding::Bt601Limited
             )
             .unsupported,
             1

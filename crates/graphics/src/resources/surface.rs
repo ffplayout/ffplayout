@@ -34,6 +34,59 @@ pub enum ColorEncoding {
     Bt709Limited,
 }
 
+/// Standardized matrix/primaries/transfer identifiers (ISO/IEC 23001-8).
+/// Unknown values are retained; they are never inferred from image dimensions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ColorProperties {
+    pub matrix: u32,
+    pub primaries: u32,
+    pub transfer: u32,
+    pub range: SignalRange,
+    pub chroma: ChromaSiting,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignalRange {
+    Unspecified,
+    Limited,
+    Full,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChromaSiting {
+    Unspecified,
+    Left,
+    Center,
+    TopLeft,
+    Top,
+    BottomLeft,
+    Bottom,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PlaneDescriptor {
+    pub width: u32,
+    pub height: u32,
+    pub stride_bytes: usize,
+    pub storage_bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VisibleRect {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// CPU preparation metadata; opaque future backends need not expose planes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SurfaceMetadata {
+    pub planes: [Option<PlaneDescriptor>; 4],
+    pub visible: VisibleRect,
+    pub color: ColorProperties,
+}
+
 /// Describes currently supported CPU results without requiring byte access.
 /// More layouts/encodings can be added with a backend that actually implements them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +97,7 @@ pub struct SurfaceDescriptor {
     pub alpha: Alpha,
     pub color: ColorEncoding,
     pub storage_bytes: usize,
+    pub metadata: Option<SurfaceMetadata>,
 }
 
 impl SurfaceDescriptor {
@@ -73,6 +127,45 @@ impl SurfaceDescriptor {
             ensure!(
                 self.alpha == Alpha::Straight,
                 "the CPU YUV backend requires straight alpha"
+            );
+        }
+
+        if let Some(metadata) = self.metadata {
+            let visible = metadata.visible;
+            ensure!(
+                u64::from(visible.x) + u64::from(visible.width) <= u64::from(self.width)
+                    && u64::from(visible.y) + u64::from(visible.height) <= u64::from(self.height),
+                "visible bounds exceed the surface"
+            );
+            let mut bytes = 0_u128;
+            for (index, plane) in metadata.planes.iter().enumerate() {
+                let expected = match (self.layout, index) {
+                    (PixelLayout::Rgba8, 0) => Some((self.width, self.height, 4)),
+                    (PixelLayout::Rgba8, _) => None,
+                    (PixelLayout::Yuva420p8, 1 | 2) => Some((self.width / 2, self.height / 2, 1)),
+                    (PixelLayout::Yuva420p8, _) => Some((self.width, self.height, 1)),
+                };
+                match (plane, expected) {
+                    (Some(plane), Some((width, height, pixel_bytes))) => {
+                        ensure!(
+                            plane.width == width && plane.height == height,
+                            "surface plane dimensions do not match its layout"
+                        );
+                        ensure!(
+                            plane.stride_bytes as u128 >= u128::from(width) * pixel_bytes
+                                && plane.storage_bytes as u128
+                                    >= plane.stride_bytes as u128 * u128::from(height),
+                            "surface plane stride/storage is invalid"
+                        );
+                        bytes += plane.storage_bytes as u128;
+                    }
+                    (None, None) => {}
+                    _ => anyhow::bail!("surface planes do not match its layout"),
+                }
+            }
+            ensure!(
+                bytes <= self.storage_bytes as u128,
+                "surface planes exceed accounted storage"
             );
         }
 
@@ -156,6 +249,11 @@ impl<T> SurfaceStore<T> {
         Arc::ptr_eq(&actual, lease).then_some(&entry.pixels)
     }
 
+    #[cfg(feature = "ffmpeg")]
+    pub(crate) fn values(&self) -> impl Iterator<Item = &Arc<T>> {
+        self.entries.values().map(|entry| &entry.pixels)
+    }
+
     /// Call outside per-frame composition; never enqueue an unbounded retirement list.
     pub fn retire(&mut self) {
         self.entries
@@ -177,6 +275,7 @@ mod tests {
             alpha: Alpha::Straight,
             color: ColorEncoding::Srgb,
             storage_bytes: 16,
+            metadata: None,
         };
         let pixels = Arc::new([0_u8; 16]);
         let key = ResourceKey { id: 1, revision: 1 };

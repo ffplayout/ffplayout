@@ -15,7 +15,10 @@ use crate::{
     surface::{ColorEncoding, Resource, ResourceKey},
 };
 
-use crate::ffmpeg::{compositor::scene::CpuScene, text::rgba_to_yuva420p};
+use crate::ffmpeg::{
+    compositor::{metadata::copy_color_properties, scene::CpuScene},
+    text::rgba_to_yuva420p,
+};
 
 impl CpuScene {
     /// Odd native sizes are padded transparently at the right/bottom for YUVA420.
@@ -116,6 +119,7 @@ impl CpuScene {
             )?;
             let mut scaled = frame::Video::empty();
             scaler.run(&prepared, &mut scaled)?;
+            copy_color_properties(&prepared, &mut scaled);
             prepared = scaled;
         }
 

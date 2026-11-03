@@ -109,6 +109,12 @@ impl Presentation {
         })
     }
 
+    /// Source-local time since take. Fade cycles and visibility do not restart
+    /// the source; a new take constructs a new presentation anchor.
+    pub fn elapsed_us(self, program_us: i64) -> i64 {
+        program_us.saturating_sub(self.start_us)
+    }
+
     /// None means absent/finished; Some(0) is a transparent entrance or repeat pause.
     pub fn opacity(self, program_us: i64) -> Option<f64> {
         if program_us < self.start_us {

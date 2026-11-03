@@ -2,7 +2,13 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use ffmpeg_next::{frame, util::format::pixel::Pixel};
+use ffmpeg_next::{
+    frame,
+    util::{
+        color::{Range, Space},
+        format::pixel::Pixel,
+    },
+};
 
 use crate::{
     animation::{TextPlayback, TextPreparation},
@@ -105,6 +111,8 @@ pub(super) fn rgba_to_yuva420p(bitmap: &StraightRgbaBitmap) -> Result<frame::Vid
     let rgba = &bitmap.pixels;
     let (width, height) = (bitmap.width, bitmap.height);
     let mut frame = frame::Video::new(Pixel::YUVA420P, width, height);
+    frame.set_color_space(Space::SMPTE170M);
+    frame.set_color_range(Range::MPEG);
     let width = width as usize;
     let height = height as usize;
 

@@ -233,6 +233,36 @@ impl LogoDecoder {
         }))
     }
 
+    pub(in crate::ffmpeg) fn initialize_origin(
+        &mut self,
+        cancelled: impl Fn() -> bool,
+    ) -> Result<()> {
+        if self.origin.is_none() && self.pending.is_none() {
+            self.pending = self.decode(&cancelled)?;
+        }
+
+        Ok(())
+    }
+
+    /// Seek on the original source timeline, preserving its timestamp origin.
+    /// If a demuxer cannot seek, the caller may rewind and decode forward.
+    pub fn seek_to(&mut self, source_us: i64) -> Result<()> {
+        self.input.seek(
+            self.origin.unwrap_or(0).saturating_add(source_us.max(0)),
+            ..,
+        )?;
+        self.decoder.flush();
+        self.eof = false;
+        self.pending = None;
+        self.next_us = source_us.max(0);
+
+        Ok(())
+    }
+
+    pub fn duration_hint_us(&self) -> i64 {
+        self.input.duration().max(0)
+    }
+
     pub fn rewind(&mut self) -> Result<()> {
         self.input.seek(0, ..)?;
         self.decoder.flush();

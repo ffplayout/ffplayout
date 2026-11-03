@@ -622,3 +622,77 @@ CARGO_PROFILE_BENCH_LTO=thin cargo bench -p ff-graphics --features ffmpeg --benc
 The experimental linear-light paths live in the graphics crate's example/benchmark
 laboratory; their measurements do not select production rendering policy. Audio
 and playout examples/benchmarks remain in `ff-engine`.
+
+### CPU surface and layout contracts
+
+Prepared CPU resources can now carry `SurfaceMetadata`: each plane's dimensions,
+byte stride and storage, outward-aligned visible alpha bounds, and actual frame
+matrix/primaries/transfer/range/chroma tags. Color identifiers use ISO/IEC 23001-8
+values, independently of FFmpeg Rust types. Unspecified tags stay unspecified;
+resolution never supplies a guessed color encoding. `SurfaceDescriptor::validate`
+checks plane count, dimensions, stride, storage, visible bounds and alpha support.
+Opaque future resources may omit CPU metadata; they do not need a byte-access API.
+
+Native RGBA text/PNG conversion records its existing BT.601 limited matrix/range.
+It does not invent primaries or a transfer function. Pure YUVA resizing explicitly
+copies color tags because `sws_scale` does not copy frame properties. Logo
+metadata reflects the prepared frame, including unknown fields; conversion paths
+without an explicit color contract must not claim inferred BT.709 or sRGB tags.
+
+Production uses `ColorPolicy::LegacySignal`: existing SIMD/Rayon kernels mix
+encoded YUV signal values without additional color conversion. Compatibility
+labels and actual frame tags are distinct. `CpuScene::with_color_policy` can opt
+into `MatchingSignal`, which requires equal, known supported SDR matrix,
+primaries, transfer and range, with centered chroma. Mismatches hide that scene
+layer and increment the unsupported report; they never fail media playback.
+HDR, arbitrary chroma siting and color conversion remain separate work. Strict
+admission is not a new user setting and does not change legacy program graphics.
+
+`LayoutContext` explicitly separates reference-canvas pixels from destination
+pixels. Reference geometry stretches by the two canvas ratios, preserving the
+existing text/playlist behavior. Program fit/aspect correction precedes graphics.
+The YUVA adapter aligns dimensions down to even pixels (minimum two), and aligns
+positions down to the even grid after integer scaling; negative coordinates clip
+at composition rather than being clamped into view. Arithmetic overflow is
+rejected. Native logo placement keeps its existing expression/anchor adapter and
+destination-pixel sizing. HLS composes the largest rendition and scales the
+completed image for smaller renditions. No new normalized-coordinate, anchor or
+fit option is introduced in this increment.
+
+
+### Hybrid playlist animations
+
+`CpuScene` stores a prepared source containing a static surface, a small immutable
+animation, or a streaming source. GIF/video decoding reuses `LogoDecoder`.
+Initial preparation runs on the existing application preparation worker. A source
+exceeding 256 frames, five seconds or 64 MiB switches to a background decoder
+registered with the channel's `PreparationService`. Scene references to that
+service are weak; queued video never becomes the owner responsible for joining
+workers. Cancellation tickets only signal/wake. The service retains join handles,
+joins outside the video thread and prevents overlapping workers across restarts.
+
+Frame selection uses source timestamps and presentation elapsed time. Source
+repeat/completion and fade-cycle repeat remain independent. Each take has a new
+anchor; layout/opacity updates and visibility retain it. Exact rational source
+periods avoid drift. The streaming decoder coalesces bounded per-presentation
+requests and atomically publishes immutable ready surfaces through `arc-swap`.
+One worker serves an asset's presentations; seeks happen only there. Obsolete or
+inactive demand is abandoned between decoder operations. Short cached sources
+have no decoder worker. Inactive or satisfied streaming sources park.
+
+The program thread creates a `FrozenScene` before lookahead or output fan-out.
+Its bounded 32-layer container captures the selected surface references and
+presentation metadata. Outputs never consult a mutable decoder cursor. The engine
+recycles up to 64 unreferenced metadata snapshots to avoid steady-state allocation;
+queued snapshots retain their own pixels. This preserves shared-resolution reuse
+and largest-rendition HLS composition. Playback-owner slots are counted separately
+from queued frames, so the last playback owner cancels decoders even if video is
+still draining. Asynchronous publication transfers/adds playback ownership safely.
+
+Cached frames, streaming buffers, scaling caches and queued references carry
+channel-budget leases. Streaming lookahead is capped at 16 frames/64 MiB and
+500 ms per decoder. The global channel pixel/workspace/job budgets still apply;
+a temporary budget shortage pauses the decoder, not video. The source's poster
+counts towards scene admission, while dynamic pixels count towards the shared
+channel budget. These are accounted graphics limits, not process RSS limits.
+See `docs/playlist_graphics.md` for finite completion, error behavior and limits.
