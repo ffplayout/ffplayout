@@ -293,12 +293,12 @@ function volumeIcon() {
         return 'bi-volume-mute'
     }
 
-    if (volumeLevel.value < 1) {
-        return 'bi-volume-off'
+    if (volumeLevel.value < 1.01) {
+        return 'bi-volume-down'
     }
 
     if (volumeLevel.value < 2) {
-        return 'bi-volume-down'
+        return 'bi-volume-up'
     }
 
     return 'bi-volume-up'
@@ -534,7 +534,7 @@ function runControl(button: PlayerControlButton) {
             </div>
 
             <div class="order-3 md:order-2 xl:order-3 p-1">
-                <div class="bg-base-100 h-full min-h-24 rounded-sm shadow flex flex-col items-center px-2 py-2 gap-2">
+                <div class="bg-base-100 h-full min-h-24 rounded-sm shadow flex flex-col items-center p-2 gap-2">
                     <div class="flex flex-1 min-h-20 items-stretch justify-center gap-3 w-full">
                         <div
                             class="relative min-h-20 w-3.5 shrink-0 border border-base-content/30 rounded-full overflow-hidden"
@@ -566,12 +566,12 @@ function runControl(button: PlayerControlButton) {
                     <div class="flex items-center justify-center">
                         <button
                             type="button"
-                            class="btn btn-ghost btn-xs px-0.5 pt-1 flex items-center justify-center text-base"
+                            class="btn btn-ghost btn-xs shrink-0 flex items-center justify-center px-0.5 text-base"
                             :disabled="!controlsUnlocked"
                             :aria-label="t('control.mute')"
                             @click="muteAudio"
                         >
-                            <i class="block text-xl before:align-baseline" :class="volumeIcon()" />
+                            <i class="block text-[1.25rem] leading-none before:align-baseline" :class="volumeIcon()" />
                         </button>
                         <span class="w-7 text-center text-xs tabular-nums">{{ volumeLevel.toFixed(2) }}</span>
                     </div>
@@ -624,7 +624,7 @@ function runControl(button: PlayerControlButton) {
                             </div>
                         </div>
                     </div>
-                    <div class="w-full px-2 pb-3" :title="!controlsUnlocked ? t('control.controlsLocked') : undefined">
+                    <div class="w-full px-2 pb-2" :title="!controlsUnlocked ? t('control.controlsLocked') : undefined">
                         <div class="flex items-center gap-2">
                             <button
                                 type="button"
