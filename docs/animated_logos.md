@@ -1,5 +1,9 @@
 # Animated logos
 
+Logo settings are managed under **Graphics → Program logo** and apply while the
+channel is running, including during live ingest. See
+[Graphics control](graphics_control.md) for the page, permissions and save behavior.
+
 The existing logo path accepts a static image, animated GIF, or local video file.
 Animated sources repeat indefinitely, ignoring a file's finite repeat count. No
 new database fields or migrations are required. Existing logo scale, position,
@@ -35,7 +39,8 @@ stage. File seeks do not seek the logo. Normal clip changes and live takeovers
 keep the source and its clock alive. The source position is evaluated from
 program presentation time, not elapsed wall-clock time or decode completion.
 When the program pauses, the animation pauses too. Hide/fade changes do not reset
-its phase. A new source revision or channel restart starts a new animation.
+its phase. A new source/size or channel restart starts a new animation. Live position and
+opacity changes preserve its phase.
 Changes to the file's size/modification time are detected at the next clip setup.
 
 One immutable logo surface is selected per outgoing program frame before output

@@ -28,6 +28,16 @@ use crate::{
     },
 };
 
+pub(crate) fn logo_config(config: &PlayoutConfig) -> Option<LogoConfig> {
+    config.processing.add_logo.then(|| LogoConfig {
+        path: config.processing.logo_path.clone(),
+        scale: (!config.processing.logo_scale.trim().is_empty())
+            .then(|| config.processing.logo_scale.clone()),
+        opacity: config.processing.logo_opacity,
+        position: config.processing.logo_position.clone(),
+    })
+}
+
 pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
     let _running_config = manager.track_running_config(config.clone());
@@ -54,6 +64,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         desktop_control_callback(manager.clone()),
     )?;
     output_config.graphics_preparation = manager.graphics.preparation();
+    output_config.manual_graphics = manager.manual_graphics.clone();
+    output_config.logo_control = manager.logo_control.clone();
     output_config.output_timing_diagnostics = crate::ARGS.timing_diagnostics;
     let mut moq_attachments = Vec::new();
     manager.output_status.clear();
@@ -146,6 +158,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     };
 
     drop(demand_watcher);
+    manager.logo_control.stop();
     manager.graphics.cancel();
     let finish_result = playout.finish().await.map_err(engine_error);
     manager.graphics.join(config.general.channel_id).await;
@@ -485,13 +498,7 @@ pub(super) fn engine_output_config(
         .map_or(output.fps, |program| program.fps)
         .round() as u32;
 
-    let logo = config.processing.add_logo.then(|| LogoConfig {
-        path: config.processing.logo_path.clone(),
-        scale: (!config.processing.logo_scale.trim().is_empty())
-            .then(|| config.processing.logo_scale.clone()),
-        opacity: config.processing.logo_opacity,
-        position: config.processing.logo_position.clone(),
-    });
+    let logo = logo_config(config);
     let ffmpeg_log_level = config
         .logging
         .ffmpeg_level

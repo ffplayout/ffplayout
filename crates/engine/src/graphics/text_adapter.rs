@@ -88,13 +88,16 @@ impl AsyncTextOverlay {
         let Some(request) = &mut self.request else {
             return;
         };
+
         if self.pending.is_some() || Instant::now() < request.retry_at {
             return;
         }
+
         let config = request.config.clone();
         let label = request.label.clone();
         let context = request.context;
         let budget = request.service.budget();
+
         match request.service.submit(move |cancelled, shutdown| {
             if cancelled.is_cancelled() || shutdown.is_cancelled() {
                 return Ok(None);
@@ -104,6 +107,7 @@ impl AsyncTextOverlay {
         }) {
             Ok(pending) => {
                 self.pending = Some(pending);
+
                 self.request = None;
             }
             Err(_) => request.retry_at = Instant::now() + Duration::from_millis(250),
@@ -115,6 +119,7 @@ impl AsyncTextOverlay {
             return;
         };
         self.pending = None;
+
         match result {
             Ok(ready) => self.ready = ready,
             Err(error) => {
@@ -126,6 +131,7 @@ impl AsyncTextOverlay {
     pub(crate) fn snapshot(&mut self, program_frame: i64, scroll_frame: i64) -> Option<TextFrame> {
         self.schedule();
         self.poll();
+
         self.ready.as_ref()?.snapshot(program_frame, scroll_frame)
     }
 
@@ -168,6 +174,7 @@ impl TextOverlay {
             fade_in_seconds: config.fade_in_seconds,
             fade_out_seconds: config.fade_out_seconds,
         };
+
         Ok(PreparedTextOverlay::prepare_budgeted(&style, &text, context, budget)?.map(Self))
     }
 
@@ -233,11 +240,14 @@ mod tests {
 
     fn wait_overlay(overlay: &mut AsyncTextOverlay, at: i64) -> Option<TextFrame> {
         let deadline = Instant::now() + Duration::from_secs(5);
+
         loop {
             let snapshot = overlay.snapshot(at, at);
+
             if overlay.pending.is_none() && overlay.request.is_none() {
                 return snapshot;
             }
+
             assert!(Instant::now() < deadline);
             std::thread::sleep(Duration::from_millis(1));
         }
@@ -252,6 +262,7 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(2);
         let pending = loop {
             let operation = operation.clone();
+
             if let Ok(pending) = service.submit(move |_, _| {
                 let (entered, release) = operation.lock().unwrap().take().unwrap();
                 entered.send(()).unwrap();
@@ -260,6 +271,7 @@ mod tests {
             }) {
                 break pending;
             }
+
             assert!(Instant::now() < deadline);
             std::thread::yield_now();
         };
@@ -371,15 +383,18 @@ mod tests {
             .unwrap();
         let blend = |text: TextFrame| {
             let mut target = frame::Video::new(Pixel::YUV420P, 320, 180);
+
             for plane in 0..3 {
                 target.data_mut(plane).fill(128);
             }
+
             text.blend(&mut target);
 
             target
         };
         let actual = blend(actual);
         let expected = blend(expected);
+
         for plane in 0..3 {
             for row in 0..actual.plane_height(plane) as usize {
                 let width = actual.plane_width(plane) as usize;
@@ -391,6 +406,7 @@ mod tests {
                 );
             }
         }
+
         drop(blocker);
         drop(overlay);
         assert!(service.shutdown(Duration::from_secs(2)));
@@ -503,9 +519,11 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(adapter.dimensions(), direct.dimensions());
+
         for pts in [10, 25, 60, 95, 100] {
             let mut actual = frame::Video::new(Pixel::YUV420P, 320, 180);
             let mut expected = frame::Video::new(Pixel::YUV420P, 320, 180);
+
             for plane in 0..3 {
                 actual
                     .data_mut(plane)
@@ -514,8 +532,10 @@ mod tests {
                     .data_mut(plane)
                     .fill(if plane == 0 { 50 } else { 128 });
             }
+
             adapter.blend(&mut actual, pts, pts);
             direct.blend(&mut expected, pts, pts);
+
             for plane in 0..3 {
                 assert_eq!(
                     actual.data(plane),

@@ -48,6 +48,23 @@ pub struct LogoStyle {
     pub position: String,
 }
 
+impl LogoStyle {
+    /// Check layout syntax without opening the asset. Actual source dimensions
+    /// are checked again by the decoder during bounded preparation.
+    #[cfg(feature = "ffmpeg")]
+    pub fn validate(&self, canvas: (u32, u32)) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.opacity.is_finite() && (0.0..=1.0).contains(&self.opacity),
+            "logo opacity must be between 0 and 1"
+        );
+        let (width, height) =
+            super::logo_dimensions(self.scale.as_deref(), 2, 2, canvas.0, canvas.1)?;
+        super::logo_position(&self.position, canvas.0, canvas.1, width, height)?;
+
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextStyle {
     pub font_family: Option<String>,

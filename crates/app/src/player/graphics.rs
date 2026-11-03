@@ -26,6 +26,8 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
+pub(crate) mod manual;
+
 use crate::{file::norm_abs_path, player::utils::Media};
 
 #[derive(Deserialize)]

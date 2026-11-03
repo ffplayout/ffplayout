@@ -20,12 +20,10 @@ const logLevels = ['INFO', 'WARNING', 'ERROR']
 const notificationLevels = ['INFO', 'WARNING', 'ERROR', 'FATAL']
 const processingMode = ['folder', 'playlist']
 
-type PathField = 'logo' | 'vtt_dummy' | 'filler' | 'task'
+type PathField = 'vtt_dummy' | 'filler' | 'task'
 const pathField = ref<PathField>()
 const browserPath = computed(() => {
     switch (pathField.value) {
-        case 'logo':
-            return configStore.playout.processing.logo
         case 'vtt_dummy':
             return configStore.playout.processing.vtt_dummy ?? ''
         case 'filler':
@@ -39,8 +37,6 @@ const browserPath = computed(() => {
 const browserMode = computed<SelectionMode>(() => (pathField.value === 'filler' ? 'both' : 'file'))
 const browserExtensions = computed(() => {
     switch (pathField.value) {
-        case 'logo':
-            return ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tif', 'tiff', 'avif', 'ico']
         case 'vtt_dummy':
             return ['vtt']
         case 'filler':
@@ -54,11 +50,9 @@ function loadPaths(path: string, initial: boolean, signal: AbortSignal) {
     if (!channel) throw new Error(t('error.notFound'))
     return browseChannelPaths(channel, path, initial, signal)
 }
+
 function selectPath(path: string) {
     switch (pathField.value) {
-        case 'logo':
-            configStore.playout.processing.logo = path
-            break
         case 'vtt_dummy':
             configStore.playout.processing.vtt_dummy = path
             break
@@ -290,65 +284,12 @@ async function onSubmitPlayout() {
                     </select>
                 </fieldset>
 
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
-                        <input v-model="configStore.playout.processing.add_logo" type="checkbox" class="checkbox" />
-                        Add Logo
-                    </label>
-                </fieldset>
+                <RouterLink
+                    :to="{ name: 'graphics-logo', query: { channel: configStore.channels[configStore.i]?.id } }"
+                    class="link block my-3"
+                    >{{ t('graphicsPage.logoLink') }}</RouterLink
+                >
 
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Logo</legend>
-                    <div class="join w-full max-w-lg">
-                        <input
-                            v-model="configStore.playout.processing.logo"
-                            type="text"
-                            name="logo"
-                            class="input input-sm join-item w-full min-w-0"
-                        />
-                        <button
-                            type="button"
-                            class="btn btn-sm join-item"
-                            :title="t('fileBrowser.title')"
-                            :aria-label="t('fileBrowser.title')"
-                            @click="pathField = 'logo'"
-                        >
-                            <i class="bi-folder2-open" />
-                        </button>
-                    </div>
-                    <p class="fieldset-label items-baseline">{{ t('config.processingLogoPath') }}</p>
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Logo Opacity</legend>
-                    <input
-                        v-model="configStore.playout.processing.logo_opacity"
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        class="input input-sm w-full max-w-36"
-                    />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Logo Scale</legend>
-                    <input
-                        v-model="configStore.playout.processing.logo_scale"
-                        type="text"
-                        name="logo_scale"
-                        class="input input-sm w-full max-w-md"
-                    />
-                    <p class="fieldset-label items-baseline">{{ t('config.processingLogoScale') }}</p>
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Logo Position</legend>
-                    <input
-                        v-model="configStore.playout.processing.logo_position"
-                        type="text"
-                        name="logo_position"
-                        class="input input-sm w-full max-w-md"
-                    />
-                    <p class="fieldset-label items-baseline">{{ t('config.processingLogoPosition') }}</p>
-                </fieldset>
                 <fieldset class="fieldset mt-2 rounded-box w-full">
                     <label class="fieldset-label text-base-content">
                         <input v-model="configStore.playout.processing.vtt_enable" type="checkbox" class="checkbox" />

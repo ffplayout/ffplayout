@@ -19,6 +19,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - playing clips in [watched](/docs/folder_mode.md) folder mode
 - send emails and [HTTP push notifications](/docs/notifications.md) for log alerts
 - overlay a [static or animated logo](docs/animated_logos.md)
+- control manual graphics, text and the program logo on the [Graphics page](docs/graphics_control.md) (**experimental** for manual graphics)
 - schedule [PNG graphics/lower thirds](docs/playlist_graphics.md) per playlist clip, with fades and repetitions (**experimental**)
 - overlay text, controllable through [web frontend](/frontend/)
 - loop playlist infinitely

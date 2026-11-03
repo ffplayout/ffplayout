@@ -1,4 +1,32 @@
 export default {
+    graphicsPage: {
+        untilStop: 'Until Stop or finite source end',
+        repeatHelp:
+            'Counts include the first play. Fade repeats need a finite duration. Z-index orders the manual graphics group.',
+        title: 'Graphics',
+        manualHelp:
+            'Manual program graphics remain visible across clips and live ingest. Up to eight layers. Take replaces the same layer; Stop uses its fade-out, Clear removes it immediately. These controls do not modify playlist graphics or the program logo.',
+        stopped: 'Start the channel before taking a graphic.',
+        take: 'Take',
+        stop: 'Stop',
+        toggle: 'Show / hide',
+        update: 'Apply layout',
+        clear: 'Clear',
+        clearAll: 'Clear all manual graphics',
+        logoHelp:
+            'The program logo applies across clips and live ingest. Static images, animated GIFs and local videos are supported; animations loop. Existing logo sizing and HLS rendition behavior are preserved.',
+        enableLogo: 'Enable program logo',
+        logoScale: 'Logo size / scale',
+        logoLink: 'Manage the program logo on the Graphics page',
+        tabs: { 'graphics-live': 'Graphics', 'graphics-text': 'Text', 'graphics-logo': 'Program logo' },
+    },
+    graphicsCanvas: {
+        title: 'Position preview',
+        move: 'Move graphic with drag or arrow keys',
+        placeholder: 'Graphic',
+        help: 'Placement preview on the program canvas, without video or fade timing. Drag or use arrow keys (2 px; Shift: 10 px).',
+        unavailable: 'The browser cannot preview this format. The placement rectangle remains editable.',
+    },
     graphicsEditor: {
         sourceResolution: 'Resolução da fonte',
         sourceDuration: 'Duração da fonte',

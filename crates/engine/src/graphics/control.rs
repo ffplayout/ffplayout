@@ -89,8 +89,10 @@ impl ProgramScene {
         // result must never replace good pixels or stop media playback.
         if descriptor.validate().is_err() || canvas.0 == 0 || canvas.1 == 0 {
             self.controller.apply_at_frame(now, [Command::Failed(key)]);
+
             return false;
         }
+
         let ready = Command::Ready(Arc::new(Resource { key, descriptor }));
         let take = Command::Take {
             layer: LayerSpec {
@@ -128,6 +130,7 @@ impl ProgramScene {
 
     pub(super) fn end_occurrence(&mut self) {
         let now = self.last_time.unwrap_or_default();
+
         for index in 0..TEXT.len() {
             self.clear_text(index, now);
         }
@@ -146,11 +149,14 @@ impl ProgramScene {
             self.logo_request = None;
             self.logo = None;
             self.texts = Default::default();
+
             self.failed_texts = Default::default();
         }
+
         self.last_time = Some(now);
         let logo_opacity = logo.opacity;
         self.update_logo(now, canvas, logo);
+
         for (index, text) in texts.iter().enumerate() {
             self.update_text(index, text.as_ref(), canvas, now);
         }
@@ -162,6 +168,7 @@ impl ProgramScene {
             z: 1,
             content: Content::Clip(clip),
         });
+
         for evaluated in scene.evaluate(now, Scope::default()) {
             let content = match evaluated.id {
                 LOGO => self
@@ -190,6 +197,7 @@ impl ProgramScene {
                     })
                 }),
             };
+
             if let Some(content) = content {
                 layers[evaluated.id.0 as usize] = Some(FrameLayer {
                     id: evaluated.id,
@@ -208,17 +216,22 @@ impl ProgramScene {
             if let Some((_, key)) = self.logo_request.take() {
                 self.release(LOGO, key, now);
             }
+
             self.logo = None;
             return;
         };
+
         if self.logo_request.map(|request| request.0) != Some(generation) {
             self.logo_request = self.prepare(LOGO, now).map(|key| (generation, key));
         }
+
         let Some((_, key)) = self.logo_request else {
             return;
         };
+
         if let Some(ready) = update.ready.filter(|ready| ready.generation == generation) {
             let source = ready.surface;
+
             if self.logo.as_ref().is_some_and(|active| active.key == key) {
                 // Animation changes ready pixels, not the source generation or
                 // presentation. Never enqueue control changes for each frame.
@@ -227,6 +240,7 @@ impl ProgramScene {
                 && self.take(key, source.descriptor(), canvas, self.logo.is_some(), now)
             {
                 self.logo = Some(PreparedSource { key, source });
+
                 self.logo_visible = true;
             }
         } else if update.failed
@@ -234,6 +248,7 @@ impl ProgramScene {
         {
             self.controller.apply_at_frame(now, [Command::Failed(key)]);
         }
+
         if self.logo.is_some() && visible != self.logo_visible {
             self.controller.apply_at_frame(
                 now,
@@ -242,6 +257,7 @@ impl ProgramScene {
                     visible,
                 }],
             );
+
             self.logo_visible = visible;
         }
     }
@@ -249,6 +265,7 @@ impl ProgramScene {
     fn clear_text(&mut self, index: usize, now: i64) {
         let active = self.texts[index].take();
         let latest = self.failed_texts[index].take().or(active);
+
         if let Some(source) = latest {
             self.release(TEXT[index], source.key, now);
         }
@@ -266,6 +283,7 @@ impl ProgramScene {
             self.clear_text(index, now);
             return;
         };
+
         if self.texts[index]
             .as_mut()
             .is_some_and(|active| active.source.update_presentation(source))
@@ -276,17 +294,20 @@ impl ProgramScene {
             }
             return;
         }
+
         if self.failed_texts[index]
             .as_ref()
             .is_some_and(|failed| failed.source.same_surface(source))
         {
             return;
         }
+
         if let Some(key) = self.prepare(id, now) {
             let prepared = PreparedSource {
                 key,
                 source: source.clone(),
             };
+
             if self.take(
                 key,
                 source.descriptor(ColorEncoding::Bt601Limited),
@@ -312,18 +333,21 @@ mod tests {
     };
     use ffmpeg_next::{format::Pixel, frame};
 
-    use super::*;
     use crate::graphics::frame::GraphicsCache;
+
+    use super::*;
 
     const CANVAS: (u32, u32) = (128, 72);
 
     fn logo(value: u8) -> Arc<LogoOverlay> {
         let mut surface = frame::Video::new(Pixel::YUVA420P, 8, 4);
+
         for plane in 0..4 {
             surface
                 .data_mut(plane)
                 .fill(if plane == 0 { value } else { 128 });
         }
+
         let prepared = PreparedLogo::from_yuva(
             &LogoStyle {
                 scale: None,
@@ -336,7 +360,7 @@ mod tests {
         )
         .unwrap();
 
-        Arc::new(LogoOverlay(Arc::new(prepared)))
+        Arc::new(LogoOverlay(Arc::new(prepared), None))
     }
 
     fn update(generation: Option<u64>, source: Option<Arc<LogoOverlay>>) -> LogoUpdate {
@@ -393,6 +417,7 @@ mod tests {
 
     fn pixels(snapshot: &GraphicsFrame, size: (u32, u32)) -> Vec<u8> {
         let mut target = frame::Video::new(Pixel::YUV420P, size.0, size.1);
+
         for plane in 0..3 {
             target.data_mut(plane).fill(128);
         }
@@ -400,6 +425,7 @@ mod tests {
             .blend(&mut target, None, &mut GraphicsCache::default())
             .unwrap();
         let mut result = Vec::new();
+
         for plane in 0..3 {
             for row in 0..target.plane_height(plane) as usize {
                 let start = row * target.stride(plane);
@@ -495,6 +521,7 @@ mod tests {
         );
         let first = scene.controller.advance(0);
         let preparation = scene.revision;
+
         for frame in 1..500 {
             let now = frame * 40_000;
             let source = if frame % 3 == 0 {
@@ -523,6 +550,7 @@ mod tests {
         let clip = crate::graphics::clip::tests::fixture(CANVAS)
             .frame_at(120_000)
             .unwrap();
+
         for position in [0, 5, 20, 35, 99, 100, 20] {
             let texts = [
                 static_text.snapshot(position, position),
@@ -539,6 +567,7 @@ mod tests {
             );
             let expected =
                 GraphicsFrame::new(CANVAS, Some(logo.clone()), 0.5, texts, Some(clip.clone()));
+
             for size in [CANVAS, (64, 36)] {
                 assert_eq!(
                     pixels(&actual, size),
@@ -675,6 +704,7 @@ mod tests {
         );
         let other_key = other.logo.as_ref().unwrap().key;
         let mut old = None;
+
         for generation in 1..100 {
             advance(
                 &mut first,
@@ -682,12 +712,14 @@ mod tests {
                 update(Some(generation), Some(first_pixels.clone())),
                 Default::default(),
             );
+
             if let Some(key) = old {
                 assert_eq!(first.controller.resource_status(key), None);
             }
             old = Some(first.logo.as_ref().unwrap().key);
             assert_eq!(first.controller.advance(generation as i64).layers.len(), 1);
         }
+
         assert!(advance(&mut first, 100, update(None, None), Default::default()).is_empty());
         assert_eq!(
             other.controller.resource_status(other_key),

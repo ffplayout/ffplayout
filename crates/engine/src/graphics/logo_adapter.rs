@@ -4,18 +4,21 @@ use std::sync::Arc;
 use anyhow::Result;
 #[cfg(test)]
 use anyhow::{Context, ensure};
-use ffmpeg_next::frame;
-
 use ff_graphics::ffmpeg::logo::LogoOverlay as PreparedLogoOverlay;
 #[cfg(test)]
 use ff_graphics::style::LogoStyle;
 use ff_graphics::surface::SurfaceDescriptor;
+use ffmpeg_next::frame;
 
+use crate::utils::config::LogoConfig;
 #[cfg(test)]
-use crate::utils::{config::LogoConfig, helper::open_media_input};
+use crate::utils::helper::open_media_input;
 
 #[derive(Clone)]
-pub struct LogoOverlay(pub(super) Arc<PreparedLogoOverlay>);
+pub struct LogoOverlay(
+    pub(super) Arc<PreparedLogoOverlay>,
+    pub(super) Option<Arc<str>>,
+);
 
 impl LogoOverlay {
     pub(super) fn descriptor(&self) -> SurfaceDescriptor {
@@ -36,7 +39,17 @@ impl LogoOverlay {
         let input = open_media_input(&config.path)
             .with_context(|| format!("failed to open logo {}", config.path))?;
         PreparedLogoOverlay::from_input(&style, input, &config.path, width, height)
-            .map(|logo| Self(Arc::new(logo)))
+            .map(|logo| Self(Arc::new(logo), None))
+    }
+
+    pub(super) fn restyled(&self, style: &LogoConfig, width: u32, height: u32) -> Result<Self> {
+        let mut logo = self.0.positioned(Some(&style.position), width, height)?;
+        logo.opacity = (style.opacity * 255.0).round().clamp(0.0, 255.0) as u8;
+
+        Ok(Self(
+            Arc::new(logo),
+            Some(Arc::from(style.position.as_str())),
+        ))
     }
 
     pub fn width(&self) -> u32 {
@@ -63,8 +76,8 @@ impl LogoOverlay {
         height: u32,
     ) -> Result<Self> {
         self.0
-            .positioned(position, width, height)
-            .map(|logo| Self(Arc::new(logo)))
+            .positioned(self.1.as_deref().or(position), width, height)
+            .map(|logo| Self(Arc::new(logo), self.1.clone()))
     }
 }
 

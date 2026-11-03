@@ -1,16 +1,33 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { authFetch } from '@/composables/authFetch'
+import { useGraphicMetadata } from '@/composables/graphicMetadata'
+import GraphicSourceInfo from './GraphicSourceInfo.vue'
 import { useI18n } from 'vue-i18n'
+import GraphicPositionEditor from '@/components/graphics/GraphicPositionEditor.vue'
+import { useConfig } from '@/stores/config'
 import FileBrowserModal from '@/components/utils/FileBrowserModal.vue'
 import type { BrowserLoader } from '@/composables/fileBrowser'
 import { graphicActions, newGraphicEvent, type GraphicAction, type GraphicEvent } from '@/composables/playlistGraphics'
 import { usePlaylistGraphicsValidation } from '@/composables/playlistGraphicsValidation'
 
 const model = defineModel<unknown>()
-const props = defineProps<{ duration: number; channel: number; load: BrowserLoader }>()
+const props = defineProps<{
+    duration: number
+    channel: number
+    load: BrowserLoader
+    manual?: boolean
+    canvasOverride?: [number, number]
+}>()
 const emit = defineEmits<{ validity: [valid: boolean] }>()
 const { t } = useI18n()
+const configStore = useConfig()
+const canvas = computed<[number, number]>(
+    () =>
+        props.canvasOverride ?? [
+            configStore.playoutSaved.program?.width ?? configStore.playoutSaved.output.width,
+            configStore.playoutSaved.program?.height ?? configStore.playoutSaved.output.height,
+        ],
+)
 const { modified, events, issues, canSave } = usePlaylistGraphicsValidation(
     () => model.value,
     () => props.duration,
@@ -22,36 +39,13 @@ const repeats = ['repeat', 'source_repeat'] as const
 const transitions = ['fade_in', 'duration', 'fade_out', 'pause'] as const
 const extensions = ['png', 'gif', 'mov', 'qt', 'mp4', 'm4v', 'mkv', 'webm', 'avi', 'ts', 'm2ts', 'mts']
 
-const mediaInfo = ref<{ width: number | null; height: number | null; source_duration: number | null }>()
 const sourcePath = computed(() => {
     const event = selected.value === undefined ? undefined : events.value?.[selected.value]
     return event?.action === 'take' ? event.source?.trim() : undefined
 })
-watch(
-    () => [props.channel, sourcePath.value] as const,
-    ([channel, path], _, onCleanup) => {
-        mediaInfo.value = undefined
-        if (!path) return
-        const controller = new AbortController()
-        const timer = setTimeout(async () => {
-            try {
-                const info = await authFetch<NonNullable<typeof mediaInfo.value>>(`/api/file/${channel}/media-info`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ source: path }),
-                    signal: controller.signal,
-                })
-                if (!controller.signal.aborted) mediaInfo.value = info
-            } catch {
-                // Metadata is optional; an unavailable source remains editable.
-            }
-        }, 250)
-        onCleanup(() => {
-            clearTimeout(timer)
-            controller.abort()
-        })
-    },
-    { immediate: true },
+const mediaInfo = useGraphicMetadata(
+    () => props.channel,
+    () => sourcePath.value,
 )
 
 watch(canSave, (valid) => emit('validity', valid), { immediate: true, flush: 'sync' })
@@ -60,12 +54,14 @@ function publish(value: GraphicEvent[]) {
     modified.value = true
     model.value = value
 }
+
 function update(index: number, patch: Partial<GraphicEvent>) {
     const next = events.value!.slice()
     next[index] = { ...next[index], ...patch }
     if ('duration' in patch) delete next[index].hold
     publish(next)
 }
+
 function optional(index: number, key: string, enabled: boolean, value: unknown) {
     const next = events.value!.map((event) => ({ ...event }))
     if (key === 'duration') delete next[index].hold
@@ -73,36 +69,44 @@ function optional(index: number, key: string, enabled: boolean, value: unknown) 
     else delete next[index][key]
     publish(next)
 }
+
 function totalDuration(event: GraphicEvent) {
     return (
         event.duration ?? (event.hold == null ? undefined : (event.fade_in ?? 0) + event.hold + (event.fade_out ?? 0))
     )
 }
+
 function number(event: Event): number {
     return (event.target as HTMLInputElement).valueAsNumber
 }
+
 function text(event: Event): string {
     return (event.target as HTMLInputElement).value
 }
+
 function checked(event: Event): boolean {
     return (event.target as HTMLInputElement).checked
 }
+
 function pair(index: number, key: 'size' | 'position', axis: number, value: number) {
     const tuple = [...(events.value![index][key] ?? [0, 0])] as [number, number]
     tuple[axis] = value
     update(index, { [key]: tuple })
 }
+
 function add() {
     const rows = events.value ?? []
     const layer = Math.max(0, ...rows.map((event) => event.layer ?? 0)) + 1
     publish([...rows, newGraphicEvent('take', rows.at(-1)?.at ?? 0, layer)])
     selected.value = rows.length
 }
+
 function remove(index: number) {
     browsing.value = undefined
     publish(events.value!.filter((_, i) => i !== index))
     selected.value = undefined
 }
+
 function move(index: number, offset: number) {
     const rows = events.value!.slice()
     ;[rows[index], rows[index + offset]] = [rows[index + offset], rows[index]]
@@ -110,16 +114,19 @@ function move(index: number, offset: number) {
     publish(rows)
     selected.value = index + offset
 }
+
 function sort() {
     browsing.value = undefined
     publish(events.value!.slice().sort((a, b) => a.at - b.at))
     selected.value = undefined
 }
+
 function action(index: number, value: GraphicAction) {
     const rows = events.value!.slice()
     rows[index] = newGraphicEvent(value, rows[index].at, rows[index].layer ?? 1)
     publish(rows)
 }
+
 function source(path: string) {
     if (browsing.value !== undefined) update(browsing.value, { source: path })
 }
@@ -132,9 +139,11 @@ function source(path: string) {
                 {{ t('graphicsEditor.title') }}
                 <span class="badge badge-sm">{{ t('graphicsEditor.experimental') }}</span>
             </h4>
-            <span v-if="events" class="text-sm">{{ events.length }}/256</span>
+            <span v-if="events && !manual" class="text-sm">{{ events.length }}/256</span>
         </div>
-        <p class="text-sm text-base-content/70 my-2">{{ t('graphicsEditor.help') }}</p>
+        <p class="text-sm text-base-content/70 my-2">
+            {{ t(manual ? 'graphicsPage.manualHelp' : 'graphicsEditor.help') }}
+        </p>
         <p v-if="events === undefined" role="alert" class="text-warning text-sm">
             {{ t('graphicsEditor.unsupported') }}
         </p>
@@ -144,7 +153,7 @@ function source(path: string) {
                 {{ issue.index >= 0 ? `${issue.index + 1}: ` : '' }}{{ t(`graphicsEditor.errors.${issue.code}`) }}
             </li>
         </ul>
-        <p v-if="!modified && canSave && (issues.length || events === undefined)" class="text-sm my-2">
+        <p v-if="!manual && !modified && canSave && (issues.length || events === undefined)" class="text-sm my-2">
             {{ t('graphicsEditor.preserve') }}
         </p>
         <div v-for="(event, index) in events" :key="index" class="border border-base-content/30 rounded-sm mb-2">
@@ -161,6 +170,7 @@ function source(path: string) {
                 <button
                     type="button"
                     class="btn btn-xs btn-square"
+                    v-if="!manual"
                     :disabled="index === 0"
                     :aria-label="t('graphicsEditor.up')"
                     @click="move(index, -1)"
@@ -170,6 +180,7 @@ function source(path: string) {
                 <button
                     type="button"
                     class="btn btn-xs btn-square"
+                    v-if="!manual"
                     :disabled="index === events!.length - 1"
                     :aria-label="t('graphicsEditor.down')"
                     @click="move(index, 1)"
@@ -179,6 +190,7 @@ function source(path: string) {
                 <button
                     type="button"
                     class="btn btn-xs btn-square"
+                    v-if="!manual"
                     :aria-label="t('graphicsEditor.remove')"
                     @click="remove(index)"
                 >
@@ -186,7 +198,7 @@ function source(path: string) {
                 </button>
             </div>
             <div v-if="selected === index" class="p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label class="fieldset"
+                <label v-if="!manual" class="fieldset"
                     ><span>{{ t('graphicsEditor.at') }}</span
                     ><input
                         :value="event.at"
@@ -196,7 +208,7 @@ function source(path: string) {
                         class="input input-sm w-full"
                         @input="update(index, { at: number($event) })"
                 /></label>
-                <label class="fieldset"
+                <label v-if="!manual" class="fieldset"
                     ><span>{{ t('graphicsEditor.action') }}</span
                     ><select
                         :value="event.action"
@@ -241,18 +253,21 @@ function source(path: string) {
                         >
                             <i class="bi-folder2-open" /></button
                     ></span>
-                    <span v-if="mediaInfo" class="text-xs text-base-content/70 tabular-nums" role="status">
-                        <span v-if="mediaInfo.width && mediaInfo.height">
-                            {{ t('graphicsEditor.sourceResolution') }}: {{ mediaInfo.width }} ×
-                            {{ mediaInfo.height }} px
-                        </span>
-                        <span v-if="mediaInfo.source_duration != null">
-                            {{ mediaInfo.width && mediaInfo.height ? ' · ' : ''
-                            }}{{ t('graphicsEditor.sourceDuration') }}:
-                            {{ mediaInfo.source_duration.toLocaleString(undefined, { maximumFractionDigits: 3 }) }} s
-                        </span>
-                    </span>
+                    <GraphicSourceInfo :info="mediaInfo" />
                 </label>
+                <GraphicPositionEditor
+                    v-if="event.action === 'take' && event.source && canvas[0] > 0 && canvas[1] > 0"
+                    :channel="channel"
+                    :source="event.source"
+                    :canvas="canvas"
+                    :position="event.position ?? [0, 0]"
+                    :size="event.size ?? undefined"
+                    :source-size="
+                        mediaInfo?.width && mediaInfo?.height ? [mediaInfo.width, mediaInfo.height] : undefined
+                    "
+                    :opacity="event.opacity ?? undefined"
+                    @position="update(index, { position: $event })"
+                />
                 <template v-if="event.action === 'take' || event.action === 'update'">
                     <div class="fieldset sm:col-span-2">
                         <label v-if="event.action === 'update'" class="flex gap-2 items-center"
@@ -365,7 +380,7 @@ function source(path: string) {
                                 @input="update(index, { [field]: number($event) })"
                         /></label>
                         <span v-if="field === 'duration' && totalDuration(event) == null" class="text-xs">{{
-                            t('graphicsEditor.untilStop')
+                            t(manual ? 'graphicsPage.untilStop' : 'graphicsEditor.untilStop')
                         }}</span>
                     </div>
                     <div v-for="field in repeats" :key="field" class="fieldset">
@@ -406,18 +421,26 @@ function source(path: string) {
                             <option value="hold_last">{{ t('graphicsEditor.holdLast') }}</option>
                         </select></label
                     >
-                    <p class="text-xs text-base-content/70 sm:col-span-2">{{ t('graphicsEditor.repeatHelp') }}</p>
+                    <p class="text-xs text-base-content/70 sm:col-span-2">
+                        {{ t(manual ? 'graphicsPage.repeatHelp' : 'graphicsEditor.repeatHelp') }}
+                    </p>
                 </template>
             </div>
         </div>
         <div class="flex flex-wrap gap-2 my-2">
-            <button v-if="events" type="button" class="btn btn-sm" :disabled="events.length >= 256" @click="add">
+            <button
+                v-if="events && !manual"
+                type="button"
+                class="btn btn-sm"
+                :disabled="events.length >= 256"
+                @click="add"
+            >
                 <i class="bi-plus-lg" />{{ t('graphicsEditor.add') }}
             </button>
-            <button v-if="events && events.length > 1" type="button" class="btn btn-sm" @click="sort">
+            <button v-if="!manual && events && events.length > 1" type="button" class="btn btn-sm" @click="sort">
                 {{ t('graphicsEditor.sort') }}
             </button>
-            <button v-if="model != null" type="button" class="btn btn-sm" @click="publish([])">
+            <button v-if="!manual && model != null" type="button" class="btn btn-sm" @click="publish([])">
                 {{ t('graphicsEditor.clear') }}
             </button>
         </div>

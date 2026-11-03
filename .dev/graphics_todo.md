@@ -26,6 +26,28 @@ The architecture must support both an optimized YUV compositing path and an opti
 
 ---
 
+## Graphics frontend and manual control — 2026-11-03
+
+The shared Graphics page now provides manual graphics, existing Text controls and
+Program logo tabs. General Settings links to the logo tab; logo fields/database
+and the existing renderer/scaling behavior are preserved. Manual graphics use a
+separate bounded program group (eight layers), shared immutable output snapshots,
+channel preparation budgets and off-video-thread source preparation. HTTP commands
+require observed revisions; stop/clear invalidates obsolete completions. Placement
+preview and program-pixel dragging are available in both the playlist and manual
+editors. The browser preview does not simulate final video/color/timing. See
+[Graphics control](../docs/graphics_control.md) for limits and recovery semantics.
+Templates, persisted graphic presets and exact render-backed previews remain open.
+Historical milestone descriptions below predate this additional HTTP/frontend work.
+
+Program-logo changes now apply through a lazy, tracked preparation/retirement
+worker without restarting the channel. Position/opacity reuse source pixels and
+preserve animation phase; source/scale changes swap only after readiness. Pending
+updates are bounded/latest-only and reset safely across preparation-service
+restarts. Relative output placement, clip/ad fades and HLS rendition behavior are
+preserved. Invalid enabled paths/layouts are rejected before saving from the logo
+page; failed asynchronous replacements retain the active source.
+
 ## Implemented Groundwork — Workspace Crate Extraction
 
 - [x] Introduce an internal `ff-graphics` workspace crate with one-way engine → graphics dependencies.
@@ -779,19 +801,21 @@ Adapt paths and naming to existing project conventions.
 - [x] Map existing configured/runtime text overlays to controller layers; preserve their clocks.
 - [x] Keep existing logo/runtime-text API entry points compatible; current new clip graphics use optional playlist JSON rather than replacing endpoints.
 - [x] Expose internal resource/controller state for current loading/active/failed revisions.
-- [ ] Expose graphics state through HTTP and frontend inspection.
+- [x] Expose manual program-graphics state through authenticated HTTP and frontend inspection; legacy logo/text retain their existing configuration interfaces.
 - [x] Apply internal/playlist layer updates and take/stop fades at frame boundaries without restarting playout.
 - [x] Add a reusable frontend playlist-event form with local file selection,
   action ordering, sparse updates, fades, repeats and independent source playback.
   Preserve existing JSON/unknown fields and cancel edits without mutating the playlist.
-- [ ] Add authenticated HTTP operations and immediate take/stop/clear controls on
-  a dedicated graphics/text tab; canvas editing/preview is not implemented.
+- [x] Add authenticated manual take/update/stop/visibility/clear controls on a
+  shared Graphics/Text/Program-logo page, with program-pixel placement preview
+  reused by the playlist editor. Keep legacy logo sizing and HLS behavior.
+- [ ] Add exact renderer-backed canvas/video preview and persisted graphic presets.
 - [x] Define internal FIFO submission and equal-time playlist declaration order without coalescing.
-- [ ] Specify ordering/revision conflict handling for future concurrent HTTP clients.
+- [x] Require observed revisions for manual HTTP commands; reject intervening changes/preparation completions with conflicts.
 - [x] Define current worker cancellation/join/restart exclusion, clock-epoch reset and clip-occurrence disposal.
-- [ ] Define reload/recovery semantics for future externally controlled scenes/templates.
+- [x] Define manual graphics as transient channel state: retained through clips/live and cleared at stop/restart; stale prepared results cannot republish. Templates remain separate.
 - [x] Keep current controllers, preparation services, budgets and playlist file containment per channel; controller isolation is tested.
-- [ ] Test authorization/channel isolation together with new graphics HTTP routes when introduced.
+- [x] Test manual graphics authorization/channel isolation, revision conflicts, failed sources, and scoped administrator-only logo saves through HTTP routes.
 
 Do not introduce breaking changes to existing clients.
 

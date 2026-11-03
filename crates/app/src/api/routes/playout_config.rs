@@ -8,6 +8,7 @@ use axum::{
     Json,
     extract::{Path as AxumPath, Query, State},
 };
+use ff_graphics::style::LogoStyle;
 use protect_axum::authorities::AuthDetails;
 use serde::{Deserialize, Serialize};
 
@@ -88,6 +89,7 @@ pub struct PlayoutConfigUpdate {
 #[serde(rename_all = "snake_case")]
 pub enum ConfigUpdateScope {
     Ingest,
+    Logo,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -179,6 +181,21 @@ fn requires_playout_restart(current: &PlayoutConfig, updated: &PlayoutConfig) ->
             .and_then(serde_json::Value::as_object_mut)
         {
             logging.remove("ingest_level");
+        }
+
+        if let Some(processing) = config
+            .get_mut("processing")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            for key in [
+                "add_logo",
+                "logo",
+                "logo_scale",
+                "logo_opacity",
+                "logo_position",
+            ] {
+                processing.remove(key);
+            }
         }
 
         if let Some(audio) = config
@@ -378,9 +395,49 @@ pub async fn update_playout_config(
         scoped.logging.ingest_level = data.logging.ingest_level;
         data = scoped;
     }
+    if query.scope == Some(ConfigUpdateScope::Logo) {
+        let mut scoped = config.clone();
+        scoped.processing.add_logo = data.processing.add_logo;
+        scoped.processing.logo = data.processing.logo;
+        scoped.processing.logo_scale = data.processing.logo_scale;
+        scoped.processing.logo_opacity = data.processing.logo_opacity;
+        scoped.processing.logo_position = data.processing.logo_position;
+        data = scoped;
+    }
     let config_id = config.general.id;
 
-    let (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
+    let (logo_path, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
+    if query.scope == Some(ConfigUpdateScope::Logo)
+        && data.processing.add_logo
+        && !logo_path.is_file()
+    {
+        return Err(ServiceError::BadRequest(
+            "Enabled logo must refer to an existing local file".into(),
+        ));
+    }
+    if !(0.0..=1.0).contains(&data.processing.logo_opacity)
+        || !data.processing.logo_opacity.is_finite()
+    {
+        return Err(ServiceError::BadRequest(
+            "Logo opacity must be between 0 and 1".into(),
+        ));
+    }
+    if query.scope == Some(ConfigUpdateScope::Logo) && data.processing.add_logo {
+        let canvas = data
+            .program
+            .as_ref()
+            .map_or((data.output.width, data.output.height), |program| {
+                (program.width, program.height)
+            });
+        LogoStyle {
+            scale: (!data.processing.logo_scale.is_empty())
+                .then(|| data.processing.logo_scale.clone()),
+            opacity: data.processing.logo_opacity,
+            position: data.processing.logo_position.clone(),
+        }
+        .validate(canvas)
+        .map_err(|error| ServiceError::BadRequest(format!("Invalid logo layout: {error:#}")))?;
+    }
     let (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
 
     data.processing.logo = logo;
@@ -602,7 +659,7 @@ pub async fn update_playout_config(
     let running_config = manager.running_config();
     let baseline = running_config.as_deref().unwrap_or(&config);
     let mut requires_restart = !ingest_only && requires_playout_restart(baseline, &new_config);
-    if !ingest_only && running_config.is_some() {
+    if !ingest_only && query.scope != Some(ConfigUpdateScope::Logo) && running_config.is_some() {
         if !requires_restart && manager.output_status.supports_live_updates() {
             crate::player::output::update_outputs(&manager, &new_config)?;
         } else if serde_json::to_value((&baseline.output, &baseline.outputs)).ok()
@@ -624,7 +681,11 @@ pub async fn update_playout_config(
             != "off",
         crate::player::controller::loudness_config(&new_config.audio),
     );
-    manager.update_config(new_config).await?;
+    if query.scope == Some(ConfigUpdateScope::Logo) {
+        manager.update_logo_config(new_config).await?;
+    } else {
+        manager.update_config(new_config).await?;
+    }
 
     Ok(Json(PlayoutConfigUpdate { requires_restart }))
 }
@@ -820,6 +881,20 @@ mod tests {
 
     use super::{requires_playout_restart, running_listener_port_in_use};
     use crate::utils::config::{LiveInput, PlayoutConfig};
+
+    #[test]
+    fn logo_configuration_is_live_but_unrelated_processing_changes_still_restart() {
+        let current = PlayoutConfig::default();
+        let mut updated = current.clone();
+        updated.processing.add_logo = !updated.processing.add_logo;
+        updated.processing.logo = "new.gif".into();
+        updated.processing.logo_scale = "120:-1".into();
+        updated.processing.logo_opacity = 0.4;
+        updated.processing.logo_position = "W-w-20:20".into();
+        assert!(!requires_playout_restart(&current, &updated));
+        updated.processing.vtt_enable = !updated.processing.vtt_enable;
+        assert!(requires_playout_restart(&current, &updated));
+    }
 
     #[test]
     fn public_moq_permission_changes_do_not_restart_encoding() {

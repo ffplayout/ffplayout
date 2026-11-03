@@ -18,7 +18,7 @@ const indexStore = useIndex()
 const { i } = storeToRefs(useConfig())
 
 useHead({
-    title: computed(() => t('button.message')),
+    title: computed(() => `${t('graphicsPage.title')} · ${t('graphicsPage.tabs.graphics-text')}`),
 })
 
 interface PresetName {

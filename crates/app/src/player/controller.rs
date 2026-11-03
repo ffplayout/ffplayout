@@ -11,7 +11,7 @@ use std::{
 
 use ff_engine::{
     AudioEffectsControl, AudioLevel, LiveIdleTimeout, LiveInputBackend, LiveListenerConfig,
-    LiveLoudnessConfig, PlaybackControl, TextOverlayState,
+    LiveLoudnessConfig, LogoControl, ManualGraphics, PlaybackControl, TextOverlayState,
 };
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,11 @@ use crate::{
     ARGS,
     db::{handles, models::Channel},
     file::{init_storage, local::LocalStorage},
-    player::{graphics::GraphicsPreparer, output::player, utils::Media},
+    player::{
+        graphics::GraphicsPreparer,
+        output::{logo_config, player},
+        utils::Media,
+    },
     utils::{
         config::PlayoutConfig, errors::ServiceError, logging::Target, system::SystemStat,
         text::text_config,
@@ -128,6 +132,9 @@ pub struct ChannelManager {
     pub loudness_meter: ff_engine::LoudnessMeterControl,
     pub audio_level: Arc<StdMutex<Option<AudioLevel>>>,
     pub text_overlay: TextOverlayState,
+    pub(crate) manual_graphics: ManualGraphics,
+    pub(crate) logo_control: LogoControl,
+    pub(crate) manual_jobs: Arc<tokio::sync::Semaphore>,
     pub playback_control: Arc<Mutex<PlaybackControl>>,
     pub shutdown: CancellationToken,
     pub system: SystemStat,
@@ -238,6 +245,9 @@ impl ChannelManager {
             loudness_meter: ff_engine::LoudnessMeterControl::default(),
             audio_level: Arc::new(StdMutex::new(None)),
             text_overlay,
+            manual_graphics: ManualGraphics::default(),
+            logo_control: LogoControl::default(),
+            manual_jobs: Arc::new(tokio::sync::Semaphore::new(2)),
             playback_control: Arc::new(Mutex::new(PlaybackControl::default())),
             shutdown,
             system,
@@ -273,6 +283,21 @@ impl ChannelManager {
     }
 
     pub async fn update_config(&self, new_config: PlayoutConfig) -> Result<(), ServiceError> {
+        self.update_config_inner(new_config, false).await
+    }
+
+    pub(crate) async fn update_logo_config(
+        &self,
+        new_config: PlayoutConfig,
+    ) -> Result<(), ServiceError> {
+        self.update_config_inner(new_config, true).await
+    }
+
+    async fn update_config_inner(
+        &self,
+        new_config: PlayoutConfig,
+        refresh_logo: bool,
+    ) -> Result<(), ServiceError> {
         if new_config
             .ingest
             .listeners
@@ -286,6 +311,29 @@ impl ChannelManager {
 
         let mut config = self.config.write().await;
         let running = self.running_config();
+        let previous_logo = logo_config(&config);
+        let updated_logo = logo_config(&new_config);
+
+        if (refresh_logo || previous_logo != updated_logo) && self.is_alive.load(Ordering::SeqCst) {
+            let program = running.as_deref().unwrap_or(&config);
+            let canvas = program
+                .program
+                .as_ref()
+                .map_or((program.output.width, program.output.height), |program| {
+                    (program.width, program.height)
+                });
+            self.logo_control
+                .request(
+                    updated_logo,
+                    canvas,
+                    Some(new_config.general.channel_id),
+                    self.graphics.preparation(),
+                )
+                .map_err(|error| {
+                    ServiceError::Conflict(format!("Logo update unavailable: {error:#}"))
+                })?;
+        }
+
         {
             let mut timeouts = self
                 .live_idle_timeouts
@@ -749,7 +797,9 @@ impl ChannelManager {
         }
 
         self.is_alive.store(false, Ordering::SeqCst);
+        self.logo_control.stop();
         self.graphics.cancel();
+        self.manual_graphics.clear();
         self.playback_control.lock().await.skip_current();
         // Restarts and shutdown must also cancel an in-flight validator, not
         // only permanent stops. Its blocking FFmpeg analysis owns resources.

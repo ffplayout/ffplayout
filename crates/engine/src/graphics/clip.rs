@@ -10,7 +10,7 @@ use std::{
 use ff_graphics::{
     ffmpeg::scene::{CompositionReport, CpuScene, FrozenScene, SceneScaleCache},
     playlist::ClipSchedule,
-    scene::Scope,
+    scene::{SceneRevision, Scope},
     surface::ColorEncoding,
 };
 use ffmpeg_next::frame;
@@ -38,13 +38,17 @@ impl Prepared {
                     slot.clear();
                 }
             }
+
             for snapshot in snapshots.iter_mut() {
                 if let Some(slot) = Arc::get_mut(snapshot) {
                     *slot = frozen;
+
                     return snapshot.clone();
                 }
             }
+
             let snapshot = Arc::new(frozen);
+
             if snapshots.len() < 64 {
                 snapshots.push(snapshot.clone());
             }
@@ -67,10 +71,12 @@ impl PreparedSlot {
 
     fn publish(&self, prepared: Arc<Prepared>) -> bool {
         prepared.owners.fetch_add(1, Ordering::AcqRel);
+
         match self.0.set(prepared) {
             Ok(()) => true,
             Err(prepared) => {
                 prepared.owners.fetch_sub(1, Ordering::AcqRel);
+
                 false
             }
         }
@@ -139,6 +145,38 @@ impl ClipGraphics {
         self
     }
 
+    /// Ready initial layers, for control-side program graphics without re-decoding assets.
+    pub fn initial_scene(&self) -> Option<SceneRevision> {
+        Some(
+            self.prepared
+                .get()?
+                .schedule
+                .frame_at(Some(0))?
+                .scene
+                .clone(),
+        )
+    }
+
+    pub(crate) fn frame_scene(
+        &self,
+        scene: &SceneRevision,
+        position_us: i64,
+    ) -> Option<ClipSceneFrame> {
+        let prepared = self.prepared.get()?;
+        let frozen = prepared
+            .renderer
+            .freeze(scene, position_us, Scope::default());
+
+        Some(ClipSceneFrame {
+            #[cfg(test)]
+            scene: scene.clone(),
+            #[cfg(test)]
+            position_us,
+            prepared: prepared.clone(),
+            frozen: prepared.snapshot(frozen),
+        })
+    }
+
     pub(crate) fn suspend(&self) {
         if let Some(prepared) = self.prepared.get() {
             prepared.renderer.suspend_streams();
@@ -195,7 +233,7 @@ pub(crate) struct ClipSceneFrame {
     prepared: Arc<Prepared>,
     frozen: Arc<FrozenScene>,
     #[cfg(test)]
-    scene: ff_graphics::scene::SceneRevision,
+    scene: SceneRevision,
     #[cfg(test)]
     position_us: i64,
 }
@@ -212,6 +250,7 @@ impl ClipSceneFrame {
         } else {
             self.blend_scaled(target, resolution)
         };
+
         if (report.missing > 0 || report.unsupported > 0)
             && !self.prepared.reported_failure.swap(true, Ordering::Relaxed)
         {
@@ -386,9 +425,11 @@ pub(crate) mod tests {
         let deadline = Instant::now() + Duration::from_secs(5);
         let queued = loop {
             let queued = pending.frame_at(6_100_000).unwrap();
+
             if queued.visible() {
                 break queued;
             }
+
             assert!(
                 Instant::now() < deadline,
                 "publication must not cancel the decoder"
@@ -402,9 +443,11 @@ pub(crate) mod tests {
         );
         assert_eq!(service.budget().usage().2, 0);
         let mut target = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 32, 32);
+
         for plane in 0..3 {
             target.data_mut(plane).fill(128);
         }
+
         queued.blend(&mut target);
         assert!(service.budget().usage().0 > 0);
         drop(queued);
@@ -460,20 +503,24 @@ pub(crate) mod tests {
         .unwrap();
         let graphics = ClipGraphics::new(renderer, schedule);
         let deadline = Instant::now() + Duration::from_secs(5);
+
         loop {
             assert!(
                 graphics.frame_at(1_600_000).is_none(),
                 "preparation must not publish future graphics"
             );
+
             if service.budget().usage().0 > poster_bytes {
                 break;
             }
+
             assert!(
                 Instant::now() < deadline,
                 "no decoder work before first take"
             );
             std::thread::sleep(Duration::from_millis(1));
         }
+
         let queued = graphics.frame_at(2_000_000).unwrap();
         assert!(queued.visible());
         drop(queued);
@@ -552,13 +599,16 @@ pub(crate) mod tests {
         Arc::get_mut(prepared).unwrap().renderer = CpuScene::new(0, 0);
         let selected = graphics.frame_at(120_000).unwrap();
         let mut target = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 32, 16);
+
         for plane in 0..3 {
             target.data_mut(plane).fill(128);
         }
+
         for _ in 0..3 {
             selected.blend(&mut target);
             assert!(target.data(0).iter().all(|byte| *byte == 128));
         }
+
         assert!(
             graphics
                 .prepared

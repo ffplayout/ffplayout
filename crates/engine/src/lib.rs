@@ -38,6 +38,8 @@ pub use audio_mixer::{
 pub use control_live::{LiveIngestControl, LiveInputStatus};
 pub use control_playback::{LiveSession, NavigationBlocked, PlaybackControl, PlaylistNavigation};
 pub use graphics::clip::{ClipGraphics, ClipGraphicsPreparation};
+pub use graphics::logo_control::LogoControl;
+pub use graphics::manual::{ManualChange, ManualGraphics};
 pub use input::live::{
     DEFAULT_LIVE_IDLE_TIMEOUT_MS, LiveIdleTimeout, LiveInputBackend, LiveListenerConfig,
     LiveReceiver, live_protocol_available, spawn_live_listeners, spawn_rtmp_listener,

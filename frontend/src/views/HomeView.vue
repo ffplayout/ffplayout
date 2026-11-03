@@ -74,8 +74,8 @@ function channelLink(path: string) {
                 <RouterLink :to="channelLink('/media')" class="btn btn-primary join-item px-2">
                     {{ t('button.media') }}
                 </RouterLink>
-                <RouterLink :to="channelLink('/message')" class="btn btn-primary join-item px-2">
-                    {{ t('button.message') }}
+                <RouterLink :to="channelLink('/graphics')" class="btn btn-primary join-item px-2">
+                    {{ t('graphicsPage.title') }}
                 </RouterLink>
                 <RouterLink :to="channelLink('/logging')" class="btn btn-primary join-item px-2">
                     {{ t('button.logging') }}

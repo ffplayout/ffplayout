@@ -2,17 +2,16 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-#[cfg(test)]
-use ff_graphics::scene::LayerId;
 use ff_graphics::{
     ffmpeg::text::TextScaleCache,
-    scene::{FrameLayer, FrameLayers},
+    scene::{FrameLayer, FrameLayers, LayerId},
 };
 use ffmpeg_next::frame;
 
 use super::{
     clip::ClipSceneFrame,
     logo_adapter::{LogoOverlay, blend_logo},
+    manual::ManualFrame,
     text_adapter::{TextFrame, measure_text},
 };
 
@@ -26,6 +25,7 @@ pub(super) enum Content {
         opacity: f64,
     },
     Clip(ClipSceneFrame),
+    Manual(Arc<ManualFrame>),
     Text {
         surface: TextFrame,
         index: usize,
@@ -37,7 +37,7 @@ pub(super) enum Content {
 /// Cloning retains only ready surfaces, never a decoder or preparation worker.
 #[derive(Clone, Default)]
 pub(crate) struct GraphicsFrame {
-    layers: FrameLayers<Content, 4>,
+    layers: FrameLayers<Content, 5>,
     canvas: (u32, u32),
 }
 
@@ -62,9 +62,11 @@ impl GraphicsFrame {
         canvas: (u32, u32),
         layers: [Option<FrameLayer<Content>>; 4],
     ) -> Self {
+        let [logo, clip, text, runtime_text] = layers;
+
         Self {
             canvas,
-            layers: FrameLayers::new(layers),
+            layers: FrameLayers::new([logo, clip, text, runtime_text, None]),
         }
     }
 
@@ -100,10 +102,29 @@ impl GraphicsFrame {
             })
         });
 
+        let [logo, clip, text, runtime_text] = layers;
+
         Self {
             canvas,
-            layers: FrameLayers::new(layers),
+            layers: FrameLayers::new([logo, clip, text, runtime_text, None]),
         }
+    }
+
+    pub(super) fn with_manual(mut self, manual: Option<Arc<ManualFrame>>) -> Self {
+        let Some(manual) = manual else {
+            return self;
+        };
+        let mut layers = self.layers.layers().cloned();
+        let mut array = std::array::from_fn(|_| layers.next());
+        array[4] = Some(FrameLayer {
+            id: LayerId(4),
+            z: 1,
+            content: Content::Manual(manual),
+        });
+        drop(layers);
+        self.layers = FrameLayers::new(array);
+
+        self
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -121,10 +142,12 @@ impl GraphicsFrame {
     ) -> Result<()> {
         let mut has_logo = false;
         let mut has_text = [false; 2];
+
         for layer in self.layers.layers() {
             match &layer.content {
                 Content::Logo { surface, opacity } => {
                     has_logo = true;
+
                     if !cache
                         .source_logo
                         .as_ref()
@@ -141,6 +164,7 @@ impl GraphicsFrame {
                         cache.logo_canvas = (target.width(), target.height());
                         cache.logo_position = logo_position.map(str::to_owned);
                     }
+
                     if let Some(logo) = &cache.logo {
                         crate::benchmark::measure_overlay(
                             crate::benchmark::Stage::LogoOverlay,
@@ -151,15 +175,18 @@ impl GraphicsFrame {
                     }
                 }
                 Content::Clip(clip) => clip.blend(target),
+                Content::Manual(frame) => frame.blend(target),
                 Content::Text { surface, index } => {
                     has_text[*index] = true;
                     let result = measure_text(*index, surface, || {
                         surface.blend_scaled(target, self.canvas, &mut cache.texts[*index])
                     });
+
                     if let Err(error) = result {
                         if !cache.text_failed[*index] {
                             log::warn!("Text graphics skipped at destination size: {error:#}");
                         }
+
                         cache.text_failed[*index] = true;
                     } else {
                         cache.text_failed[*index] = false;
@@ -173,6 +200,7 @@ impl GraphicsFrame {
             cache.source_logo = None;
             cache.logo = None;
         }
+
         for (index, (present, text)) in has_text.into_iter().zip(&mut cache.texts).enumerate() {
             if !present {
                 *text = TextScaleCache::default();
@@ -216,11 +244,13 @@ mod tests {
     };
     use ffmpeg_next::format::Pixel;
 
-    use super::*;
     use crate::utils::config::LogoConfig;
+
+    use super::*;
 
     fn background(width: u32, height: u32) -> frame::Video {
         let mut result = frame::Video::new(Pixel::YUV420P, width, height);
+
         for plane in 0..3 {
             result.data_mut(plane).fill(128);
         }
@@ -287,8 +317,10 @@ mod tests {
             texts.clone(),
             Some(clip.clone()),
         );
+
         for (width, height) in [(320, 180), (160, 90)] {
             let mut cache = GraphicsCache::default();
+
             for _ in 0..2 {
                 let mut actual = background(width, height);
                 let mut expected = background(width, height);
@@ -298,10 +330,12 @@ mod tests {
                 let positioned = logo.positioned(Some("0:0"), width, height).unwrap();
                 blend_logo(&mut expected, &positioned, 0.5);
                 clip.blend(&mut expected);
+
                 for text in texts.iter().flatten() {
                     text.blend_scaled(&mut expected, (320, 180), &mut TextScaleCache::default())
                         .unwrap();
                 }
+
                 for plane in 0..3 {
                     for row in 0..actual.plane_height(plane) as usize {
                         let columns = actual.plane_width(plane) as usize;
@@ -354,6 +388,7 @@ mod tests {
         let snapshot = GraphicsFrame::new((320, 180), Some(source), 1.0, Default::default(), None);
         let queued = snapshot.clone();
         let mut cache = GraphicsCache::default();
+
         for (width, height) in [(320, 180), (160, 90)] {
             snapshot
                 .blend(

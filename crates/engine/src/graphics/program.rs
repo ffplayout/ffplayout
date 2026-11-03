@@ -1,4 +1,6 @@
-//! Select one immutable logo surface on the final program timeline before fan-out.
+//! Select immutable graphics on the final program timeline before fan-out.
+use std::sync::Arc;
+
 use anyhow::Result;
 use ffmpeg_next::{Rational, Rescale, frame};
 
@@ -7,6 +9,7 @@ use crate::{
     graphics::text_adapter::TextOverlays,
     input::diagnostics::LiveInputDiagnostics,
     output::FrameOutput,
+    playout::Timeline,
     utils::{
         config::OutputConfig,
         ffmpeg::{make_video_frame_writable, reference_video_frame},
@@ -16,6 +19,8 @@ use crate::{
 use super::{
     clip::{ClipGraphics, ClipSceneFrame},
     frame::{GraphicsCache, GraphicsFrame},
+    logo_control::LogoControl,
+    manual::ManualGraphics,
     source::ProgramGraphicsState,
 };
 
@@ -29,6 +34,8 @@ pub(crate) struct ProgramGraphicsOutput<'a, O: FrameOutput> {
     clip_start_pts: i64,
     clip_visible: bool,
     cache: GraphicsCache,
+    manual: ManualGraphics,
+    logo_control: LogoControl,
 }
 
 impl<O: FrameOutput> Drop for ProgramGraphicsOutput<'_, O> {
@@ -36,6 +43,7 @@ impl<O: FrameOutput> Drop for ProgramGraphicsOutput<'_, O> {
         // Output queues own their frame snapshots; the next occurrence must not
         // retain this clip merely through the output's last deferred metadata.
         let _ = self.output.defer_graphics(GraphicsFrame::default());
+
         self.state.end_occurrence();
     }
 }
@@ -47,11 +55,12 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
         config: &OutputConfig,
     ) -> Self {
         state.set_budget(config.graphics_preparation.budget());
-        state.configure(
+        state.setup_live(
+            &config.logo_control,
             config.logo.as_ref(),
-            config.width,
-            config.height,
+            (config.width, config.height),
             config.channel_id,
+            &config.graphics_preparation,
         );
 
         Self {
@@ -64,11 +73,14 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
             clip_start_pts: 0,
             clip_visible: true,
             cache: GraphicsCache::default(),
+            manual: config.manual_graphics.clone(),
+            logo_control: config.logo_control.clone(),
         }
     }
 
     pub(crate) fn set_clip(&mut self, clip: Option<ClipGraphics>, start_pts: i64) {
         self.clip = clip;
+
         self.clip_start_pts = start_pts;
     }
 
@@ -77,6 +89,7 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
             .pts()
             .unwrap_or_default()
             .rescale(self.time_base, Rational(1, 1_000_000));
+        self.state.update_live(&self.logo_control, time);
         let scene = self
             .clip
             .as_ref()
@@ -89,20 +102,31 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
 
                 clip.frame_at(elapsed).filter(ClipSceneFrame::visible)
             });
-        let graphics = self.state.frame(
-            time,
-            (source.width(), source.height()),
-            self.opacity,
-            self.texts.clone(),
-            scene,
-        );
+
+        if let Ok(frame) = self.manual.frame_at(time) {
+            self.state.manual_frame = frame;
+        }
+
+        let graphics = self
+            .state
+            .frame(
+                time,
+                (source.width(), source.height()),
+                self.opacity,
+                self.texts.clone(),
+                scene,
+            )
+            .with_manual(self.state.manual_frame.clone());
         let Some(graphics) = self.output.defer_graphics(graphics) else {
             return Ok(None);
         };
+
         if graphics.is_empty() {
             self.cache.clear();
+
             return Ok(None);
         }
+
         let mut prepared = reference_video_frame(source)?;
         make_video_frame_writable(&mut prepared)?;
         graphics.blend(&mut prepared, None, &mut self.cache)?;
@@ -114,10 +138,12 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
 impl<O: FrameOutput> FrameOutput for ProgramGraphicsOutput<'_, O> {
     fn set_clip_graphics_visible(&mut self, visible: bool) {
         self.clip_visible = visible;
+
         if !visible && let Some(clip) = &self.clip {
             clip.suspend();
         }
     }
+
     fn retains_text_overlays(&self) -> bool {
         true
     }
@@ -130,7 +156,7 @@ impl<O: FrameOutput> FrameOutput for ProgramGraphicsOutput<'_, O> {
         self.set_text_overlays(overlays);
     }
 
-    fn set_frame_timeline(&mut self, timeline: &crate::playout::Timeline) {
+    fn set_frame_timeline(&mut self, timeline: &Timeline) {
         self.output.set_frame_timeline(timeline);
     }
 
@@ -142,7 +168,7 @@ impl<O: FrameOutput> FrameOutput for ProgramGraphicsOutput<'_, O> {
         self.output.playout_clock()
     }
 
-    fn input_diagnostics_handle(&self) -> Option<std::sync::Arc<LiveInputDiagnostics>> {
+    fn input_diagnostics_handle(&self) -> Option<Arc<LiveInputDiagnostics>> {
         self.output.input_diagnostics_handle()
     }
 
@@ -156,6 +182,7 @@ impl<O: FrameOutput> FrameOutput for ProgramGraphicsOutput<'_, O> {
 
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
         let prepared = self.prepare(frame)?;
+
         self.output.encode_video(prepared.as_ref().unwrap_or(frame))
     }
 
@@ -234,8 +261,61 @@ mod tests {
 
     use ffmpeg_next::format::Pixel;
 
-    use super::*;
     use crate::{graphics::logo_adapter::LogoOverlay, utils::config::LogoConfig};
+
+    use super::*;
+
+    #[test]
+    fn manual_program_graphics_survive_live_suppression_and_clip_boundaries() {
+        #[derive(Default)]
+        struct Pixels(Vec<u8>);
+        impl FrameOutput for Pixels {
+            fn audio_frame_size(&self) -> usize {
+                1024
+            }
+
+            fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
+                Ok(())
+            }
+
+            fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
+                self.0.push(frame.data(0)[2 * frame.stride(0) + 2]);
+
+                Ok(())
+            }
+        }
+
+        let config = OutputConfig::new(32, 16, 25, 48_000);
+        config
+            .manual_graphics
+            .take(0, 1, crate::graphics::clip::tests::fixture((32, 16)))
+            .unwrap();
+        let mut state = ProgramGraphicsState::default();
+        let mut capture = Pixels::default();
+        let mut source = frame::Video::new(Pixel::YUV420P, 32, 16);
+
+        for plane in 0..3 {
+            source.data_mut(plane).fill(128);
+        }
+        {
+            let mut output = ProgramGraphicsOutput::new(&mut capture, &mut state, &config);
+            output.set_clip_graphics_visible(false);
+            source.set_pts(Some(3));
+            output.encode_video(&source).unwrap();
+        }
+
+        source.set_pts(Some(5));
+        ProgramGraphicsOutput::new(&mut capture, &mut state, &config)
+            .encode_video(&source)
+            .unwrap();
+        config.manual_graphics.clear();
+        source.set_pts(Some(6));
+        ProgramGraphicsOutput::new(&mut capture, &mut state, &config)
+            .encode_video(&source)
+            .unwrap();
+        assert_eq!(capture.0, [166, 166, 128]);
+        assert!(source.data(0).iter().all(|value| *value == 128));
+    }
 
     #[test]
     fn clip_clock_live_suppression_seek_and_next_clip_have_correct_pixels() {
@@ -245,25 +325,30 @@ mod tests {
             fn audio_frame_size(&self) -> usize {
                 1024
             }
+
             fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
                 Ok(())
             }
+
             fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
                 self.0.push(frame.data(0)[2 * frame.stride(0) + 2]);
 
                 Ok(())
             }
         }
+
         let cfg = OutputConfig::new(32, 16, 25, 48_000);
         let mut state = ProgramGraphicsState::default();
         let mut capture = Pixels::default();
         let mut source = frame::Video::new(Pixel::YUV420P, 32, 16);
+
         for plane in 0..3 {
             source.data_mut(plane).fill(128);
         }
         {
             let mut output = ProgramGraphicsOutput::new(&mut capture, &mut state, &cfg);
             output.set_clip(Some(crate::graphics::clip::tests::fixture((32, 16))), 100);
+
             for (pts, visible) in [
                 (100, true),
                 (101, true),
@@ -278,6 +363,7 @@ mod tests {
                 output.encode_video(&source).unwrap();
             }
         }
+
         source.set_pts(Some(110));
         ProgramGraphicsOutput::new(&mut capture, &mut state, &cfg)
             .encode_video(&source)
@@ -297,20 +383,24 @@ mod tests {
             fn audio_frame_size(&self) -> usize {
                 1024
             }
+
             fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
                 Ok(())
             }
+
             fn defer_graphics(&mut self, graphics: GraphicsFrame) -> Option<GraphicsFrame> {
                 self.current = graphics.clip().cloned();
 
                 None
             }
+
             fn encode_video(&mut self, _: &frame::Video) -> Result<()> {
                 self.queued.push(self.current.clone().unwrap());
 
                 Ok(())
             }
         }
+
         let cfg = OutputConfig::new(32, 16, 25, 48_000);
         let mut state = ProgramGraphicsState::default();
         let mut capture = Deferred::default();
@@ -321,6 +411,7 @@ mod tests {
             output.set_clip(Some(crate::graphics::clip::tests::fixture((32, 16))), 0);
             output.encode_video(&source).unwrap();
         }
+
         assert!(capture.current.is_none());
         assert!(capture.queued[0].visible());
     }
@@ -341,6 +432,7 @@ mod tests {
         fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
             self.unmodified_header = unsafe { frame.as_ptr() } as usize;
             self.frames.push((self.logo.clone(), self.opacity));
+
             Ok(())
         }
 
@@ -378,15 +470,19 @@ mod tests {
         {
             let mut output = ProgramGraphicsOutput::new(&mut capture, &mut state, &config);
             let deadline = Instant::now() + Duration::from_secs(5);
+
             loop {
                 output.encode_video(&frame).unwrap();
+
                 if output.output.logo.is_some() {
                     break;
                 }
+
                 assert!(Instant::now() < deadline);
                 thread::sleep(Duration::from_millis(1));
             }
         }
+
         assert_eq!(capture.unmodified_header, unsafe { frame.as_ptr() }
             as usize);
         let first = capture.frames.last().unwrap().0.clone().unwrap();
@@ -396,18 +492,23 @@ mod tests {
             let mut output = ProgramGraphicsOutput::new(&mut capture, &mut state, &config);
             frame.set_pts(Some(5)); // 200 ms falls in GIF frame 2 (100..400 ms).
             let deadline = Instant::now() + Duration::from_secs(5);
+
             loop {
                 output.set_logo_opacity(0.5);
                 output.encode_video(&frame).unwrap();
+
                 if output.output.logo.as_ref().unwrap().0.frame.data(0) != first_pixels {
                     break;
                 }
+
                 assert!(Instant::now() < deadline);
                 thread::sleep(Duration::from_millis(1));
             }
+
             frame.set_pts(Some(15)); // 600 ms: the original first surface repeats.
             output.encode_video(&frame).unwrap();
         }
+
         assert!(Arc::ptr_eq(
             &first,
             capture.frames.last().unwrap().0.as_ref().unwrap()
@@ -441,14 +542,18 @@ mod tests {
             fn audio_frame_size(&self) -> usize {
                 1024
             }
+
             fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
                 Ok(())
             }
+
             fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
                 self.0 = frame.data(0).to_vec();
+
                 Ok(())
             }
         }
+
         let mut config = OutputConfig::new(64, 64, 25, 48_000);
         config.logo = Some(LogoConfig {
             path: std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -466,6 +571,7 @@ mod tests {
             if let Some(logo) = state.at(0) {
                 break logo;
             }
+
             assert!(Instant::now() < deadline);
             thread::sleep(Duration::from_millis(1));
         };
@@ -489,9 +595,11 @@ mod tests {
         .snapshot(0, 0)
         .unwrap();
         let mut source = frame::Video::new(Pixel::YUV420P, 64, 64);
+
         for plane in 0..3 {
             source.data_mut(plane).fill(128);
         }
+
         source.set_pts(Some(0));
         let mut expected = source.clone();
         super::super::logo_adapter::blend_logo(&mut expected, &logo, 1.0);
@@ -532,18 +640,24 @@ mod tests {
             fn audio_frame_size(&self) -> usize {
                 1024
             }
+
             fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
                 Ok(())
             }
+
             fn defer_graphics(&mut self, graphics: GraphicsFrame) -> Option<GraphicsFrame> {
                 self.graphics = graphics;
+
                 None
             }
+
             fn encode_video(&mut self, _: &frame::Video) -> Result<()> {
                 self.visible.push(!self.graphics.is_empty());
+
                 Ok(())
             }
         }
+
         let config = OutputConfig::new(64, 64, 25, 48000);
         let mut state = ProgramGraphicsState::default();
         let text = TextOverlay::prepare(

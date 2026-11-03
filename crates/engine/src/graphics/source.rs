@@ -1,6 +1,7 @@
 //! Bounded preparation and ownership of the channel's time-varying logo source.
 use std::{
     collections::VecDeque,
+    fs, mem,
     sync::{
         Arc, Mutex, PoisonError, TryLockError,
         atomic::{AtomicBool, AtomicI64, Ordering},
@@ -12,6 +13,7 @@ use std::{
 use anyhow::{Context, Result, ensure};
 use ff_graphics::{
     ffmpeg::source::LogoDecoder,
+    preparation::{PreparationService, ResourceBudget},
     source::{FrameTiming, LoopDuration},
     style::LogoStyle,
 };
@@ -24,6 +26,8 @@ use super::{
     control::{LogoUpdate, ProgramScene, ReadyLogo},
     frame::GraphicsFrame,
     logo_adapter::LogoOverlay,
+    logo_control::LogoControl,
+    manual::ManualFrame,
     text_adapter::TextOverlays,
 };
 
@@ -64,31 +68,37 @@ pub(super) struct LogoSource {
 }
 
 impl LogoSource {
-    fn open(
+    pub(super) fn open(
         config: LogoConfig,
         width: u32,
         height: u32,
         channel: Option<i32>,
         generation: u64,
-        budget: Option<ff_graphics::preparation::ResourceBudget>,
+        budget: Option<ResourceBudget>,
     ) -> Result<Self> {
-        let permit = budget
-            .as_ref()
-            .map(ff_graphics::preparation::ResourceBudget::job)
-            .transpose()?;
+        let permit = budget.as_ref().map(ResourceBudget::job).transpose()?;
         let shared = Arc::new(Shared {
             visible: AtomicBool::new(true),
             ..Shared::default()
         });
         let state = shared.clone();
-        let worker = thread::Builder::new().name("ffplayout-graphics".into()).spawn(move || {
-            let _permit = permit;
-            if let Err(error) = prepare(&config, width, height, &state, budget.as_ref())
-                && !state.stop.load(Ordering::Relaxed) {
-                state.failed.store(true, Ordering::Release);
-                warn!(channel = channel.unwrap_or_default(); "Logo source {} failed; retaining its last available surface: {error:#}", config.path);
-            }
-        }).context("starting graphics preparation worker")?;
+        let worker = thread::Builder::new()
+            .name("ffplayout-graphics".into())
+            .spawn(move || {
+                let _permit = permit;
+
+                if let Err(error) = prepare(&config, width, height, &state, budget.as_ref())
+                    && !state.stop.load(Ordering::Relaxed)
+                {
+                    state.failed.store(true, Ordering::Release);
+                    warn!(
+                        channel = channel.unwrap_or_default();
+                        "Logo source {} failed; retaining its last available surface: {error:#}",
+                        config.path
+                    );
+                }
+            })
+            .context("starting graphics preparation worker")?;
 
         Ok(Self {
             generation,
@@ -104,6 +114,7 @@ impl LogoSource {
         if self.cached.is_some() {
             return;
         }
+
         if self.shared.visible.swap(visible, Ordering::Relaxed) != visible
             && let Some(worker) = &self.worker
         {
@@ -115,23 +126,27 @@ impl LogoSource {
     pub(super) fn at(&mut self, program_us: i64) -> Option<Arc<LogoOverlay>> {
         let origin = *self.origin_us.get_or_insert(program_us);
         let requested = program_us.saturating_sub(origin).max(0);
+
         if let Some(cached) = &self.cached {
             return select_frame(cached, requested, &mut self.last);
         }
+
         if self.shared.requested.swap(requested, Ordering::Relaxed) != requested
             && self.shared.visible.load(Ordering::Relaxed)
             && let Some(worker) = &self.worker
         {
             worker.thread().unpark();
         }
+
         let mut ready = match self.shared.ready.try_lock() {
             Ok(ready) => ready,
             Err(TryLockError::Poisoned(error)) => error.into_inner(),
             Err(TryLockError::WouldBlock) => return self.last.clone(),
         };
         select_frame(&ready, requested, &mut self.last);
+
         if ready.complete {
-            self.cached = Some(std::mem::take(&mut *ready));
+            self.cached = Some(mem::take(&mut *ready));
         }
 
         self.last.clone()
@@ -146,6 +161,7 @@ fn select_frame(
     let local = ready
         .duration
         .map_or(requested, |duration| duration.position_us(requested));
+
     if let Some(frame) = ready
         .frames
         .iter()
@@ -160,6 +176,7 @@ fn select_frame(
 impl Drop for LogoSource {
     fn drop(&mut self) {
         self.shared.stop.store(true, Ordering::Relaxed);
+
         if let Some(worker) = self.worker.take() {
             worker.thread().unpark();
             let _ = worker.join();
@@ -167,25 +184,50 @@ impl Drop for LogoSource {
     }
 }
 
-#[derive(PartialEq)]
-struct SourceKey {
+#[derive(Clone, PartialEq)]
+pub(super) struct SourceKey {
     config: LogoConfig,
     width: u32,
     height: u32,
     revision: Option<(u64, SystemTime)>,
 }
 
+impl SourceKey {
+    pub(super) fn new(config: &LogoConfig, width: u32, height: u32) -> Self {
+        Self {
+            config: config.clone(),
+            width,
+            height,
+            revision: fs::metadata(&config.path)
+                .and_then(|metadata| Ok((metadata.len(), metadata.modified()?)))
+                .ok(),
+        }
+    }
+
+    pub(super) fn same_media(&self, other: &Self) -> bool {
+        self.config.path == other.config.path
+            && self.config.scale == other.config.scale
+            && self.width == other.width
+            && self.height == other.height
+            && self.revision == other.revision
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct ProgramGraphicsState {
+    pub(super) manual_frame: Option<Arc<ManualFrame>>,
     key: Option<SourceKey>,
     source: Option<LogoSource>,
     generation: u64,
-    budget: Option<ff_graphics::preparation::ResourceBudget>,
+    budget: Option<ResourceBudget>,
     scene: ProgramScene,
+    live_revision: u64,
+    live_style: Option<LogoConfig>,
+    styled: Option<(Arc<LogoOverlay>, Arc<LogoOverlay>)>,
 }
 
 impl ProgramGraphicsState {
-    pub(super) fn set_budget(&mut self, budget: ff_graphics::preparation::ResourceBudget) {
+    pub(super) fn set_budget(&mut self, budget: ResourceBudget) {
         self.budget = Some(budget);
     }
 
@@ -197,14 +239,8 @@ impl ProgramGraphicsState {
         channel: Option<i32>,
     ) {
         // This is called at clip setup, never while selecting a video frame.
-        let key = logo.map(|logo| SourceKey {
-            config: logo.clone(),
-            width,
-            height,
-            revision: std::fs::metadata(&logo.path)
-                .and_then(|metadata| Ok((metadata.len(), metadata.modified()?)))
-                .ok(),
-        });
+        let key = logo.map(|logo| SourceKey::new(logo, width, height));
+
         if key == self.key {
             return;
         }
@@ -212,6 +248,7 @@ impl ProgramGraphicsState {
         self.source = None;
         self.key = key;
         self.generation = self.generation.saturating_add(1);
+
         if let Some(logo) = logo.filter(|logo| logo.opacity > 0.0) {
             match LogoSource::open(
                 logo.clone(),
@@ -227,6 +264,84 @@ impl ProgramGraphicsState {
                 }
             }
         }
+    }
+
+    pub(super) fn setup_live(
+        &mut self,
+        control: &LogoControl,
+        config: Option<&LogoConfig>,
+        canvas: (u32, u32),
+        channel: Option<i32>,
+        preparation: &PreparationService,
+    ) {
+        if self.live_revision == 0 {
+            self.configure(config, canvas.0, canvas.1, channel);
+
+            if let Some(mut state) = control.try_state() {
+                state.active = self.source.as_ref().and(self.key.clone());
+            }
+        }
+
+        control.refresh(canvas, channel, preparation.clone());
+    }
+
+    pub(super) fn update_live(&mut self, control: &LogoControl, now: i64) {
+        let Some(mut shared) = control.try_state() else {
+            return;
+        };
+
+        if shared
+            .pending
+            .as_ref()
+            .is_some_and(|change| change.revision != shared.revision)
+        {
+            return;
+        }
+
+        if shared.retired.is_some() {
+            return;
+        }
+
+        let Some(change) = shared.pending.as_mut() else {
+            return;
+        };
+
+        if let Some(source) = change.source.as_mut()
+            && source.at(now).is_none()
+        {
+            if source.shared.failed.load(Ordering::Acquire) {
+                let mut failed = shared.pending.take().expect("pending logo was inspected");
+                shared.retired = failed.source.take();
+                control.wake();
+            }
+            return;
+        }
+
+        let Some(mut change) = shared.pending.take() else {
+            return;
+        };
+
+        if change.source.is_some() || change.config.is_none() {
+            if let Some(old) = self.source.take() {
+                old.shared.stop.store(true, Ordering::Release);
+                shared.retired = Some(old);
+                control.wake();
+            }
+
+            self.generation = self.generation.saturating_add(1);
+
+            if let Some(source) = change.source.as_mut() {
+                source.generation = self.generation;
+            }
+
+            self.source = change.source.take();
+        }
+
+        self.key = change.key;
+        self.live_style = change.config;
+        self.live_revision = change.revision;
+        self.styled = None;
+        shared.active = self.key.clone();
     }
 
     pub(super) fn set_visible(&self, visible: bool) {
@@ -254,8 +369,29 @@ impl ProgramGraphicsState {
         texts: TextOverlays,
         clip: Option<ClipSceneFrame>,
     ) -> GraphicsFrame {
-        self.set_visible(opacity > 0.0);
+        self.set_visible(
+            opacity > 0.0
+                && self
+                    .live_style
+                    .as_ref()
+                    .is_none_or(|style| style.opacity > 0.0),
+        );
         let selected = self.at(program_us);
+        let selected =
+            if let (Some(source), Some(style)) = (selected.as_ref(), self.live_style.as_ref()) {
+                if !self
+                    .styled
+                    .as_ref()
+                    .is_some_and(|(previous, _)| Arc::ptr_eq(previous, source))
+                    && let Ok(styled) = source.restyled(style, canvas.0, canvas.1)
+                {
+                    self.styled = Some((source.clone(), Arc::new(styled)));
+                }
+
+                self.styled.as_ref().map(|(_, styled)| styled.clone())
+            } else {
+                selected
+            };
         let logo = self
             .source
             .as_ref()
@@ -269,7 +405,7 @@ impl ProgramGraphicsState {
         let generation = self
             .key
             .as_ref()
-            .filter(|key| key.config.opacity > 0.0)
+            .filter(|key| key.config.opacity > 0.0 || self.live_revision > 0)
             .map(|_| self.generation);
         let failed = generation.is_some()
             && self
@@ -301,7 +437,7 @@ fn prepare(
     width: u32,
     height: u32,
     shared: &Arc<Shared>,
-    budget: Option<&ff_graphics::preparation::ResourceBudget>,
+    budget: Option<&ResourceBudget>,
 ) -> Result<()> {
     // Persistent network streams have no finite loop or bounded shutdown.
     // Logo assets are local files; their decoder is opened only on this worker.
@@ -315,7 +451,7 @@ fn prepare(
         position: config.position.clone(),
     };
     ensure!(
-        std::fs::metadata(&config.path)
+        fs::metadata(&config.path)
             .context("reading logo metadata")?
             .is_file(),
         "logo source must be a regular file"
@@ -339,8 +475,10 @@ fn prepare(
             thread::park();
             continue;
         }
+
         let requested = shared.requested.load(Ordering::Relaxed);
         let local = duration.map_or(requested, |duration| duration.position_us(requested));
+
         if !complete {
             if (eof && frames.is_empty())
                 || frames
@@ -353,6 +491,7 @@ fn prepare(
                 end_us = 0;
                 eof = false;
             }
+
             while frames.len() > 1
                 && frames
                     .get(1)
@@ -363,10 +502,12 @@ fn prepare(
                 }
             }
         }
+
         let capacity = frames.back().is_none_or(|frame| {
             frames.len() < CACHE_FRAMES
                 && bytes.saturating_add(frame.surface.0.storage_bytes()) <= CACHE_BYTES
         });
+
         if !complete
             && !capacity
             && frames
@@ -376,10 +517,13 @@ fn prepare(
             if let Some(old) = frames.pop_front() {
                 bytes = bytes.saturating_sub(old.surface.0.storage_bytes());
             }
+
             continue;
         }
+
         let can_decode =
             !eof && (complete || capacity && end_us <= local.saturating_add(LOOKAHEAD_US));
+
         if can_decode {
             match decoder.next_frame_with_cancel(|| shared.stop.load(Ordering::Relaxed))? {
                 Some(mut frame) => {
@@ -391,11 +535,13 @@ fn prepare(
                                 .with_budget(budget)?,
                         );
                     }
+
                     let size = frame.surface.storage_bytes();
                     ensure!(
                         size <= CACHE_BYTES,
                         "one prepared logo frame exceeds the 64 MiB budget; reduce logo scale"
                     );
+
                     if complete
                         && (bytes.saturating_add(size) > CACHE_BYTES
                             || frames.len() >= CACHE_FRAMES
@@ -413,7 +559,7 @@ fn prepare(
                     bytes = bytes.saturating_add(size);
                     frames.push_back(PreparedFrame {
                         timing: frame.timing,
-                        surface: Arc::new(LogoOverlay(frame.surface)),
+                        surface: Arc::new(LogoOverlay(frame.surface, None)),
                     });
                 }
                 None => {
@@ -430,12 +576,15 @@ fn prepare(
                 ready.duration = duration;
                 ready.complete = eof && complete;
             }
+
             if eof && complete {
                 // Static assets and short cached loops retain no decoder/thread.
                 return Ok(());
             }
+
             continue;
         }
+
         if !shared.stop.load(Ordering::Relaxed) {
             thread::park();
         }
@@ -446,14 +595,18 @@ fn prepare(
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
+    use std::{
+        path::Path,
+        time::{Duration, Instant},
+    };
+
+    use ff_graphics::ffmpeg::source::SourceFrame;
 
     use super::*;
-    use ff_graphics::ffmpeg::source::SourceFrame;
 
     fn config(name: &str) -> LogoConfig {
         LogoConfig {
-            path: std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            path: Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tests_assets/storage/media_images")
                 .join(name)
                 .to_string_lossy()
@@ -466,12 +619,14 @@ mod tests {
 
     fn wait(source: &mut LogoSource, time: i64, expected: &[u8]) -> Arc<LogoOverlay> {
         let deadline = Instant::now() + Duration::from_secs(5);
+
         loop {
             if let Some(frame) = source.at(time)
                 && frame.0.frame.data(0) == expected
             {
                 return frame;
             }
+
             assert!(
                 Instant::now() < deadline,
                 "requested logo frame at {time} was not prepared"
@@ -495,11 +650,272 @@ mod tests {
         )
         .unwrap();
         let mut frames = Vec::new();
+
         while let Some(frame) = decoder.next_frame().unwrap() {
             frames.push(frame);
         }
 
         frames
+    }
+
+    fn pump_live(
+        state: &mut ProgramGraphicsState,
+        control: &LogoControl,
+        time: i64,
+    ) -> GraphicsFrame {
+        state.update_live(control, time);
+        state.frame(time, (64, 64), 1.0, Default::default(), None)
+    }
+
+    fn apply_live(
+        state: &mut ProgramGraphicsState,
+        control: &LogoControl,
+        time: i64,
+        previous: u64,
+    ) -> GraphicsFrame {
+        let deadline = Instant::now() + Duration::from_secs(5);
+
+        loop {
+            let frame = pump_live(state, control, time);
+
+            if state.live_revision > previous {
+                return frame;
+            }
+
+            assert!(
+                Instant::now() < deadline,
+                "live logo update did not reach a frame boundary"
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn stopped_logo_edits_override_the_previous_live_setting_on_restart() {
+        let preparation = PreparationService::default();
+        let control = LogoControl::default();
+
+        for enabled in [false, true] {
+            assert!(preparation.resume());
+            let original = config("animated-logo.gif");
+            let mut state = ProgramGraphicsState::default();
+            state.setup_live(&control, Some(&original), (64, 64), None, &preparation);
+            let mut live = original.clone();
+            live.opacity = 0.25;
+            control
+                .request(Some(live), (64, 64), None, preparation.clone())
+                .unwrap();
+            drop(apply_live(&mut state, &control, 0, 0));
+            control.stop();
+            drop(state);
+            assert!(preparation.shutdown(Duration::from_secs(5)));
+            assert!(preparation.resume());
+            let mut saved = original;
+            saved.opacity = 0.75;
+            let saved = enabled.then_some(saved);
+            let mut restarted = ProgramGraphicsState::default();
+            restarted.setup_live(&control, saved.as_ref(), (64, 64), None, &preparation);
+            let no_stale_update = control.try_state().unwrap().idle();
+
+            if enabled {
+                let expected = reference("animated-logo.gif");
+                wait(
+                    restarted.source.as_mut().unwrap(),
+                    0,
+                    expected[0].surface.frame.data(0),
+                );
+            }
+
+            let frame = pump_live(&mut restarted, &control, 0);
+            let opacity = frame.logo().map(|(surface, _)| surface.opacity());
+            control.stop();
+            drop((frame, restarted));
+            assert!(preparation.shutdown(Duration::from_secs(5)));
+            assert_eq!(preparation.budget().usage(), (0, 0, 0));
+            assert!(
+                no_stale_update,
+                "a previous run queued an obsolete logo update"
+            );
+            assert_eq!(opacity, enabled.then_some(191));
+        }
+    }
+
+    #[test]
+    fn rapid_logo_updates_and_service_restarts_keep_only_the_latest_request() {
+        let preparation = PreparationService::default();
+        let control = LogoControl::default();
+
+        for _ in 0..5 {
+            assert!(preparation.resume());
+            let original = config("animated-logo.gif");
+            let mut state = ProgramGraphicsState::default();
+            state.setup_live(&control, Some(&original), (64, 64), None, &preparation);
+
+            for index in 1..10 {
+                let mut next = original.clone();
+                next.opacity = f64::from(index) / 10.0;
+                control
+                    .request(Some(next), (64, 64), None, preparation.clone())
+                    .unwrap();
+            }
+
+            let deadline = Instant::now() + Duration::from_secs(5);
+
+            loop {
+                let frame = pump_live(&mut state, &control, 100_000);
+
+                if frame
+                    .logo()
+                    .is_some_and(|(surface, _)| surface.opacity() == 230)
+                {
+                    break;
+                }
+
+                assert!(
+                    Instant::now() < deadline,
+                    "latest update was lost after restart"
+                );
+                thread::sleep(Duration::from_millis(1));
+            }
+
+            control.stop();
+            drop(state);
+            assert!(preparation.shutdown(Duration::from_secs(5)));
+            assert_eq!(preparation.budget().usage(), (0, 0, 0));
+        }
+    }
+
+    #[test]
+    fn live_logo_style_preserves_animation_clock_destination_position_and_clip_boundaries() {
+        let preparation = PreparationService::default();
+        let control = LogoControl::default();
+        let original = config("animated-logo.gif");
+        let mut state = ProgramGraphicsState::default();
+        state.setup_live(&control, Some(&original), (64, 64), None, &preparation);
+        let expected = reference("animated-logo.gif");
+        wait(
+            state.source.as_mut().unwrap(),
+            0,
+            expected[0].surface.frame.data(0),
+        );
+        let source = state.source.as_ref().unwrap().shared.clone();
+        let origin = state.source.as_ref().unwrap().origin_us;
+        let mut updated = original.clone();
+        updated.opacity = 0.25;
+        updated.position = "W-w-4:2".into();
+        control
+            .request(Some(updated.clone()), (64, 64), None, preparation.clone())
+            .unwrap();
+        let frame = apply_live(&mut state, &control, 100_000, 0);
+        let (surface, _) = frame.logo().unwrap();
+        assert_eq!(surface.opacity(), 64);
+        assert_eq!(
+            surface.positioned(Some("0:0"), 128, 64).unwrap().position(),
+            (92, 2)
+        );
+        assert!(Arc::ptr_eq(&source, &state.source.as_ref().unwrap().shared));
+        assert_eq!(origin, state.source.as_ref().unwrap().origin_us);
+        state.setup_live(&control, Some(&original), (64, 64), None, &preparation);
+        let next = pump_live(&mut state, &control, 200_000);
+        assert_eq!(next.logo().unwrap().0.opacity(), 64);
+        let previous = state.live_revision;
+        updated.opacity = 0.0;
+        control
+            .request(Some(updated.clone()), (64, 64), None, preparation.clone())
+            .unwrap();
+        assert!(
+            apply_live(&mut state, &control, 300_000, previous)
+                .logo()
+                .is_none()
+        );
+        let previous = state.live_revision;
+        updated.opacity = 0.8;
+        control
+            .request(Some(updated), (64, 64), None, preparation.clone())
+            .unwrap();
+        assert_eq!(
+            apply_live(&mut state, &control, 400_000, previous)
+                .logo()
+                .unwrap()
+                .0
+                .opacity(),
+            204
+        );
+        assert!(Arc::ptr_eq(&source, &state.source.as_ref().unwrap().shared));
+        let previous = state.live_revision;
+        control
+            .request(None, (64, 64), None, preparation.clone())
+            .unwrap();
+        assert!(
+            apply_live(&mut state, &control, 500_000, previous)
+                .logo()
+                .is_none()
+        );
+        state.setup_live(&control, Some(&original), (64, 64), None, &preparation);
+        assert!(pump_live(&mut state, &control, 600_000).logo().is_none());
+        control.stop();
+        drop((frame, next, state));
+        assert!(preparation.shutdown(Duration::from_secs(5)));
+        assert_eq!(preparation.budget().usage(), (0, 0, 0));
+    }
+
+    #[test]
+    fn live_logo_replacements_keep_queued_pixels_and_failures_keep_the_active_decoder() {
+        let preparation = PreparationService::default();
+        let control = LogoControl::default();
+        let original = config("animated-logo.gif");
+        let mut state = ProgramGraphicsState::default();
+        state.setup_live(&control, Some(&original), (64, 64), None, &preparation);
+        let expected = reference("animated-logo.gif");
+        wait(
+            state.source.as_mut().unwrap(),
+            0,
+            expected[0].surface.frame.data(0),
+        );
+        let queued = pump_live(&mut state, &control, 0);
+        let old_source = state.source.as_ref().unwrap().shared.clone();
+        let mut scaled = original.clone();
+        scaled.scale = Some("16:16".into());
+        control
+            .request(Some(scaled), (64, 64), None, preparation.clone())
+            .unwrap();
+        let changed = apply_live(&mut state, &control, 40_000, 0);
+        assert_eq!(changed.logo().unwrap().0.width(), 16);
+        assert_eq!(queued.logo().unwrap().0.width(), 32);
+        assert!(old_source.stop.load(Ordering::Acquire));
+        let active = state.source.as_ref().unwrap().shared.clone();
+        let previous = state.live_revision;
+        control
+            .request(
+                Some(config("missing.gif")),
+                (64, 64),
+                None,
+                preparation.clone(),
+            )
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+
+        loop {
+            pump_live(&mut state, &control, 80_000);
+            let done = control.try_state().is_some_and(|shared| shared.idle());
+
+            if active.stop.load(Ordering::Acquire) || Instant::now() >= deadline {
+                panic!("failed replacement damaged the active source");
+            }
+
+            if done && preparation.budget().usage().2 == 1 {
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        assert_eq!(state.live_revision, previous);
+        assert!(Arc::ptr_eq(&active, &state.source.as_ref().unwrap().shared));
+        control.stop();
+        drop((queued, changed, state));
+        assert!(preparation.shutdown(Duration::from_secs(5)));
+        assert_eq!(preparation.budget().usage(), (0, 0, 0));
     }
 
     #[test]
@@ -509,10 +925,12 @@ mod tests {
             LogoSource::open(config("animated-logo.gif"), 64, 64, None, 0, None).unwrap();
         wait(&mut source, 0, frames[0].surface.frame.data(0));
         let deadline = Instant::now() + Duration::from_secs(5);
+
         while !source.worker.as_ref().unwrap().is_finished() {
             assert!(Instant::now() < deadline);
             thread::sleep(Duration::from_millis(1));
         }
+
         for fps in [24_i64, 25, 30, 50, 60] {
             for n in 0..fps * 3 {
                 let time = n * 1_000_000 / fps;
@@ -524,6 +942,7 @@ mod tests {
                 wait(&mut source, time, expected.surface.frame.data(0));
             }
         }
+
         let surface = source.at(0).unwrap();
         let same_surface = source.at(600_000 * 100_000).unwrap();
         assert!(
@@ -559,6 +978,7 @@ mod tests {
                 .is_none_or(|frame| frame.timing.end_us() <= CACHE_TIME_US)
         );
         source.set_visible(true);
+
         for time in [
             100_000, 1_000_000, 4_900_000, 7_900_000, 8_100_000, 15_900_000, 16_000_000,
         ] {
@@ -575,6 +995,7 @@ mod tests {
                     <= CACHE_BYTES
             );
         }
+
         assert!(!source.worker.as_ref().unwrap().is_finished());
         let started = Instant::now();
         drop(source);
@@ -591,20 +1012,25 @@ mod tests {
         let mut source = LogoSource::open(config, 4096, 3072, None, 0, None).unwrap();
         let mut first = None;
         let mut previous = None;
+
         for time in [0, 100_000, 400_000, 600_000, 700_000] {
             let deadline = Instant::now() + Duration::from_secs(5);
+
             loop {
                 if let Some(frame) = source.at(time) {
                     let value = frame.0.frame.data(0)[frame.0.frame.stride(0) * 1536 + 2048];
+
                     if previous != Some(value) && (time != 600_000 || first == Some(value)) {
                         first.get_or_insert(value);
                         previous = Some(value);
                         break;
                     }
                 }
+
                 assert!(Instant::now() < deadline, "logo froze at {time}");
                 thread::sleep(Duration::from_millis(1));
             }
+
             let ready = source.shared.ready.lock().unwrap();
             assert!(ready.frames.len() <= 1);
             assert!(
@@ -624,6 +1050,7 @@ mod tests {
         let missing = config("missing-animation.gif");
         state.configure(Some(&missing), 64, 64, None);
         let deadline = Instant::now() + Duration::from_secs(5);
+
         while !state
             .source
             .as_ref()
@@ -636,9 +1063,11 @@ mod tests {
             assert!(Instant::now() < deadline);
             thread::sleep(Duration::from_millis(1));
         }
+
         for time in [0, 100_000, 2_000_000] {
             assert!(state.at(time).is_none());
         }
+
         let same_resource = state.source.as_ref().unwrap().shared.clone();
         state.configure(Some(&missing), 64, 64, None);
         assert!(Arc::ptr_eq(
@@ -657,9 +1086,11 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(5);
         let queued = loop {
             let snapshot = state.frame(0, (64, 64), 1.0, Default::default(), None);
+
             if !snapshot.is_empty() {
                 break snapshot;
             }
+
             assert!(Instant::now() < deadline);
             thread::sleep(Duration::from_millis(1));
         };
@@ -668,6 +1099,7 @@ mod tests {
         missing.path.push_str(".missing");
         state.configure(Some(&missing), 64, 64, None);
         let deadline = Instant::now() + Duration::from_secs(5);
+
         while !state
             .source
             .as_ref()
@@ -679,6 +1111,7 @@ mod tests {
             assert!(Instant::now() < deadline);
             thread::sleep(Duration::from_millis(1));
         }
+
         let retained = state.frame(1, (64, 64), 1.0, Default::default(), None);
         assert!(Arc::ptr_eq(
             queued.logo().unwrap().0,
@@ -702,6 +1135,7 @@ mod tests {
         let static_config = config("lower-third.png");
         state.configure(Some(&static_config), 1280, 720, None);
         let deadline = Instant::now() + Duration::from_secs(5);
+
         while state.at(0).is_none()
             || !state
                 .source
@@ -715,6 +1149,7 @@ mod tests {
             assert!(Instant::now() < deadline);
             thread::sleep(Duration::from_millis(1));
         }
+
         let old = Arc::downgrade(state.source.as_ref().unwrap().last.as_ref().unwrap());
         state.configure(None, 1280, 720, None);
         assert!(old.upgrade().is_none());

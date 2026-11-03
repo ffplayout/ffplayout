@@ -1,4 +1,32 @@
 export default {
+    graphicsPage: {
+        untilStop: 'Bis Stop oder zum Ende der endlichen Quelle',
+        repeatHelp:
+            'Wiederholungen zählen einschließlich des ersten Durchlaufs. Fade-Zyklen brauchen eine endliche Dauer. Z-Index ordnet die manuellen Grafiken untereinander.',
+        title: 'Grafiken',
+        manualHelp:
+            'Manuelle Programmgrafiken bleiben über Clipwechsel und Live-Ingest hinweg sichtbar. Maximal acht Ebenen. Take ersetzt dieselbe Ebene; Stop blendet aus, Clear entfernt sie sofort. Playlist-Grafiken und Programmlogo bleiben unabhängig.',
+        stopped: 'Zum Einblenden zuerst den Kanal starten.',
+        take: 'Einblenden',
+        stop: 'Ausblenden',
+        toggle: 'Anzeigen / verbergen',
+        update: 'Layout übernehmen',
+        clear: 'Entfernen',
+        clearAll: 'Alle manuellen Grafiken entfernen',
+        logoHelp:
+            'Das Programmlogo gilt über Clipwechsel und Live-Ingest hinweg. Statische Bilder, animierte GIFs und lokale Videos werden unterstützt; Animationen wiederholen sich. Bestehende Größen- und HLS-Einstellungen bleiben kompatibel. Änderungen werden im laufenden Betrieb übernommen.',
+        enableLogo: 'Programmlogo aktivieren',
+        logoScale: 'Logogröße / Skalierung',
+        logoLink: 'Programmlogo auf der Grafikseite verwalten',
+        tabs: { 'graphics-live': 'Grafiken', 'graphics-text': 'Text', 'graphics-logo': 'Programmlogo' },
+    },
+    graphicsCanvas: {
+        title: 'Positionsvorschau',
+        move: 'Grafik ziehen oder mit Pfeiltasten verschieben',
+        placeholder: 'Grafik',
+        help: 'Positionsvorschau auf der Programmfläche, ohne Video und Fade-Zeiten. Ziehen oder Pfeiltasten verwenden (2 px; Umschalt: 10 px).',
+        unavailable: 'Der Browser kann dieses Format nicht darstellen. Der Positionsrahmen bleibt bedienbar.',
+    },
     graphicsEditor: {
         sourceResolution: 'Quellauflösung',
         sourceDuration: 'Quelldauer',
