@@ -13,6 +13,8 @@ import { useEventSource, useElementSize } from '@vueuse/core'
 
 import { authFetch } from '@/composables/authFetch'
 import { stringFormatter } from '@/composables/helper'
+import { useLivePlaylistSchedule } from '@/composables/useLivePlaylistSchedule'
+import { playoutDisplay } from '@/composables/livePlaylistSchedule'
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
 import { useConfig } from '@/stores/config'
@@ -212,6 +214,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     indexStore.sseConnected = false
     close()
+    playlistStore.liveScheduledClip = undefined
 
     if (timer.value) {
         clearTimeout(timer.value)
@@ -272,15 +275,36 @@ watch([i], () => {
     }
 })
 
-function timeRemaining() {
-    let remaining = playlistStore.current.out - playlistStore.elapsedSec
+const scheduled = useLivePlaylistSchedule(() => ({
+    active:
+        playlistStore.ingestRuns &&
+        playlistStore.playoutIsRunning &&
+        configStore.playoutSaved.processing.mode === 'playlist',
+    channel: configStore.channels[configStore.i]?.id,
+    timezone: configStore.timezone,
+    start: configStore.playoutSaved.playlist.startInSec,
+    length: configStore.playoutSaved.playlist.lengthInSec,
+    infinite: configStore.playoutSaved.playlist.infinit,
+    shift: playlistStore.shift,
+}))
+watch(
+    scheduled,
+    (position) => {
+        playlistStore.liveScheduledClip = position
+    },
+    { immediate: true, flush: 'sync' },
+)
 
-    if (remaining < 0) {
-        remaining = 0
-    }
-
-    return remaining
-}
+const display = computed(() =>
+    playoutDisplay(
+        configStore.playoutSaved.processing.mode,
+        playlistStore.ingestRuns,
+        playlistStore.current,
+        playlistStore.elapsedSec,
+        playlistStore.progressValue,
+        scheduled.value,
+    ),
+)
 
 function audioMeterValue() {
     const peak = (useMoqPreview.value ? moqAudioLevel.value : playlistStore.audioLevel)?.peak_db ?? -100
@@ -465,7 +489,7 @@ function runControl(button: PlayerControlButton) {
                         class="w-full h-full bg-base-100 rounded-sm font-['DigitalNumbers'] p-6 text-3xl md:text-2xl 2xl:text-5xl 3xl:text-7xl tracking-tighter flex justify-center items-center shadow"
                         :style="{ 'font-size': `${width / 6}px` }"
                     >
-                        {{ secToHMS(timeRemaining()) }}
+                        {{ display.remaining == null ? '—' : secToHMS(display.remaining) }}
                     </div>
                 </div>
 
@@ -474,14 +498,14 @@ function runControl(button: PlayerControlButton) {
                         <div class="w-full h-full flex flex-col content-center">
                             <div
                                 v-if="playlistStore.ingestRuns"
-                                class="h-1/4 font-bold truncate content-center leading-5"
+                                class="flex-1 font-bold truncate content-center leading-5"
                                 :title="activeIngestLabel"
                             >
                                 {{ activeIngestLabel }}
                             </div>
                             <div
                                 v-else
-                                class="h-1/4 font-bold text truncate content-center leading-5"
+                                class="flex-1 font-bold text truncate content-center leading-5"
                                 :class="{
                                     'text-base-content/60': playlistStore.current.ad,
                                 }"
@@ -493,20 +517,20 @@ function runControl(button: PlayerControlButton) {
                                     t('control.noClip')
                                 }}
                             </div>
-                            <div class="h-1/4 content-center leading-5 text-sm md:text-base">
+                            <div class="flex-1 content-center leading-5 text-sm md:text-base">
                                 <strong> {{ t('player.duration') }}: </strong>
-                                {{ secToHMS(playlistStore.current.duration) }} |
+                                {{ display.clip ? secToHMS(display.clip.duration) : '—' }} |
                                 <strong> {{ t('player.in') }}: </strong>
-                                {{ secToHMS(playlistStore.current.in) }} |
+                                {{ display.clip ? secToHMS(display.clip.in) : '—' }} |
                                 <strong> {{ t('player.out') }}: </strong>
-                                {{ secToHMS(playlistStore.current.out) }}
+                                {{ display.clip ? secToHMS(display.clip.out) : '—' }}
 
                                 <template v-if="playlistStore.shift !== 0">
                                     | <strong>{{ t('player.shift') }}:</strong>
                                     {{ secToHMS(playlistStore.shift) }}
                                 </template>
                             </div>
-                            <div class="h-1/4 content-center leading-5 text-sm md:text-base">
+                            <div class="flex-1 content-center leading-5 text-sm md:text-base">
                                 <strong> {{ t('player.total') }}: </strong>
                                 {{
                                     secToHMS(
@@ -517,14 +541,10 @@ function runControl(button: PlayerControlButton) {
                                     )
                                 }}
                             </div>
-                            <div class="h-1/4 content-center">
+                            <div class="flex-1 content-center">
                                 <progress
                                     class="progress progress-accent w-full"
-                                    :value="
-                                        playlistStore.progressValue && playlistStore.progressValue <= 100
-                                            ? playlistStore.progressValue
-                                            : 0
-                                    "
+                                    :value="display.progress && display.progress <= 100 ? display.progress : 0"
                                     max="100"
                                 />
                             </div>

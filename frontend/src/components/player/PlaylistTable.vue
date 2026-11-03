@@ -12,9 +12,9 @@ import 'dayjs/locale/ru'
 
 import VirtualList from 'vue-virtual-sortable'
 
-import { ref, nextTick, onMounted, watch } from 'vue'
+import { computed, ref, nextTick, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useWindowSize, until } from '@vueuse/core'
+import { useWindowSize } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 
 dayjs.extend(customParseFormat)
@@ -23,6 +23,7 @@ dayjs.extend(timezone)
 dayjs.extend(utc)
 
 import { stringFormatter, playlistOperations } from '@/composables/helper'
+import { scheduledRowIndex } from '@/composables/livePlaylistSchedule'
 import { useConfig } from '@/stores/config'
 import { useMedia } from '@/stores/media'
 import { usePlaylist } from '@/stores/playlist'
@@ -40,6 +41,34 @@ const sortContainer = ref()
 const todayDate = ref(dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
 const { i } = storeToRefs(useConfig())
 const { currentIndex, listDate, playoutIsRunning, scrollToItem } = storeToRefs(usePlaylist())
+
+const scrollPending = ref(false)
+const activeRowIndex = computed(() => {
+    if (!playoutIsRunning.value) return -1
+    if (playlistStore.ingestRuns && configStore.playoutSaved.processing.mode === 'playlist') {
+        return scheduledRowIndex(
+            playlistStore.liveScheduledClip,
+            configStore.channels[configStore.i]?.id,
+            listDate.value,
+            playlistStore.playlist,
+        )
+    }
+    return listDate.value === todayDate.value ? currentIndex.value : -1
+})
+
+// The schedule and playlist arrive independently. Scroll once both identify the row,
+// then leave manual scrolling alone as the countdown advances to subsequent clips.
+watch(
+    [activeRowIndex, () => playlistStore.isLoading, sortContainer, scrollPending],
+    async () => {
+        if (!scrollPending.value || playlistStore.isLoading || activeRowIndex.value < 0) return
+        await nextTick()
+        if (!scrollPending.value || playlistStore.isLoading || activeRowIndex.value < 0 || !sortContainer.value) return
+        scrollTo(activeRowIndex.value)
+        scrollPending.value = false
+    },
+    { flush: 'post' },
+)
 
 const dragGroup = ref({ name: 'dragGroup', pull: true, put: true })
 
@@ -72,11 +101,8 @@ watch([listDate, i], () => {
 
 watch([playoutIsRunning, scrollToItem], () => {
     if (playoutIsRunning.value || scrollToItem.value) {
-        setTimeout(() => {
-            scrollTo(currentIndex.value)
-
-            scrollToItem.value = false
-        }, 400)
+        scrollPending.value = true
+        scrollToItem.value = false
     }
 })
 
@@ -85,7 +111,7 @@ defineExpose({
 })
 
 function scrollTo(index: number) {
-    sortContainer.value.scrollToIndex(index)
+    sortContainer.value?.scrollToIndex(index)
 }
 
 async function getPlaylist() {
@@ -93,10 +119,9 @@ async function getPlaylist() {
     await playlistStore.getPlaylist(listDate.value)
     playlistStore.isLoading = false
 
-    if (listDate.value === todayDate.value) {
-        await until(currentIndex).toMatch((v) => v > 0, { timeout: 1500 })
-        scrollTo(currentIndex.value)
-    } else {
+    scrollPending.value = true
+    if (activeRowIndex.value < 0) {
+        await nextTick()
         scrollTo(0)
     }
 }
@@ -280,8 +305,7 @@ function deletePlaylistItem(index: number) {
                         :key="item.uid"
                         class="grid grid-cols-[85px_auto_85px_85px] 2md:grid-cols-[85px_auto_85px_85px_85px_85px_85px_85px_85px] odd:bg-base-200 border-b border-base-content/20 duration-500 transition-colors py-2"
                         :class="{
-                            'bg-lime-500/30!':
-                                playlistStore.playoutIsRunning && listDate === todayDate && index === currentIndex,
+                            'bg-lime-500/30!': index === activeRowIndex,
                             'bg-amber-600/40!': item.overtime,
                             'text-base-content/60': item.ad,
                         }"
