@@ -293,7 +293,7 @@ function volumeIcon() {
         return 'bi-volume-mute'
     }
 
-    if (volumeLevel.value < 1) {
+    if (volumeLevel.value < 1.01) {
         return 'bi-volume-down'
     }
 
