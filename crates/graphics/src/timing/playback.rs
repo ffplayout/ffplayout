@@ -29,6 +29,20 @@ pub struct Transition {
 }
 
 impl Transition {
+    /// Fit fades inside a total presentation duration. Short presentations
+    /// shorten both fades proportionally rather than extending the lifetime.
+    pub fn within(mut self, duration_us: u64) -> Self {
+        let fades = u128::from(self.fade_in_us) + u128::from(self.fade_out_us);
+        if fades > u128::from(duration_us) {
+            self.fade_in_us =
+                (u128::from(duration_us) * u128::from(self.fade_in_us) / fades) as u64;
+            self.fade_out_us = duration_us - self.fade_in_us;
+        }
+        self.hold_us = Some(duration_us - self.fade_in_us - self.fade_out_us);
+
+        self
+    }
+
     pub fn validate(self) -> Result<()> {
         ensure!(
             self.hold_us.is_some() || self.repeat == Repeat::default(),
@@ -99,6 +113,23 @@ pub struct Presentation {
 }
 
 impl Presentation {
+    /// Cap an existing fade envelope at a source/clip boundary, without
+    /// multiplying the same fade twice when explicit durations already match.
+    pub fn opacity_before_end(self, program_us: i64, end_us: i64) -> Option<f64> {
+        let remaining = end_us.checked_sub(program_us)?;
+        if remaining <= 0 {
+            return None;
+        }
+        let opacity = self.opacity(program_us)?;
+        let exit = self.transition.fade_out_us;
+
+        Some(if exit > 0 {
+            opacity.min(remaining as f64 / exit as f64)
+        } else {
+            opacity
+        })
+    }
+
     pub fn new(start_us: i64, transition: Transition) -> Result<Self> {
         transition.validate()?;
 
@@ -113,6 +144,14 @@ impl Presentation {
     /// the source; a new take constructs a new presentation anchor.
     pub fn elapsed_us(self, program_us: i64) -> i64 {
         program_us.saturating_sub(self.start_us)
+    }
+
+    /// Initial entrance only: source playback is independent of later fade cycles.
+    pub fn is_entering(self, program_us: i64) -> bool {
+        self.stopped.is_none()
+            && program_us >= self.start_us
+            && (i128::from(program_us) - i128::from(self.start_us))
+                < i128::from(self.transition.fade_in_us)
     }
 
     /// None means absent/finished; Some(0) is a transparent entrance or repeat pause.
@@ -204,6 +243,37 @@ impl Presentation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn total_duration_includes_fades_and_short_durations_shorten_them() {
+        let transition = Transition {
+            fade_in_us: 1_000_000,
+            fade_out_us: 1_000_000,
+            ..Default::default()
+        }
+        .within(10_000_000);
+        assert_eq!(transition.hold_us, Some(8_000_000));
+        let p = Presentation::new(0, transition).unwrap();
+        for (at, expected) in [
+            (0, 0.0),
+            (500_000, 0.5),
+            (1_000_000, 1.0),
+            (9_000_000, 1.0),
+            (9_500_000, 0.5),
+        ] {
+            assert_eq!(p.opacity(at), Some(expected));
+        }
+        assert_eq!(p.opacity(10_000_000), None);
+        let short = transition.within(1_000_000);
+        assert_eq!(short.fade_in_us, 500_000);
+        assert_eq!(short.fade_out_us, 500_000);
+        assert_eq!(short.hold_us, Some(0));
+        let p = Presentation::new(0, short).unwrap();
+        assert_eq!(p.opacity(250_000), Some(0.5));
+        assert_eq!(p.opacity(500_000), Some(1.0));
+        assert_eq!(p.opacity(750_000), Some(0.5));
+        assert_eq!(p.opacity(1_000_000), None);
+    }
 
     #[test]
     fn next_visibility_respects_pauses_finite_cycles_stops_and_clock_limits() {

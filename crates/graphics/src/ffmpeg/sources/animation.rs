@@ -39,6 +39,18 @@ pub(in crate::ffmpeg) struct PreparedSurface {
 }
 
 impl PreparedSurface {
+    pub(in crate::ffmpeg) fn end_us(&self) -> Option<i64> {
+        if let Some(stream) = &self.stream {
+            return stream.end_us();
+        }
+        let (duration, repeat, completion) = self.playback?;
+        if completion != Completion::Hide {
+            return None;
+        }
+
+        duration.total_us(repeat)
+    }
+
     pub(in crate::ffmpeg) fn still(surface: Arc<OverlayFrame>) -> Self {
         Self {
             frames: vec![(
@@ -63,6 +75,10 @@ impl PreparedSurface {
         }
 
         self.at(elapsed_us).cloned()
+    }
+
+    pub(in crate::ffmpeg) fn poster(&self) -> Option<Arc<OverlayFrame>> {
+        self.frames.first().map(|(_, surface)| surface.clone())
     }
 
     pub(in crate::ffmpeg) fn prewarm(&self, elapsed_us: i64, instance: (u64, u64, i64)) {
@@ -132,6 +148,21 @@ impl CpuScene {
         input_options.set("protocol_whitelist", "file");
         input_options.set("format_whitelist", "gif,mov,matroska,webm,avi,mpegts");
         let input = format::input_with_dictionary(path, input_options)?;
+        let duration_hint = input
+            .streams()
+            .best(ffmpeg_next::media::Type::Video)
+            .filter(|stream| stream.duration() > 0)
+            .map(|stream| {
+                LoopDuration::from_ticks(
+                    stream.duration(),
+                    stream.time_base().0,
+                    stream.time_base().1,
+                )
+            })
+            .or_else(|| {
+                (input.duration() > 0)
+                    .then(|| LoopDuration::from_ticks(input.duration(), 1, 1_000_000))
+            });
         if let Some((width, height)) = options.size {
             ensure!(
                 width > 0
@@ -155,6 +186,12 @@ impl CpuScene {
         let mut bytes = 0_usize;
         let mut descriptor: Option<SurfaceDescriptor> = None;
         let mut duration = LoopDuration::from_ticks(1, 1, 1_000_000);
+        // Known long sources need only a poster before publication, rather than
+        // decoding five seconds while a scheduled entrance is already elapsing.
+        let stream_from_start = duration_hint
+            .and_then(|duration| duration.total_us(Repeat::default()))
+            .is_some_and(|end| end > 5_000_000);
+
         while let Some(decoded) = decoder.next_frame_with_cancel(cancelled)? {
             ensure!(!cancelled(), "animation preparation cancelled");
             // Switch to streaming instead of retaining an entire long source.
@@ -168,7 +205,8 @@ impl CpuScene {
                 .map(|budget| budget.reserve(decoded.surface.storage_bytes()))
                 .transpose();
             if !frames.is_empty()
-                && (frames.len() >= 256
+                && (stream_from_start
+                    || frames.len() >= 256
                     || decoded.timing.end_us() > 5_000_000
                     || bytes.saturating_add(decoded.surface.storage_bytes()) > 64 * 1024 * 1024
                     || reservation.is_err())
@@ -202,6 +240,7 @@ impl CpuScene {
                     options,
                     first.clone(),
                     poster_timing,
+                    duration_hint,
                     &service,
                 )?;
                 // Dynamic pixels are accounted by their shared channel leases.
@@ -356,6 +395,182 @@ mod tests {
         );
 
         target.data(0).to_vec()
+    }
+
+    #[test]
+    fn long_video_preparation_reads_only_the_initial_frames() {
+        let service = crate::preparation::PreparationService::default();
+        let mut cpu = CpuScene::new(1, 64 * 1024 * 1024).with_preparation(&service);
+        let checks = std::cell::Cell::new(0);
+        let resource = cpu
+            .prepare_animation(
+                ResourceKey { id: 1, revision: 1 },
+                &path("animated-logo-video.mkv"),
+                options(),
+                || {
+                    checks.set(checks.get() + 1);
+                    checks.get() > 64
+                },
+            )
+            .expect("known long videos must not decode the five-second cache window");
+        assert!(cpu.surfaces.get(&resource).unwrap().stream.is_some());
+        cpu.stop_streams();
+        assert!(service.shutdown(Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn streaming_entrance_fades_the_poster_without_waiting_for_decoder_pixels() {
+        use crate::ffmpeg::compositor::overlay::blend_overlay;
+
+        let service = crate::preparation::PreparationService::default();
+        let mut cpu = CpuScene::new(1, 64 * 1024 * 1024).with_preparation(&service);
+        let resource = cpu
+            .prepare_animation(
+                ResourceKey { id: 1, revision: 1 },
+                &path("animated-logo-video.mkv"),
+                options(),
+                || false,
+            )
+            .unwrap();
+        let source = cpu.surfaces.get(&resource).unwrap().clone();
+        // No request has been made: stopping the decoder deterministically
+        // models unavailable pixels without depending on thread scheduling.
+        source.stream.as_ref().unwrap().stop();
+        assert!(service.join(Duration::from_secs(2)));
+        let mut scene = scene(resource, 0);
+        Arc::make_mut(&mut scene.layers)[0].presentation = Presentation::new(
+            0,
+            Transition {
+                fade_in_us: 200_000,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let background = || {
+            let mut frame = frame::Video::new(Pixel::YUV420P, 32, 32);
+            for plane in 0..3 {
+                frame
+                    .data_mut(plane)
+                    .fill(if plane == 0 { 16 } else { 128 });
+            }
+
+            frame
+        };
+        let mut actual = background();
+        let mut expected = background();
+        let frozen = cpu.freeze(&scene, 100_000, Scope::default());
+        assert!(!frozen.is_empty());
+        frozen.blend(&mut actual, ColorEncoding::Bt601Limited);
+        blend_overlay(
+            &mut expected,
+            source.poster().unwrap().as_ref().as_ref(),
+            0.5,
+        );
+        for plane in 0..3 {
+            assert_eq!(actual.data(plane), expected.data(plane));
+        }
+
+        assert!(
+            cpu.freeze(&scene, 300_000, Scope::default()).is_empty(),
+            "a later seek must not fall back to the first image"
+        );
+        assert!(service.shutdown(Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn finite_video_and_gif_fade_pixels_at_entrance_and_before_source_end() {
+        use crate::ffmpeg::compositor::overlay::blend_overlay;
+        use crate::preparation::PreparationService;
+
+        for name in ["animated-logo.gif", "animated-logo-video.mkv"] {
+            let service = PreparationService::default();
+            let mut cpu = CpuScene::new(4, 64 * 1024 * 1024).with_preparation(&service);
+            let resource = cpu
+                .prepare_animation(
+                    ResourceKey { id: 1, revision: 1 },
+                    &path(name),
+                    AnimationOptions {
+                        repeat: Repeat::Count(NonZeroU32::MIN),
+                        ..options()
+                    },
+                    || false,
+                )
+                .unwrap();
+            let source = cpu.surfaces.get(&resource).unwrap().clone();
+            let end = source
+                .end_us()
+                .expect("finite source duration is available before playback");
+            let mut scene = scene(resource, 0);
+            Arc::make_mut(&mut scene.layers)[0].presentation = Presentation::new(
+                0,
+                Transition {
+                    fade_in_us: 200_000,
+                    fade_out_us: 200_000,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            for (time, opacity) in [
+                (0, 0.0),
+                (100_000, 0.5),
+                (200_000, 1.0),
+                (end - 100_000, 0.5),
+                (end, 0.0),
+            ] {
+                let surface = if opacity > 0.0 {
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    loop {
+                        source.select(time, (0, 1, 0));
+                        if source
+                            .stream
+                            .as_ref()
+                            .is_none_or(|stream| stream.ready_at(time, (0, 1, 0)))
+                        {
+                            break;
+                        }
+                        assert!(Instant::now() < deadline);
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                    Some(
+                        source
+                            .select(time, (0, 1, 0))
+                            .expect("visible source frame is ready"),
+                    )
+                } else {
+                    None
+                };
+                let background = || {
+                    let mut frame = frame::Video::new(Pixel::YUV420P, 32, 32);
+                    for plane in 0..3 {
+                        frame
+                            .data_mut(plane)
+                            .fill(if plane == 0 { 16 } else { 128 });
+                    }
+                    frame
+                };
+                let mut actual = background();
+                let mut expected = background();
+                cpu.blend(
+                    &scene,
+                    time,
+                    Scope::default(),
+                    &mut actual,
+                    ColorEncoding::Bt601Limited,
+                );
+                if let Some(surface) = surface {
+                    blend_overlay(&mut expected, surface.as_ref().as_ref(), opacity);
+                }
+                for plane in 0..3 {
+                    assert_eq!(
+                        actual.data(plane),
+                        expected.data(plane),
+                        "{name}, t={time}, plane={plane}"
+                    );
+                }
+            }
+            cpu.stop_streams();
+            assert!(service.shutdown(Duration::from_secs(2)));
+        }
     }
 
     #[test]

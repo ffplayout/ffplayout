@@ -18,7 +18,7 @@ const selected = ref<number | undefined>(0)
 const browsing = ref<number>()
 const beyondEnd = computed(() => events.value?.some((event) => event.at >= props.duration))
 const repeats = ['repeat', 'source_repeat'] as const
-const transitions = ['fade_in', 'hold', 'fade_out', 'pause'] as const
+const transitions = ['fade_in', 'duration', 'fade_out', 'pause'] as const
 const extensions = ['png', 'gif', 'mov', 'qt', 'mp4', 'm4v', 'mkv', 'webm', 'avi', 'ts', 'm2ts', 'mts']
 
 watch(canSave, (valid) => emit('validity', valid), { immediate: true, flush: 'sync' })
@@ -30,13 +30,20 @@ function publish(value: GraphicEvent[]) {
 function update(index: number, patch: Partial<GraphicEvent>) {
     const next = events.value!.slice()
     next[index] = { ...next[index], ...patch }
+    if ('duration' in patch) delete next[index].hold
     publish(next)
 }
 function optional(index: number, key: string, enabled: boolean, value: unknown) {
     const next = events.value!.map((event) => ({ ...event }))
+    if (key === 'duration') delete next[index].hold
     if (enabled) next[index][key] = value
     else delete next[index][key]
     publish(next)
+}
+function totalDuration(event: GraphicEvent) {
+    return (
+        event.duration ?? (event.hold == null ? undefined : (event.fade_in ?? 0) + event.hold + (event.fade_out ?? 0))
+    )
 }
 function number(event: Event): number {
     return (event.target as HTMLInputElement).valueAsNumber
@@ -294,18 +301,18 @@ function source(path: string) {
                         </div>
                     </div>
                     <div v-for="field in transitions" :key="field" class="fieldset">
-                        <label v-if="field === 'hold'" class="flex items-center gap-2"
+                        <label v-if="field === 'duration'" class="flex items-center gap-2"
                             ><input
                                 type="checkbox"
                                 class="checkbox checkbox-sm"
-                                :checked="event.hold != null"
-                                @change="optional(index, 'hold', checked($event), 4)"
-                            />{{ t('graphicsEditor.hold') }}</label
+                                :checked="totalDuration(event) != null"
+                                @change="optional(index, 'duration', checked($event), 4)"
+                            />{{ t('graphicsEditor.duration') }}</label
                         >
-                        <label v-if="field !== 'hold' || event.hold != null" class="fieldset"
-                            ><span v-if="field !== 'hold'">{{ t(`graphicsEditor.${field}`) }}</span
+                        <label v-if="field !== 'duration' || totalDuration(event) != null" class="fieldset"
+                            ><span v-if="field !== 'duration'">{{ t(`graphicsEditor.${field}`) }}</span
                             ><input
-                                :value="event[field] ?? 0"
+                                :value="field === 'duration' ? totalDuration(event) : (event[field] ?? 0)"
                                 type="number"
                                 min="0"
                                 step="0.1"
@@ -313,7 +320,7 @@ function source(path: string) {
                                 class="input input-sm w-full"
                                 @input="update(index, { [field]: number($event) })"
                         /></label>
-                        <span v-if="field === 'hold' && event.hold == null" class="text-xs">{{
+                        <span v-if="field === 'duration' && totalDuration(event) == null" class="text-xs">{{
                             t('graphicsEditor.untilStop')
                         }}</span>
                     </div>

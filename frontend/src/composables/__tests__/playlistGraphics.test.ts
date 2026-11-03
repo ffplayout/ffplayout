@@ -183,3 +183,19 @@ test('ignored events still require valid JSON field types, times and declaration
         ),
     )
 })
+
+test('total duration includes both fades and determines retake boundaries', () => {
+    const first = take(0, { duration: 10, fade_in: 1, fade_out: 1 })
+    assert.deepEqual(codes([first, take(10)]), [])
+    assert.ok(codes([first, take(9.9)]).includes('activeLayer'))
+    assert.ok(codes([take(0, { duration: 10, hold: 8 })]).includes('duration'))
+    assert.deepEqual(codes([take(0, { duration: 1, fade_in: 1, fade_out: 1 }), take(1)]), [])
+    assert.deepEqual(codes([take(0, { duration: 2, fade_in: 0.5, fade_out: 0.5, pause: 1, repeat: 2 }), take(5)]), [])
+    assert.equal(readGraphicEvents([take(0, { duration: '10' as unknown as number })]), undefined)
+})
+
+test('implicit clip duration fits fades before validating a stopped layer retake', () => {
+    const events = [take(0, { fade_in: 2, fade_out: 2 }), { at: 0.25, action: 'stop' as const, layer: 1 }, take(0.75)]
+    assert.deepEqual(validateGraphicEvents(events, 1), [])
+    assert.ok(validateGraphicEvents([take(0, { repeat: 2 })], 1).some((issue) => issue.code === 'repeatHold'))
+})

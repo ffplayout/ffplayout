@@ -22,7 +22,7 @@ use crate::ffmpeg::{
 use crate::surface::ColorEncoding;
 use crate::{
     preparation::{Cancellation, MediaTask, PreparationService, ResourceBudget},
-    source::{FrameTiming, LoopDuration},
+    source::{Completion, FrameTiming, LoopDuration},
     style::LogoStyle,
 };
 
@@ -62,6 +62,7 @@ pub(super) struct StreamSource {
     options: AnimationOptions,
     task: MediaTask,
     wanted: AtomicBool,
+    duration_hint: Option<LoopDuration>,
 }
 
 impl StreamSource {
@@ -71,6 +72,7 @@ impl StreamSource {
         options: AnimationOptions,
         poster: Arc<OverlayFrame>,
         poster_timing: FrameTiming,
+        duration_hint: Option<LoopDuration>,
         service: &PreparationService,
     ) -> Result<Self> {
         let shared = Arc::new(Shared {
@@ -105,7 +107,20 @@ impl StreamSource {
             options,
             task,
             wanted: AtomicBool::new(false),
+            duration_hint,
         })
+    }
+
+    pub fn end_us(&self) -> Option<i64> {
+        if self.options.completion != Completion::Hide {
+            return None;
+        }
+        self.shared
+            .duration
+            .get()
+            .copied()
+            .or(self.duration_hint)?
+            .total_us(self.options.repeat)
     }
 
     #[cfg(test)]

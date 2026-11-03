@@ -236,10 +236,30 @@ impl CpuScene {
                 continue;
             };
             let elapsed = layer.presentation.elapsed_us(program_us);
-            let Some(surface) = source.select(
-                elapsed,
-                (scope.0, layer.spec.id.0, program_us.saturating_sub(elapsed)),
-            ) else {
+            let opacity = if let Some(end) = source.end_us() {
+                let end = program_us.saturating_sub(elapsed).saturating_add(end);
+                let Some(opacity) = layer.presentation.opacity_before_end(program_us, end) else {
+                    continue;
+                };
+                opacity * layer.spec.opacity
+            } else {
+                evaluated.opacity
+            };
+            let Some(surface) = source
+                .select(
+                    elapsed,
+                    (scope.0, layer.spec.id.0, program_us.saturating_sub(elapsed)),
+                )
+                // The poster can already fade in while the first decoder
+                // request catches up. Later seeks must not replay this image.
+                .or_else(|| {
+                    layer
+                        .presentation
+                        .is_entering(program_us)
+                        .then(|| source.poster())
+                        .flatten()
+                })
+            else {
                 continue;
             };
             frozen.layers[index] = Some(FrozenLayer {
@@ -249,7 +269,7 @@ impl CpuScene {
                     surface,
                     x: layer.spec.position.0 & !1,
                     y: layer.spec.position.1 & !1,
-                    opacity: evaluated.opacity,
+                    opacity,
                 },
             });
         }

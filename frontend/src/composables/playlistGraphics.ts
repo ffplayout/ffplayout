@@ -14,6 +14,7 @@ export interface GraphicEvent {
     z_index?: number | null
     fade_in?: number
     hold?: number | null
+    duration?: number | null
     fade_out?: number
     pause?: number
     repeat?: GraphicRepeat
@@ -26,7 +27,7 @@ export interface GraphicEvent {
 export function readGraphicEvents(value: unknown): GraphicEvent[] | undefined {
     if (value == null) return []
     if (!Array.isArray(value)) return undefined
-    const numeric = ['layer', 'opacity', 'z_index', 'fade_in', 'hold', 'fade_out', 'pause']
+    const numeric = ['layer', 'opacity', 'z_index', 'fade_in', 'hold', 'duration', 'fade_out', 'pause']
     for (const item of value) {
         if (
             !item ||
@@ -142,7 +143,15 @@ export function validateGraphicEvents(events: GraphicEvent[], clipDuration = Inf
         if (event.action === 'take') {
             if (typeof event.source !== 'string') add(index, 'source')
             if (event.size != null && !event.size.every((v) => integer(v, 0, 0xffff_ffff))) add(index, 'size')
-            if (![event.fade_in ?? 0, event.fade_out ?? 0, event.pause ?? 0, event.hold ?? 0].every(finite))
+            if (
+                ![
+                    event.fade_in ?? 0,
+                    event.fade_out ?? 0,
+                    event.pause ?? 0,
+                    event.hold ?? 0,
+                    event.duration ?? 0,
+                ].every(finite)
+            )
                 add(index, 'time')
             if (!repeat(event.repeat ?? 1) || !repeat(event.source_repeat ?? 'forever')) add(index, 'repeat')
         }
@@ -153,26 +162,42 @@ export function validateGraphicEvents(events: GraphicEvent[], clipDuration = Inf
             if (event.size != null && !event.size.every((v) => integer(v, 2, 8192) && v % 2 === 0)) add(index, 'size')
             if (
                 ![event.fade_in ?? 0, event.fade_out ?? 0, event.pause ?? 0].every(time) ||
-                (event.hold != null && !time(event.hold))
+                (event.hold != null && !time(event.hold)) ||
+                (event.duration != null && !time(event.duration))
             ) {
                 add(index, 'time')
                 return
             }
-            const entrance = micros(event.fade_in ?? 0)
-            const exit = micros(event.fade_out ?? 0)
-            const duration = entrance + micros(event.hold ?? 0) + exit
+            if (event.duration != null && event.hold != null) add(index, 'duration')
+            let entrance = micros(event.fade_in ?? 0)
+            let exit = micros(event.fade_out ?? 0)
+            const finiteDuration =
+                event.duration != null
+                    ? micros(event.duration)
+                    : event.hold != null
+                      ? entrance + micros(event.hold) + exit
+                      : Number.isFinite(clipEnd)
+                        ? clipEnd - at
+                        : undefined
+            const duration = finiteDuration ?? 0
+            if (event.hold == null && finiteDuration !== undefined && entrance + exit > duration) {
+                entrance = Math.floor((duration * entrance) / (entrance + exit))
+                exit = duration - entrance
+            }
             const cycle = duration + micros(event.pause ?? 0)
             const repeats = event.repeat ?? 1
-            if (repeats !== 1 && (event.hold == null || duration === 0)) add(index, 'repeatHold')
+            if (repeats !== 1 && ((event.duration == null && event.hold == null) || duration === 0))
+                add(index, 'repeatHold')
             if (active.has(event.layer!)) add(index, 'activeLayer')
-            const end = event.hold == null || repeats === 'forever' ? Infinity : at + duration + cycle * (repeats - 1)
+            const end =
+                finiteDuration === undefined || repeats === 'forever' ? Infinity : at + duration + cycle * (repeats - 1)
             active.set(event.layer!, {
                 start: at,
                 end,
                 entrance,
                 exit,
-                active: event.hold == null ? undefined : duration,
-                cycle: event.hold == null ? undefined : cycle,
+                active: finiteDuration,
+                cycle: finiteDuration === undefined ? undefined : cycle,
                 stopped: false,
             })
             if (active.size > 32) add(index, 'layerLimit')

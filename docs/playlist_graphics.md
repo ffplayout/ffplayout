@@ -13,7 +13,7 @@ On the player page, edit a playlist item and use its **Graphics** section:
 
 1. Add actions and select their time (seconds after the clip's effective start),
    action type and layer ID. The file browser selects local channel-storage paths.
-2. Configure take position/size, opacity/z-index, fades, optional finite hold,
+2. Configure take position/size, opacity/z-index, fades, optional total duration,
    repeat pauses, fade-cycle count and independent GIF/video repeat/end policy.
    Update actions change only checked properties. Stop fades out; Clear removes
    immediately; Visibility changes visibility without restarting source time.
@@ -71,7 +71,7 @@ canvas and `graphics/lower-third.png` inside that storage directory:
       "opacity": 1.0,
       "z_index": 10,
       "fade_in": 0.4,
-      "hold": 4.0,
+      "duration": 4.8,
       "fade_out": 0.4,
       "pause": 1.0,
       "repeat": 3
@@ -118,10 +118,11 @@ by `at`; equal-time actions retain declaration order.
 | `opacity` | `1.0` | Base opacity in `[0, 1]`, multiplied once with fade opacity and image alpha. |
 | `z_index` | `0` | Higher values draw above lower values; ties sort by layer ID. |
 | `fade_in` | `0.0` | Entrance duration. |
-| `hold` | omitted | Omitted: hold until stopped/clip end. Number: hold between automatic fades. |
+| `duration` | omitted | Total duration of one fade cycle, including fade-in and fade-out. Shorter durations shorten both fades proportionally. Without `duration` or `hold`, fade out before clip end (or an earlier finite source end). |
+| `hold` | omitted | Legacy stand time between fades, excluding fade-in and fade-out. Use either `duration` or `hold`, never both. |
 | `fade_out` | `0.0` | Automatic/manual exit duration; zero removes immediately. |
 | `pause` | `0.0` | Invisible time between cycles. No pause follows the final cycle; it has no effect with one presentation or an indefinite hold. |
-| `repeat` | `1` | Positive total fade-cycle count including the first, or `"forever"`. Repetition requires a finite `hold` and positive cycle duration. |
+| `repeat` | `1` | Positive total fade-cycle count including the first, or `"forever"`. Repetition requires an explicit `duration` or `hold` and positive cycle duration. |
 | `source_repeat` | `"forever"` | GIF/video plays, including the first: a positive integer or `"forever"`. Independent from fade cycles; ignored for static PNGs. |
 | `source_end` | `"hide"` | After a finite GIF/video repeat count, hide the graphic or use `"hold_last"` to retain the last image. Ignored for static PNGs. |
 
@@ -172,26 +173,41 @@ explicit `size` stretches to that rectangle.
 
 A retake starts the source at zero and reuses cached frames. Update, visibility,
 fade repetition and its invisible pauses do not restart or pause the source.
-A finite source's `hide` leaves the layer allocated until stop/clear or its
-transition ends; clear an active ID before retaking it. A source held on its last
+A finite source with `hide` fades out before its final repetition ends, using
+the source duration metadata until the decoder knows the exact duration. Its
+fade-in starts at `take`, just as for static images. For example, `duration: 10`,
+`fade_in: 1` and `fade_out: 1` give one second of fade-in, eight seconds at full
+opacity and one second of fade-out. A finite source's `hide` leaves the layer
+allocated until stop/clear or its transition ends; clear an active ID before
+retaking it. A source held on its last
 frame can still fade out through `stop`. Sources never extend the scheduled clip.
 Seek/live return selects the current item/source phase, without replaying earlier
 frames. Small sources keep no decoder after preparation. Larger sources use a background
-decoder with bounded lookahead. While it catches up after a seek, the last ready
-image remains visible; a newly joined presentation without a suitable ready image
-stays hidden until its current phase is available. Selected images are frozen
+decoder with bounded lookahead. Sources known to exceed five seconds switch to
+streaming after their initial frames, without decoding the entire cache window
+before publication. During the initial fade-in, the prepared first image can
+already fade in while the decoder catches up. After that entrance, a new join
+without a suitable image stays hidden until its current phase is available;
+existing presentations retain their last ready image during a seek. Selected images are frozen
 before output fan-out, so delayed encoders receive the same program frame.
 
 ## Preparation, errors and limits
 
-Preparation runs in the background, at most one task per channel. Streaming assets have separate tracked decoder tasks. Clips without
-graphics start no task. Video never waits: the scene is absent until ready, and a
-late result uses the current phase. Already elapsed graphics do not flash briefly.
-A busy preparation slot omits the new occurrence with a warning. Cancellation is
-checked between assets and during animation decoding. An in-progress local read or codec call must return before cancellation can complete.
-The slot persists across channel restarts. Stop waits up to two seconds for the
-tracked job; if it is still finishing, its slot stays occupied so a restart
-cannot overlap another preparation job.
+Preparation runs in the background with at most two active scene-preparation jobs
+per channel and one waiting occurrence. A new clip cancels obsolete jobs and
+replaces any waiting occurrence. If the previous job is still returning from
+non-interruptible local I/O, the spare worker can prepare the current clip.
+Both workers share the channel's pixel, resource and decoder budgets. Clips
+without graphics create no job and discard any obsolete waiting occurrence.
+
+Playback never waits for preparation. A delayed result joins at the current clip
+time, without replaying missed events; results for departed clips are discarded.
+Stopping cancels both active jobs and drops the waiting occurrence immediately.
+Tracked jobs have a shared two-second join deadline. A job still finishing keeps
+its handle and worker slot across restarts; restarting cannot exceed two active
+scene-preparation jobs. Disposal cancels tracked work and releases the dispatcher;
+blocking jobs retain their resource reservations until they actually exit.
+Streaming assets have separate tracked decoder tasks.
 
 Only regular local files within channel storage are accepted, including symlink
 containment checks. GIF and video containers MOV/MP4, Matroska/WebM, AVI and MPEG-TS are accepted through restricted file-only demuxing. Remote URLs, nested playlists, animated PNGs, SVG and templates remain unsupported. Existing animated program-logo support is unchanged.

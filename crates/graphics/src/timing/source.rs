@@ -35,6 +35,18 @@ pub struct LoopDuration {
 }
 
 impl LoopDuration {
+    pub fn total_us(self, repeat: Repeat) -> Option<i64> {
+        let Repeat::Count(count) = repeat else {
+            return None;
+        };
+        let scaled = self.numerator.saturating_mul(i128::from(count.get()));
+
+        Some(
+            (scaled.saturating_add(self.denominator - 1) / self.denominator)
+                .min(i128::from(i64::MAX)) as i64,
+        )
+    }
+
     pub fn from_ticks(ticks: i64, numerator: i32, denominator: i32) -> Self {
         Self {
             numerator: i128::from(ticks.max(1)) * i128::from(numerator.max(1)) * 1_000_000,

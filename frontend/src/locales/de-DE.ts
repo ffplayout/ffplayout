@@ -19,10 +19,11 @@ export default {
         width: 'Breite (px)',
         height: 'Höhe (px)',
         fade_in: 'Einblenden (s)',
+        duration: 'Gesamtdauer einschließlich Fades (s)',
         hold: 'Begrenzte Haltedauer (s)',
         fade_out: 'Ausblenden (s)',
         pause: 'Pause zwischen Fade-Zyklen (s)',
-        untilStop: 'Bis zum Stop halten',
+        untilStop: 'Automatisch: endliche Quellenlänge oder Clipende',
         repeat: 'Wiederholungen der Fade-Zyklen',
         source_repeat: 'GIF-/Video-Wiederholungen',
         count: 'Gesamtzahl',
@@ -31,7 +32,7 @@ export default {
         hide: 'Ausblenden',
         holdLast: 'Letztes Bild halten',
         repeatHelp:
-            'Die Anzahl enthält den ersten Durchlauf. Wiederholte Fades brauchen eine begrenzte Haltedauer. Quelle und Fade-Zyklen wiederholen unabhängig voneinander. Der Z-Index ordnet nur Clip-Grafiken.',
+            'Die Anzahl enthält den ersten Durchlauf. Wiederholte Fades brauchen eine explizite begrenzte Dauer. Quelle und Fade-Zyklen wiederholen unabhängig voneinander. Der Z-Index ordnet nur Clip-Grafiken.',
         add: 'Aktion hinzufügen',
         remove: 'Aktion entfernen',
         up: 'Nach oben',
@@ -50,6 +51,7 @@ export default {
             clear_all: 'Alle Layer entfernen',
         },
         errors: {
+            duration: 'Entweder Gesamtdauer oder bisherige Haltedauer angeben, nicht beides.',
             eventLimit: 'Es sind höchstens 256 Aktionen erlaubt.',
             time: 'Zeiten müssen endliche, nicht negative Zahlen sein.',
             order: 'Aktionen müssen zeitlich sortiert sein; bei gleichem Zeitpunkt gilt die angezeigte Reihenfolge.',
@@ -59,7 +61,7 @@ export default {
             source: 'Wähle eine lokale Grafikdatei; entfernte URLs sind nicht unterstützt.',
             size: 'Breite und Höhe müssen gerade Ganzzahlen zwischen 2 und 8192 sein.',
             repeat: 'Wähle eine positive ganze Anzahl oder Endlos.',
-            repeatHold: 'Wiederholte Fades brauchen eine begrenzte Haltedauer und eine positive sichtbare Dauer.',
+            repeatHold: 'Wiederholte Fades brauchen eine explizite begrenzte Dauer und eine positive sichtbare Dauer.',
             activeLayer:
                 'Dieser Layer ist noch aktiv. Entferne ihn oder warte bis zum Ende seines Fades, bevor du ihn erneut einblendest.',
             layerLimit: 'Es dürfen höchstens 32 Layer gleichzeitig aktiv sein.',
