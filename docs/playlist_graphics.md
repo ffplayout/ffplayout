@@ -3,7 +3,51 @@
 Playlist items accept an optional `graphics` array for static PNGs, animated GIFs and local videos, multiple
 layers, opacity/z-index, fades and finite or endless repetitions. Existing
 playlists remain valid. No migration or feature flag is required. The frontend
-preserves this data on save/load; a visual graphics editor is not implemented.
+provides an experimental action form in the playlist clip editor and preserves
+this data on save/load. A canvas preview/editor and manual live graphics controls
+are not implemented.
+
+## Frontend editing
+
+On the player page, edit a playlist item and use its **Graphics** section:
+
+1. Add actions and select their time (seconds after the clip's effective start),
+   action type and layer ID. The file browser selects local channel-storage paths.
+2. Configure take position/size, opacity/z-index, fades, optional finite hold,
+   repeat pauses, fade-cycle count and independent GIF/video repeat/end policy.
+   Update actions change only checked properties. Stop fades out; Clear removes
+   immediately; Visibility changes visibility without restarting source time.
+3. Keep actions ordered by time. Move buttons allow explicit equal-time ordering;
+   **Sort by time** preserves declaration order for equal timestamps.
+4. Confirm the clip dialog, then save the playlist with the existing playlist Save
+   button. To test the saved scene, start/select the clip again. The media-file
+   preview does not render program graphics and this form does not send live Take
+   commands.
+
+The form checks numeric fields, repetition rules, event/layer limits and layer
+lifecycle/order before accepting edited graphics. File access, decoding, pixel
+budgets and the full compiled scene remain backend checks. Actions beyond the
+clip end are retained with a warning and ignored in playback.
+
+Initially invalid or unsupported JSON stays intact when editing other clip settings.
+An initially valid graphics timeline is revalidated when In/Out changes: extending
+its effective duration can activate previously ignored, conflicting actions and
+must be corrected before confirmation. Ignored actions keep their JSON field/type
+and time-order checks, but their playback settings (such as fade-repeat/hold rules)
+are not validated until they fall inside the clip. Unknown fields on recognized
+events are retained. The JSON disclosure is read-only;
+**Remove all graphics** explicitly clears the stored actions. Cancelling the clip
+editor discards edits. Changing channels closes the old channel's draft.
+
+Split clips before adding graphics. Automatic clip splitting is disabled for
+items with graphics; copying the same clip-local event list into every part would
+change its meaning. While split cuts are being prepared, the graphics form is
+disabled. A separate timeline/state reconstruction adapter is needed to combine
+those operations safely.
+
+The reusable `PlaylistGraphicsEditor` receives JSON, effective duration and a
+file-browser loader; it does not own playlist stores or HTTP graphics controls.
+Run its adapter/lifecycle checks with `npm run test:graphics` (Node 24+).
 
 ## Example
 

@@ -32,6 +32,7 @@ dayjs.extend(utc)
 import PlayerControl from '@/components/player/PlayerControl.vue'
 import MediaBrowser from '@/components/MediaBrowser.vue'
 import PlaylistTable from '@/components/player/PlaylistTable.vue'
+import PlaylistGraphicsEditor from '@/components/graphics/PlaylistGraphicsEditor.vue'
 import GenericModal from '@/components/utils/GenericModal.vue'
 import FileBrowserModal from '@/components/utils/FileBrowserModal.vue'
 import PlaylistGenerator from '@/components/player/PlaylistGenerator.vue'
@@ -97,6 +98,12 @@ const newSource = ref({
 
 const sourceBrowserField = ref<'source' | 'audio'>()
 const inspectingSource = ref(false)
+const graphicsValid = ref(true)
+const hasGraphics = computed(
+    () =>
+        newSource.value.graphics != null &&
+        (!Array.isArray(newSource.value.graphics) || newSource.value.graphics.length > 0),
+)
 let sourceInspection: AbortController | undefined
 const sourceBrowserPath = computed(() =>
     sourceBrowserField.value ? (newSource.value[sourceBrowserField.value] ?? '') : '',
@@ -155,6 +162,13 @@ watch(
     () => {
         sourceBrowserField.value = undefined
         cancelSourceInspection()
+    },
+)
+
+watch(
+    () => configStore.channels[configStore.i]?.id,
+    () => {
+        if (showSourceModal.value) processSource(false)
     },
 )
 
@@ -288,6 +302,14 @@ function splitSource(pos: number) {
 
 function processSource(process: boolean) {
     if (process && inspectingSource.value) return
+    if (process && (!graphicsValid.value || (splitCount.value > 0 && hasGraphics.value))) {
+        indexStore.msgAlert(
+            'error',
+            t(!graphicsValid.value ? 'graphicsEditor.fixErrors' : 'graphicsEditor.splitHelp'),
+            4,
+        )
+        return
+    }
     cancelSourceInspection()
     showSourceModal.value = false
 
@@ -304,6 +326,7 @@ function processSource(process: boolean) {
     }
 
     editId.value = -1
+    graphicsValid.value = true
     newSource.value = {
         begin: 0,
         title: '',
@@ -321,20 +344,13 @@ function processSource(process: boolean) {
 }
 
 function editPlaylistItem(i: number) {
+    const item = playlistStore.playlist[i]
+    if (!item) return
     editId.value = i
+    // Keep optional/future fields and isolate dialog edits until confirmation.
+    newSource.value = cloneDeep(item)
+    graphicsValid.value = true
     showSourceModal.value = true
-
-    newSource.value = {
-        begin: playlistStore.playlist[i]?.begin ?? 0,
-        title: playlistStore.playlist[i]?.title,
-        in: playlistStore.playlist[i]?.in ?? 0,
-        out: playlistStore.playlist[i]?.out ?? 0,
-        duration: playlistStore.playlist[i]?.duration ?? 0,
-        ad: playlistStore.playlist[i]?.ad ?? false,
-        source: playlistStore.playlist[i]?.source ?? '',
-        audio: playlistStore.playlist[i]?.audio ?? '',
-        uid: playlistStore.playlist[i]?.uid ?? '',
-    }
 }
 
 function loopClips() {
@@ -588,95 +604,118 @@ async function deletePlaylist(del: boolean) {
             />
         </GenericModal>
 
-        <GenericModal :show="showSourceModal" :title="t('player.addEdit')" :modal-action="processSource">
-            <div class="lg:w-96">
+        <GenericModal
+            :show="showSourceModal"
+            :title="t('player.addEdit')"
+            :modal-action="processSource"
+            :confirm-disabled="inspectingSource || !graphicsValid || (splitCount > 0 && hasGraphics)"
+        >
+            <div class="w-full md:w-[min(56rem,80vw)]">
                 <div v-if="inspectingSource" role="status" class="flex justify-center py-2">
                     <span class="loading loading-spinner loading-sm" :aria-label="t('fileBrowser.loading')" />
                 </div>
-                <fieldset :disabled="inspectingSource">
-                    <fieldset class="fieldset">
-                        <legend class="fieldset-legend">{{ t('player.title') }}</legend>
-                        <input v-model="newSource.title" type="text" name="source" class="input input-sm w-full" />
-                    </fieldset>
-                    <fieldset class="fieldset">
-                        <legend class="fieldset-legend">{{ t('player.duration') }}</legend>
-                        <TimePicker v-model="newSource.duration" />
-                    </fieldset>
-                    <fieldset class="fieldset">
-                        <legend class="fieldset-legend">{{ t('player.in') }}</legend>
-                        <TimePicker v-model="newSource.in" />
-                    </fieldset>
-                    <fieldset class="fieldset">
-                        <legend class="fieldset-legend">{{ t('player.out') }}</legend>
-                        <TimePicker v-model="newSource.out" />
-                    </fieldset>
-                    <fieldset class="fieldset">
-                        <legend class="fieldset-legend">{{ t('player.file') }}</legend>
-                        <div class="join w-full">
+                <fieldset :disabled="inspectingSource" class="grid gap-5 md:grid-cols-2">
+                    <div>
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">{{ t('player.title') }}</legend>
+                            <input v-model="newSource.title" type="text" name="source" class="input input-sm w-full" />
+                        </fieldset>
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">{{ t('player.duration') }}</legend>
+                            <TimePicker v-model="newSource.duration" />
+                        </fieldset>
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">{{ t('player.in') }}</legend>
+                            <TimePicker v-model="newSource.in" />
+                        </fieldset>
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">{{ t('player.out') }}</legend>
+                            <TimePicker v-model="newSource.out" />
+                        </fieldset>
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">{{ t('player.file') }}</legend>
+                            <div class="join w-full">
+                                <input
+                                    v-model="newSource.source"
+                                    type="text"
+                                    name="source"
+                                    class="input input-sm join-item w-full min-w-0"
+                                />
+                                <button
+                                    type="button"
+                                    class="btn btn-sm join-item"
+                                    :title="t('fileBrowser.title')"
+                                    :aria-label="t('fileBrowser.title')"
+                                    @click="sourceBrowserField = 'source'"
+                                >
+                                    <i class="bi-folder2-open" />
+                                </button>
+                            </div>
+                        </fieldset>
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">{{ t('player.audio') }}</legend>
+                            <div class="join w-full">
+                                <input
+                                    v-model="newSource.audio"
+                                    type="text"
+                                    name="audio"
+                                    class="input input-sm join-item w-full min-w-0"
+                                    :placeholder="t('player.audioSourcePlaceholder')"
+                                />
+                                <button
+                                    type="button"
+                                    class="btn btn-sm join-item"
+                                    :title="t('fileBrowser.title')"
+                                    :aria-label="t('fileBrowser.title')"
+                                    @click="sourceBrowserField = 'audio'"
+                                >
+                                    <i class="bi-folder2-open" />
+                                </button>
+                            </div>
+                        </fieldset>
+                        <fieldset class="fieldset mt-2 rounded-box w-full">
+                            <label class="fieldset-label text-base-content">
+                                <input v-model="newSource.ad" type="checkbox" class="checkbox" />
+                                {{ t('player.ad') }}
+                            </label>
+                        </fieldset>
+
+                        <hr class="h-px my-2 bg-base-content/20 border-0" />
+
+                        <h4 class="font-bold">{{ t('player.splitVideo') }}</h4>
+
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">{{ t('player.cuts') }}</legend>
                             <input
-                                v-model="newSource.source"
-                                type="text"
-                                name="source"
-                                class="input input-sm join-item w-full min-w-0"
+                                v-model="splitCount"
+                                :disabled="hasGraphics"
+                                type="number"
+                                min="0"
+                                step="1"
+                                class="input input-sm w-full"
+                                @change="splitClip"
                             />
-                            <button
-                                type="button"
-                                class="btn btn-sm join-item"
-                                :title="t('fileBrowser.title')"
-                                :aria-label="t('fileBrowser.title')"
-                                @click="sourceBrowserField = 'source'"
-                            >
-                                <i class="bi-folder2-open" />
-                            </button>
+                        </fieldset>
+
+                        <p v-if="hasGraphics" class="text-sm text-base-content/70">
+                            {{ t('graphicsEditor.splitHelp') }}
+                        </p>
+                        <div v-for="time in splitTimes" :key="time.id" class="form-control mt-2">
+                            <TimePicker v-model="time.val" />
                         </div>
-                    </fieldset>
-                    <fieldset class="fieldset">
-                        <legend class="fieldset-legend">{{ t('player.audio') }}</legend>
-                        <div class="join w-full">
-                            <input
-                                v-model="newSource.audio"
-                                type="text"
-                                name="audio"
-                                class="input input-sm join-item w-full min-w-0"
-                                :placeholder="t('player.audioSourcePlaceholder')"
-                            />
-                            <button
-                                type="button"
-                                class="btn btn-sm join-item"
-                                :title="t('fileBrowser.title')"
-                                :aria-label="t('fileBrowser.title')"
-                                @click="sourceBrowserField = 'audio'"
-                            >
-                                <i class="bi-folder2-open" />
-                            </button>
-                        </div>
-                    </fieldset>
-                    <fieldset class="fieldset mt-2 rounded-box w-full">
-                        <label class="fieldset-label text-base-content">
-                            <input v-model="newSource.ad" type="checkbox" class="checkbox" />
-                            {{ t('player.ad') }}
-                        </label>
-                    </fieldset>
-
-                    <hr class="h-px my-2 bg-base-content/20 border-0" />
-
-                    <h4 class="font-bold">{{ t('player.splitVideo') }}</h4>
-
-                    <fieldset class="fieldset">
-                        <legend class="fieldset-legend">{{ t('player.cuts') }}</legend>
-                        <input
-                            v-model="splitCount"
-                            type="number"
-                            min="0"
-                            step="1"
-                            class="input input-sm w-full"
-                            @change="splitClip"
+                    </div>
+                    <fieldset :disabled="splitCount > 0" class="min-w-0">
+                        <p v-if="splitCount > 0" class="text-sm text-base-content/70">
+                            {{ t('graphicsEditor.splitHelp') }}
+                        </p>
+                        <PlaylistGraphicsEditor
+                            v-if="showSourceModal"
+                            v-model="newSource.graphics"
+                            :duration="Math.max(0, newSource.out - newSource.in)"
+                            :load="loadSourcePaths"
+                            @validity="graphicsValid = $event"
                         />
                     </fieldset>
-
-                    <div v-for="time in splitTimes" :key="time.id" class="form-control mt-2">
-                        <TimePicker v-model="time.val" />
-                    </div>
                 </fieldset>
             </div>
         </GenericModal>

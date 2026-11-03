@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
+    "test:graphics": "node --test frontend/src/composables/__tests__/playlistGraphics.test.ts",
     "lint": "eslint . --fix --config frontend/eslint.config.ts",
     "format": "prettier --write frontend/src/"
   },

@@ -21,6 +21,10 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    confirmDisabled: {
+        type: Boolean,
+        default: false,
+    },
     hideButtons: {
         type: Boolean,
         default: false,
@@ -52,7 +56,11 @@ document.body.style.overflow = props.show ? 'hidden' : ''
                     <button class="btn btn-sm bg-base-300 hover:bg-base-300/50 join-item" @click="modalAction(false)">
                         {{ t('cancel') }}
                     </button>
-                    <button class="btn btn-sm bg-base-300 hover:bg-base-300/50 join-item" @click="modalAction(true)">
+                    <button
+                        class="btn btn-sm bg-base-300 hover:bg-base-300/50 join-item"
+                        :disabled="confirmDisabled"
+                        @click="modalAction(true)"
+                    >
                         {{ t('ok') }}
                     </button>
                 </div>

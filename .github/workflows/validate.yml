@@ -94,6 +94,7 @@ jobs:
         run: |
           npm ci
           npm run build
+          npm run test:graphics
 
       - name: Rust tests and lint on Linux
         if: runner.os == 'Linux'

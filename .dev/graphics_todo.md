@@ -781,7 +781,11 @@ Adapt paths and naming to existing project conventions.
 - [x] Expose internal resource/controller state for current loading/active/failed revisions.
 - [ ] Expose graphics state through HTTP and frontend inspection.
 - [x] Apply internal/playlist layer updates and take/stop fades at frame boundaries without restarting playout.
-- [ ] Add authenticated HTTP operations and frontend controls/editor for arbitrary graphic layers.
+- [x] Add a reusable frontend playlist-event form with local file selection,
+  action ordering, sparse updates, fades, repeats and independent source playback.
+  Preserve existing JSON/unknown fields and cancel edits without mutating the playlist.
+- [ ] Add authenticated HTTP operations and immediate take/stop/clear controls on
+  a dedicated graphics/text tab; canvas editing/preview is not implemented.
 - [x] Define internal FIFO submission and equal-time playlist declaration order without coalescing.
 - [ ] Specify ordering/revision conflict handling for future concurrent HTTP clients.
 - [x] Define current worker cancellation/join/restart exclusion, clock-epoch reset and clip-occurrence disposal.
@@ -883,9 +887,12 @@ compilation before rendering. Empty schedules produce no graphics.
   configuration omits graphics, preserves its JSON and leaves media playing.
 - [x] Document usage and limits as experimental in `docs/playlist_graphics.md`.
 
-This adapter supports static PNGs plus cached/streamed GIF/video assets. A visual frontend editor, templates,
-animated PNGs and migration of all legacy layers into one z-index
-domain remain separate work. Existing animated program logos remain supported.
+This adapter supports static PNGs plus cached/streamed GIF/video assets. The
+frontend playlist editor now provides a reusable action form, validation and
+read-only JSON inspection. Automatic splitting of graphics-bearing clips is
+explicitly disabled until per-part timelines can be reconstructed. A canvas
+editor/preview, manual live HTTP controls, templates, animated PNGs and migration
+of all legacy layers into one z-index domain remain separate work. Existing animated program logos remain supported.
 No database migration or new HTTP endpoint is introduced.
 
 ---
