@@ -180,7 +180,7 @@ impl CpuScene {
     /// Select ready pixels on the program thread, before lookahead/fan-out.
     /// The fixed layer container allocates no storage per frame.
     pub fn freeze(&self, scene: &SceneRevision, program_us: i64, scope: Scope) -> FrozenScene {
-        self.freeze_with_upcoming(Some(scene), program_us, scope, std::iter::empty())
+        self.freeze_with_upcoming(Some(scene), program_us, scope, None, std::iter::empty())
     }
 
     /// Prepare scheduled entrances without displaying them, including before the
@@ -201,6 +201,7 @@ impl CpuScene {
             scene,
             position_us,
             scope,
+            Some(schedule.duration_us()),
             schedule.upcoming(position_us, PREPARATION_LEAD_US),
         ))
     }
@@ -210,6 +211,7 @@ impl CpuScene {
         scene: Option<&SceneRevision>,
         program_us: i64,
         scope: Scope,
+        clip_end_us: Option<i64>,
         upcoming: impl Iterator<Item = ScheduledFrame<'a>>,
     ) -> FrozenScene {
         for source in self.surfaces.values() {
@@ -236,8 +238,14 @@ impl CpuScene {
                 continue;
             };
             let elapsed = layer.presentation.elapsed_us(program_us);
-            let opacity = if let Some(end) = source.end_us() {
-                let end = program_us.saturating_sub(elapsed).saturating_add(end);
+            let source_end = source
+                .end_us()
+                .map(|end| program_us.saturating_sub(elapsed).saturating_add(end));
+            let end = match (source_end, clip_end_us) {
+                (Some(source), Some(clip)) => Some(source.min(clip)),
+                (source, clip) => source.or(clip),
+            };
+            let opacity = if let Some(end) = end {
                 let Some(opacity) = layer.presentation.opacity_before_end(program_us, end) else {
                     continue;
                 };
@@ -493,6 +501,90 @@ mod tests {
         result.data_mut(2).fill(128);
 
         result
+    }
+
+    #[test]
+    fn shortened_clip_fades_explicit_duration_and_partial_repeat_pixels() {
+        use crate::{
+            playback::Repeat,
+            playlist::{Action, Event, Limits},
+        };
+        let mut cpu = CpuScene::new(1, 128 * 1024);
+        let resource = cpu
+            .prepare_bitmap(ResourceKey { id: 1, revision: 1 }, &bitmap([255; 4]))
+            .unwrap();
+        for (duration, transition, time, opacity) in [
+            (
+                5_000_000,
+                Transition {
+                    fade_in_us: 1_000_000,
+                    fade_out_us: 1_000_000,
+                    ..Default::default()
+                }
+                .within(10_000_000),
+                4_500_000,
+                0.5,
+            ),
+            (
+                750_000,
+                Transition {
+                    fade_in_us: 100_000,
+                    hold_us: Some(200_000),
+                    fade_out_us: 100_000,
+                    pause_us: 200_000,
+                    repeat: Repeat::Forever,
+                },
+                712_500,
+                0.5,
+            ),
+        ] {
+            let schedule = ClipSchedule::compile(
+                duration,
+                &[Event {
+                    at_us: 0,
+                    action: Action::Take {
+                        layer: LayerSpec {
+                            id: LayerId(1),
+                            resource: resource.key,
+                            z: 0,
+                            scope: Scope::default(),
+                            canvas: (8, 8),
+                            position: (0, 0),
+                            opacity: 0.8,
+                        },
+                        transition,
+                    },
+                }],
+                std::slice::from_ref(&resource),
+                Limits::default(),
+            )
+            .unwrap();
+            let frozen = cpu
+                .freeze_schedule(&schedule, time, Scope::default())
+                .unwrap();
+            let mut actual = background();
+            let mut expected = background();
+            assert_eq!(
+                frozen
+                    .blend(&mut actual, ColorEncoding::Bt601Limited)
+                    .blended,
+                1
+            );
+            let source = cpu
+                .surfaces
+                .get(&resource)
+                .unwrap()
+                .select(0, (0, 1, 0))
+                .unwrap();
+            blend_overlay(&mut expected, source.as_ref().as_ref(), opacity * 0.8);
+            for plane in 0..3 {
+                assert_eq!(actual.data(plane), expected.data(plane));
+            }
+            assert!(
+                cpu.freeze_schedule(&schedule, duration, Scope::default())
+                    .is_none()
+            );
+        }
     }
 
     #[test]

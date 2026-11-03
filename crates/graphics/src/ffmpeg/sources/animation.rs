@@ -574,6 +574,57 @@ mod tests {
     }
 
     #[test]
+    fn short_finite_gif_reaches_full_opacity_with_proportionally_shortened_fades() {
+        use crate::ffmpeg::compositor::overlay::blend_overlay;
+        let mut cpu = CpuScene::new(1, 1024 * 1024);
+        let resource = cpu
+            .prepare_animation(
+                ResourceKey { id: 1, revision: 1 },
+                &path("animated-logo.gif"),
+                AnimationOptions {
+                    repeat: Repeat::default(),
+                    ..options()
+                },
+                || false,
+            )
+            .unwrap();
+        let source = cpu.surfaces.get(&resource).unwrap();
+        assert_eq!(source.end_us(), Some(600_000));
+        let mut selected = scene(resource.clone(), 0);
+        Arc::make_mut(&mut selected.layers)[0].presentation = Presentation::new(
+            0,
+            Transition {
+                fade_in_us: 1_000_000,
+                fade_out_us: 1_000_000,
+                ..Default::default()
+            }
+            .within(5_000_000),
+        )
+        .unwrap();
+        for (time, opacity) in [(150_000, 0.5), (300_000, 1.0), (450_000, 0.5)] {
+            let mut actual = frame::Video::new(Pixel::YUV420P, 32, 32);
+            let mut expected = frame::Video::new(Pixel::YUV420P, 32, 32);
+            for plane in 0..3 {
+                actual.data_mut(plane).fill(128);
+                expected.data_mut(plane).fill(128);
+            }
+            cpu.blend(
+                &selected,
+                time,
+                Scope::default(),
+                &mut actual,
+                ColorEncoding::Bt601Limited,
+            );
+            let source = source.select(time, (0, 1, 0)).unwrap();
+            blend_overlay(&mut expected, source.as_ref().as_ref(), opacity);
+            for plane in 0..3 {
+                assert_eq!(actual.data(plane), expected.data(plane));
+            }
+        }
+        assert!(cpu.freeze(&selected, 600_000, Scope::default()).is_empty());
+    }
+
+    #[test]
     fn gif_time_selection_seeks_repeats_retakes_and_scaled_outputs_use_ready_pixels() {
         let mut cpu = CpuScene::new(4, 1024 * 1024);
         let resource = cpu

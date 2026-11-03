@@ -199,3 +199,15 @@ test('implicit clip duration fits fades before validating a stopped layer retake
     assert.deepEqual(validateGraphicEvents(events, 1), [])
     assert.ok(validateGraphicEvents([take(0, { repeat: 2 })], 1).some((issue) => issue.code === 'repeatHold'))
 })
+
+test('explicit and legacy durations fit shortened clips before Stop and retake validation', () => {
+    for (const timing of [{ duration: 10 }, { hold: 8 }]) {
+        const events: GraphicEvent[] = [
+            take(0, { ...timing, fade_in: 1, fade_out: 1 }),
+            { at: 0.1, action: 'stop', layer: 1 },
+            take(0.4),
+        ]
+        assert.deepEqual(validateGraphicEvents(events, 0.6), [])
+        assert.ok(validateGraphicEvents(events, 5).some((issue) => issue.code === 'activeLayer'))
+    }
+})

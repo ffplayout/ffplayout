@@ -174,7 +174,13 @@ explicit `size` stretches to that rectangle.
 A retake starts the source at zero and reuses cached frames. Update, visibility,
 fade repetition and its invisible pauses do not restart or pause the source.
 A finite source with `hide` fades out before its final repetition ends, using
-the source duration metadata until the decoder knows the exact duration. Its
+the source duration metadata until the decoder knows the exact duration.
+The earlier of the clip end and finite source end also caps explicitly timed
+presentations. A boundary inside an active fade cycle shortens that final cycle;
+earlier cycles and invisible repeat pauses retain their timing. If the remaining
+cycle is shorter than fade-in plus fade-out, both fades shrink proportionally,
+so a short source can still reach full opacity. Stop evaluates that fitted
+curve and cannot brighten the graphic or extend it beyond the boundary. Its
 fade-in starts at `take`, just as for static images. For example, `duration: 10`,
 `fade_in: 1` and `fade_out: 1` give one second of fade-in, eight seconds at full
 opacity and one second of fade-out. A finite source's `hide` leaves the layer

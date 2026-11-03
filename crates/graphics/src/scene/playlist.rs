@@ -187,6 +187,10 @@ impl ClipSchedule {
         })
     }
 
+    pub fn duration_us(&self) -> i64 {
+        self.duration_us
+    }
+
     pub fn contains_position(&self, position_us: i64) -> bool {
         (0..self.duration_us).contains(&position_us)
     }

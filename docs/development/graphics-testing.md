@@ -187,3 +187,17 @@ lead window still release cache/ready windows. Current layers, including an exit
 fade already triggered by Stop, take precedence over future retakes. Unit tests
 check source-frame phase independently of the latency probe's availability counter.
 The 24/7 full-channel validation remains open.
+
+## Boundary fade regressions
+
+`Presentation::opacity_before_end` is checked against a proportionally fitted
+presentation for a 600 ms source with requested one-second entrance/exit fades,
+including manual Stop, exact end, already completed presentations, repeat pauses
+and a partially truncated final repeat. Earlier complete cycles must keep their
+original timing.
+
+CPU compositor pixel comparisons cover the short finite GIF reaching full
+opacity at its midpoint and fading before EOF. Additional schedule tests compare
+all three output planes for explicit duration beyond clip end and a truncated
+last repeat. Application and frontend tests check explicit/legacy durations,
+shortened clips, manual Stop and same-layer retakes against the same boundaries.

@@ -113,21 +113,35 @@ pub struct Presentation {
 }
 
 impl Presentation {
-    /// Cap an existing fade envelope at a source/clip boundary, without
-    /// multiplying the same fade twice when explicit durations already match.
+    /// Fit only the boundary-truncated cycle; earlier repeats keep their clocks.
+    /// Evaluate Stop against the fitted envelope so its exit cannot brighten it.
     pub fn opacity_before_end(self, program_us: i64, end_us: i64) -> Option<f64> {
-        let remaining = end_us.checked_sub(program_us)?;
-        if remaining <= 0 {
+        if program_us >= end_us || program_us < self.start_us {
             return None;
         }
-        let opacity = self.opacity(program_us)?;
-        let exit = self.transition.fade_out_us;
+        let elapsed = (i128::from(program_us) - i128::from(self.start_us)) as u128;
+        let mut start = i128::from(self.start_us);
+        let mut transition = self.transition;
+        if transition.hold_us.is_some() {
+            let active = transition.active_duration();
+            let cycle = active + u128::from(transition.pause_us);
+            if active == 0 || self.opacity(program_us).is_none() {
+                return None;
+            }
+            start += (elapsed / cycle * cycle) as i128;
+            if start + active as i128 <= i128::from(end_us) {
+                return self.opacity(program_us);
+            }
+        }
+        let duration = u64::try_from(i128::from(end_us) - start).ok()?;
+        transition = transition.within(duration);
+        transition.repeat = Repeat::default();
+        let mut fitted = Self::new(i64::try_from(start).ok()?, transition).ok()?;
+        if let Some((stop, _, _)) = self.stopped {
+            fitted.stop(stop);
+        }
 
-        Some(if exit > 0 {
-            opacity.min(remaining as f64 / exit as f64)
-        } else {
-            opacity
-        })
+        fitted.opacity(program_us)
     }
 
     pub fn new(start_us: i64, transition: Transition) -> Result<Self> {
@@ -243,6 +257,62 @@ impl Presentation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_boundaries_fit_fades_and_manual_stop_without_extending_or_brightening() {
+        let requested = Transition {
+            fade_in_us: 1_000_000,
+            fade_out_us: 1_000_000,
+            ..Default::default()
+        };
+        let p = Presentation::new(0, requested.within(5_000_000)).unwrap();
+        let fitted = Presentation::new(0, requested.within(600_000)).unwrap();
+        for time in [0, 100_000, 300_000, 500_000, 600_000, 900_000] {
+            assert_eq!(p.opacity_before_end(time, 600_000), fitted.opacity(time));
+        }
+        let mut stopped = p;
+        stopped.stop(100_000);
+        let mut fitted = fitted;
+        fitted.stop(100_000);
+        for time in [100_000, 200_000, 300_000, 400_000, 500_000] {
+            assert_eq!(
+                stopped.opacity_before_end(time, 600_000),
+                fitted.opacity(time)
+            );
+        }
+        // A later source end must not extend an already completed presentation.
+        assert_eq!(p.opacity_before_end(5_000_000, 9_000_000), None);
+    }
+
+    #[test]
+    fn a_boundary_only_shortens_the_final_repeat_and_keeps_pause_and_stop_semantics() {
+        let transition = Transition {
+            fade_in_us: 100,
+            hold_us: Some(200),
+            fade_out_us: 100,
+            pause_us: 200,
+            repeat: Repeat::Forever,
+        };
+        let p = Presentation::new(0, transition).unwrap();
+        for time in [0, 50, 200, 350, 400, 500, 600] {
+            assert_eq!(p.opacity_before_end(time, 750), p.opacity(time));
+        }
+        let last = Presentation::new(
+            600,
+            Transition {
+                repeat: Repeat::default(),
+                ..transition
+            }
+            .within(150),
+        )
+        .unwrap();
+        for time in [625, 650, 675, 700, 725, 750] {
+            assert_eq!(p.opacity_before_end(time, 750), last.opacity(time));
+        }
+        // Ending in a pause must not pull a future entrance into that pause.
+        assert_eq!(p.opacity_before_end(450, 550), Some(0.0));
+        assert_eq!(p.opacity_before_end(550, 550), None);
+    }
 
     #[test]
     fn total_duration_includes_fades_and_short_durations_shorten_them() {

@@ -551,8 +551,12 @@ fn prepare_scene_budgeted(
                     transition = transition.within(microseconds(duration)? as u64);
                 }
                 transition.validate()?;
-                if transition.hold_us.is_none() {
-                    transition = transition.within((duration_us - at_us) as u64);
+                let remaining = (duration_us - at_us) as u64;
+                let cycle_duration = u128::from(transition.fade_in_us)
+                    + u128::from(transition.hold_us.unwrap_or(0))
+                    + u128::from(transition.fade_out_us);
+                if transition.hold_us.is_none() || cycle_duration > u128::from(remaining) {
+                    transition = transition.within(remaining);
                 }
                 let path = if source.contains("://") {
                     Err(anyhow!("remote graphic sources are unsupported"))
@@ -755,6 +759,29 @@ mod tests {
         assert!(compile(json!([
             {"at":0,"action":"take","layer":1,"source":"lower-third.png","duration":4,"hold":2}
         ]), 8_000_000).is_err());
+    }
+
+    #[test]
+    fn explicit_and_legacy_durations_fit_shortened_clips_before_stop_and_retake() {
+        for extra in [json!({"duration":10}), json!({"hold":8})] {
+            let mut take = json!({"at":0,"action":"take","layer":1,"source":"lower-third.png","fade_in":1,"fade_out":1});
+            take.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            let schedule = compile(json!([take.clone()]), 5_000_000).unwrap();
+            assert_eq!(opacity(&schedule, 4.5), Some(0.5));
+            assert!(schedule.frame_at(Some(5_000_000)).is_none());
+            let short = compile(
+                json!([take.clone(), {"at":0.1,"action":"stop","layer":1},
+                {"at":0.4,"action":"take","layer":1,"source":"lower-third.png"}]),
+                600_000,
+            )
+            .unwrap();
+            let before = opacity(&short, 0.1).unwrap();
+            assert!((before - 1.0 / 3.0).abs() < 0.000001);
+            assert!(opacity(&short, 0.3).unwrap() < before);
+            assert_eq!(opacity(&short, 0.4), Some(1.0));
+        }
     }
 
     #[test]

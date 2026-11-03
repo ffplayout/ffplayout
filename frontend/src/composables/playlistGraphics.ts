@@ -171,7 +171,7 @@ export function validateGraphicEvents(events: GraphicEvent[], clipDuration = Inf
             if (event.duration != null && event.hold != null) add(index, 'duration')
             let entrance = micros(event.fade_in ?? 0)
             let exit = micros(event.fade_out ?? 0)
-            const finiteDuration =
+            const requestedDuration =
                 event.duration != null
                     ? micros(event.duration)
                     : event.hold != null
@@ -179,8 +179,10 @@ export function validateGraphicEvents(events: GraphicEvent[], clipDuration = Inf
                       : Number.isFinite(clipEnd)
                         ? clipEnd - at
                         : undefined
+            const finiteDuration =
+                requestedDuration === undefined ? undefined : Math.min(requestedDuration, clipEnd - at)
             const duration = finiteDuration ?? 0
-            if (event.hold == null && finiteDuration !== undefined && entrance + exit > duration) {
+            if (finiteDuration !== undefined && entrance + exit > duration) {
                 entrance = Math.floor((duration * entrance) / (entrance + exit))
                 exit = duration - entrance
             }
