@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import GenericModal from '@/components/utils/GenericModal.vue'
+import FileBrowserModal from '@/components/utils/FileBrowserModal.vue'
+import { browseChannelPaths, type SelectionMode } from '@/composables/fileBrowser'
 
 import { authFetch } from '@/composables/authFetch'
 import { useAuth } from '@/stores/auth'
@@ -17,6 +19,64 @@ const indexStore = useIndex()
 const logLevels = ['INFO', 'WARNING', 'ERROR']
 const notificationLevels = ['INFO', 'WARNING', 'ERROR', 'FATAL']
 const processingMode = ['folder', 'playlist']
+
+type PathField = 'logo' | 'vtt_dummy' | 'filler' | 'task'
+const pathField = ref<PathField>()
+const browserPath = computed(() => {
+    switch (pathField.value) {
+        case 'logo':
+            return configStore.playout.processing.logo
+        case 'vtt_dummy':
+            return configStore.playout.processing.vtt_dummy ?? ''
+        case 'filler':
+            return configStore.playout.storage.filler
+        case 'task':
+            return configStore.playout.task.path ?? ''
+        default:
+            return ''
+    }
+})
+const browserMode = computed<SelectionMode>(() => (pathField.value === 'filler' ? 'both' : 'file'))
+const browserExtensions = computed(() => {
+    switch (pathField.value) {
+        case 'logo':
+            return ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tif', 'tiff', 'avif', 'ico']
+        case 'vtt_dummy':
+            return ['vtt']
+        case 'filler':
+            return configStore.playout.storage.extensions
+        default:
+            return undefined
+    }
+})
+function loadPaths(path: string, initial: boolean, signal: AbortSignal) {
+    const channel = configStore.channels[configStore.i]?.id
+    if (!channel) throw new Error(t('error.notFound'))
+    return browseChannelPaths(channel, path, initial, signal)
+}
+function selectPath(path: string) {
+    switch (pathField.value) {
+        case 'logo':
+            configStore.playout.processing.logo = path
+            break
+        case 'vtt_dummy':
+            configStore.playout.processing.vtt_dummy = path
+            break
+        case 'filler':
+            configStore.playout.storage.filler = path
+            break
+        case 'task':
+            configStore.playout.task.path = path
+            break
+    }
+}
+watch(
+    () => configStore.channels[configStore.i]?.id,
+    () => {
+        pathField.value = undefined
+    },
+)
+
 const extensions = computed({
     get() {
         return configStore.playout.storage.extensions.join(',')
@@ -239,12 +299,23 @@ async function onSubmitPlayout() {
 
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Logo</legend>
-                    <input
-                        v-model="configStore.playout.processing.logo"
-                        type="text"
-                        name="logo"
-                        class="input input-sm w-full max-w-lg"
-                    />
+                    <div class="join w-full max-w-lg">
+                        <input
+                            v-model="configStore.playout.processing.logo"
+                            type="text"
+                            name="logo"
+                            class="input input-sm join-item w-full min-w-0"
+                        />
+                        <button
+                            type="button"
+                            class="btn btn-sm join-item"
+                            :title="t('fileBrowser.title')"
+                            :aria-label="t('fileBrowser.title')"
+                            @click="pathField = 'logo'"
+                        >
+                            <i class="bi-folder2-open" />
+                        </button>
+                    </div>
                     <p class="fieldset-label items-baseline">{{ t('config.processingLogoPath') }}</p>
                 </fieldset>
                 <fieldset class="fieldset">
@@ -288,12 +359,23 @@ async function onSubmitPlayout() {
 
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">VTT Dummy</legend>
-                    <input
-                        v-model="configStore.playout.processing.vtt_dummy"
-                        type="text"
-                        name="vtt_dummy"
-                        class="input input-sm w-full max-w-lg"
-                    />
+                    <div class="join w-full max-w-lg">
+                        <input
+                            v-model="configStore.playout.processing.vtt_dummy"
+                            type="text"
+                            name="vtt_dummy"
+                            class="input input-sm join-item w-full min-w-0"
+                        />
+                        <button
+                            type="button"
+                            class="btn btn-sm join-item"
+                            :title="t('fileBrowser.title')"
+                            :aria-label="t('fileBrowser.title')"
+                            @click="pathField = 'vtt_dummy'"
+                        >
+                            <i class="bi-folder2-open" />
+                        </button>
+                    </div>
                     <p class="fieldset-label items-baseline">{{ t('config.processingVTTDummy') }}</p>
                 </fieldset>
 
@@ -368,12 +450,23 @@ async function onSubmitPlayout() {
                 </label>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Filler</legend>
-                    <input
-                        v-model="configStore.playout.storage.filler"
-                        type="text"
-                        name="filler"
-                        class="input input-sm w-full max-w-lg"
-                    />
+                    <div class="join w-full max-w-lg">
+                        <input
+                            v-model="configStore.playout.storage.filler"
+                            type="text"
+                            name="filler"
+                            class="input input-sm join-item w-full min-w-0"
+                        />
+                        <button
+                            type="button"
+                            class="btn btn-sm join-item"
+                            :title="t('fileBrowser.title')"
+                            :aria-label="t('fileBrowser.title')"
+                            @click="pathField = 'filler'"
+                        >
+                            <i class="bi-folder2-open" />
+                        </button>
+                    </div>
                     <p class="fieldset-label items-baseline">{{ t('config.storageFiller') }}</p>
                 </fieldset>
                 <fieldset class="fieldset">
@@ -407,12 +500,23 @@ async function onSubmitPlayout() {
 
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Path</legend>
-                    <input
-                        v-model="configStore.playout.task.path"
-                        type="text"
-                        name="task_path"
-                        class="input input-sm w-full max-w-lg"
-                    />
+                    <div class="join w-full max-w-lg">
+                        <input
+                            v-model="configStore.playout.task.path"
+                            type="text"
+                            name="task_path"
+                            class="input input-sm join-item w-full min-w-0"
+                        />
+                        <button
+                            type="button"
+                            class="btn btn-sm join-item"
+                            :title="t('fileBrowser.title')"
+                            :aria-label="t('fileBrowser.title')"
+                            @click="pathField = 'task'"
+                        >
+                            <i class="bi-folder2-open" />
+                        </button>
+                    </div>
                     <p class="fieldset-label items-baseline">{{ t('config.taskPath') }}</p>
                 </fieldset>
             </div>
@@ -422,6 +526,17 @@ async function onSubmitPlayout() {
             </div>
         </form>
     </div>
+
+    <FileBrowserModal
+        :show="Boolean(pathField)"
+        :initial-path="browserPath"
+        :mode="browserMode"
+        :path-format="pathField === 'task' ? 'absolute' : 'relative'"
+        :extensions="browserExtensions"
+        :load="loadPaths"
+        @select="selectPath"
+        @close="pathField = undefined"
+    />
 
     <GenericModal
         :title="t('config.restartTile')"

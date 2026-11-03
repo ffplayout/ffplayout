@@ -1,4 +1,14 @@
 export default {
+    fileBrowser: {
+        title: 'Выбрать файл или папку',
+        path: 'Путь',
+        entries: 'Файлы и папки',
+        loading: 'Загрузка папки',
+        empty: 'Нет подходящих файлов или папок.',
+        select: 'Выбрать файл',
+        selectDirectory: 'Выбрать текущую папку',
+        fallback: 'Предыдущий путь недоступен или находится вне разрешённого хранилища. Открыта доступная папка.',
+    },
     ok: 'ОК',
     cancel: 'Отмена',
     socketConnected: 'Message stream connected',

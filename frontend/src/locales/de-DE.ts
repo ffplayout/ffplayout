@@ -1,4 +1,15 @@
 export default {
+    fileBrowser: {
+        title: 'Datei oder Ordner auswählen',
+        path: 'Pfad',
+        entries: 'Dateien und Ordner',
+        loading: 'Ordner wird geladen',
+        empty: 'Keine passenden Dateien oder Ordner.',
+        select: 'Datei auswählen',
+        selectDirectory: 'Aktuellen Ordner auswählen',
+        fallback:
+            'Der bisherige Pfad ist nicht verfügbar oder liegt außerhalb des freigegebenen Speichers. Ein verfügbarer Ordner wurde geöffnet.',
+    },
     ok: 'Ok',
     cancel: 'Abbrechen',
     socketConnected: 'Message-Stream verbunden',

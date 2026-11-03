@@ -2,6 +2,179 @@ use super::*;
 
 #[tokio::test]
 #[serial]
+async fn selection_browser_enforces_channel_access_and_lists_file_details() {
+    let fixture = security_fixture().await;
+    tokio::fs::write(fixture.root.join("storage/captions.vtt"), b"plain text")
+        .await
+        .unwrap();
+    tokio::fs::write(fixture.root.join("storage/task.sh"), b"plain text")
+        .await
+        .unwrap();
+    let user = access_token(&fixture.state, 1).await;
+    let admin = access_token(&fixture.state, 2).await;
+
+    for (token, expected) in [
+        (None, StatusCode::UNAUTHORIZED),
+        (Some(user.as_str()), StatusCode::OK),
+        (Some(admin.as_str()), StatusCode::OK),
+    ] {
+        let response = fixture
+            .app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                "/api/file/1/browse-selection",
+                token,
+                json!({"source":""}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+
+        if expected == StatusCode::OK {
+            let value: serde_json::Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap())
+                    .unwrap();
+            assert_eq!(value["files"].as_array().unwrap().len(), 2);
+            assert_eq!(value["files"][0]["name"], "captions.vtt");
+            assert_eq!(value["files"][0]["size"], 10);
+            assert_eq!(value["files"][1]["name"], "task.sh");
+            assert_eq!(value["files"][1]["size"], 10);
+        }
+    }
+    // One second of mono PCM; duration probing must run only for the selected file.
+    let samples = 48_000_u32;
+    let data_size = samples * 2;
+    let mut wav = Vec::new();
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_size).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16_u32.to_le_bytes());
+    wav.extend_from_slice(&1_u16.to_le_bytes());
+    wav.extend_from_slice(&1_u16.to_le_bytes());
+    wav.extend_from_slice(&samples.to_le_bytes());
+    wav.extend_from_slice(&(samples * 2).to_le_bytes());
+    wav.extend_from_slice(&2_u16.to_le_bytes());
+    wav.extend_from_slice(&16_u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_size.to_le_bytes());
+    wav.resize(44 + data_size as usize, 0);
+    tokio::fs::write(fixture.root.join("storage/clip.wav"), &wav)
+        .await
+        .unwrap();
+    // A subdirectory with the root's basename must not be stripped by probing.
+    tokio::fs::create_dir_all(fixture.root.join("storage/storage"))
+        .await
+        .unwrap();
+    let longer_size = data_size * 2;
+    wav[4..8].copy_from_slice(&(36 + longer_size).to_le_bytes());
+    wav[40..44].copy_from_slice(&longer_size.to_le_bytes());
+    wav.resize(44 + longer_size as usize, 0);
+    tokio::fs::write(fixture.root.join("storage/storage/clip.wav"), wav)
+        .await
+        .unwrap();
+    for (channel, source, token, expected) in [
+        (1, "clip.wav", None, StatusCode::UNAUTHORIZED),
+        (1, "clip.wav", Some(user.as_str()), StatusCode::OK),
+        (1, "storage/clip.wav", Some(user.as_str()), StatusCode::OK),
+        (2, "clip.wav", Some(user.as_str()), StatusCode::FORBIDDEN),
+        (
+            1,
+            "../secret.wav",
+            Some(user.as_str()),
+            StatusCode::FORBIDDEN,
+        ),
+    ] {
+        let response = fixture
+            .app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                &format!("/api/file/{channel}/media-info"),
+                token,
+                json!({"source":source}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+        if expected == StatusCode::OK {
+            let value: serde_json::Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                    .unwrap();
+            assert_eq!(
+                value["duration"],
+                if source == "storage/clip.wav" {
+                    2.0
+                } else {
+                    1.0
+                }
+            );
+        }
+    }
+
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/file/2/browse-selection",
+            Some(&user),
+            json!({"source":""}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    sqlx::query("UPDATE auth_user SET role_id = 4 WHERE id = 1")
+        .execute(&fixture.state.pool)
+        .await
+        .unwrap();
+    let guest = access_token(&fixture.state, 1).await;
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/file/1/browse-selection",
+            Some(&guest),
+            json!({"source":""}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    sqlx::query("UPDATE auth_user SET role_id = 2 WHERE id = 1")
+        .execute(&fixture.state.pool)
+        .await
+        .unwrap();
+    let channel_admin = access_token(&fixture.state, 1).await;
+
+    for (channel, source, expected) in [
+        (1, String::new(), StatusCode::OK),
+        (2, String::new(), StatusCode::FORBIDDEN),
+        (
+            1,
+            fixture.root.join("outside").to_string_lossy().into_owned(),
+            StatusCode::FORBIDDEN,
+        ),
+    ] {
+        let response = fixture
+            .app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                &format!("/api/file/{channel}/browse-selection"),
+                Some(&channel_admin),
+                json!({"source": source}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+    }
+}
+
+#[tokio::test]
+#[serial]
 async fn file_routes_enforce_tokens_channels_and_exact_range_responses() {
     let fixture = security_fixture().await;
     tokio::fs::write(fixture.root.join("storage/video.mp4"), b"0123456789")

@@ -41,6 +41,8 @@ pub fn routes() -> Router<AppState> {
                 .route("/control/{id}/media/current", get(media_current))
                 .route("/control/{id}/process", post(process_control))
                 .route("/file/{id}/browse", post(file_browser))
+                .route("/file/{id}/browse-selection", post(browse_selection))
+                .route("/file/{id}/media-info", post(selection_media_info))
                 .route("/file/{id}/create-folder", post(add_dir))
                 .route("/file/{id}/rename", post(move_rename))
                 .route("/file/{id}/remove", post(remove))

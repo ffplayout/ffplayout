@@ -1,4 +1,15 @@
 export default {
+    fileBrowser: {
+        title: 'Selecionar arquivo ou pasta',
+        path: 'Caminho',
+        entries: 'Arquivos e pastas',
+        loading: 'Carregando pasta',
+        empty: 'Nenhum arquivo ou pasta correspondente.',
+        select: 'Selecionar arquivo',
+        selectDirectory: 'Selecionar pasta atual',
+        fallback:
+            'O caminho anterior está indisponível ou fora do armazenamento permitido. Uma pasta disponível foi aberta.',
+    },
     ok: 'Ok',
     cancel: 'Cancelar',
     socketConnected: 'Aviso! stream conectada.',

@@ -5,6 +5,7 @@ use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 
 pub mod local;
+pub mod selection;
 mod upload;
 mod watcher;
 

@@ -15,7 +15,7 @@ useHead({
 })
 
 const isChannelRoute = computed(() => route.name === 'configure-channel')
-const isPlayoutRoute = computed(() => route.name === 'configure-playout')
+const isGeneralRoute = computed(() => route.name === 'configure-general')
 const isAudioRoute = computed(() => route.name === 'configure-audio')
 const isRecordingRoute = computed(() => route.name === 'configure-recording')
 const isUserRoute = computed(() => route.name === 'configure-user')
@@ -34,9 +34,9 @@ const channelQuery = computed(() => ({ channel: route.query.channel }))
             </RouterLink>
             <RouterLink
                 v-if="authStore.role !== 'user'"
-                :to="{ name: 'configure-playout', query: channelQuery }"
+                :to="{ name: 'configure-general', query: channelQuery }"
                 class="join-item btn btn-sm btn-primary mt-1 duration-500"
-                :class="isPlayoutRoute && 'bg-base-100/40'"
+                :class="isGeneralRoute && 'bg-base-100/40'"
             >
                 {{ t('config.settingsGeneral') }}
             </RouterLink>

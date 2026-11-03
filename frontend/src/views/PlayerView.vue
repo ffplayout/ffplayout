@@ -17,7 +17,7 @@ import '@vuepic/vue-datepicker/dist/main.css'
 // @ts-ignore
 import { Splitpanes, Pane } from 'splitpanes'
 
-import { computed, ref, onBeforeMount } from 'vue'
+import { computed, ref, onBeforeMount, onBeforeUnmount, watch } from 'vue'
 import { cloneDeep } from 'es-toolkit/object'
 import { useI18n } from 'vue-i18n'
 import { useWindowSize } from '@vueuse/core'
@@ -33,14 +33,16 @@ import PlayerControl from '@/components/player/PlayerControl.vue'
 import MediaBrowser from '@/components/MediaBrowser.vue'
 import PlaylistTable from '@/components/player/PlaylistTable.vue'
 import GenericModal from '@/components/utils/GenericModal.vue'
+import FileBrowserModal from '@/components/utils/FileBrowserModal.vue'
 import PlaylistGenerator from '@/components/player/PlaylistGenerator.vue'
 import VideoPlayer from '@/components/utils/VideoPlayer.vue'
 import TimePicker from '@/components/utils/TimePicker.vue'
 import SvgIcon from '@/components/utils/SvgIcon.vue'
 
 import { authFetch } from '@/composables/authFetch'
+import { browseChannelPaths } from '@/composables/fileBrowser'
 import { stringFormatter, playlistOperations } from '@/composables/helper'
-import { createFilePreviewUrl } from '@/composables/fileAccess'
+import { createFilePreviewUrl, storagePreviewPath } from '@/composables/fileAccess'
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
 import { useConfig } from '@/stores/config'
@@ -92,6 +94,69 @@ const newSource = ref({
     audio: '',
     uid: '',
 } as PlaylistItem)
+
+const sourceBrowserField = ref<'source' | 'audio'>()
+const inspectingSource = ref(false)
+let sourceInspection: AbortController | undefined
+const sourceBrowserPath = computed(() =>
+    sourceBrowserField.value ? (newSource.value[sourceBrowserField.value] ?? '') : '',
+)
+
+function loadSourcePaths(path: string, initial: boolean, signal: AbortSignal) {
+    const channel = configStore.channels[configStore.i]?.id
+    if (!channel) throw new Error(t('error.notFound'))
+    // Remote sources remain editable as URLs; local browsing starts at storage.
+    const source = initial && /^[a-z][a-z0-9+.-]*:\/\//i.test(path) ? '' : path
+    return browseChannelPaths(channel, source, initial, signal)
+}
+
+async function selectSourcePath(path: string) {
+    const field = sourceBrowserField.value
+    if (!field) return
+    if (field === 'audio') {
+        newSource.value.audio = path
+        return
+    }
+    sourceInspection?.abort()
+    const controller = new AbortController()
+    sourceInspection = controller
+    inspectingSource.value = true
+    const channel = configStore.channels[configStore.i]?.id
+    try {
+        const info = await authFetch<{ duration: number }>(`/api/file/${channel}/media-info`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source: path }),
+            signal: controller.signal,
+        })
+        if (controller.signal.aborted) return
+        newSource.value.source = path
+        newSource.value.duration = info.duration
+        newSource.value.out = info.duration
+        newSource.value.in = 0
+        splitCount.value = 0
+        splitTimes.value = []
+    } catch (reason) {
+        if (!controller.signal.aborted)
+            indexStore.msgAlert('error', reason instanceof Error ? reason.message : String(reason), 4)
+    } finally {
+        if (sourceInspection === controller) inspectingSource.value = false
+    }
+}
+
+function cancelSourceInspection() {
+    sourceInspection?.abort()
+    inspectingSource.value = false
+}
+onBeforeUnmount(cancelSourceInspection)
+
+watch(
+    () => [configStore.channels[configStore.i]?.id, showSourceModal.value],
+    () => {
+        sourceBrowserField.value = undefined
+        cancelSourceInspection()
+    },
+)
 
 switch (locale.value) {
     case 'de':
@@ -146,17 +211,14 @@ function closePlayer() {
     isVideo.value = false
 }
 
-async function setPreviewData(path: string) {
-    let fullPath = path
-    const storagePath = configStore.channels[configStore.i]?.storage ?? ''
-    const lastIndex = storagePath.lastIndexOf('/')
+function previewBrowserFile(name: string) {
+    return setPreviewData(
+        storagePreviewPath(name, configStore.channels[configStore.i]?.storage ?? '', mediaStore.folderTree.source),
+    )
+}
 
-    if (!path.includes('/')) {
-        const parent = mediaStore.folderTree.parent ? mediaStore.folderTree.parent : ''
-        fullPath = `/${parent}/${mediaStore.folderTree.source}/${path}`.replace(/\/[/]+/g, '/')
-    } else if (lastIndex !== -1) {
-        fullPath = path.replace(storagePath.substring(0, lastIndex), '')
-    }
+async function setPreviewData(path: string) {
+    const fullPath = storagePreviewPath(path, configStore.channels[configStore.i]?.storage ?? '')
 
     previewName.value = fullPath.split('/').slice(-1)[0] ?? ''
     showPreviewModal.value = true
@@ -225,6 +287,8 @@ function splitSource(pos: number) {
 }
 
 function processSource(process: boolean) {
+    if (process && inspectingSource.value) return
+    cancelSourceInspection()
     showSourceModal.value = false
 
     if (process) {
@@ -427,14 +491,14 @@ async function deletePlaylist(del: boolean) {
                     max-size="80"
                     size="20"
                 >
-                    <MediaBrowser :preview="setPreviewData" />
+                    <MediaBrowser :preview="previewBrowserFile" />
                 </Pane>
                 <pane>
                     <PlaylistTable ref="playlistTable" :edit-item="editPlaylistItem" :preview="setPreviewData" />
                 </pane>
             </Splitpanes>
             <div v-else class="h-full border border-b-2 border-base-content/30 rounded-sm shadow">
-                <MediaBrowser :preview="setPreviewData" />
+                <MediaBrowser :preview="previewBrowserFile" />
             </div>
         </div>
 
@@ -526,70 +590,106 @@ async function deletePlaylist(del: boolean) {
 
         <GenericModal :show="showSourceModal" :title="t('player.addEdit')" :modal-action="processSource">
             <div class="lg:w-96">
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.title') }}</legend>
-                    <input v-model="newSource.title" type="text" name="source" class="input input-sm w-full" />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.duration') }}</legend>
-                    <TimePicker v-model="newSource.duration" />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.in') }}</legend>
-                    <TimePicker v-model="newSource.in" />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.out') }}</legend>
-                    <TimePicker v-model="newSource.out" />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.file') }}</legend>
-                    <input
-                        v-model="newSource.source"
-                        type="text"
-                        name="source"
-                        class="input input-sm w-full"
-                        :disabled="newSource.source.includes(configStore.channels[configStore.i]?.storage ?? 'xyz123')"
-                    />
-                </fieldset>
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.audio') }}</legend>
-                    <input
-                        v-model="newSource.audio"
-                        type="text"
-                        name="audio"
-                        class="input input-sm w-full"
-                        :placeholder="t('player.audioSourcePlaceholder')"
-                    />
-                </fieldset>
-                <fieldset class="fieldset mt-2 rounded-box w-full">
-                    <label class="fieldset-label text-base-content">
-                        <input v-model="newSource.ad" type="checkbox" class="checkbox" />
-                        {{ t('player.ad') }}
-                    </label>
-                </fieldset>
-
-                <hr class="h-px my-2 bg-base-content/20 border-0" />
-
-                <h4 class="font-bold">{{ t('player.splitVideo') }}</h4>
-
-                <fieldset class="fieldset">
-                    <legend class="fieldset-legend">{{ t('player.cuts') }}</legend>
-                    <input
-                        v-model="splitCount"
-                        type="number"
-                        min="0"
-                        step="1"
-                        class="input input-sm w-full"
-                        @change="splitClip"
-                    />
-                </fieldset>
-
-                <div v-for="time in splitTimes" :key="time.id" class="form-control mt-2">
-                    <TimePicker v-model="time.val" />
+                <div v-if="inspectingSource" role="status" class="flex justify-center py-2">
+                    <span class="loading loading-spinner loading-sm" :aria-label="t('fileBrowser.loading')" />
                 </div>
+                <fieldset :disabled="inspectingSource">
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('player.title') }}</legend>
+                        <input v-model="newSource.title" type="text" name="source" class="input input-sm w-full" />
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('player.duration') }}</legend>
+                        <TimePicker v-model="newSource.duration" />
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('player.in') }}</legend>
+                        <TimePicker v-model="newSource.in" />
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('player.out') }}</legend>
+                        <TimePicker v-model="newSource.out" />
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('player.file') }}</legend>
+                        <div class="join w-full">
+                            <input
+                                v-model="newSource.source"
+                                type="text"
+                                name="source"
+                                class="input input-sm join-item w-full min-w-0"
+                            />
+                            <button
+                                type="button"
+                                class="btn btn-sm join-item"
+                                :title="t('fileBrowser.title')"
+                                :aria-label="t('fileBrowser.title')"
+                                @click="sourceBrowserField = 'source'"
+                            >
+                                <i class="bi-folder2-open" />
+                            </button>
+                        </div>
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('player.audio') }}</legend>
+                        <div class="join w-full">
+                            <input
+                                v-model="newSource.audio"
+                                type="text"
+                                name="audio"
+                                class="input input-sm join-item w-full min-w-0"
+                                :placeholder="t('player.audioSourcePlaceholder')"
+                            />
+                            <button
+                                type="button"
+                                class="btn btn-sm join-item"
+                                :title="t('fileBrowser.title')"
+                                :aria-label="t('fileBrowser.title')"
+                                @click="sourceBrowserField = 'audio'"
+                            >
+                                <i class="bi-folder2-open" />
+                            </button>
+                        </div>
+                    </fieldset>
+                    <fieldset class="fieldset mt-2 rounded-box w-full">
+                        <label class="fieldset-label text-base-content">
+                            <input v-model="newSource.ad" type="checkbox" class="checkbox" />
+                            {{ t('player.ad') }}
+                        </label>
+                    </fieldset>
+
+                    <hr class="h-px my-2 bg-base-content/20 border-0" />
+
+                    <h4 class="font-bold">{{ t('player.splitVideo') }}</h4>
+
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">{{ t('player.cuts') }}</legend>
+                        <input
+                            v-model="splitCount"
+                            type="number"
+                            min="0"
+                            step="1"
+                            class="input input-sm w-full"
+                            @change="splitClip"
+                        />
+                    </fieldset>
+
+                    <div v-for="time in splitTimes" :key="time.id" class="form-control mt-2">
+                        <TimePicker v-model="time.val" />
+                    </div>
+                </fieldset>
             </div>
         </GenericModal>
+
+        <FileBrowserModal
+            :show="Boolean(sourceBrowserField)"
+            :initial-path="sourceBrowserPath"
+            path-format="absolute"
+            :extensions="configStore.playout.storage.extensions"
+            :load="loadSourcePaths"
+            @select="selectSourcePath"
+            @close="sourceBrowserField = undefined"
+        />
 
         <GenericModal :show="showImportModal" :title="t('player.import')" :modal-action="importPlaylist">
             <input type="file" class="file-input file-input-sm w-full" multiple @change="onFileChange" />

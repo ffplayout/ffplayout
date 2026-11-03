@@ -1,4 +1,15 @@
 export default {
+    fileBrowser: {
+        title: 'Select a file or folder',
+        path: 'Path',
+        entries: 'Files and folders',
+        loading: 'Loading folder',
+        empty: 'No matching files or folders.',
+        select: 'Select file',
+        selectDirectory: 'Select current folder',
+        fallback:
+            'The previous path is unavailable or outside the permitted storage. An available folder has been opened.',
+    },
     ok: 'Ok',
     cancel: 'Cancel',
     socketConnected: 'Message stream connected',
