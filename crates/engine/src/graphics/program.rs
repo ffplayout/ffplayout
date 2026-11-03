@@ -114,6 +114,9 @@ impl<'a, O: FrameOutput> ProgramGraphicsOutput<'a, O> {
 impl<O: FrameOutput> FrameOutput for ProgramGraphicsOutput<'_, O> {
     fn set_clip_graphics_visible(&mut self, visible: bool) {
         self.clip_visible = visible;
+        if !visible && let Some(clip) = &self.clip {
+            clip.suspend();
+        }
     }
     fn retains_text_overlays(&self) -> bool {
         true

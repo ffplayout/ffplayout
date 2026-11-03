@@ -11,12 +11,18 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "ffmpeg")]
+use std::sync::Weak;
+
 use anyhow::{Result, anyhow, ensure};
 
 mod budget;
+mod media;
 mod request;
 
 pub use budget::{JobPermit, ResourceBudget, ResourceLease};
+pub use media::MediaTask;
+use media::MediaWorker;
 use request::Completion;
 pub use request::{Cancellation, Preparation};
 
@@ -35,10 +41,21 @@ struct Service {
     shared: Arc<Shared>,
     worker: Mutex<Option<JoinHandle<()>>>,
     budget: ResourceBudget,
+    media: Mutex<Vec<MediaWorker>>,
 }
 
 #[derive(Clone)]
 pub struct PreparationService(Arc<Service>);
+
+#[cfg(feature = "ffmpeg")]
+pub(crate) struct PreparationWeak(Weak<Service>);
+
+#[cfg(feature = "ffmpeg")]
+impl PreparationWeak {
+    pub(crate) fn upgrade(&self) -> Option<PreparationService> {
+        self.0.upgrade().map(PreparationService)
+    }
+}
 
 impl fmt::Debug for PreparationService {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -68,7 +85,13 @@ impl PreparationService {
             }),
             worker: Mutex::new(None),
             budget,
+            media: Mutex::new(Vec::new()),
         }))
+    }
+
+    #[cfg(feature = "ffmpeg")]
+    pub(crate) fn downgrade(&self) -> PreparationWeak {
+        PreparationWeak(Arc::downgrade(&self.0))
     }
 
     pub fn budget(&self) -> ResourceBudget {
@@ -192,6 +215,13 @@ impl PreparationService {
         }
         if !self.0.shared.resume_requested.load(Ordering::Acquire)
             || worker.as_ref().is_some_and(|worker| !worker.is_finished())
+            || self
+                .0
+                .media
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .iter()
+                .any(|worker| !worker.handle.is_finished())
         {
             return false;
         }
@@ -229,12 +259,19 @@ impl PreparationService {
         let deadline = Instant::now() + wait;
         loop {
             let mut worker = self.0.worker.lock().unwrap_or_else(PoisonError::into_inner);
-            if worker.as_ref().is_none_or(JoinHandle::is_finished) {
+            let mut media = self.0.media.lock().unwrap_or_else(PoisonError::into_inner);
+            if worker.as_ref().is_none_or(JoinHandle::is_finished)
+                && media.iter().all(|worker| worker.handle.is_finished())
+            {
+                for worker in media.drain(..) {
+                    let _ = worker.handle.join();
+                }
                 if let Some(worker) = worker.take() {
                     let _ = worker.join();
                 }
                 return true;
             }
+            drop(media);
             drop(worker);
             if Instant::now() >= deadline {
                 return false;
@@ -257,12 +294,29 @@ impl Service {
         queue.jobs.clear();
         drop(queue);
         self.shared.wake.notify_all();
+        for worker in self
+            .media
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+        {
+            worker.stop.cancel();
+            worker.handle.thread().unpark();
+        }
     }
 }
 
 impl Drop for Service {
     fn drop(&mut self) {
         self.cancel();
+        for worker in self
+            .media
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .drain(..)
+        {
+            let _ = worker.handle.join();
+        }
         if let Some(worker) = self
             .worker
             .get_mut()

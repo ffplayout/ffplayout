@@ -21,6 +21,7 @@ fn main() {
                     alpha: Alpha::Straight,
                     color: ColorEncoding::Srgb,
                     storage_bytes: 16,
+                    metadata: None,
                 },
                 Arc::new([0_u8; 16]),
             )

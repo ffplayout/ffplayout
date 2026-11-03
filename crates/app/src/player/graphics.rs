@@ -10,10 +10,11 @@ use std::{
 use anyhow::{Context, Result, anyhow, ensure};
 use ff_engine::ClipGraphics;
 use ff_graphics::{
-    ffmpeg::scene::CpuScene,
+    ffmpeg::{scene::CpuScene, sources::animation::AnimationOptions},
     playback::{Repeat, Transition},
     playlist::{Action, ClipSchedule, Event, Limits},
     scene::{LayerId, LayerSpec, Scope},
+    source::Completion,
     surface::{Resource, ResourceKey},
 };
 use log::warn;
@@ -59,6 +60,10 @@ enum GraphicAction {
         pause: f64,
         #[serde(default)]
         repeat: Repetitions,
+        #[serde(default = "forever")]
+        source_repeat: Repetitions,
+        #[serde(default)]
+        source_end: SourceEnd,
     },
     Update {
         layer: u64,
@@ -98,6 +103,34 @@ enum Forever {
 impl Default for Repetitions {
     fn default() -> Self {
         Self::Count(NonZeroU32::MIN)
+    }
+}
+
+#[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+enum SourceEnd {
+    #[default]
+    Hide,
+    HoldLast,
+}
+
+fn forever() -> Repetitions {
+    Repetitions::Keyword(Forever::Forever)
+}
+
+impl Repetitions {
+    fn count(&self) -> u32 {
+        match self {
+            Self::Count(count) => count.get(),
+            Self::Keyword(Forever::Forever) => 0,
+        }
+    }
+
+    fn playback(&self) -> Repeat {
+        match self {
+            Self::Count(count) => Repeat::Count(*count),
+            Self::Keyword(Forever::Forever) => Repeat::Forever,
+        }
     }
 }
 
@@ -266,7 +299,7 @@ impl GraphicsPreparer {
         let data = data.clone();
         let root = root.to_path_buf();
         let (pending, completion) = ClipGraphics::deferred();
-        let budget = self.preparation.budget();
+        let preparation = self.preparation.clone();
         let started = self.spawn(move |cancellation| {
             if cancellation.is_cancelled() || completion.is_cancelled() {
                 return;
@@ -278,7 +311,7 @@ impl GraphicsPreparer {
                 duration_us,
                 channel,
                 || cancellation.is_cancelled() || completion.is_cancelled(),
-                Some(budget),
+                Some(preparation),
             );
             if cancellation.is_cancelled() || completion.is_cancelled() {
                 return;
@@ -306,6 +339,8 @@ impl GraphicsPreparer {
 struct Asset {
     path: PathBuf,
     size: Option<(u32, u32)>,
+    source_repeat: u32,
+    source_end: SourceEnd,
 }
 
 #[cfg(test)]
@@ -317,7 +352,15 @@ fn prepare_scene(
     channel: i32,
     cancelled: impl Fn() -> bool,
 ) -> Result<(CpuScene, ClipSchedule)> {
-    prepare_scene_budgeted(data, root, canvas, duration_us, channel, cancelled, None)
+    prepare_scene_budgeted(
+        data,
+        root,
+        canvas,
+        duration_us,
+        channel,
+        cancelled,
+        Some(ff_graphics::preparation::PreparationService::default()),
+    )
 }
 
 fn prepare_scene_budgeted(
@@ -327,7 +370,7 @@ fn prepare_scene_budgeted(
     duration_us: i64,
     channel: i32,
     cancelled: impl Fn() -> bool,
-    budget: Option<ff_graphics::preparation::ResourceBudget>,
+    preparation: Option<ff_graphics::preparation::PreparationService>,
 ) -> Result<(CpuScene, ClipSchedule)> {
     let array = data
         .as_array()
@@ -339,8 +382,8 @@ fn prepare_scene_budgeted(
     let parsed: Vec<GraphicEvent> =
         serde_json::from_value(data.clone()).context("invalid graphics event")?;
     let mut renderer = CpuScene::new(64, 64 * 1024 * 1024);
-    if let Some(budget) = budget {
-        renderer = renderer.with_budget(budget);
+    if let Some(preparation) = &preparation {
+        renderer = renderer.with_preparation(preparation);
     }
     let mut assets: BTreeMap<Asset, Option<Arc<Resource>>> = BTreeMap::new();
     let mut layers: BTreeMap<u64, Option<LayerSpec>> = BTreeMap::new();
@@ -367,6 +410,8 @@ fn prepare_scene_budgeted(
                 fade_out,
                 pause,
                 repeat,
+                source_repeat,
+                source_end,
             } => {
                 let transition = Transition {
                     fade_in_us: microseconds(fade_in)? as u64,
@@ -391,7 +436,12 @@ fn prepare_scene_budgeted(
                 };
                 let resource = match path {
                     Ok(path) => {
-                        let asset = Asset { path, size };
+                        let asset = Asset {
+                            path,
+                            size,
+                            source_repeat: source_repeat.count(),
+                            source_end,
+                        };
                         if let Some(resource) = assets.get(&asset) {
                             resource.clone()
                         } else {
@@ -400,8 +450,13 @@ fn prepare_scene_budgeted(
                                 id: assets.len() as u64 + 1,
                                 revision: assets.len() as u64 + 1,
                             };
-                            let resource = match renderer.prepare_png(key, &asset.path, asset.size)
-                            {
+                            let resource = match prepare_source(
+                                &mut renderer,
+                                key,
+                                &asset,
+                                source_repeat.playback(),
+                                &cancelled,
+                            ) {
                                 Ok(resource) => Some(resource),
                                 Err(error) => {
                                     warn!(channel = channel; "Playlist graphic {source:?} omitted: {error:#}");
@@ -496,6 +551,37 @@ fn prepare_scene_budgeted(
     Ok((renderer, schedule))
 }
 
+/// Opens regular local files through non-nesting demuxers with bounded decoded storage. The channel
+/// storage adapter resolved and checked the path before reaching this worker.
+fn prepare_source(
+    renderer: &mut CpuScene,
+    key: ResourceKey,
+    asset: &Asset,
+    repeat: Repeat,
+    cancelled: &impl Fn() -> bool,
+) -> Result<Arc<Resource>> {
+    if asset
+        .path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+    {
+        return renderer.prepare_png(key, &asset.path, asset.size);
+    }
+    renderer.prepare_animation(
+        key,
+        &asset.path,
+        AnimationOptions {
+            size: asset.size,
+            repeat,
+            completion: match asset.source_end {
+                SourceEnd::Hide => Completion::Hide,
+                SourceEnd::HoldLast => Completion::HoldLast,
+            },
+        },
+        cancelled,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -523,6 +609,31 @@ mod tests {
             .evaluate(frame.position_us, Scope::default())
             .next()
             .map(|layer| layer.content.opacity)
+    }
+
+    #[test]
+    fn animated_sources_retake_reuse_and_source_repeat_are_independent_from_fades() {
+        let schedule = compile(json!([
+            {"at":0,"action":"take","layer":1,"source":"animated-logo.gif","size":[16,16],"source_repeat":2,"source_end":"hold_last","fade_in":0.1,"hold":0.2,"fade_out":0.1,"pause":0.1,"repeat":2},
+            {"at":1,"action":"take","layer":1,"source":"animated-logo.gif","size":[16,16],"source_repeat":2,"source_end":"hold_last"},
+            {"at":2,"action":"take","layer":2,"source":"animated-logo-video.mkv","size":[16,16],"source_repeat":"forever"}
+        ]), 4_000_000).unwrap();
+        assert!(opacity(&schedule, 0.2).is_some());
+        assert_eq!(opacity(&schedule, 0.45), None);
+        let first = schedule.frame_at(Some(200_000)).unwrap();
+        let retake = schedule.frame_at(Some(1_100_000)).unwrap();
+        assert!(Arc::ptr_eq(
+            &first.scene.layers[0].resource,
+            &retake.scene.layers[0].resource
+        ));
+        assert_eq!(
+            retake.scene.layers[0].presentation.elapsed_us(1_100_000),
+            100_000
+        );
+        let video = schedule.frame_at(Some(2_100_000)).unwrap();
+        assert_eq!(video.scene.layers.len(), 2);
+        assert!(compile(json!([{"at":0,"action":"take","layer":1,"source":"animated-logo.gif","source_repeat":0}]), 1_000_000).is_err());
+        assert!(compile(json!([{"at":0,"action":"take","layer":1,"source":"animated-logo.gif","source_end":"invalid"}]), 1_000_000).is_err());
     }
 
     #[test]

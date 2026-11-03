@@ -229,6 +229,7 @@ mod tests {
                 alpha: Alpha::Straight,
                 color: ColorEncoding::Srgb,
                 storage_bytes: 16,
+                metadata: None,
             },
         })
     }

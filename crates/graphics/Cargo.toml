@@ -13,9 +13,10 @@ workspace = true
 
 [features]
 default = []
-ffmpeg = ["dep:ffmpeg-next", "dep:rayon", "dep:log", "dep:image"]
+ffmpeg = ["dep:arc-swap", "dep:ffmpeg-next", "dep:rayon", "dep:log", "dep:image"]
 
 [dependencies]
+arc-swap = { version = "1", optional = true }
 rayon = { version = "1.12", optional = true }
 log = { version = "0.4", optional = true }
 anyhow = "1"

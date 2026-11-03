@@ -410,6 +410,7 @@ mod tests {
             alpha: Alpha::Straight,
             color: ColorEncoding::Srgb,
             storage_bytes: 16,
+            metadata: None,
         };
         let mut store = SurfaceStore::new(1, 16);
         let resource = store.insert(key, descriptor, Arc::new([0_u8; 16])).unwrap();
@@ -436,6 +437,7 @@ mod tests {
                 alpha: Alpha::Straight,
                 color: ColorEncoding::Srgb,
                 storage_bytes: 16,
+                metadata: None,
             },
         });
         let acknowledgements = controller.apply_at_frame(
