@@ -91,7 +91,7 @@ impl ManualGraphics {
                 let layer = slot.scene.layers.first()?;
                 Some(ManualLayerStatus {
                     id: slot.id,
-                    visible: layer.visible,
+                    visible: layer.visible && layer.presentation.is_visible(),
                     active: slot.rendered && layer.visible,
                     position: layer.spec.position,
                     opacity: layer.spec.opacity,
@@ -184,7 +184,12 @@ impl ManualGraphics {
                             .load(Ordering::Acquire)
                             .saturating_sub(slot.origin),
                     ),
-                    "visibility" => layer.visible = visible.unwrap_or(true),
+                    "visibility" => layer.presentation.set_visible(
+                        visible.unwrap_or(true),
+                        self.clock
+                            .load(Ordering::Acquire)
+                            .saturating_sub(slot.origin),
+                    ),
                     _ => {
                         if let Some(value) = position {
                             layer.spec.position = value;
@@ -329,7 +334,8 @@ mod tests {
                 },
             )
             .unwrap();
-        assert!(graphics.frame_at(1_110_000).unwrap().is_none());
+        assert!(graphics.frame_at(1_110_000).unwrap().is_some());
+        assert!(graphics.frame_at(1_180_000).unwrap().is_none());
         graphics
             .change(
                 2,
@@ -339,8 +345,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(graphics.frame_at(1_220_000).unwrap().is_some());
         graphics.change(3, operation(7, "stop")).unwrap();
-        assert!(graphics.frame_at(1_200_000).unwrap().is_none());
+        assert!(graphics.frame_at(1_300_000).unwrap().is_none());
         graphics.change(4, operation(7, "clear")).unwrap();
         assert!(graphics.status().1.is_empty());
         let mut pixels = frame::Video::new(Pixel::YUV420P, 32, 16);
@@ -351,6 +358,66 @@ mod tests {
 
         queued.blend(&mut pixels);
         assert!(pixels.data(0).iter().any(|value| *value > 16));
+    }
+
+    #[test]
+    fn show_hide_fades_pixels_preserves_queued_frames_and_reports_outgoing_activity() {
+        fn luma(snapshot: Option<&ManualFrame>) -> u8 {
+            let mut pixels = frame::Video::new(Pixel::YUV420P, 32, 16);
+
+            for plane in 0..3 {
+                pixels.data_mut(plane).fill(128);
+            }
+
+            if let Some(snapshot) = snapshot {
+                snapshot.blend(&mut pixels);
+            }
+
+            pixels.data(0)[2 * pixels.stride(0) + 2]
+        }
+
+        let graphics = ManualGraphics::default();
+        graphics.take(0, 1, fixture((32, 16))).unwrap();
+        let queued = graphics.frame_at(100_000).unwrap().unwrap();
+        assert_eq!(luma(Some(&queued)), 166);
+        graphics
+            .change(
+                1,
+                ManualChange {
+                    visible: Some(false),
+                    ..operation(1, "visibility")
+                },
+            )
+            .unwrap();
+        let outgoing = graphics.frame_at(140_000).unwrap().unwrap();
+        assert_eq!(luma(Some(&outgoing)), 147);
+        let status = &graphics.status().1[0];
+        assert!(!status.visible);
+        assert!(status.active);
+        assert!(graphics.frame_at(180_000).unwrap().is_none());
+        assert!(!graphics.status().1[0].active);
+        graphics
+            .change(
+                2,
+                ManualChange {
+                    visible: Some(true),
+                    ..operation(1, "visibility")
+                },
+            )
+            .unwrap();
+        assert!(graphics.frame_at(180_000).unwrap().is_none());
+        assert_eq!(luma(graphics.frame_at(220_000).unwrap().as_deref()), 147);
+        assert_eq!(luma(graphics.frame_at(260_000).unwrap().as_deref()), 166);
+        assert_eq!(luma(Some(&queued)), 166);
+        assert_eq!(luma(Some(&outgoing)), 147);
+        let state = graphics.state.lock().unwrap();
+        assert_eq!(state.layers[0].origin, 0);
+        assert_eq!(
+            state.layers[0].scene.layers[0]
+                .presentation
+                .elapsed_us(260_000),
+            260_000
+        );
     }
 
     #[test]

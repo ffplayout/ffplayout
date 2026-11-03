@@ -17,8 +17,11 @@ editable position rectangle when metadata is available.
 **Take** prepares a source off the video thread and replaces the same manual layer
 only after preparation succeeds. Untimed manual graphics hold until stopped;
 finite duration and repetition use the same timing rules as playlist graphics.
-**Stop** uses that take's fade-out; **Clear** removes it immediately. Visibility
-and layout updates preserve the source clock. At most eight manual layers are kept.
+**Stop** uses that take's fade-out; **Clear** removes it immediately. **Show/hide**
+uses its configured fade-in/fade-out, preserving the source clock and finite
+lifetime. Reversing a visibility fade continues from its current opacity. Status
+reports requested visibility separately from frames still active during fade-out.
+Layout updates also preserve the source clock. At most eight manual layers are kept.
 
 Manual graphics persist across file changes and live ingest, until cleared or the
 channel stops/restarts. They are transient and are not restored after a restart.

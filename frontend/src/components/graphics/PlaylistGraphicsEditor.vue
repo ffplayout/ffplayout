@@ -331,7 +331,7 @@ function source(path: string) {
                                 type="checkbox"
                                 class="checkbox checkbox-sm"
                                 :checked="event.size != null"
-                                @change="optional(index, 'size', checked($event), [320, 180])"
+                                @change="optional(index, 'size', checked($event), [...canvas])"
                             />{{ t('graphicsEditor.size') }}</label
                         >
                         <div v-if="event.size" class="grid grid-cols-2 gap-2">

@@ -106,10 +106,32 @@ impl Transition {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct VisibilityFade {
+    start_us: i64,
+    from: f64,
+    visible: bool,
+    duration_us: u64,
+}
+
+impl VisibilityFade {
+    fn opacity(self, program_us: i64) -> f64 {
+        let target = f64::from(self.visible);
+        let elapsed = (i128::from(program_us) - i128::from(self.start_us)).max(0) as u128;
+
+        if self.duration_us == 0 || elapsed >= u128::from(self.duration_us) {
+            return target;
+        }
+
+        self.from + (target - self.from) * elapsed as f64 / self.duration_us as f64
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Presentation {
     start_us: i64,
     transition: Transition,
     stopped: Option<(i64, f64, u64)>,
+    visibility: Option<VisibilityFade>,
 }
 
 impl Presentation {
@@ -141,6 +163,8 @@ impl Presentation {
             fitted.stop(stop);
         }
 
+        fitted.visibility = self.visibility;
+
         fitted.opacity(program_us)
     }
 
@@ -151,7 +175,32 @@ impl Presentation {
             start_us,
             transition,
             stopped: None,
+            visibility: None,
         })
+    }
+
+    /// Fade visibility independently of source playback and scheduled fade cycles.
+    /// Reversing direction starts at the current opacity instead of jumping.
+    pub fn set_visible(&mut self, visible: bool, program_us: i64) {
+        if self.is_visible() == visible {
+            return;
+        }
+
+        self.visibility = Some(VisibilityFade {
+            start_us: program_us,
+            from: self.visibility.map_or(1.0, |fade| fade.opacity(program_us)),
+            visible,
+            duration_us: if visible {
+                self.transition.fade_in_us
+            } else {
+                self.transition.fade_out_us
+            },
+        });
+    }
+
+    /// Requested visibility; an outgoing fade may still be on screen.
+    pub fn is_visible(self) -> bool {
+        self.visibility.is_none_or(|fade| fade.visible)
     }
 
     /// Source-local time since take. Fade cycles and visibility do not restart
@@ -170,6 +219,12 @@ impl Presentation {
 
     /// None means absent/finished; Some(0) is a transparent entrance or repeat pause.
     pub fn opacity(self, program_us: i64) -> Option<f64> {
+        let opacity = self.scheduled_opacity(program_us)?;
+
+        Some(opacity * self.visibility.map_or(1.0, |fade| fade.opacity(program_us)))
+    }
+
+    fn scheduled_opacity(self, program_us: i64) -> Option<f64> {
         if program_us < self.start_us {
             return None;
         }
@@ -236,7 +291,7 @@ impl Presentation {
     /// Idempotent: repeated stops never prolong an exit or restart a fade.
     pub fn stop(&mut self, program_us: i64) {
         if self.stopped.is_none() {
-            let opacity = self.opacity(program_us).unwrap_or(0.0);
+            let opacity = self.scheduled_opacity(program_us).unwrap_or(0.0);
             let mut duration = self.transition.fade_out_us;
             if self.transition.hold_us.is_some() {
                 let active = self.transition.active_duration();
@@ -257,6 +312,60 @@ impl Presentation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn visibility_fades_reverse_without_restarting_source_or_extending_its_lifetime() {
+        let mut presentation = Presentation::new(
+            0,
+            Transition {
+                fade_in_us: 80_000,
+                fade_out_us: 80_000,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        presentation.set_visible(false, 100_000);
+        assert!(!presentation.is_visible());
+        assert_eq!(presentation.opacity(100_000), Some(1.0));
+        assert_eq!(presentation.opacity(140_000), Some(0.5));
+        presentation.set_visible(false, 140_000);
+        assert_eq!(presentation.opacity(160_000), Some(0.25));
+        presentation.set_visible(true, 160_000);
+        assert!(presentation.is_visible());
+        assert_eq!(presentation.opacity(160_000), Some(0.25));
+        assert_eq!(presentation.opacity(200_000), Some(0.625));
+        assert_eq!(presentation.opacity(240_000), Some(1.0));
+        assert_eq!(presentation.elapsed_us(240_000), 240_000);
+        presentation.set_visible(false, 240_000);
+        assert_eq!(presentation.opacity(320_000), Some(0.0));
+        presentation.set_visible(true, 400_000);
+        assert_eq!(presentation.opacity(440_000), Some(0.5));
+        assert_eq!(
+            presentation.opacity_before_end(440_000, 500_000),
+            Some(0.375)
+        );
+        assert_eq!(presentation.opacity_before_end(500_000, 500_000), None);
+        presentation.stop(440_000);
+        assert_eq!(presentation.opacity(440_000), Some(0.5));
+        assert_eq!(presentation.opacity(480_000), Some(0.5));
+        assert_eq!(presentation.opacity(520_000), None);
+        presentation.set_visible(true, 600_000);
+        assert_eq!(presentation.opacity(600_000), None);
+    }
+
+    #[test]
+    fn visibility_without_fades_is_immediate_and_does_not_restart_finished_presentations() {
+        let mut presentation = Presentation::new(10, Transition::default()).unwrap();
+        presentation.set_visible(false, 20);
+        assert_eq!(presentation.opacity(20), Some(0.0));
+        presentation.set_visible(true, 30);
+        assert_eq!(presentation.opacity(30), Some(1.0));
+        assert_eq!(presentation.elapsed_us(30), 20);
+        let mut finite = Presentation::new(0, Transition::default().within(100)).unwrap();
+        finite.set_visible(false, 10);
+        finite.set_visible(true, 200);
+        assert_eq!(finite.opacity(200), None);
+    }
 
     #[test]
     fn source_boundaries_fit_fades_and_manual_stop_without_extending_or_brightening() {

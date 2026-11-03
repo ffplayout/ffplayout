@@ -4,6 +4,7 @@ import { cloneDeep } from 'es-toolkit/object'
 import { useI18n } from 'vue-i18n'
 import { useGraphicMetadata } from '@/composables/graphicMetadata'
 import GraphicSourceInfo from './GraphicSourceInfo.vue'
+import LogoSizeEditor from './LogoSizeEditor.vue'
 import { authFetch } from '@/composables/authFetch'
 import { browseChannelPaths } from '@/composables/fileBrowser'
 import { useConfig } from '@/stores/config'
@@ -137,12 +138,7 @@ onBeforeUnmount(() => {
                     required
                     class="input input-sm w-36"
             /></label>
-            <label class="fieldset"
-                ><span>{{ t('graphicsPage.logoScale') }}</span
-                ><input v-model="form.logo_scale" class="input input-sm w-full" /><span class="text-xs">{{
-                    t('config.processingLogoScale')
-                }}</span></label
-            >
+            <LogoSizeEditor v-model="form.logo_scale" />
             <label class="fieldset"
                 ><span>{{ t('graphicsEditor.position') }}</span
                 ><input v-model="form.logo_position" class="input input-sm w-full" /><span class="text-xs">{{
