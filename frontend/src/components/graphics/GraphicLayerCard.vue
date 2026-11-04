@@ -46,7 +46,9 @@ function save(action: 'save' | 'take') {
 <template>
     <details class="collapse collapse-arrow bg-base-200 border border-base-content/30">
         <summary class="collapse-title flex flex-wrap items-center gap-2 font-medium">
-            <span class="min-w-0 break-words">{{ layer.name || `${t('graphicsEditor.layer')} ${layer.layer}` }}</span>
+            <span class="min-w-0 break-words">{{
+                layer.name || t('graphicsPage.unnamedLayer', { id: layer.layer })
+            }}</span>
             <span class="badge badge-sm" :class="layer.active ? 'badge-success' : 'badge-ghost'">
                 {{
                     t(

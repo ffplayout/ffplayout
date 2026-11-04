@@ -1,5 +1,6 @@
 export default {
     graphicsPage: {
+        unnamedLayer: 'Layer {id}',
         untilStop: 'Bis Stop oder zum Ende der endlichen Quelle',
         repeatHelp:
             'Wiederholungen zählen einschließlich des ersten Durchlaufs. Fade-Zyklen brauchen eine endliche Dauer. Z-Index ordnet die manuellen Grafiken untereinander.',

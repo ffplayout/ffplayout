@@ -7,8 +7,8 @@ use winit::window::Window;
 
 use super::{
     DESKTOP_VOLUME_MAX,
-    graphics::RgbaBitmap,
-    render::{HELP_OVERLAY_PADDING, Rect, WindowFrame, fit_rect, help_panel_rect, subtitle_rect},
+    graphics::{HelpOverlay, RgbaBitmap},
+    render::{Rect, WindowFrame, fit_rect, help_layout, subtitle_rect},
     video::VideoSurface,
 };
 
@@ -229,29 +229,10 @@ fn draw_volume_overlay(target: &mut [u32], width: u32, height: u32, volume: f64)
 }
 
 #[cfg(feature = "desktop-cpu")]
-fn draw_help_overlay(target: &mut [u32], width: u32, height: u32, help: &RgbaBitmap) {
-    let panel = help_panel_rect(help, (width, height));
-    fill_blended_rect(target, width, height, panel, 0x101214, 205);
-
-    let bitmap_width = help
-        .width
-        .min(panel.width.saturating_sub(HELP_OVERLAY_PADDING * 2));
-    let bitmap_height = help
-        .height
-        .min(panel.height.saturating_sub(HELP_OVERLAY_PADDING * 2));
-    draw_bitmap_scaled(
-        target,
-        width,
-        height,
-        help,
-        Rect {
-            x: panel.x + (panel.width.saturating_sub(bitmap_width)) / 2,
-            y: panel.y + (panel.height.saturating_sub(bitmap_height)) / 2,
-            width: bitmap_width,
-            height: bitmap_height,
-        },
-        255,
-    );
+fn draw_help_overlay(target: &mut [u32], width: u32, height: u32, help: &HelpOverlay) {
+    let layout = help_layout(help, (width, height));
+    fill_blended_rect(target, width, height, layout.panel, 0x101214, 205);
+    draw_bitmap_scaled(target, width, height, &help.bitmap, layout.text, 255);
 }
 
 #[cfg(feature = "desktop-cpu")]

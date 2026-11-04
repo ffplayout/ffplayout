@@ -1,5 +1,6 @@
 export default {
     graphicsPage: {
+        unnamedLayer: 'Camada {id}',
         untilStop: 'Até parar ou até o fim da fonte',
         repeatHelp:
             'A contagem inclui a primeira reprodução. Repetições com fade exigem duração finita. O índice Z ordena o grupo de gráficos manuais.',
