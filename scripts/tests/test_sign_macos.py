@@ -19,7 +19,18 @@ with open(os.environ["MOCK_LOG"], "a") as log:
 if name == "uname":
     print("Darwin")
 elif name == "security":
+    if args[0] == "list-keychains":
+        if "-s" not in args:
+            if not os.getenv("EMPTY_SEARCH_LIST"):
+                print('    "/Users/runner/Library/Keychains/login.keychain-db"')
+                print('    "/Library/Keychains/Test Keychain.keychain-db"')
+        else:
+            pathlib.Path(os.environ["MOCK_LOG"] + ".search-list").write_text(json.dumps(args[args.index("-s") + 1:]))
+    if args[0] == "find-identity" and not os.getenv("NO_IDENTITY"):
+        print('  1) ' + 'A' * 40 + ' "Developer ID Application: Test (TESTTEAM)"')
     if args[0] == "import" and os.getenv("FAIL_IMPORT"):
+        sys.exit(1)
+    if args[0] == "set-key-partition-list" and os.getenv("FAIL_PARTITION"):
         sys.exit(1)
 elif name == "openssl":
     if args[0] == "rand":
@@ -36,6 +47,9 @@ elif name == "codesign":
         assert args[args.index("--options") + 1] == "runtime"
         assert "--timestamp" in args
         assert pathlib.Path(args[args.index("--entitlements") + 1]).is_file()
+        assert args[args.index("--sign") + 1] == "A" * 40
+        search_list = json.loads(pathlib.Path(os.environ["MOCK_LOG"] + ".search-list").read_text())
+        assert args[args.index("--keychain") + 1] in search_list
 elif name == "xcrun":
     key = pathlib.Path(args[args.index("--key") + 1])
     assert key.is_file()
@@ -86,6 +100,13 @@ class SigningTests(unittest.TestCase):
         self.assertEqual(list(self.root.glob("ffplayout-signing.*")), [])
         for secret in (env["APPLE_CERTIFICATE_PASSWORD"], env["APPLE_API_PRIVATE_KEY"]):
             self.assertNotIn(secret, result.stdout + result.stderr)
+        search_list = Path(str(self.log) + ".search-list")
+        if search_list.exists():
+            expected = [] if env.get("EMPTY_SEARCH_LIST") else [
+                "/Users/runner/Library/Keychains/login.keychain-db",
+                "/Library/Keychains/Test Keychain.keychain-db",
+            ]
+            self.assertEqual(json.loads(search_list.read_text()), expected)
         return result
 
     def calls(self):
@@ -103,7 +124,33 @@ class SigningTests(unittest.TestCase):
         calls = self.calls()
         self.assertIn(["codesign", ["--verify", "--strict", "--verbose=2", str(self.artifact)]], calls)
         self.assertEqual(calls[-1][1][0], "delete-keychain")
-        self.assertFalse(any(call[1][0] in ("list-keychains", "default-keychain") for call in calls))
+        self.assertFalse(any(call[1][0] == "default-keychain" for call in calls))
+
+    def test_empty_search_list_is_restored(self):
+        result = self.run_helper("sign", EMPTY_SEARCH_LIST="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_sign_accepts_fingerprint(self):
+        result = self.run_helper("sign", APPLE_SIGNING_IDENTITY="a" * 40)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_missing_private_key_fails_before_codesign(self):
+        result = self.run_helper("sign", NO_IDENTITY="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("No valid code-signing identity", result.stderr)
+        self.assertFalse(any(call[0] == "codesign" for call in self.calls()))
+        self.assertEqual(self.calls()[-1][1][0], "delete-keychain")
+
+    def test_wrong_identity_fails_before_codesign(self):
+        result = self.run_helper("sign", APPLE_SIGNING_IDENTITY="Wrong Certificate")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("matches 0 of 1", result.stderr)
+        self.assertFalse(any(call[0] == "codesign" for call in self.calls()))
+
+    def test_partition_failure_restores_search_list(self):
+        result = self.run_helper("sign", FAIL_PARTITION="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.calls()[-1][1][0], "delete-keychain")
 
     def test_wrong_team_fails_and_deletes_keychain(self):
         result = self.run_helper("sign", MOCK_TEAM="WRONGTEAM")
