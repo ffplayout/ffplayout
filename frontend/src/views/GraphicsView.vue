@@ -2,26 +2,38 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useHead } from '@unhead/vue'
-import { useRoute } from 'vue-router'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 const { t } = useI18n()
 const route = useRoute()
-useHead({ title: computed(() => t('graphicsPage.title')) })
 const tabs = ['graphics-live', 'graphics-text', 'graphics-logo'] as const
+const activeTab = computed(() => tabs.find((tab) => tab === route.name) ?? tabs[0])
+const title = computed(() => t(`graphicsPage.tabs.${activeTab.value}`))
+useHead({
+    title: computed(() =>
+        activeTab.value === 'graphics-live' ? title.value : `${t('graphicsPage.title')} · ${title.value}`,
+    ),
+})
 </script>
 <template>
-    <section class="w-full px-4 sm:px-8 py-6 overflow-auto">
-        <h1 class="text-2xl mb-4">{{ t('graphicsPage.title') }}</h1>
-        <nav class="tabs tabs-border mb-6" :aria-label="t('graphicsPage.title')">
+    <div class="flex flex-wrap xs:flex-nowrap w-full xs:h-[calc(100vh-60px)] xs:max-h-[calc(100vh-60px)] ps-1">
+        <nav
+            class="xs:flex-none w-full xs:w-28 join join-horizontal xs:join-vertical me-1 pt-7"
+            :aria-label="t('graphicsPage.title')"
+        >
             <RouterLink
-                v-for="tab in tabs"
+                v-for="(tab, index) in tabs"
                 :key="tab"
                 :to="{ name: tab, query: route.query }"
-                class="tab"
-                :class="{ 'tab-active': route.name === tab }"
+                class="join-item btn btn-sm btn-primary duration-500"
+                :class="{ 'bg-base-100/40': route.name === tab, 'mt-1': index > 0 }"
                 :aria-current="route.name === tab ? 'page' : undefined"
-                >{{ t(`graphicsPage.tabs.${tab}`) }}</RouterLink
             >
+                {{ t(`graphicsPage.tabs.${tab}`) }}
+            </RouterLink>
         </nav>
-        <RouterView />
-    </section>
+        <section class="grow min-w-0 mt-6 px-3 xs:px-6 overflow-auto">
+            <h1 class="text-2xl mb-4">{{ title }}</h1>
+            <RouterView />
+        </section>
+    </div>
 </template>

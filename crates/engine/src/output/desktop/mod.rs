@@ -67,7 +67,7 @@ use audio::DesktopAudio;
 use cpu::WindowRenderer;
 #[cfg(feature = "desktop-gpu")]
 use gpu::WindowRenderer;
-use graphics::{RgbaBitmap, create_help_bitmap, create_subtitle_bitmap};
+use graphics::{HelpOverlay, RgbaBitmap, create_help_bitmap, create_subtitle_bitmap};
 #[cfg(test)]
 use graphics::{SUBTITLE_FONT_SIZE, SUBTITLE_FULLSCREEN_FONT_SIZE, subtitle_font_size};
 use render::WindowFrame;
@@ -380,7 +380,7 @@ struct DesktopRenderer {
     frame_converter: DesktopFrameConverter,
     desktop_control_callback: Option<DesktopControlCallback>,
     help_visible: bool,
-    help_bitmap: Option<RgbaBitmap>,
+    help_bitmap: Option<HelpOverlay>,
     channel_id: i32,
 }
 
@@ -1490,6 +1490,10 @@ impl DesktopRenderer {
                         self.pending_aspect_resize = Some((width, height, Instant::now()));
                     }
                 }
+                WindowAction::UiScaleChanged => {
+                    self.help_bitmap = None;
+                    refresh = true;
+                }
                 WindowAction::ToggleSubtitles => {
                     self.subtitles_enabled = !self.subtitles_enabled;
                     self.active_subtitle_text = None;
@@ -1576,14 +1580,14 @@ impl DesktopRenderer {
         });
     }
 
-    fn help_bitmap(&mut self) -> Option<RgbaBitmap> {
+    fn help_bitmap(&mut self) -> Option<HelpOverlay> {
         if !self.help_visible {
             return None;
         }
 
         if self.help_bitmap.is_none() {
-            let (size, large) = self.window().size_and_large_subtitles();
-            self.help_bitmap = create_help_bitmap(size.0, large)
+            let (size, large, scale_factor) = self.window().help_context();
+            self.help_bitmap = create_help_bitmap(size.0, large, scale_factor)
                 .map_err(|error| log::warn!(channel = self.channel_id; "failed to render desktop help: {error}"))
                 .ok()
                 .flatten();
@@ -1649,6 +1653,7 @@ struct DesktopWindowShared {
     frame: Option<WindowFrame>,
     video_redraw_timing: VideoRedrawTiming,
     size: (u32, u32),
+    scale_factor: f64,
     fullscreen: bool,
     maximized: bool,
     requested_size: Option<(u32, u32)>,
@@ -1802,6 +1807,7 @@ fn close_desktop_window(handle: DesktopWindowHandle) {
 enum WindowAction {
     Stop,
     Resize(u32, u32),
+    UiScaleChanged,
     ToggleSubtitles,
     AdjustVolume(f64),
     FullscreenChanged,
@@ -1853,6 +1859,7 @@ fn create_desktop_window_app(
         frame: Some(WindowFrame::default()),
         video_redraw_timing: VideoRedrawTiming::default(),
         size: (size.width, size.height),
+        scale_factor: window.scale_factor(),
         fullscreen,
         maximized: false,
         requested_size: None,
@@ -2067,6 +2074,16 @@ impl DesktopWindowHandle {
         (shared.size, shared.fullscreen || shared.maximized)
     }
 
+    fn help_context(&self) -> ((u32, u32), bool, f64) {
+        let shared = self.shared.lock().unwrap_or_else(PoisonError::into_inner);
+
+        (
+            shared.size,
+            shared.fullscreen || shared.maximized,
+            shared.scale_factor,
+        )
+    }
+
     fn request_size(&self, width: u32, height: u32) {
         self.shared
             .lock()
@@ -2173,6 +2190,14 @@ impl ApplicationHandler for DesktopWindowApp {
 
         match event {
             WindowEvent::CloseRequested => self.push_action(WindowAction::Stop),
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.shared
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .scale_factor = scale_factor;
+                self.push_action(WindowAction::UiScaleChanged);
+                self.window.request_redraw();
+            }
             WindowEvent::Resized(size) => {
                 self.size = (size.width, size.height);
                 self.shared

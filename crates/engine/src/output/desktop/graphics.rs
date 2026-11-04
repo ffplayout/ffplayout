@@ -21,6 +21,13 @@ pub(super) struct RgbaBitmap {
     pub(super) height: u32,
 }
 
+/// Help pixels and the DPI scale used to rasterize them travel together.
+#[derive(Clone)]
+pub(super) struct HelpOverlay {
+    pub(super) bitmap: RgbaBitmap,
+    pub(super) scale_factor: f64,
+}
+
 pub(super) fn create_subtitle_bitmap(
     text: &str,
     window_width: u32,
@@ -84,8 +91,18 @@ pub(super) fn create_subtitle_bitmap(
 pub(super) fn create_help_bitmap(
     window_width: u32,
     large_display: bool,
-) -> Result<Option<RgbaBitmap>> {
-    let font_size = if large_display { 28.0 } else { 18.0 };
+    scale_factor: f64,
+) -> Result<Option<HelpOverlay>> {
+    let scale_factor = if scale_factor.is_finite() && scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
+    };
+    let font_size = if large_display { 28.0 } else { 18.0 } * scale_factor as f32;
+    let logical_width = f64::from(window_width) / scale_factor;
+    let text_width = ((logical_width * 0.6).clamp(280.0, 680.0) * scale_factor)
+        .round()
+        .max(1.0) as u32;
     let bitmap = render_left_aligned_text_bitmap(
         "Keyboard shortcuts\n\nE  Previous clip\nR  Reset playlist\nT  Next clip\n\nF  Fullscreen\nEsc  Stop playout\nLeft/Right  Volume\nS  Toggle subtitles\nH  Close help",
         font_size,
@@ -96,13 +113,16 @@ pub(super) fn create_help_bitmap(
             b: 248,
             a: 255,
         },
-        (window_width * 3 / 5).clamp(280, 680),
+        text_width,
     )?;
 
-    Ok(Some(RgbaBitmap {
-        pixels: bitmap.pixels.into(),
-        width: bitmap.width,
-        height: bitmap.height,
+    Ok(Some(HelpOverlay {
+        bitmap: RgbaBitmap {
+            pixels: bitmap.pixels.into(),
+            width: bitmap.width,
+            height: bitmap.height,
+        },
+        scale_factor,
     }))
 }
 
@@ -164,4 +184,44 @@ fn alpha_composite_rgba(destination: &mut [u8], source: &[u8]) {
         .expect("RGBA pixel has four components");
     let source = source.try_into().expect("RGBA pixel has four components");
     source_over_straight(pixel, source);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn help_is_rasterized_at_monitor_resolution_instead_of_upscaling_low_dpi_pixels() {
+        for large in [false, true] {
+            let baseline = create_help_bitmap(1200, large, 1.0).unwrap().unwrap();
+
+            for scale in [1.25, 1.5, 2.0] {
+                let help = create_help_bitmap((1200.0 * scale) as u32, large, scale)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(help.scale_factor, scale);
+                assert!(
+                    (f64::from(help.bitmap.width) - f64::from(baseline.bitmap.width) * scale).abs()
+                        <= 4.0
+                );
+                assert!(
+                    (f64::from(help.bitmap.height) - f64::from(baseline.bitmap.height) * scale)
+                        .abs()
+                        <= 4.0
+                );
+                assert_eq!(
+                    help.bitmap.pixels.len(),
+                    help.bitmap.width as usize * help.bitmap.height as usize * 4
+                );
+                assert!(
+                    help.bitmap
+                        .pixels
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .any(|pixel| pixel[3] != 0)
+                );
+            }
+        }
+    }
 }

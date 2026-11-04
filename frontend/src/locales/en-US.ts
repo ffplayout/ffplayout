@@ -1,5 +1,6 @@
 export default {
     graphicsPage: {
+        unnamedLayer: 'Layer {id}',
         untilStop: 'Until Stop or finite source end',
         repeatHelp:
             'Counts include the first play. Fade repeats need a finite duration. Z-index orders the manual graphics group.',
@@ -38,7 +39,7 @@ export default {
         logoSizeHelp: 'Leave one dimension blank to preserve the source aspect ratio.',
         logoPercentHelp: 'Percentages refer to the program width and height, not the source image.',
         logoLink: 'Manage the program logo on the Graphics page',
-        tabs: { 'graphics-live': 'Graphics', 'graphics-text': 'Text', 'graphics-logo': 'Program logo' },
+        tabs: { 'graphics-live': 'Graphics', 'graphics-text': 'Text', 'graphics-logo': 'Program Logo' },
     },
     graphicsCanvas: {
         compact: 'Small graphics have a larger dashed drag area. The bottom-right resize handle remains available.',

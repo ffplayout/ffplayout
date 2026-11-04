@@ -14,7 +14,7 @@ use winit::{event_loop::OwnedDisplayHandle, window::Window};
 use super::{
     DESKTOP_VOLUME_MAX,
     graphics::RgbaBitmap,
-    render::{Rect, WindowFrame, fit_rect, help_panel_rect, subtitle_rect},
+    render::{Rect, WindowFrame, fit_rect, help_layout, subtitle_rect},
     video::{RecyclableBuffer, VideoSurface},
 };
 
@@ -1053,25 +1053,20 @@ impl GpuSpriteRenderer {
         }
 
         if let Some(help) = &frame.help {
-            let panel = help_panel_rect(help, size);
+            let layout = help_layout(help, size);
             context.draw_bitmap(
                 &mut self.help_panel,
                 &mut pass,
                 &self.help_panel_bitmap,
-                panel,
+                layout.panel,
                 255,
                 size,
             );
             context.draw_bitmap(
                 &mut self.help,
                 &mut pass,
-                help,
-                Rect {
-                    x: panel.x + (panel.width.saturating_sub(help.width)) / 2,
-                    y: panel.y + (panel.height.saturating_sub(help.height)) / 2,
-                    width: help.width.min(panel.width),
-                    height: help.height.min(panel.height),
-                },
+                &help.bitmap,
+                layout.text,
                 255,
                 size,
             );
