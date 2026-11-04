@@ -5,6 +5,8 @@
 
 ![player](/docs/images/player.png)
 
+[View all frontend screenshots](docs/images/README.md)
+
 ffplayout is a 24/7 broadcasting solution. It can playout a folder containing video clips, or play a *JSON* playlist for each day, keeping the current playlist editable.
 
 The application is mostly designed to run as a system service on Linux. In general it should run on any platform supported by Rust and FFmpeg.
