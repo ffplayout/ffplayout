@@ -54,8 +54,25 @@ const router = createRouter({
         {
             path: '/message',
             name: 'message',
-            component: () => import('@/views/MessageView.vue'),
+            redirect: (to) => ({ name: 'graphics-text', query: to.query }),
+        },
+        {
+            path: '/graphics',
+            component: () => import('@/views/GraphicsView.vue'),
             meta: { showHeader: true },
+            children: [
+                {
+                    path: '',
+                    name: 'graphics-live',
+                    component: () => import('@/components/graphics/GraphicsControl.vue'),
+                },
+                { path: 'text', name: 'graphics-text', component: () => import('@/views/MessageView.vue') },
+                {
+                    path: 'logo',
+                    name: 'graphics-logo',
+                    component: () => import('@/components/graphics/ProgramLogoEditor.vue'),
+                },
+            ],
         },
         {
             path: '/logging',
@@ -77,9 +94,9 @@ const router = createRouter({
                     meta: { showHeader: true, roles: ['global_admin', 'channel_admin', 'user'] },
                 },
                 {
-                    path: 'playout',
-                    name: 'configure-playout',
-                    component: () => import('@/components/config/ConfigPlayout.vue'),
+                    path: 'general',
+                    name: 'configure-general',
+                    component: () => import('@/components/config/ConfigGeneral.vue'),
                     meta: { showHeader: true, roles: ['global_admin', 'channel_admin'] },
                 },
                 {

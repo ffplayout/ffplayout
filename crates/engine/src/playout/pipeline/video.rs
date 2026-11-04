@@ -29,7 +29,6 @@ pub(super) fn run(context: WorkerContext, spec: &StreamSpec) {
         benchmark,
         diagnostics,
         audio_size,
-        defer_logo,
         ..
     } = context;
 
@@ -53,14 +52,13 @@ pub(super) fn run(context: WorkerContext, spec: &StreamSpec) {
         let mut decoded = 0;
         let playback_control = PlaybackControl::default();
         let mut sender = FrameSender {
+            texts: Default::default(),
             video: video_frames,
             audio: audio_frames,
             state,
             audio_size,
             cfg,
             diagnostics,
-            defer_logo,
-            logo: None,
             opacity: 1.0,
         };
 

@@ -709,6 +709,7 @@ impl EncodedOutput {
         media_path: &str,
         output_start_ms: i64,
         source_start_ms: i64,
+        source_end_ms: Option<i64>,
     ) -> Result<()> {
         self.pending_vtt_cues.clear();
 
@@ -716,22 +717,9 @@ impl EncodedOutput {
             return Ok(());
         }
 
-        let vtt_path = vtt::sidecar_path(media_path);
-
-        if !vtt_path.exists() {
-            return Ok(());
-        }
-
-        let mut cues = vtt::parse_file(&vtt_path)?
+        let mut cues = vtt::load_sidecar(media_path, self.channel_id.unwrap_or_default())
             .into_iter()
-            .filter(|cue| cue.end_ms > source_start_ms)
-            .map(|cue| vtt::VttCue {
-                // A seek may land inside a cue. Its visible remainder starts at
-                // the new output boundary, never before the program timeline.
-                start_ms: output_start_ms + cue.start_ms.saturating_sub(source_start_ms).max(0),
-                end_ms: output_start_ms + cue.end_ms - source_start_ms,
-                text: cue.text,
-            })
+            .filter_map(|cue| cue.on_timeline(output_start_ms, source_start_ms, source_end_ms))
             .collect::<Vec<_>>();
         cues.sort_by_key(|cue| cue.start_ms);
         self.pending_vtt_cues = cues.into();
@@ -1415,13 +1403,13 @@ mod open_tests {
         // Only the first cue is reached before live takeover interrupts the
         // clip. The cue at source second 50 must remain outside the muxer.
         output
-            .write_vtt_subtitles(media_path.to_str().unwrap(), 1_000_000, 0)
+            .write_vtt_subtitles(media_path.to_str().unwrap(), 1_000_000, 0, None)
             .unwrap();
         output.advance_vtt_subtitles(1_001_500).unwrap();
         assert_eq!(output.pending_vtt_cues.len(), 1);
 
         output
-            .write_vtt_subtitles(media_path.to_str().unwrap(), 1_040_000, 1_500)
+            .write_vtt_subtitles(media_path.to_str().unwrap(), 1_040_000, 1_500, None)
             .unwrap();
         let resumed = output.pending_vtt_cues.front().unwrap();
         assert_eq!(resumed.start_ms, 1_040_000);
@@ -1430,9 +1418,15 @@ mod open_tests {
         // Forty seconds of live output pass, then the same clip resumes at
         // source second 40. Its remaining cue must keep increasing DTS.
         output
-            .write_vtt_subtitles(media_path.to_str().unwrap(), 1_040_000, 40_000)
+            .write_vtt_subtitles(
+                media_path.to_str().unwrap(),
+                1_040_000,
+                40_000,
+                Some(50_500),
+            )
             .unwrap();
         assert_eq!(output.pending_vtt_cues.len(), 1);
+        assert_eq!(output.pending_vtt_cues.front().unwrap().end_ms, 1_050_500);
         output.advance_vtt_subtitles(1_050_000).unwrap();
         assert!(output.pending_vtt_cues.is_empty());
         output.finish().unwrap();

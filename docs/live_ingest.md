@@ -31,9 +31,48 @@ Ingest mode **can't** pull from a server: it listens for incoming publishers.
 Up to eight RTMP/SRT listeners may be configured per channel. Enabled listeners
 run at the same time, and each listener of the same protocol needs a distinct
 port. Priorities range from 0 to 100. When sources become ready together,
-higher priority wins, followed by the stable listener ID. An active takeover is
-not pre-empted by another listener. Changing listener settings requires restarting
-the channel playout.
+higher priority wins, followed by the stable listener ID. In automatic mode an active takeover is
+not pre-empted by another listener. Changes are applied when the configuration is saved,
+without restarting the channel playout or its outputs. Names, automatic takeover,
+idle timeouts and the ingest log level update live. Priority changes affect the next
+source selection and never pre-empt the source already on air.
+
+Enabling or adding an input starts its listener; disabling or removing it stops that
+listener. URL, port, protocol, protocol options and demuxer options reopen only the
+changed listener. If that listener was on air, playback returns to the playlist at
+the current scheduled time. Other listeners and outputs continue running. The
+publisher may need to reconnect after a transport change. An unchanged connected
+standby input keeps its connection. With no enabled listeners, the relay sleeps
+until settings change.
+
+#### Manual live takeover
+
+In **Settings → Ingest**, each listener has its own **Automatically put live inputs on air** switch, enabled by default. Disable it for an input to keep that signal on standby until selected manually. Saving this policy does not require a channel restart and does not interrupt a source already on air. Listener policies are stored per row in `config_live_input.auto_takeover`. Listener IDs remain stable across configuration updates.
+
+The player page shows a small button for each enabled, manually controlled input below
+the playout controls. Unlock the controls first. **No signal** is disabled;
+**Go live** selects a ready source; **End live** returns to the playlist at the
+current scheduled time. Selecting another ready input switches sources without
+restarting the outputs. The publisher can remain connected after **End live**.
+After a disconnect/idle timeout the playlist resumes. A reconnected publisher on a manual input
+needs another manual takeover; it does not automatically return on air. Automatic inputs retain priority-based selection whenever no source is selected. A manual selection can explicitly replace the current source.
+
+Standby sources are continuously drained with bounded buffers. Readiness requires
+decoded video, rather than just an accepted connection. Existing decode/input
+work continues for connected standby publishers; no extra preview encoder is
+created. The existing authenticated playout status stream carries readiness,
+session tokens and selection state. There is no additional polling connection.
+The status includes every enabled input, even without a publisher, so names and
+button availability update in other open player pages too. When playout is stopped,
+the stream sends `{"running": false, "ingest_inputs": [...]}` with no ready or
+selected input instead of the former plain `not running` message.
+
+Authenticated users with playout-control permissions can send
+`PUT /api/control/{channel_id}/ingest` with
+`{"listener_id": 1, "session": "<token from ingest_inputs>", "active": true}`.
+Set `active` to `false` to end that selection. The command is idempotent, requires manual mode for that input, and
+rejects tokens belonging to a previous connection. The public player has no
+ingest controls.
 
 When an incoming stream produces video, ffplayout pauses the currently playing
 content and switches to the live source. The output remains continuous.
@@ -57,8 +96,7 @@ the next check if its current media gap already exceeds the new limit.
 
 The initial wait for decodable frames remains ten seconds. Longer idle timeouts
 tolerate longer delivery pauses but also delay recovery when a connected
-publisher stops sending. Other listener changes, such as URL or protocol,
-continue to require a playout restart.
+publisher stops sending. Changes to URL or protocol reopen only that listener; they do not restart playout.
 
 #### Delayed tracks and resource limits
 

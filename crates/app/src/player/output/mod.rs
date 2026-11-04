@@ -3,6 +3,8 @@ use std::sync::PoisonError;
 mod instances;
 mod playout;
 
+pub(crate) use playout::logo_config;
+
 use crate::{player::controller::ChannelManager, utils::errors::ServiceError};
 
 /// Player entry point backed by crates/engine.
@@ -53,6 +55,9 @@ fn apply_outputs(
         playout::desktop_control_callback(manager.clone()),
     )?;
     program.output_status = manager.output_status.clone();
+    program.graphics_preparation = manager.graphics.preparation();
+    program.manual_graphics = manager.manual_graphics.clone();
+    program.logo_control = manager.logo_control.clone();
     program.output_timing_diagnostics = crate::ARGS.timing_diagnostics;
     let mut attachments = Vec::new();
     let recording_owner = manager

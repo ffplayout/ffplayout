@@ -5,7 +5,7 @@ use ffmpeg_next::{Rational, Rescale, frame};
 
 use crate::{
     benchmark::{self, Stage},
-    compositor::logo::LogoOverlay,
+    graphics::text_adapter::TextOverlays,
     output::FrameOutput,
     utils::{
         config::OutputConfig,
@@ -26,7 +26,7 @@ pub(crate) struct ProgramAudioState {
 }
 
 enum PendingFrame {
-    Video(frame::Video),
+    Video(frame::Video, f64, TextOverlays, bool),
     Audio {
         frame: frame::Audio,
         live: bool,
@@ -49,6 +49,9 @@ pub(crate) struct ProgramAudioOutput<'a, O> {
     video_decoded: bool,
     video_finished: bool,
     last_audio_source: Option<bool>,
+    logo_opacity: f64,
+    text_overlays: TextOverlays,
+    clip_graphics_visible: bool,
 }
 
 impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
@@ -88,7 +91,31 @@ impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
             video_decoded: false,
             video_finished: false,
             last_audio_source: None,
+            logo_opacity: 1.0,
+            text_overlays: Default::default(),
+            clip_graphics_visible: true,
         })
+    }
+
+    fn submit_video(
+        &mut self,
+        video: &frame::Video,
+        opacity: f64,
+        texts: TextOverlays,
+        clip_graphics_visible: bool,
+    ) -> Result<()> {
+        self.output.set_clip_graphics_visible(clip_graphics_visible);
+        self.output.set_logo_opacity(opacity);
+        if self.output.retains_text_overlays() {
+            self.output.set_text_overlays(texts);
+        } else if texts.iter().any(Option::is_some) {
+            let mut video = reference_video_frame(video)?;
+            crate::utils::ffmpeg::make_video_frame_writable(&mut video)?;
+            self.output.apply_text_overlays(&mut video, texts);
+            return self.output.encode_video(&video);
+        }
+
+        self.output.encode_video(video)
     }
 
     fn queue_audio(&mut self, audio: &frame::Audio, live: bool, hold_gain: bool) -> Result<()> {
@@ -121,7 +148,7 @@ impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
 
         while let Some(front) = self.pending.front() {
             let (samples, end) = match front {
-                PendingFrame::Video(video) => (
+                PendingFrame::Video(video, ..) => (
                     0,
                     video
                         .pts()
@@ -144,7 +171,9 @@ impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
             }
 
             match self.pending.pop_front() {
-                Some(PendingFrame::Video(video)) => self.output.encode_video(&video)?,
+                Some(PendingFrame::Video(video, opacity, texts, clip_graphics_visible)) => {
+                    self.submit_video(&video, opacity, texts, clip_graphics_visible)?;
+                }
                 Some(PendingFrame::Audio {
                     mut frame,
                     live,
@@ -158,7 +187,7 @@ impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
                             .iter()
                             .filter_map(|pending| match pending {
                                 PendingFrame::Audio { frame, live, .. } => Some((frame, *live)),
-                                PendingFrame::Video(_) => None,
+                                PendingFrame::Video(..) => None,
                             })
                             .take_while(|(_, live)| self.scope != LoudnessScope::Live || *live)
                             .map(|(frame, _)| frame);
@@ -215,6 +244,10 @@ impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
 }
 
 impl<O: FrameOutput> FrameOutput for ProgramAudioOutput<'_, O> {
+    fn set_clip_graphics_visible(&mut self, visible: bool) {
+        self.clip_graphics_visible = visible;
+    }
+
     fn playout_clock(&self) -> Option<crate::clock::SharedPlayoutClock> {
         self.output.playout_clock()
     }
@@ -241,7 +274,12 @@ impl<O: FrameOutput> FrameOutput for ProgramAudioOutput<'_, O> {
 
     fn encode_video(&mut self, video: &frame::Video) -> Result<()> {
         if self.scope == LoudnessScope::Off {
-            return self.output.encode_video(video);
+            return self.submit_video(
+                video,
+                self.logo_opacity,
+                self.text_overlays.clone(),
+                self.clip_graphics_visible,
+            );
         }
 
         self.latest_video_sample = self.latest_video_sample.max(
@@ -250,8 +288,12 @@ impl<O: FrameOutput> FrameOutput for ProgramAudioOutput<'_, O> {
                 .unwrap_or_default()
                 .rescale(self.video_time_base, Rational(1, self.sample_rate as i32)),
         );
-        self.pending
-            .push_back(PendingFrame::Video(reference_video_frame(video)?));
+        self.pending.push_back(PendingFrame::Video(
+            reference_video_frame(video)?,
+            self.logo_opacity,
+            self.text_overlays.clone(),
+            self.clip_graphics_visible,
+        ));
         self.drain(false)
     }
 
@@ -268,12 +310,20 @@ impl<O: FrameOutput> FrameOutput for ProgramAudioOutput<'_, O> {
         self.output.reset_after_skip(video_pts, audio_pts)
     }
 
-    fn apply_logo_overlay(&mut self, frame: &mut frame::Video, logo: &LogoOverlay, opacity: f64) {
-        self.output.apply_logo_overlay(frame, logo, opacity);
+    fn set_text_overlays(&mut self, overlays: TextOverlays) {
+        self.text_overlays = overlays;
     }
 
-    fn benchmarks_logo_overlay(&self) -> bool {
-        self.output.benchmarks_logo_overlay()
+    fn retains_text_overlays(&self) -> bool {
+        true
+    }
+
+    fn apply_text_overlays(&mut self, _: &mut frame::Video, overlays: TextOverlays) {
+        self.text_overlays = overlays;
+    }
+
+    fn set_logo_opacity(&mut self, opacity: f64) {
+        self.logo_opacity = opacity;
     }
 
     fn set_video_end(&mut self, end: Option<i64>) -> Result<()> {
@@ -296,8 +346,14 @@ impl<O: FrameOutput> FrameOutput for ProgramAudioOutput<'_, O> {
         self.output.pad_audio(samples)
     }
 
-    fn write_vtt_subtitles(&mut self, path: &str, start: i64, source: i64) -> Result<()> {
-        self.output.write_vtt_subtitles(path, start, source)
+    fn write_vtt_subtitles(
+        &mut self,
+        path: &str,
+        start: i64,
+        source: i64,
+        end: Option<i64>,
+    ) -> Result<()> {
+        self.output.write_vtt_subtitles(path, start, source, end)
     }
 
     fn clear_vtt_subtitles(&mut self) -> Result<()> {
@@ -318,6 +374,48 @@ mod tests {
 
     use super::*;
     use crate::LiveLoudnessConfig;
+
+    #[test]
+    fn audio_lookahead_retains_clip_visibility_with_its_own_video_frame() {
+        #[derive(Default)]
+        struct Visibility {
+            current: bool,
+            submitted: Vec<bool>,
+        }
+        impl FrameOutput for Visibility {
+            fn set_clip_graphics_visible(&mut self, visible: bool) {
+                self.current = visible;
+            }
+            fn audio_frame_size(&self) -> usize {
+                4800
+            }
+            fn encode_audio(&mut self, _: &frame::Audio) -> Result<()> {
+                Ok(())
+            }
+            fn encode_video(&mut self, _: &frame::Video) -> Result<()> {
+                self.submitted.push(self.current);
+
+                Ok(())
+            }
+        }
+        let mut capture = Visibility::default();
+        let mut state = ProgramAudioState::default();
+        let cfg = config(LoudnessScope::All);
+        let mut output = ProgramAudioOutput::new(&mut capture, &mut state, &cfg).unwrap();
+        for (pts, visible) in [true, false, true].into_iter().enumerate() {
+            let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 16, 16);
+            video.set_pts(Some(pts as i64));
+            output.set_clip_graphics_visible(visible);
+            output.encode_video(&video).unwrap();
+        }
+        assert!(
+            !output.pending.is_empty(),
+            "test must exercise delayed submission"
+        );
+        output.set_clip_graphics_visible(false);
+        output.finish().unwrap();
+        assert_eq!(output.output.submitted, [true, false, true]);
+    }
 
     #[derive(Default)]
     struct Capture {
@@ -591,6 +689,7 @@ mod tests {
                 let result = crate::play_program_clip(
                     &mut capture,
                     &mut state,
+                    &mut crate::graphics::source::ProgramGraphicsState::default(),
                     &mut None,
                     path.to_str().unwrap(),
                     &config,
@@ -603,6 +702,7 @@ mod tests {
                         external_audio_path: None,
                         subtitles_media_path: None,
                         logo_fade: crate::LogoFade::default(),
+                        graphics: None,
                     },
                 )
                 .unwrap();

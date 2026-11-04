@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
 };
@@ -24,17 +24,20 @@ pub(super) async fn before_migrations(
     if !tables.iter().any(|name| !name.starts_with("sqlite_")) {
         return Ok(());
     }
-    let applied: HashSet<i64> = if tables.iter().any(|name| name == "_sqlx_migrations") {
-        sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success = 1")
+    let applied: HashMap<i64, Vec<u8>> = if tables.iter().any(|name| name == "_sqlx_migrations") {
+        sqlx::query_as("SELECT version, checksum FROM _sqlx_migrations WHERE success = 1")
             .fetch_all(pool)
             .await?
             .into_iter()
             .collect()
     } else {
-        HashSet::new()
+        HashMap::new()
     };
     if !migrator.iter().any(|migration| {
-        migration.migration_type.is_up_migration() && !applied.contains(&migration.version)
+        migration.migration_type.is_up_migration()
+            && applied
+                .get(&migration.version)
+                .is_none_or(|checksum| checksum.as_slice() != migration.checksum.as_ref())
     }) {
         return Ok(());
     }
@@ -50,7 +53,7 @@ pub(super) async fn before_migrations(
     };
     let database = Path::new(&filename);
     let date = Local::now().date_naive();
-    let backup = backup_path(database, applied.iter().copied().max().unwrap_or(0), date)?;
+    let backup = backup_path(database, applied.keys().copied().max().unwrap_or(0), date)?;
     create_backup(pool, &backup).await.map_err(|error| {
         ProcessError::DB(format!(
             "Migration aborted: could not back up {} to {}: {error}",

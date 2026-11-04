@@ -1,11 +1,11 @@
-pub mod control;
+pub mod control_audio;
 mod live_dynamics;
 pub mod live_loudness;
 mod lookahead;
 pub(crate) mod program;
 pub mod volume;
 
-pub use control::*;
+pub use control_audio::*;
 pub use live_dynamics::LiveDynamicsProcessor;
 pub use live_loudness::{
     BufferedLoudnessAnalysis, LiveLoudnessConfig, LiveLoudnessControl, LiveLoudnessMeasurement,

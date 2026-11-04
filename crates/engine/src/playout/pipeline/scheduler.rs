@@ -117,11 +117,8 @@ pub(super) fn coordinate<O: FrameOutput>(
                     }
 
                     if let Some(mut item) = video.try_recv()? {
-                        if let Some(logo) = &item.logo {
-                            output.apply_shared_logo_overlay(&mut item.frame, logo, item.opacity);
-                        } else {
-                            output.clear_logo_overlay();
-                        }
+                        output.apply_text_overlays(&mut item.frame, item.texts);
+                        output.set_logo_opacity(item.opacity);
                         output.encode_video(&item.frame)?;
                         timeline.video_pts = timeline.video_pts.max(item.state.video_pts + 1);
                         timeline.text_pts += 1;

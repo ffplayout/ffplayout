@@ -28,6 +28,45 @@ pub struct AudioEffectsUpdate {
     volume: f64,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct LiveSelectionUpdate {
+    listener_id: i32,
+    session: String,
+    active: bool,
+}
+
+pub async fn select_live_input(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    user: AuthUser,
+    details: AuthDetails<Role>,
+    Json(update): Json<LiveSelectionUpdate>,
+) -> Result<Json<&'static str>, ServiceError> {
+    ensure_any_authority(
+        &details,
+        &[&Role::GlobalAdmin, &Role::ChannelAdmin, &Role::User],
+    )?;
+    user.ensure_channel_or_admin(id)?;
+    let manager = state
+        .controller
+        .read()
+        .await
+        .get(id)
+        .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+    if !manager.is_alive.load(Ordering::SeqCst) {
+        return Err(ServiceError::Conflict("channel is not running".into()));
+    }
+    manager
+        .playback_control
+        .lock()
+        .await
+        .live_ingest()
+        .select(update.listener_id, &update.session, update.active)
+        .map_err(|error| ServiceError::Conflict(error.into()))?;
+
+    Ok(Json("Success"))
+}
+
 pub async fn update_audio_effects(
     State(state): State<AppState>,
     Path(id): Path<i32>,

@@ -13,12 +13,15 @@ use crate::{
     HlsSubtitle, HlsVariant, OutputConfig,
     analysis::{audio_level::AudioLevelMeter, loudness::LoudnessMeter},
     clock::{PlayoutClock, SharedPlayoutClock},
-    compositor::logo::LogoOverlay,
+    graphics::frame::GraphicsFrame,
     utils::{
         ffmpeg::reference_audio_frame,
         pipeline_queue::{PipelineActivity, PipelineControl, PipelineQueue, QueueLimits},
     },
 };
+
+#[cfg(test)]
+use crate::graphics::logo_adapter::LogoOverlay;
 
 use super::{
     composition::{ProgramVideo, VideoCompositor},
@@ -294,7 +297,7 @@ pub(super) enum Message {
     Audio(frame::Audio),
     Rate(f64),
     Destinations(Vec<OutputDestination>),
-    Subtitles(String, i64, i64),
+    Subtitles(String, i64, i64, Option<i64>),
     ClearSubtitles,
     AdvanceSubtitles(i64),
 }
@@ -476,18 +479,18 @@ impl Drop for DestinationWorker {
 #[derive(Default)]
 struct OutputContext {
     rate: Option<f64>,
-    subtitles: Option<(String, i64, i64)>,
+    subtitles: Option<(String, i64, i64, Option<i64>)>,
     position: Option<i64>,
 }
 
 impl OutputContext {
     fn restore(&self, worker: &DestinationWorker) {
         worker.send(Message::Rate(self.rate.unwrap_or(1.0)), 0, None);
-        if let Some((path, start, source)) = &self.subtitles {
+        if let Some((path, start, source, end)) = &self.subtitles {
             let position = self.position.unwrap_or(*start).max(*start);
             let source = source.saturating_add(position.saturating_sub(*start));
             worker.send(
-                Message::Subtitles(path.clone(), position, source),
+                Message::Subtitles(path.clone(), position, source, *end),
                 path.len(),
                 None,
             );
@@ -655,33 +658,51 @@ impl ParallelOutput {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn encode_video(&self, frame: &frame::Video) -> Result<()> {
         self.video_with_logo(frame, None, 0.0)
     }
 
+    #[cfg(test)]
     pub(crate) fn video_with_logo(
         &self,
         frame: &frame::Video,
         logo: Option<Arc<LogoOverlay>>,
         opacity: f64,
     ) -> Result<()> {
-        self.pace(frame.pts(), self.video_time_base);
-        let bytes = (0..frame.planes())
-            .map(|plane| frame.data(plane).len())
-            .sum();
-        let timestamp = frame.pts().map(|pts| {
-            ffmpeg_next::Rescale::rescale(&pts, self.video_time_base, rescale::TIME_BASE)
-        });
+        self.video_with_graphics(
+            frame,
+            GraphicsFrame::new(
+                (frame.width(), frame.height()),
+                logo,
+                opacity,
+                Default::default(),
+                None,
+            ),
+        )
+    }
 
+    pub(crate) fn video_with_graphics(
+        &self,
+        frame: &frame::Video,
+        graphics: GraphicsFrame,
+    ) -> Result<()> {
+        self.pace(frame.pts(), self.video_time_base);
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         self.reconcile(&mut workers)?;
-        ensure!(
-            workers.is_empty() || workers.iter().any(|worker| !worker.control.cancelled()),
-            "all output encoding groups have failed"
-        );
-        Self::wait_for_encoding_capacity(&workers, bytes, timestamp);
+        let consumers = Self::video_consumers(&workers, !graphics.is_empty());
+        let prepared =
+            ProgramVideo::with_graphics(frame, self.compositor.clone(), graphics, consumers)?;
+
+        self.dispatch_video(&workers, prepared)
+    }
+
+    fn video_consumers(
+        workers: &[DestinationWorker],
+        has_graphics: bool,
+    ) -> BTreeMap<(u32, u32), usize> {
         let mut consumers = BTreeMap::new();
-        if logo.is_some() && opacity > 0.0 {
+        if has_graphics {
             for resolution in workers
                 .iter()
                 .filter(|worker| !worker.control.cancelled())
@@ -690,8 +711,65 @@ impl ParallelOutput {
                 *consumers.entry(*resolution).or_insert(0) += 1;
             }
         }
-        let prepared = ProgramVideo::new(frame, self.compositor.clone(), logo, opacity, consumers)?;
-        for worker in workers.iter() {
+
+        consumers
+    }
+
+    #[cfg(feature = "desktop-base")]
+    pub(super) fn compositor(&self) -> Arc<Mutex<VideoCompositor>> {
+        self.compositor.clone()
+    }
+
+    #[cfg(feature = "desktop-base")]
+    pub(super) fn prepare_desktop_video(
+        &self,
+        frame: &frame::Video,
+        graphics: GraphicsFrame,
+    ) -> Result<Arc<ProgramVideo>> {
+        let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Err(error) = self.reconcile(&mut workers) {
+            // A failed encoded destination must not stop the desktop or recording.
+            log::warn!(channel = self.config.channel_id.unwrap_or_default(); "Parallel output update: {error:#}");
+        }
+        let mut consumers = Self::video_consumers(&workers, !graphics.is_empty());
+        // A cache slot is useful only if an encoder also consumes this size.
+        // The desktop passes the same prepared pixels directly to recording.
+        if let Some(count) = consumers.get_mut(&(frame.width(), frame.height())) {
+            *count += 1;
+        }
+
+        ProgramVideo::with_graphics(frame, self.compositor.clone(), graphics, consumers)
+    }
+
+    #[cfg(feature = "desktop-base")]
+    pub(super) fn encode_program_video(&self, prepared: Arc<ProgramVideo>) -> Result<()> {
+        self.pace(prepared.source.pts(), self.video_time_base);
+        let workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
+        // Reconciliation happens during preparation. Dispatch only after the
+        // desktop accepts the frame, so retrying a full desktop queue cannot
+        // submit the same frame to encoded outputs twice.
+
+        self.dispatch_video(&workers, prepared)
+    }
+
+    fn dispatch_video(
+        &self,
+        workers: &[DestinationWorker],
+        prepared: Arc<ProgramVideo>,
+    ) -> Result<()> {
+        let frame = &prepared.source;
+        let bytes = (0..frame.planes())
+            .map(|plane| frame.data(plane).len())
+            .sum();
+        let timestamp = frame.pts().map(|pts| {
+            ffmpeg_next::Rescale::rescale(&pts, self.video_time_base, rescale::TIME_BASE)
+        });
+        ensure!(
+            workers.is_empty() || workers.iter().any(|worker| !worker.control.cancelled()),
+            "all output encoding groups have failed"
+        );
+        Self::wait_for_encoding_capacity(workers, bytes, timestamp);
+        for worker in workers {
             worker.send(Message::Video(prepared.clone()), bytes, timestamp);
         }
 
@@ -747,17 +825,23 @@ impl ParallelOutput {
         }
     }
 
-    pub(crate) fn write_vtt_subtitles(&self, path: &str, start: i64, source: i64) -> Result<()> {
+    pub(crate) fn write_vtt_subtitles(
+        &self,
+        path: &str,
+        start: i64,
+        source: i64,
+        end: Option<i64>,
+    ) -> Result<()> {
         {
             let mut context = self.context.lock().unwrap_or_else(PoisonError::into_inner);
-            context.subtitles = Some((path.to_string(), start, source));
+            context.subtitles = Some((path.to_string(), start, source, end));
             context.position = Some(start);
         }
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         self.reconcile(&mut workers)?;
         for worker in workers.iter() {
             worker.send(
-                Message::Subtitles(path.to_string(), start, source),
+                Message::Subtitles(path.to_string(), start, source, end),
                 path.len(),
                 None,
             );
@@ -884,6 +968,125 @@ mod tests {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
+
+    #[cfg(feature = "desktop-base")]
+    #[test]
+    fn desktop_shares_encoder_pixels_while_hls_keeps_its_largest_composition() {
+        use crate::{LogoConfig, graphics::logo_adapter::blend_logo};
+
+        ffmpeg_next::init().unwrap();
+        let mut config = OutputConfig::new(320, 180, 25, 48_000);
+        let logo_config = LogoConfig {
+            path: std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests_assets/storage/logo.png")
+                .to_string_lossy()
+                .into_owned(),
+            scale: Some("32:16".into()),
+            opacity: 0.7,
+            position: "W-w-8:H-h-8".into(),
+        };
+        let logo = Arc::new(LogoOverlay::load(&logo_config, 320, 180).unwrap());
+        config.logo = Some(logo_config);
+        let hls = OutputDestination {
+            id: 2,
+            config: config.clone(),
+            target: OutputTarget::Hls {
+                playlist: "unused.m3u8".into(),
+                variants: [(160, 90), (640, 360), (320, 180)]
+                    .into_iter()
+                    .map(|(width, height)| HlsVariant {
+                        name: format!("{width}"),
+                        width,
+                        height,
+                        video_bitrate: 800_000,
+                        audio_bitrate: 128_000,
+                    })
+                    .collect(),
+                subtitle: None,
+                segment_seconds: 1,
+                list_size: 6,
+            },
+        };
+        assert_eq!(hls.composition_resolution(), (640, 360));
+        let output = ParallelOutput::start(&config, false).unwrap();
+        for (id, resolution) in [(1, (320, 180)), (2, hls.composition_resolution())] {
+            let control = Arc::new(PipelineControl::default());
+            output.workers.lock().unwrap().push(DestinationWorker {
+                encoding_revision: String::new(),
+                gop: 50,
+                subtitles: false,
+                id,
+                ids: vec![id],
+                video_resolutions: vec![resolution],
+                queue: PipelineQueue::new(ENCODING_QUEUE_LIMITS, control.clone()),
+                control,
+                worker: None,
+                channel: 1,
+                status: config.output_status.clone(),
+                progress: None,
+            });
+        }
+        let mut source = frame::Video::new(Pixel::YUV420P, 320, 180);
+        for plane in 0..source.planes() {
+            source.data_mut(plane).fill(128);
+        }
+        source.set_pts(Some(42));
+        let program = output
+            .prepare_desktop_video(
+                &source,
+                GraphicsFrame::new(
+                    (320, 180),
+                    Some(logo.clone()),
+                    0.5,
+                    Default::default(),
+                    None,
+                ),
+            )
+            .unwrap();
+        let desktop = program.frame(320, 180).unwrap();
+        // Preparing/trying a desktop frame alone must not advance another output.
+        let workers = output.workers.lock().unwrap();
+        assert!(
+            workers
+                .iter()
+                .all(|worker| worker.queue.try_recv().unwrap().is_none())
+        );
+        drop(workers);
+        output.encode_program_video(program).unwrap();
+        let workers = output.workers.lock().unwrap();
+        for worker in workers.iter() {
+            let Some(Message::Video(program)) = worker.queue.try_recv().unwrap() else {
+                panic!("expected a single shared video submission");
+            };
+            let (width, height) = worker.video_resolutions[0];
+            let actual = program.frame(width, height).unwrap();
+            if worker.id == 1 {
+                assert_eq!(actual.data(0).as_ptr(), desktop.data(0).as_ptr());
+            }
+            let mut expected = frame::Video::new(Pixel::YUV420P, width, height);
+            for plane in 0..expected.planes() {
+                expected.data_mut(plane).fill(128);
+            }
+            let positioned = logo.positioned(Some("W-w-8:H-h-8"), width, height).unwrap();
+            blend_logo(&mut expected, &positioned, 0.5);
+            for plane in 0..actual.planes() {
+                for row in 0..actual.plane_height(plane) as usize {
+                    let columns = actual.plane_width(plane) as usize;
+                    assert_eq!(
+                        &actual.data(plane)
+                            [row * actual.stride(plane)..row * actual.stride(plane) + columns],
+                        &expected.data(plane)
+                            [row * expected.stride(plane)..row * expected.stride(plane) + columns],
+                        "output {}, plane {plane}, row {row}",
+                        worker.id
+                    );
+                }
+            }
+            assert!(worker.queue.try_recv().unwrap().is_none());
+        }
+        assert!(source.data(0).iter().all(|value| *value == 128));
+    }
+
     #[test]
     fn subtitle_progress_only_reaches_vtt_destinations_during_an_active_clip() {
         let config = OutputConfig::new(160, 90, 25, 48_000);
@@ -912,7 +1115,7 @@ mod tests {
                 progress: None,
             });
         }
-        output.context.lock().unwrap().subtitles = Some(("clip.mp4".into(), 0, 0));
+        output.context.lock().unwrap().subtitles = Some(("clip.mp4".into(), 0, 0, Some(1_000)));
         output.advance_vtt_subtitles(500).unwrap();
         {
             let workers = output.workers.lock().unwrap();
@@ -1660,11 +1863,16 @@ mod tests {
         let media = dir.path().join("clip.mp4");
         std::fs::write(
             media.with_extension("vtt"),
-            "WEBVTT\n\n00:00:00.000 --> 00:00:00.800\nShared captions\n",
+            concat!(
+                "WEBVTT\n\n",
+                "00:00:00.000 --> 00:00:00.000\nInvalid opening cue\n\n",
+                "00:00:00.000 --> 00:00:00.800\nShared captions\n\n",
+                "00:00:02.000 --> 00:00:01.000\nInvalid trailing cue\n",
+            ),
         )
         .unwrap();
         output
-            .write_vtt_subtitles(media.to_str().unwrap(), 0, 0)
+            .write_vtt_subtitles(media.to_str().unwrap(), 0, 0, Some(400))
             .unwrap();
         for index in 0..30 {
             let mut video = frame::Video::new(Pixel::YUV420P, 320, 240);
@@ -1778,9 +1986,14 @@ mod tests {
             })
             .filter(|entry| entry.path() != media.with_extension("vtt"))
             .any(|entry| {
-                std::fs::read_to_string(entry.path())
-                    .unwrap()
-                    .contains("Shared captions")
+                let content = std::fs::read_to_string(entry.path()).unwrap();
+                if content.contains("Shared captions") {
+                    assert!(content.contains("00:00.400"), "{content}");
+                    assert!(!content.contains("00:00.800"), "{content}");
+                    true
+                } else {
+                    false
+                }
             });
         assert!(has_captions);
         assert!(

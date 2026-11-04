@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     mem,
     sync::{
         Arc, Mutex, PoisonError,
@@ -32,6 +32,8 @@ mod cpu;
 mod gpu;
 mod graphics;
 mod icon;
+#[cfg(target_os = "macos")]
+mod macos;
 mod render;
 pub(crate) mod thread;
 mod timing;
@@ -44,26 +46,31 @@ use crate::{
     },
     audio_mixer::{AudioEffectChain, AudioEffectsControl},
     benchmark::{self, BenchHandle, Stage},
-    compositor::logo::{LogoOverlay, blend_logo},
+    graphics::frame::GraphicsFrame,
     utils::{
         config::{DesktopControlCallback, DesktopControlCommand, OutputConfig},
         ffmpeg::reference_video_frame,
     },
 };
 
-use super::{EncodedOutput, FrameOutput, PlaybackStopped, vtt};
+use super::{
+    EncodedOutput, FrameOutput, PlaybackStopped,
+    composition::{ProgramVideo, VideoCompositor},
+    vtt,
+};
+
+#[cfg(test)]
+use crate::graphics::logo_adapter::LogoOverlay;
 
 use audio::DesktopAudio;
 #[cfg(all(feature = "desktop-cpu", not(feature = "desktop-gpu")))]
 use cpu::WindowRenderer;
 #[cfg(feature = "desktop-gpu")]
 use gpu::WindowRenderer;
-use graphics::{
-    DesktopLogo, RgbaBitmap, create_desktop_logo, create_help_bitmap, create_subtitle_bitmap,
-};
+use graphics::{RgbaBitmap, create_help_bitmap, create_subtitle_bitmap};
 #[cfg(test)]
 use graphics::{SUBTITLE_FONT_SIZE, SUBTITLE_FULLSCREEN_FONT_SIZE, subtitle_font_size};
-use render::{WindowFrame, WindowLogo};
+use render::WindowFrame;
 use timing::{AudioMasterClock, VideoRedrawTiming, adjusted_volume, video_pts_in_audio_samples};
 use video::{DesktopFrameConverter, VideoSurface};
 
@@ -146,7 +153,6 @@ enum DesktopControlMessage {
 
 struct DesktopVideoMessage {
     frame: frame::Video,
-    logo_opacity: f64,
 }
 
 enum DesktopAudioMessage {
@@ -181,12 +187,12 @@ pub(crate) struct DesktopFrameSender {
     audio_buffer_pool: Arc<Mutex<Vec<Vec<f32>>>>,
     audio_level_meter: AudioLevelMeter,
     loudness_meter: LoudnessMeter,
-    current_logo_opacity: f64,
+    deferred_graphics: GraphicsFrame,
+    compositor: Arc<Mutex<VideoCompositor>>,
     parallel_output: Option<Arc<super::parallel::ParallelOutput>>,
     recording_sender: Option<SyncSender<DesktopRecordingMessage>>,
     recording_active: Option<Arc<AtomicBool>>,
     recording_queue_depth: Option<Arc<AtomicUsize>>,
-    recording_logo: Option<Arc<LogoOverlay>>,
     recording_dropped_messages: u64,
     recording_last_overload_log: Option<Instant>,
     channel_id: i32,
@@ -201,16 +207,9 @@ struct DesktopRecording {
 }
 
 enum DesktopRecordingMessage {
-    Video {
-        frame: frame::Video,
-        logo: Option<Arc<LogoOverlay>>,
-        logo_opacity: f64,
-    },
+    Video(frame::Video),
     Audio(frame::Audio),
-    AudioPadding {
-        pts: i64,
-        samples: u64,
-    },
+    AudioPadding { pts: i64, samples: u64 },
     Finish,
 }
 
@@ -260,20 +259,8 @@ impl DesktopRecording {
 
                 while let Ok(message) = receiver.recv() {
                     let result = match message {
-                        DesktopRecordingMessage::Video {
-                            mut frame,
-                            logo,
-                            logo_opacity,
-                        } => {
+                        DesktopRecordingMessage::Video(frame) => {
                             worker_queue_depth.fetch_sub(1, Ordering::AcqRel);
-
-                            if let Some(logo) = logo {
-                                // A referenced frame is read-only across threads. Make the
-                                // full copy in this worker only when compositing is required.
-                                let mut composited = frame.clone();
-                                blend_logo(&mut composited, &logo, logo_opacity);
-                                frame = composited;
-                            }
                             output.encode_video(&frame)
                         }
                         DesktopRecordingMessage::Audio(frame) => {
@@ -384,8 +371,6 @@ struct DesktopRenderer {
     subtitles: Vec<DesktopSubtitleCue>,
     active_subtitle_text: Option<String>,
     subtitle_bitmap: Option<RgbaBitmap>,
-    logo: Option<DesktopLogo>,
-    current_logo_opacity: f64,
     aspect_width: u32,
     aspect_height: u32,
     last_window_size: (u32, u32),
@@ -495,6 +480,7 @@ impl DesktopOutput {
             .as_ref()
             .map(|recording| Arc::clone(&recording.queue_depth));
         let parallel_output = Some(self.parallel_output.clone());
+        let compositor = self.parallel_output.compositor();
         let channel_id = self.channel_id.unwrap_or_default();
         let worker = std_thread::Builder::new()
             .name("ffplayout-decode".to_string())
@@ -514,12 +500,12 @@ impl DesktopOutput {
                         audio_level_callback,
                     ),
                     loudness_meter: LoudnessMeter::new(audio_sample_rate, loudness_meter_control),
-                    current_logo_opacity: 0.0,
+                    deferred_graphics: GraphicsFrame::default(),
+                    compositor,
                     parallel_output,
                     recording_sender,
                     recording_active,
                     recording_queue_depth,
-                    recording_logo: None,
                     recording_dropped_messages: 0,
                     recording_last_overload_log: None,
                     channel_id,
@@ -589,93 +575,24 @@ impl DesktopOutput {
 }
 
 impl FrameOutput for DesktopFrameSender {
+    fn defer_graphics(&mut self, graphics: GraphicsFrame) -> Option<GraphicsFrame> {
+        self.deferred_graphics = graphics;
+
+        None
+    }
+
     fn audio_frame_size(&self) -> usize {
         1024
     }
 
     fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
-        let desktop_frame = reference_video_frame(frame)?;
-        let recording_slot = self.reserve_recording_slot();
-        let desktop_send = benchmark::measure(Stage::DesktopSend, || {
-            self.video_sender.send(DesktopVideoMessage {
-                frame: desktop_frame,
-                logo_opacity: self.current_logo_opacity,
-            })
-        });
-
-        if desktop_send.is_err() {
-            if recording_slot {
-                self.release_recording_slot();
-            }
-
-            return Err(PlaybackStopped.into());
-        }
-
-        self.preview_video(frame);
-
-        if recording_slot {
-            match reference_video_frame(frame) {
-                Ok(frame) => self.send_reserved_recording(DesktopRecordingMessage::Video {
-                    frame,
-                    logo: self.recording_logo.clone(),
-                    logo_opacity: self.current_logo_opacity,
-                }),
-                Err(error) => {
-                    self.release_recording_slot();
-                    log::warn!(channel = self.channel_id; "Skipping desktop recording frame: {error}");
-                }
-            }
-        }
+        self.submit_video(frame, false)?;
 
         Ok(())
     }
 
     fn try_encode_video(&mut self, frame: &frame::Video) -> Result<bool> {
-        match self.video_sender.try_send(DesktopVideoMessage {
-            frame: reference_video_frame(frame)?,
-            logo_opacity: self.current_logo_opacity,
-        }) {
-            Ok(()) => {}
-            Err(TrySendError::Full(_)) => return Ok(false),
-            Err(TrySendError::Disconnected(_)) => return Err(PlaybackStopped.into()),
-        }
-
-        self.preview_video(frame);
-
-        if self.reserve_recording_slot() {
-            match reference_video_frame(frame) {
-                Ok(frame) => self.send_reserved_recording(DesktopRecordingMessage::Video {
-                    frame,
-                    logo: self.recording_logo.clone(),
-                    logo_opacity: self.current_logo_opacity,
-                }),
-                Err(error) => {
-                    self.release_recording_slot();
-                    log::warn!(channel = self.channel_id; "Skipping desktop recording frame: {error}");
-                }
-            }
-        }
-
-        Ok(true)
-    }
-
-    fn apply_logo_overlay(
-        &mut self,
-        _frame: &mut frame::Video,
-        logo: &LogoOverlay,
-        opacity_factor: f64,
-    ) {
-        self.current_logo_opacity = opacity_factor;
-
-        let needs_logo = self.recording_sender.is_some() || self.parallel_output.is_some();
-
-        if needs_logo && self.recording_logo.is_none() {
-            self.recording_logo = Some(Arc::new(logo.clone()));
-        }
-    }
-
-    fn benchmarks_logo_overlay(&self) -> bool {
-        false
+        self.submit_video(frame, true)
     }
 
     fn encode_audio(&mut self, frame: &frame::Audio) -> Result<()> {
@@ -715,22 +632,22 @@ impl FrameOutput for DesktopFrameSender {
         media_path: &str,
         output_start_ms: i64,
         source_start_ms: i64,
+        source_end_ms: Option<i64>,
     ) -> Result<()> {
         if let Some(output) = &self.parallel_output {
-            output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)?;
+            output.write_vtt_subtitles(
+                media_path,
+                output_start_ms,
+                source_start_ms,
+                source_end_ms,
+            )?;
         }
-        let vtt_path = vtt::sidecar_path(media_path);
-
-        if !vtt_path.exists() {
-            return Ok(());
-        }
-
-        let subtitles = vtt::parse_file(&vtt_path)?
+        let subtitles = vtt::load_sidecar(media_path, self.channel_id)
             .into_iter()
-            .filter(|cue| cue.end_ms > source_start_ms)
+            .filter_map(|cue| cue.on_timeline(output_start_ms, source_start_ms, source_end_ms))
             .map(|cue| DesktopSubtitleCue {
-                start_ms: output_start_ms + cue.start_ms.saturating_sub(source_start_ms),
-                end_ms: output_start_ms + cue.end_ms - source_start_ms,
+                start_ms: cue.start_ms,
+                end_ms: cue.end_ms,
                 text: cue.text,
             })
             .collect();
@@ -789,13 +706,62 @@ impl FrameOutput for DesktopFrameSender {
 }
 
 impl DesktopFrameSender {
-    fn preview_video(&self, frame: &frame::Video) {
+    fn prepare_video(&self, frame: &frame::Video) -> Result<Arc<ProgramVideo>> {
+        if let Some(output) = &self.parallel_output {
+            return output.prepare_desktop_video(frame, self.deferred_graphics.clone());
+        }
+
+        ProgramVideo::with_graphics(
+            frame,
+            self.compositor.clone(),
+            self.deferred_graphics.clone(),
+            BTreeMap::new(),
+        )
+    }
+
+    fn submit_video(&mut self, source: &frame::Video, nonblocking: bool) -> Result<bool> {
+        let program = self.prepare_video(source)?;
+        let frame = program.frame(source.width(), source.height())?;
+        let message = DesktopVideoMessage {
+            frame: reference_video_frame(&frame)?,
+        };
+        let accepted = benchmark::measure(Stage::DesktopSend, || {
+            if nonblocking {
+                match self.video_sender.try_send(message) {
+                    Ok(()) => Ok(true),
+                    Err(TrySendError::Full(_)) => Ok(false),
+                    Err(TrySendError::Disconnected(_)) => Err(PlaybackStopped),
+                }
+            } else {
+                self.video_sender
+                    .send(message)
+                    .map_err(|_| PlaybackStopped)?;
+
+                Ok(true)
+            }
+        })?;
+        if !accepted {
+            return Ok(false);
+        }
+
+        self.submit_parallel_video(program);
+
+        if self.reserve_recording_slot() {
+            match reference_video_frame(&frame) {
+                Ok(frame) => self.send_reserved_recording(DesktopRecordingMessage::Video(frame)),
+                Err(error) => {
+                    self.release_recording_slot();
+                    log::warn!(channel = self.channel_id; "Skipping desktop recording frame: {error}");
+                }
+            }
+        }
+
+        Ok(true)
+    }
+
+    fn submit_parallel_video(&self, frame: Arc<ProgramVideo>) {
         if let Some(output) = &self.parallel_output
-            && let Err(error) = output.video_with_logo(
-                frame,
-                self.recording_logo.clone(),
-                self.current_logo_opacity,
-            )
+            && let Err(error) = output.encode_program_video(frame)
         {
             log::warn!(channel = self.channel_id; "Parallel video submission: {error}");
         }
@@ -984,11 +950,6 @@ impl DesktopRenderer {
         )?;
         let audio = DesktopAudio::open(cfg.sample_rate, channel_id)?;
         let device_buffer_samples = audio.device_buffer_samples();
-        let logo = cfg
-            .logo
-            .as_ref()
-            .map(|logo| create_desktop_logo(logo, cfg.width, cfg.height))
-            .transpose()?;
 
         Ok(Self {
             window: Some(window),
@@ -1017,8 +978,6 @@ impl DesktopRenderer {
             subtitles: Vec::new(),
             active_subtitle_text: None,
             subtitle_bitmap: None,
-            logo,
-            current_logo_opacity: 0.0,
             aspect_width: window_width.max(1),
             aspect_height: window_height.max(1),
             last_window_size: (window_width, window_height),
@@ -1190,12 +1149,8 @@ impl DesktopRenderer {
 
         while self.video_queue.len() < VIDEO_CHANNEL_CAPACITY {
             match receiver.try_recv() {
-                Ok(DesktopVideoMessage {
-                    frame,
-                    logo_opacity,
-                }) => {
+                Ok(DesktopVideoMessage { frame }) => {
                     received = true;
-                    self.current_logo_opacity = logo_opacity;
                     self.video_queue.push_back(frame);
                 }
                 Err(TryRecvError::Empty | TryRecvError::Disconnected) => return (received, true),
@@ -1610,22 +1565,11 @@ impl DesktopRenderer {
 
     fn refresh_window(&mut self) {
         let subtitle = self.subtitle_for_current_frame();
-        let logo = self.logo.as_ref().and_then(|logo| {
-            let opacity = (f64::from(logo.opacity) * self.current_logo_opacity)
-                .round()
-                .clamp(0.0, 255.0) as u8;
-            (opacity > 0).then(|| WindowLogo {
-                bitmap: logo.bitmap.clone(),
-                position: logo.position.clone(),
-                opacity,
-            })
-        });
         let volume_overlay = self.volume_overlay_until.is_some();
         let help = self.help_bitmap();
         self.window().set_frame(WindowFrame {
             video: self.last_video.clone(),
             subtitle,
-            logo,
             volume: self.audio_effects_control.volume(),
             volume_overlay,
             help,
@@ -1898,6 +1842,11 @@ fn create_desktop_window_app(
             .create_window(attributes)
             .context("creating desktop window")?,
     );
+    #[cfg(target_os = "macos")]
+    if let Err(error) = macos::set_dock_icon() {
+        log::warn!(channel = channel_id; "Could not set desktop Dock icon: {error:#}");
+    }
+
     let size = window.inner_size();
     let shared = Arc::new(Mutex::new(DesktopWindowShared {
         actions: Vec::new(),
@@ -2342,6 +2291,141 @@ mod tests {
     #[cfg(feature = "desktop-gpu")]
     use ffmpeg_next::util::color;
 
+    struct VideoHarness {
+        sender: DesktopFrameSender,
+        desktop: Receiver<DesktopVideoMessage>,
+        recording: Receiver<DesktopRecordingMessage>,
+    }
+
+    fn video_harness(capacity: usize) -> VideoHarness {
+        let (video_sender, desktop) = sync_channel(capacity);
+        let (audio_sender, _) = sync_channel(2);
+        let (control_sender, _) = sync_channel(2);
+        let (discontinuity_sender, _) = sync_channel(1);
+        let (recording_sender, recording) = sync_channel(8);
+
+        VideoHarness {
+            sender: DesktopFrameSender {
+                audio_sample_rate: 48_000,
+                next_audio_pts: 0,
+                video_sender,
+                audio_sender,
+                control_sender,
+                discontinuity_sender,
+                audio_effects: Arc::new(Mutex::new(AudioEffectChain::new(
+                    AudioEffectsControl::default(),
+                    48_000,
+                ))),
+                audio_buffer_pool: Arc::new(Mutex::new(Vec::new())),
+                audio_level_meter: AudioLevelMeter::new(48_000, None),
+                loudness_meter: LoudnessMeter::new(48_000, Default::default()),
+                deferred_graphics: GraphicsFrame::default(),
+                compositor: Arc::new(Mutex::new(VideoCompositor::default())),
+                parallel_output: None,
+                recording_sender: Some(recording_sender),
+                recording_active: Some(Arc::new(AtomicBool::new(true))),
+                recording_queue_depth: Some(Arc::new(AtomicUsize::new(0))),
+                recording_dropped_messages: 0,
+                recording_last_overload_log: None,
+                channel_id: 0,
+            },
+            desktop,
+            recording,
+        }
+    }
+
+    #[test]
+    fn desktop_and_recording_share_composited_pixels_and_per_frame_fades() {
+        use crate::{LogoConfig, graphics::logo_adapter::blend_logo};
+        use ffmpeg_next::format::Pixel;
+
+        ffmpeg_next::init().unwrap();
+        let mut harness = video_harness(1);
+        let config = LogoConfig {
+            path: std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests_assets/storage/logo.png")
+                .to_string_lossy()
+                .into_owned(),
+            scale: Some("32:16".into()),
+            opacity: 0.7,
+            position: "W-w-8:H-h-8".into(),
+        };
+        let logo = Arc::new(LogoOverlay::load(&config, 320, 180).unwrap());
+        let mut source = frame::Video::new(Pixel::YUV420P, 320, 180);
+        for plane in 0..source.planes() {
+            source.data_mut(plane).fill(128);
+        }
+        // Model text/other program graphics already present before fan-out.
+        source.data_mut(0)[40] = 220;
+
+        for (index, opacity) in [0.25, 1.0, 0.0].into_iter().enumerate() {
+            source.set_pts(Some(index as i64));
+            let _ = harness.sender.defer_graphics(GraphicsFrame::new(
+                (320, 180),
+                Some(logo.clone()),
+                opacity,
+                Default::default(),
+                None,
+            ));
+            if opacity > 0.0 {
+                assert!(Arc::ptr_eq(
+                    harness.sender.deferred_graphics.logo().unwrap().0,
+                    &logo
+                ));
+            } else {
+                assert!(harness.sender.deferred_graphics.is_empty());
+            }
+            harness.sender.encode_video(&source).unwrap();
+            let desktop = harness.desktop.try_recv().unwrap().frame;
+            let DesktopRecordingMessage::Video(recording) = harness.recording.try_recv().unwrap()
+            else {
+                panic!("expected video recording frame");
+            };
+            let mut expected = source.clone();
+            blend_logo(&mut expected, &logo, opacity);
+            for plane in 0..source.planes() {
+                assert_eq!(desktop.data(plane).as_ptr(), recording.data(plane).as_ptr());
+                assert_eq!(desktop.data(plane), expected.data(plane));
+            }
+            assert_eq!(desktop.pts(), source.pts());
+            assert_eq!(desktop.data(0)[40], 220);
+        }
+        assert!(source.data(0)[41..].iter().all(|value| *value == 128));
+    }
+
+    #[test]
+    fn a_full_desktop_queue_does_not_duplicate_recording_frames_on_retry() {
+        use ffmpeg_next::format::Pixel;
+
+        let mut harness = video_harness(1);
+        let mut source = frame::Video::new(Pixel::YUV420P, 320, 180);
+        source.set_pts(Some(0));
+        assert!(harness.sender.try_encode_video(&source).unwrap());
+        source.set_pts(Some(1));
+        assert!(!harness.sender.try_encode_video(&source).unwrap());
+        let DesktopRecordingMessage::Video(recorded) = harness.recording.try_recv().unwrap() else {
+            panic!("expected video recording frame");
+        };
+        assert_eq!(recorded.pts(), Some(0));
+        assert!(harness.recording.try_recv().is_err());
+        harness.desktop.try_recv().unwrap();
+        assert!(harness.sender.try_encode_video(&source).unwrap());
+        let DesktopRecordingMessage::Video(recorded) = harness.recording.try_recv().unwrap() else {
+            panic!("expected retried video recording frame");
+        };
+        assert_eq!(recorded.pts(), Some(1));
+        assert!(harness.recording.try_recv().is_err());
+        assert_eq!(
+            harness
+                .sender
+                .recording_queue_depth
+                .as_ref()
+                .unwrap()
+                .load(Ordering::Acquire),
+            2
+        );
+    }
+
     #[test]
     fn an_idle_desktop_branch_can_activate_its_first_encoded_destination() {
         use super::super::parallel::{OutputDestination, OutputTarget};
@@ -2447,11 +2531,11 @@ mod tests {
             audio_buffer_pool: Arc::new(Mutex::new(Vec::new())),
             audio_level_meter: AudioLevelMeter::new(48_000, None),
             loudness_meter: LoudnessMeter::new(48_000, Default::default()),
-            current_logo_opacity: 0.0,
+            deferred_graphics: GraphicsFrame::default(),
+            compositor: Arc::new(Mutex::new(VideoCompositor::default())),
             recording_sender: Some(recording_sender),
             recording_active: Some(Arc::new(AtomicBool::new(true))),
             recording_queue_depth: Some(Arc::new(AtomicUsize::new(0))),
-            recording_logo: None,
             recording_dropped_messages: 0,
             recording_last_overload_log: None,
             channel_id: 0,
@@ -2519,8 +2603,6 @@ mod tests {
             subtitles: Vec::new(),
             active_subtitle_text: None,
             subtitle_bitmap: None,
-            logo: None,
-            current_logo_opacity: 0.0,
             aspect_width: 16,
             aspect_height: 16,
             last_window_size: (16, 16),
@@ -2581,11 +2663,11 @@ mod tests {
             audio_buffer_pool: Arc::new(Mutex::new(Vec::new())),
             audio_level_meter: AudioLevelMeter::new(48_000, None),
             loudness_meter: LoudnessMeter::new(48_000, Default::default()),
-            current_logo_opacity: 0.0,
+            deferred_graphics: GraphicsFrame::default(),
+            compositor: Arc::new(Mutex::new(VideoCompositor::default())),
             recording_sender: Some(recording_sender),
             recording_active: Some(Arc::new(AtomicBool::new(true))),
             recording_queue_depth: Some(Arc::new(AtomicUsize::new(0))),
-            recording_logo: None,
             recording_dropped_messages: 0,
             recording_last_overload_log: None,
             channel_id: 0,

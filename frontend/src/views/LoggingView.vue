@@ -187,7 +187,7 @@ async function downloadLog() {
                     :time-config="{ enableTimePicker: false }"
                     model-type="yyyy-MM-dd"
                     auto-apply
-                    class="max-w-48"
+                    class="max-w-48 border border-base-content/30"
                     :locale="lang"
                     :dark="indexStore.darkMode"
                     :ui="{ input: 'join-item input input-sm! max-w-48! text-right pe-3!' }"

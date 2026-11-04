@@ -51,9 +51,22 @@ jobs:
     env:
       CARGO_INCREMENTAL: 0
       CARGO_BUILD_JOBS: 1
+      MACOS_ARCHIVE: ffplayout-${{ github.ref_name }}_${{ matrix.variant }}_${{ matrix.platform }}.zip
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Validate macOS signing settings
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+          APPLE_ISSUER_ID: ${{ vars.APPLE_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: bash scripts/sign-macos.sh check
 
       - uses: actions/setup-node@v6
         with:
@@ -171,12 +184,35 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           cargo build --release --no-default-features --features "${{ matrix.features }}"
+
+      - name: Sign macOS binary
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: bash scripts/sign-macos.sh sign target/release/ffplayout
+
+      - name: Package on macOS
+        if: runner.os == 'macOS'
+        run: |
           mkdir -p dist
           cp target/release/ffplayout .
-          zip -r "dist/ffplayout-${{ github.ref_name }}_${{ matrix.variant }}_${{ matrix.platform }}.zip" \
+          trap 'rm -f ffplayout' EXIT
+          zip -r "dist/$MACOS_ARCHIVE" \
             assets docker docs migrations LICENSE README.md ffplayout \
             -x '*.db' '*.db-shm' '*.db-wal' '*.service'
-          rm -f ffplayout
+
+      - name: Notarize macOS release archive
+        if: runner.os == 'macOS'
+        timeout-minutes: 300
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+          APPLE_ISSUER_ID: ${{ vars.APPLE_ISSUER_ID }}
+        run: bash scripts/sign-macos.sh notarize "dist/$MACOS_ARCHIVE"
 
       - name: Build on Windows
         if: runner.os == 'Windows'

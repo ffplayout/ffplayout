@@ -1089,4 +1089,248 @@ mod tests {
         driver.abort();
         std::fs::remove_dir_all(directory).unwrap();
     }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shared_hls_and_moq_preserve_timing_through_repeated_subtitle_transitions() {
+        use ff_engine::{
+            AsyncPlayout, ClipResult, HlsSubtitle, OutputConfig, OutputDestination, OutputTarget,
+        };
+        use std::{collections::BTreeMap, path::Path};
+
+        const CLIPS: usize = 12;
+        const CLIP_SECONDS: f64 = 3.0;
+        let directory =
+            std::env::temp_dir().join(format!("moq-transitions-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests_assets/storage/media_mix/av_sync.mp4");
+        let captioned = directory.join("captioned.mp4");
+        let plain = directory.join("plain.mp4");
+        std::fs::copy(&fixture, &captioned).unwrap();
+        std::fs::copy(&fixture, &plain).unwrap();
+        let (origin, driver) = moq_net::origin::Producer::new(Default::default());
+        let observer = origin.consume();
+        let driver = tokio::spawn(moq_net::time::run(driver));
+        let endpoint = Arc::new(LocalEndpoint {
+            endpoint: Endpoint {
+                channel: -98769,
+                audio_level: Default::default(),
+                runtime: tokio::runtime::Handle::current(),
+                attached: Mutex::new(None),
+            },
+            origin,
+            connections: AtomicUsize::new(0),
+            disconnects: AtomicUsize::new(0),
+        });
+        let mut config = OutputConfig::new(160, 90, 25, 48_000);
+        config
+            .video_options
+            .insert("preset".into(), "ultrafast".into());
+        config
+            .video_options
+            .insert("tune".into(), "zerolatency".into());
+        let hls = OutputDestination {
+            id: 1,
+            config: config.clone(),
+            target: OutputTarget::Hls {
+                playlist: directory.join("index.m3u8").to_string_lossy().into_owned(),
+                variants: vec![],
+                subtitle: Some(HlsSubtitle {
+                    name: "Subtitles".into(),
+                    language: "en".into(),
+                    default: false,
+                }),
+                segment_seconds: 1,
+                list_size: 64,
+            },
+        };
+        let mut borrowed = config.clone();
+        borrowed.encoding_source = Some((1, 0));
+        borrowed.stream_endpoint = Some(endpoint.clone());
+        config.destinations = vec![
+            hls,
+            OutputDestination {
+                id: 5,
+                config: borrowed,
+                target: OutputTarget::Stream { url: String::new() },
+            },
+        ];
+        let status = config.output_status.clone();
+        let worker = tokio::spawn(async move {
+            let playout = AsyncPlayout::open_parallel(config, 1.0).await.unwrap();
+            for round in 0..CLIPS {
+                // Alternate actual sidecars and missing sidecars. Bad cues must
+                // not disconnect either destination or discard the valid cue.
+                let (media, seek) = if round % 2 == 0 {
+                    std::fs::write(captioned.with_extension("vtt"), format!(
+                        "WEBVTT\n\n00:00:10.000 --> 00:01:00.000\nCaption round {round}\n\n00:00:13.000 --> 00:00:13.000\nInvalid cue\n"
+                    )).unwrap();
+                    (&captioned, 12.0)
+                } else {
+                    (&plain, 0.5)
+                };
+                assert_eq!(
+                    playout
+                        .play_with_timing_logo_fade_rate_and_audio(
+                            media.to_string_lossy(),
+                            Some(seek),
+                            Some(CLIP_SECONDS),
+                            None,
+                            Some(media.to_string_lossy().into_owned()),
+                            Default::default(),
+                            1.0,
+                        )
+                        .await
+                        .unwrap(),
+                    ClipResult::Played
+                );
+                for id in [1, 5] {
+                    assert_eq!(
+                        status.snapshot()[&id].phase,
+                        "running",
+                        "round {round}: {:?}",
+                        status.snapshot()
+                    );
+                }
+            }
+            playout.finish().await.unwrap();
+        });
+        let consumer = tokio::spawn(async move {
+            let broadcast = loop {
+                if let Ok(broadcast) = observer
+                    .request_broadcast("channels/channel--98769.hang")
+                    .await
+                {
+                    break broadcast;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            };
+            let mut readers = tokio::task::JoinSet::new();
+            for name in ["0.video", "1.audio"] {
+                let mut track = broadcast
+                    .track(name)
+                    .unwrap()
+                    .subscribe(None)
+                    .await
+                    .unwrap();
+                readers.spawn(async move {
+                    let mut timestamps = Vec::new();
+                    while let Some(group) = track.recv_group().await.unwrap() {
+                        // The video wire stream also contains empty duration
+                        // markers at group boundaries; read actual media frames.
+                        let kind = if name == "0.video" {
+                            moq_mux::container::Kind::Video
+                        } else {
+                            moq_mux::container::Kind::Audio
+                        };
+                        let container = moq_mux::catalog::hang::Container::Legacy(kind);
+                        let mut group = moq_mux::container::GroupConsumer::new(group, container);
+                        while let Some(frame) = group.read().await.unwrap() {
+                            timestamps.push(frame.timestamp.as_micros());
+                        }
+                    }
+                    assert!(
+                        timestamps.windows(2).all(|pair| pair[0] < pair[1]),
+                        "{name} timestamps regressed: {:?}",
+                        timestamps
+                            .windows(2)
+                            .filter(|pair| pair[0] >= pair[1])
+                            .take(8)
+                            .collect::<Vec<_>>()
+                    );
+                    assert!(
+                        timestamps.len() > 800,
+                        "{name}: only {} frames",
+                        timestamps.len()
+                    );
+                    assert!(timestamps.last().unwrap() - timestamps[0] > 34_000_000);
+                    *timestamps.last().unwrap()
+                });
+            }
+            let video = readers.join_next().await.unwrap().unwrap();
+            let audio = readers.join_next().await.unwrap().unwrap();
+            assert!(
+                video.abs_diff(audio) < 100_000,
+                "A/V tails differ: {video}, {audio}"
+            );
+        });
+        let mut worker = worker;
+        match tokio::time::timeout(Duration::from_secs(75), &mut worker).await {
+            Ok(result) => result.unwrap(),
+            Err(_) => {
+                worker.abort();
+                consumer.abort();
+                driver.abort();
+                panic!("repeated clip transitions stalled");
+            }
+        }
+        tokio::time::timeout(Duration::from_secs(5), consumer)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(endpoint.connections.load(Ordering::SeqCst), 1);
+        assert_eq!(endpoint.disconnects.load(Ordering::SeqCst), 1);
+        // Live HLS deliberately omits ENDLIST. Read a finite snapshot after
+        // shutdown so ffprobe neither waits for more segments nor skips history.
+        let final_playlist = directory.join("finished.m3u8");
+        std::fs::write(
+            &final_playlist,
+            format!(
+                "{}\n#EXT-X-ENDLIST\n",
+                std::fs::read_to_string(directory.join("index.m3u8")).unwrap()
+            ),
+        )
+        .unwrap();
+        let probe = std::process::Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-show_packets",
+                "-show_entries",
+                "packet=codec_type,stream_index,dts_time",
+                "-of",
+                "json",
+            ])
+            .arg(&final_playlist)
+            .output()
+            .unwrap();
+        assert!(
+            probe.status.success(),
+            "{}",
+            String::from_utf8_lossy(&probe.stderr)
+        );
+        let packets: serde_json::Value = serde_json::from_slice(&probe.stdout).unwrap();
+        let mut last = BTreeMap::new();
+        let mut video_frames = 0;
+        for packet in packets["packets"].as_array().unwrap() {
+            if let Some(dts) = packet["dts_time"].as_str() {
+                let dts = dts.parse::<f64>().unwrap();
+                let stream = packet["stream_index"].as_u64().unwrap();
+                if let Some(previous) = last.insert(stream, dts) {
+                    assert!(dts >= previous, "HLS track {stream} DTS regressed");
+                }
+            }
+            video_frames += usize::from(packet["codec_type"] == "video");
+        }
+        assert_eq!(
+            video_frames,
+            CLIPS * 75,
+            "HLS lost video across clip boundaries"
+        );
+        let captions = std::fs::read_dir(&directory)
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "vtt"))
+            .filter(|entry| entry.path().file_name().unwrap() != "captioned.vtt")
+            .map(|entry| std::fs::read_to_string(entry.path()).unwrap())
+            .collect::<String>();
+        for round in (0..CLIPS).step_by(2) {
+            assert!(
+                captions.contains(&format!("Caption round {round}")),
+                "missing captions for round {round}"
+            );
+        }
+        assert!(!captions.contains("Invalid cue"));
+        driver.abort();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 }

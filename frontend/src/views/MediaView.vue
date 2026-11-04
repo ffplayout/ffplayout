@@ -47,7 +47,7 @@ const renameNewName = ref('')
 const renameIsFolder = ref(false)
 const previewName = ref('')
 const previewUrl = ref('')
-const previewOpt = ref()
+const previewSource = ref<{ src: string; type: string }>()
 const isVideo = ref(false)
 const showDeleteModal = ref(false)
 const showPreviewModal = ref(false)
@@ -188,19 +188,7 @@ async function setPreviewData(path: string) {
 
     if (configStore.playout.storage.extensions.includes(`${ext}`)) {
         isVideo.value = true
-        previewOpt.value = {
-            liveui: false,
-            controls: true,
-            suppressNotSupportedError: true,
-            autoplay: false,
-            preload: 'auto',
-            sources: [
-                {
-                    type: fileType,
-                    src: previewUrl.value,
-                },
-            ],
-        }
+        previewSource.value = { src: previewUrl.value, type: fileType }
     } else {
         isVideo.value = false
     }
@@ -626,7 +614,7 @@ async function uploadFiles(upl: boolean) {
             :hide-buttons="true"
         >
             <div class="w-5xl max-w-full aspect-video">
-                <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
+                <VideoPlayer v-if="isVideo && previewSource" :src="previewSource.src" :type="previewSource.type" />
                 <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
             </div>
         </GenericModal>

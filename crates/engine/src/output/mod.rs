@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, sync::Arc};
+use std::{error::Error, fmt};
 
 use anyhow::Result;
 #[cfg(feature = "desktop-base")]
@@ -24,7 +24,7 @@ use crate::benchmark::BenchHandle;
 use crate::{
     HlsHealth,
     clock::SharedPlayoutClock,
-    compositor::logo::{LogoOverlay, blend_logo},
+    graphics::{frame::GraphicsFrame, text_adapter::TextOverlays},
     input::diagnostics::LiveInputDiagnostics,
     utils::config::{HlsSubtitle, HlsVariant, OutputConfig},
 };
@@ -46,6 +46,28 @@ impl fmt::Display for PlaybackStopped {
 impl Error for PlaybackStopped {}
 
 pub(crate) trait FrameOutput {
+    /// Snapshot together with video when lookahead delays submission.
+    fn set_clip_graphics_visible(&mut self, _visible: bool) {}
+
+    /// Replace all graphics metadata atomically at a video-frame boundary.
+    /// Return the unconsumed snapshot when immediate composition is needed.
+    /// Consuming ownership avoids extra resource clones during handoff.
+    fn defer_graphics(&mut self, graphics: GraphicsFrame) -> Option<GraphicsFrame> {
+        Some(graphics)
+    }
+
+    fn set_text_overlays(&mut self, _overlays: TextOverlays) {}
+
+    fn retains_text_overlays(&self) -> bool {
+        false
+    }
+
+    fn apply_text_overlays(&mut self, frame: &mut frame::Video, overlays: TextOverlays) {
+        crate::graphics::text_adapter::blend_text_overlays(frame, &overlays);
+    }
+
+    fn set_logo_opacity(&mut self, _opacity: f64) {}
+
     fn set_frame_timeline(&mut self, _timeline: &crate::playout::Timeline) {}
 
     fn playout_clock(&self) -> Option<SharedPlayoutClock> {
@@ -98,31 +120,6 @@ pub(crate) trait FrameOutput {
         Ok(false)
     }
 
-    fn apply_logo_overlay(
-        &mut self,
-        frame: &mut frame::Video,
-        logo: &LogoOverlay,
-        opacity_factor: f64,
-    ) {
-        blend_logo(frame, logo, opacity_factor);
-    }
-
-    /// Keep an existing logo reference when composition is deferred.
-    fn apply_shared_logo_overlay(
-        &mut self,
-        frame: &mut frame::Video,
-        logo: &Arc<LogoOverlay>,
-        opacity_factor: f64,
-    ) {
-        self.apply_logo_overlay(frame, logo, opacity_factor);
-    }
-
-    fn clear_logo_overlay(&mut self) {}
-
-    fn benchmarks_logo_overlay(&self) -> bool {
-        true
-    }
-
     fn set_video_end(&mut self, _video_end_pts: Option<i64>) -> Result<()> {
         Ok(())
     }
@@ -148,6 +145,7 @@ pub(crate) trait FrameOutput {
         _media_path: &str,
         _output_start_ms: i64,
         _source_start_ms: i64,
+        _source_end_ms: Option<i64>,
     ) -> Result<()> {
         Ok(())
     }
@@ -166,7 +164,7 @@ pub(crate) trait FrameOutput {
 }
 
 pub(crate) struct Output {
-    deferred_logo: Option<(Arc<LogoOverlay>, f64)>,
+    deferred_graphics: GraphicsFrame,
     kind: OutputKind,
 }
 
@@ -180,14 +178,14 @@ enum OutputKind {
 impl Output {
     pub(crate) fn open_parallel(cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
-            deferred_logo: None,
+            deferred_graphics: GraphicsFrame::default(),
             kind: OutputKind::Parallel(Box::new(parallel::ParallelOutput::new(cfg)?)),
         })
     }
 
     pub(crate) fn open(path: &str, cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
-            deferred_logo: None,
+            deferred_graphics: GraphicsFrame::default(),
             kind: OutputKind::Encoded(Box::new(
                 EncodedOutput::open(path, cfg, EncodedFormat::Auto)?.threaded()?,
             )),
@@ -196,7 +194,7 @@ impl Output {
 
     pub(crate) fn open_stream(path: &str, cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
-            deferred_logo: None,
+            deferred_graphics: GraphicsFrame::default(),
             kind: OutputKind::Encoded(Box::new(
                 EncodedOutput::open(
                     path,
@@ -220,7 +218,7 @@ impl Output {
         hls_health: HlsHealth,
     ) -> Result<Self> {
         Ok(Self {
-            deferred_logo: None,
+            deferred_graphics: GraphicsFrame::default(),
             kind: OutputKind::Encoded(Box::new(
                 EncodedOutput::open_with_hls_health(
                     path,
@@ -241,7 +239,7 @@ impl Output {
     #[cfg(feature = "desktop-base")]
     pub(crate) fn open_desktop(cfg: &OutputConfig) -> Result<Self> {
         Ok(Self {
-            deferred_logo: None,
+            deferred_graphics: GraphicsFrame::default(),
             kind: OutputKind::Desktop(Box::new(DesktopOutput::open(cfg)?)),
         })
     }
@@ -258,12 +256,9 @@ impl Output {
     pub(crate) fn encode_video(&mut self, frame: &frame::Video) -> Result<()> {
         match &mut self.kind {
             OutputKind::Encoded(output) => output.encode_video(frame),
-            OutputKind::Parallel(output) => match &self.deferred_logo {
-                Some((logo, opacity)) => {
-                    output.video_with_logo(frame, Some(logo.clone()), *opacity)
-                }
-                None => output.encode_video(frame),
-            },
+            OutputKind::Parallel(output) => {
+                output.video_with_graphics(frame, self.deferred_graphics.clone())
+            }
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(output) => output.encode_video(frame),
         }
@@ -317,6 +312,16 @@ impl Output {
 }
 
 impl FrameOutput for Output {
+    fn defer_graphics(&mut self, graphics: GraphicsFrame) -> Option<GraphicsFrame> {
+        if matches!(self.kind, OutputKind::Parallel(_)) {
+            self.deferred_graphics = graphics;
+
+            return None;
+        }
+
+        Some(graphics)
+    }
+
     fn playout_clock(&self) -> Option<SharedPlayoutClock> {
         match &self.kind {
             OutputKind::Encoded(output) => output.playout_clock(),
@@ -347,61 +352,26 @@ impl FrameOutput for Output {
         }
     }
 
-    fn apply_logo_overlay(
-        &mut self,
-        frame: &mut frame::Video,
-        logo: &LogoOverlay,
-        opacity_factor: f64,
-    ) {
-        match &mut self.kind {
-            OutputKind::Encoded(_) => blend_logo(frame, logo, opacity_factor),
-            OutputKind::Parallel(_) => {
-                self.deferred_logo = Some((Arc::new(logo.clone()), opacity_factor));
-            }
-            #[cfg(feature = "desktop-base")]
-            OutputKind::Desktop(_) => {}
-        }
-    }
-
-    fn apply_shared_logo_overlay(
-        &mut self,
-        frame: &mut frame::Video,
-        logo: &Arc<LogoOverlay>,
-        opacity_factor: f64,
-    ) {
-        if matches!(self.kind, OutputKind::Parallel(_)) {
-            self.deferred_logo = Some((logo.clone(), opacity_factor));
-        } else {
-            self.apply_logo_overlay(frame, logo, opacity_factor);
-        }
-    }
-
-    fn clear_logo_overlay(&mut self) {
-        self.deferred_logo = None;
-    }
-
-    fn benchmarks_logo_overlay(&self) -> bool {
-        match self.kind {
-            OutputKind::Encoded(_) => true,
-            OutputKind::Parallel(_) => false,
-            #[cfg(feature = "desktop-base")]
-            OutputKind::Desktop(_) => false,
-        }
-    }
-
     fn write_vtt_subtitles(
         &mut self,
         media_path: &str,
         output_start_ms: i64,
         source_start_ms: i64,
+        source_end_ms: Option<i64>,
     ) -> Result<()> {
         match &mut self.kind {
-            OutputKind::Parallel(output) => {
-                output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
-            }
-            OutputKind::Encoded(output) => {
-                output.write_vtt_subtitles(media_path, output_start_ms, source_start_ms)
-            }
+            OutputKind::Parallel(output) => output.write_vtt_subtitles(
+                media_path,
+                output_start_ms,
+                source_start_ms,
+                source_end_ms,
+            ),
+            OutputKind::Encoded(output) => output.write_vtt_subtitles(
+                media_path,
+                output_start_ms,
+                source_start_ms,
+                source_end_ms,
+            ),
             #[cfg(feature = "desktop-base")]
             OutputKind::Desktop(_) => Ok(()),
         }
@@ -433,6 +403,8 @@ impl FrameOutput for Output {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graphics::logo_adapter::LogoOverlay;
+    use crate::graphics::logo_adapter::blend_logo;
     use crate::{Playout, utils::config::LogoConfig};
     use ffmpeg_next::{ChannelLayout, codec, format::Pixel, media};
 

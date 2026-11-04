@@ -30,7 +30,7 @@ pub async fn select_live_inputs(
     config_id: i32,
 ) -> Result<Vec<LiveInput>, ProcessError> {
     let records = sqlx::query_as::<_, LiveInputRecord>(
-        "SELECT id, priority, enabled, name, backend, identifier, options, demuxer_options, idle_timeout_ms FROM config_live_input
+        "SELECT id, priority, enabled, name, backend, identifier, options, demuxer_options, idle_timeout_ms, auto_takeover FROM config_live_input
          WHERE config_id = $1 AND backend IN ('rtmp', 'srt') AND takeover_mode = 'connection'
          ORDER BY priority DESC, id",
     )
@@ -42,6 +42,7 @@ pub async fn select_live_inputs(
         .into_iter()
         .map(|record| {
             Ok(LiveInput {
+                auto_takeover: record.auto_takeover,
                 id: record.id,
                 idle_timeout_ms: record.idle_timeout_ms,
                 priority: record.priority,
@@ -313,7 +314,7 @@ pub async fn update_configuration_on(
             let listener_id = if listener.id > 0 {
                 let result = sqlx::query(
                     "UPDATE config_live_input SET priority = $3, enabled = $4, name = $5,
-                     backend = $6, identifier = $7, options = $8, demuxer_options = $9, idle_timeout_ms = $10
+                     backend = $6, identifier = $7, options = $8, demuxer_options = $9, idle_timeout_ms = $10, auto_takeover = $11
                      WHERE id = $1 AND config_id = $2
                      AND backend IN ('rtmp', 'srt') AND takeover_mode = 'connection'",
                 )
@@ -327,6 +328,7 @@ pub async fn update_configuration_on(
                 .bind(serde_json::to_string(&listener.options)?)
                 .bind(serde_json::to_string(&listener.demuxer_options)?)
                 .bind(i64::from(listener.idle_timeout_ms))
+                .bind(listener.auto_takeover)
                 .execute(&mut *connection)
                 .await?;
 
@@ -337,8 +339,8 @@ pub async fn update_configuration_on(
             } else {
                 sqlx::query_scalar(
                     "INSERT INTO config_live_input
-                     (config_id, priority, enabled, name, backend, identifier, options, demuxer_options, idle_timeout_ms, takeover_mode)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'connection') RETURNING id",
+                     (config_id, priority, enabled, name, backend, identifier, options, demuxer_options, idle_timeout_ms, auto_takeover, takeover_mode)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'connection') RETURNING id",
                 )
                 .bind(id)
                 .bind(listener.priority)
@@ -349,6 +351,7 @@ pub async fn update_configuration_on(
                 .bind(serde_json::to_string(&listener.options)?)
                 .bind(serde_json::to_string(&listener.demuxer_options)?)
                 .bind(i64::from(listener.idle_timeout_ms))
+                .bind(listener.auto_takeover)
                 .fetch_one(&mut *connection)
                 .await?
             };
@@ -777,10 +780,12 @@ mod tests {
         .await
         .unwrap();
         assert!(
-            sqlx::query("INSERT INTO config_live_input (config_id, priority, backend) VALUES (1, 101, 'ndi')")
-                .execute(&pool)
-                .await
-                .is_err()
+            sqlx::query(
+                "INSERT INTO config_live_input (config_id, priority, backend) VALUES (1, 101, 'ndi')"
+            )
+            .execute(&pool)
+            .await
+            .is_err()
         );
         assert!(
             sqlx::query("UPDATE config_live_input SET priority = 101 WHERE id = $1")
@@ -1017,6 +1022,7 @@ mod tests {
         listeners[0].enabled = true;
         listeners[0].priority = 10;
         listeners[0].idle_timeout_ms = 2500;
+        listeners[0].auto_takeover = false;
         listeners[0]
             .demuxer_options
             .insert("format".to_string(), "live_flv".to_string());
@@ -1042,6 +1048,8 @@ mod tests {
         let listeners = &restored.ingest.listeners;
         assert_eq!(listeners.len(), 2);
         assert_eq!(listeners[0].backend, "srt");
+        assert!(listeners[0].auto_takeover);
+        assert!(!listeners[1].auto_takeover);
         assert_eq!(listeners[0].idle_timeout_ms, 5000);
         assert_eq!(listeners[1].idle_timeout_ms, 2500);
         assert_eq!(listeners[0].options["passphrase"], "secret-passphrase");

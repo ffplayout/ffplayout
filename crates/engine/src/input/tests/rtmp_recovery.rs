@@ -449,7 +449,7 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
             &vtt,
             "WEBVTT\n\n00:00:00.000 --> 00:00:10.000\nRecovery test\n",
         )?;
-        program_output.write_vtt_subtitles(vtt.to_str().unwrap(), 0, 0)?;
+        program_output.write_vtt_subtitles(vtt.to_str().unwrap(), 0, 0, None)?;
     }
     let mut live = spawn_live_listeners(
         vec![LiveListenerConfig {

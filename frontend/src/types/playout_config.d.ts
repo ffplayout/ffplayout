@@ -8,7 +8,7 @@ export type General = { stop_threshold: number, };
 
 export type Ingest = { listeners: Array<LiveInput>, };
 
-export type LiveInput = { idle_timeout_ms: number, id: number, priority: number, enabled: boolean, name: string, backend: string, identifier: string, options: { [key in string]: string }, demuxer_options: { [key in string]: string }, };
+export type LiveInput = { auto_takeover: boolean, idle_timeout_ms: number, id: number, priority: number, enabled: boolean, name: string, backend: string, identifier: string, options: { [key in string]: string }, demuxer_options: { [key in string]: string }, };
 
 export type Logging = { ffmpeg_level: string, ingest_level: string, detect_silence: boolean, ignore_lines: Array<string>, };
 

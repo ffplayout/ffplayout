@@ -14,6 +14,7 @@ pub async fn db_migrate(pool: &SqlitePool) -> Result<bool, ProcessError> {
     .await?;
     let migrator = sqlx::migrate!("../../migrations");
     super::migration_backup::before_migrations(pool, &migrator).await?;
+    super::graphics::upgrade_manual_graphics_schema(pool, &migrator).await?;
     migrator.run(pool).await?;
 
     if !existing_schema {

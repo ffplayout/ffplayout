@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use super::*;
 
 #[tokio::test]
@@ -98,6 +100,43 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
         .unwrap();
     let mut config: PlayoutConfig = serde_json::from_slice(&config_body).unwrap();
 
+    // The ingest form must not save unrelated edits or output normalization
+    // from other settings tabs, nor request a restart for those values.
+    let mut ingest_update = config.clone();
+    ingest_update.ingest.listeners[0].name = "Renamed live input".into();
+    ingest_update.general.stop_threshold += 10.0;
+    ingest_update.output.desktop_fullscreen = !config.output.desktop_fullscreen;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/playout/config/1?scope=ingest")
+                .header("authorization", format!("Bearer {admin_token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&ingest_update).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let update: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(update["requires_restart"], false);
+    let restored = PlayoutConfig::new(&pool, 1, None).await.unwrap();
+    assert_eq!(restored.ingest.listeners[0].name, "Renamed live input");
+    assert_eq!(
+        restored.general.stop_threshold,
+        config.general.stop_threshold
+    );
+    assert_eq!(
+        restored.output.desktop_fullscreen,
+        config.output.desktop_fullscreen
+    );
+    config.ingest.listeners[0].name = "Renamed live input".into();
+
+    assert!(config.ingest.listeners[0].auto_takeover);
+    config.ingest.listeners[0].auto_takeover = false;
     assert_eq!(config.ingest.listeners[0].idle_timeout_ms, 2000);
     config.ingest.listeners[0].idle_timeout_ms = 5000;
     let timeout_response = app
@@ -119,6 +158,50 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
         .unwrap();
     let update: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(update["requires_restart"], false);
+    assert!(!handles::select_live_inputs(&pool, 1).await.unwrap()[0].auto_takeover);
+    assert!(
+        !manager
+            .playback_control
+            .lock()
+            .await
+            .live_ingest()
+            .automatic(config.ingest.listeners[0].id)
+    );
+    manager.is_alive.store(true, Ordering::SeqCst);
+    let unavailable = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/control/1/ingest")
+                .header("authorization", format!("Bearer {admin_token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"listener_id": 1, "session": "old", "active": true}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unavailable.status(), StatusCode::CONFLICT);
+    let message = to_bytes(unavailable.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&message).contains("not connected"));
+    manager.is_alive.store(false, Ordering::SeqCst);
+    let unauthorized = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/control/1/ingest")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"listener_id": 1, "session": "old", "active": true}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
         handles::select_live_inputs(&pool, 1).await.unwrap()[0].idle_timeout_ms,
         5000
@@ -535,6 +618,24 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
         .unwrap();
     let user_login_json: serde_json::Value = serde_json::from_slice(&user_login_body).unwrap();
     let user_token = user_login_json["access"].as_str().unwrap();
+    for (channel, expected) in [(1, StatusCode::CONFLICT), (999, StatusCode::FORBIDDEN)] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/api/control/{channel}/ingest"))
+                    .header("authorization", format!("Bearer {user_token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"listener_id": 1, "session": "old", "active": true}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+    }
     let forbidden_response = app
         .clone()
         .oneshot(

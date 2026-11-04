@@ -739,9 +739,15 @@ pub struct Ingest {
     pub listeners: Vec<LiveInput>,
 }
 
+fn default_auto_takeover() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct LiveInput {
+    #[serde(default = "default_auto_takeover")]
+    pub auto_takeover: bool,
     #[serde(default = "default_live_idle_timeout_ms")]
     pub idle_timeout_ms: u32,
     pub id: i32,
@@ -761,6 +767,7 @@ fn default_live_idle_timeout_ms() -> u32 {
 impl Default for LiveInput {
     fn default() -> Self {
         Self {
+            auto_takeover: true,
             idle_timeout_ms: default_live_idle_timeout_ms(),
             id: 0,
             priority: 0,

@@ -6,10 +6,11 @@ use std::{
 
 use axum::{
     Json,
-    extract::{Path as AxumPath, State},
+    extract::{Path as AxumPath, Query, State},
 };
+use ff_graphics::style::LogoStyle;
 use protect_axum::authorities::AuthDetails;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     api::{
@@ -82,6 +83,18 @@ pub struct PlayoutCodecOptions {
 #[derive(Debug, Serialize)]
 pub struct PlayoutConfigUpdate {
     pub requires_restart: bool,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigUpdateScope {
+    Ingest,
+    Logo,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ConfigUpdateQuery {
+    scope: Option<ConfigUpdateScope>,
 }
 
 fn recording_encoder_key(config: &PlayoutConfig, id: Option<i32>) -> Option<String> {
@@ -162,15 +175,26 @@ fn requires_playout_restart(current: &PlayoutConfig, updated: &PlayoutConfig) ->
         config.remove("outputs");
         config.remove("mail");
         config.remove("notification");
-        if let Some(listeners) = config
-            .get_mut("ingest")
-            .and_then(|ingest| ingest.get_mut("listeners"))
-            .and_then(serde_json::Value::as_array_mut)
+        config.remove("ingest");
+        if let Some(logging) = config
+            .get_mut("logging")
+            .and_then(serde_json::Value::as_object_mut)
         {
-            for listener in listeners {
-                if let Some(listener) = listener.as_object_mut() {
-                    listener.remove("idle_timeout_ms");
-                }
+            logging.remove("ingest_level");
+        }
+
+        if let Some(processing) = config
+            .get_mut("processing")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            for key in [
+                "add_logo",
+                "logo",
+                "logo_scale",
+                "logo_opacity",
+                "logo_position",
+            ] {
+                processing.remove(key);
             }
         }
 
@@ -346,6 +370,7 @@ pub async fn update_playout_config(
     AxumPath(id): AxumPath<i32>,
     user: AuthUser,
     details: AuthDetails<Role>,
+    Query(query): Query<ConfigUpdateQuery>,
     Json(mut data): Json<PlayoutConfig>,
 ) -> Result<Json<PlayoutConfigUpdate>, ServiceError> {
     ensure_any_authority(&details, &[&Role::GlobalAdmin, &Role::ChannelAdmin])?;
@@ -356,12 +381,63 @@ pub async fn update_playout_config(
         guard.get(id)
     }
     .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+    data.logging
+        .ingest_level
+        .parse::<ff_engine::LogLevel>()
+        .map_err(ServiceError::BadRequest)?;
     let p = manager.channel.lock().await.storage.clone();
     let storage = Path::new(&p);
     let config = manager.config.read().await.clone();
+    let ingest_only = query.scope == Some(ConfigUpdateScope::Ingest);
+    if ingest_only {
+        let mut scoped = config.clone();
+        scoped.ingest = data.ingest;
+        scoped.logging.ingest_level = data.logging.ingest_level;
+        data = scoped;
+    }
+    if query.scope == Some(ConfigUpdateScope::Logo) {
+        let mut scoped = config.clone();
+        scoped.processing.add_logo = data.processing.add_logo;
+        scoped.processing.logo = data.processing.logo;
+        scoped.processing.logo_scale = data.processing.logo_scale;
+        scoped.processing.logo_opacity = data.processing.logo_opacity;
+        scoped.processing.logo_position = data.processing.logo_position;
+        data = scoped;
+    }
     let config_id = config.general.id;
 
-    let (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
+    let (logo_path, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
+    if query.scope == Some(ConfigUpdateScope::Logo)
+        && data.processing.add_logo
+        && !logo_path.is_file()
+    {
+        return Err(ServiceError::BadRequest(
+            "Enabled logo must refer to an existing local file".into(),
+        ));
+    }
+    if !(0.0..=1.0).contains(&data.processing.logo_opacity)
+        || !data.processing.logo_opacity.is_finite()
+    {
+        return Err(ServiceError::BadRequest(
+            "Logo opacity must be between 0 and 1".into(),
+        ));
+    }
+    if query.scope == Some(ConfigUpdateScope::Logo) && data.processing.add_logo {
+        let canvas = data
+            .program
+            .as_ref()
+            .map_or((data.output.width, data.output.height), |program| {
+                (program.width, program.height)
+            });
+        LogoStyle {
+            scale: (!data.processing.logo_scale.is_empty())
+                .then(|| data.processing.logo_scale.clone()),
+            opacity: data.processing.logo_opacity,
+            position: data.processing.logo_position.clone(),
+        }
+        .validate(canvas)
+        .map_err(|error| ServiceError::BadRequest(format!("Invalid logo layout: {error:#}")))?;
+    }
     let (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
 
     data.processing.logo = logo;
@@ -540,11 +616,13 @@ pub async fn update_playout_config(
     let running_configs = {
         let controller = state.controller.read().await;
 
-        controller
-            .managers
-            .iter()
-            .filter_map(|manager| manager.running_config().map(|config| (manager.id, config)))
-            .collect::<Vec<_>>()
+        let mut configs = Vec::new();
+        for manager in &controller.managers {
+            if manager.running_config().is_some() {
+                configs.push((manager.id, Arc::new(manager.config.read().await.clone())));
+            }
+        }
+        configs
     };
 
     for (backend, port) in listener_ports {
@@ -580,8 +658,8 @@ pub async fn update_playout_config(
 
     let running_config = manager.running_config();
     let baseline = running_config.as_deref().unwrap_or(&config);
-    let mut requires_restart = requires_playout_restart(baseline, &new_config);
-    if running_config.is_some() {
+    let mut requires_restart = !ingest_only && requires_playout_restart(baseline, &new_config);
+    if !ingest_only && query.scope != Some(ConfigUpdateScope::Logo) && running_config.is_some() {
         if !requires_restart && manager.output_status.supports_live_updates() {
             crate::player::output::update_outputs(&manager, &new_config)?;
         } else if serde_json::to_value((&baseline.output, &baseline.outputs)).ok()
@@ -603,7 +681,11 @@ pub async fn update_playout_config(
             != "off",
         crate::player::controller::loudness_config(&new_config.audio),
     );
-    manager.update_config(new_config).await?;
+    if query.scope == Some(ConfigUpdateScope::Logo) {
+        manager.update_logo_config(new_config).await?;
+    } else {
+        manager.update_config(new_config).await?;
+    }
 
     Ok(Json(PlayoutConfigUpdate { requires_restart }))
 }
@@ -801,6 +883,20 @@ mod tests {
     use crate::utils::config::{LiveInput, PlayoutConfig};
 
     #[test]
+    fn logo_configuration_is_live_but_unrelated_processing_changes_still_restart() {
+        let current = PlayoutConfig::default();
+        let mut updated = current.clone();
+        updated.processing.add_logo = !updated.processing.add_logo;
+        updated.processing.logo = "new.gif".into();
+        updated.processing.logo_scale = "120:-1".into();
+        updated.processing.logo_opacity = 0.4;
+        updated.processing.logo_position = "W-w-20:20".into();
+        assert!(!requires_playout_restart(&current, &updated));
+        updated.processing.vtt_enable = !updated.processing.vtt_enable;
+        assert!(requires_playout_restart(&current, &updated));
+    }
+
+    #[test]
     fn public_moq_permission_changes_do_not_restart_encoding() {
         let current = PlayoutConfig::default();
         let mut updated = current.clone();
@@ -865,14 +961,25 @@ mod tests {
         updated.ingest.listeners[0].idle_timeout_ms = 5000;
         assert!(!requires_playout_restart(&current, &updated));
         updated.ingest.listeners[0].identifier = "rtmp://127.0.0.1:1940/live/new".to_string();
-        assert!(requires_playout_restart(&current, &updated));
+        assert!(!requires_playout_restart(&current, &updated));
         let mut later = updated.clone();
         later.ingest.listeners[0].idle_timeout_ms = 3000;
-        assert!(requires_playout_restart(&current, &later));
+        assert!(!requires_playout_restart(&current, &later));
     }
 
     #[test]
-    fn changing_live_listeners_requires_playout_restart() {
+    fn ingest_log_level_updates_do_not_require_restart() {
+        let mut current = PlayoutConfig::default();
+        current.logging.ingest_level = "WARNING".into();
+        let mut updated = current.clone();
+        updated.logging.ingest_level = "ERROR".into();
+        assert!(!requires_playout_restart(&current, &updated));
+        updated.logging.ffmpeg_level = "ERROR".into();
+        assert!(requires_playout_restart(&current, &updated));
+    }
+
+    #[test]
+    fn changing_live_listeners_does_not_require_playout_restart() {
         let current = PlayoutConfig::default();
         let mut updated = current.clone();
         updated.ingest.listeners = vec![LiveInput {
@@ -882,11 +989,11 @@ mod tests {
             ..LiveInput::default()
         }];
 
-        assert!(requires_playout_restart(&current, &updated));
+        assert!(!requires_playout_restart(&current, &updated));
     }
 
     #[test]
-    fn later_volume_save_still_requires_restart_for_unapplied_listener_change() {
+    fn listener_and_volume_changes_can_be_applied_together() {
         let running = PlayoutConfig::default();
         let mut saved = running.clone();
         saved.ingest.listeners.push(LiveInput {
@@ -899,7 +1006,7 @@ mod tests {
         second_save.audio.volume = 0.75;
 
         assert!(!requires_playout_restart(&saved, &second_save));
-        assert!(requires_playout_restart(&running, &second_save));
+        assert!(!requires_playout_restart(&running, &second_save));
     }
 
     #[test]

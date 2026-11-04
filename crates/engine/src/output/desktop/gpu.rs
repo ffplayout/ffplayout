@@ -14,7 +14,7 @@ use winit::{event_loop::OwnedDisplayHandle, window::Window};
 use super::{
     DESKTOP_VOLUME_MAX,
     graphics::RgbaBitmap,
-    render::{Rect, WindowFrame, fit_rect, help_panel_rect, logo_rect, subtitle_rect},
+    render::{Rect, WindowFrame, fit_rect, help_panel_rect, subtitle_rect},
     video::{RecyclableBuffer, VideoSurface},
 };
 
@@ -857,7 +857,6 @@ struct GpuSpriteRenderer {
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     output_is_srgb: bool,
-    logo: Option<CachedSprite>,
     subtitle: Option<CachedSprite>,
     volume: Option<CachedSprite>,
     help_panel: Option<CachedSprite>,
@@ -965,7 +964,6 @@ impl GpuSpriteRenderer {
             layout,
             sampler,
             output_is_srgb: is_srgb_surface_format(surface_format),
-            logo: None,
             subtitle: None,
             volume: None,
             help_panel: None,
@@ -1010,19 +1008,6 @@ impl GpuSpriteRenderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-
-        if let Some(logo) = &frame.logo
-            && let Some(rect) = logo_rect(logo, size)
-        {
-            context.draw_bitmap(
-                &mut self.logo,
-                &mut pass,
-                &logo.bitmap,
-                rect,
-                logo.opacity,
-                size,
-            );
-        }
 
         if let Some(subtitle) = &frame.subtitle {
             context.draw_bitmap(
@@ -1094,7 +1079,6 @@ impl GpuSpriteRenderer {
     }
 
     fn release_frame_resources(&mut self) {
-        self.logo = None;
         self.subtitle = None;
         self.volume = None;
         self.help_panel = None;

@@ -34,12 +34,19 @@ pub fn routes() -> Router<AppState> {
                 .route("/channel/{id}", delete(remove_channel))
                 .route("/channels", get(get_all_channels))
                 .route("/global", get(get_global).put(update_global))
+                .route(
+                    "/graphics/{id}",
+                    get(graphics_status).post(graphics_command),
+                )
                 .route("/control/{id}/text", post(send_text_message))
                 .route("/control/{id}/playout", post(control_playout))
                 .route("/control/{id}/audio", put(update_audio_effects))
+                .route("/control/{id}/ingest", put(select_live_input))
                 .route("/control/{id}/media/current", get(media_current))
                 .route("/control/{id}/process", post(process_control))
                 .route("/file/{id}/browse", post(file_browser))
+                .route("/file/{id}/browse-selection", post(browse_selection))
+                .route("/file/{id}/media-info", post(selection_media_info))
                 .route("/file/{id}/create-folder", post(add_dir))
                 .route("/file/{id}/rename", post(move_rename))
                 .route("/file/{id}/remove", post(remove))

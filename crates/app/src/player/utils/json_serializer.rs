@@ -85,6 +85,7 @@ pub fn set_defaults(config: &PlayoutConfig, playlist: &mut JsonPlaylist) {
         item.last_ad = false;
         item.next_ad = false;
         item.skip = false;
+        item.graphics_elapsed = 0.0;
 
         for path in [&mut item.source, &mut item.audio] {
             if Path::new(path).is_relative() && !path.is_empty() && !is_remote(path) {

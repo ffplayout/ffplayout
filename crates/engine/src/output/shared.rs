@@ -211,7 +211,7 @@ impl Drop for Sink {
 #[derive(Default)]
 struct DeliveryContext {
     rate: Option<f64>,
-    subtitles: Option<(String, i64, i64)>,
+    subtitles: Option<(String, i64, i64, Option<i64>)>,
     position: Option<i64>,
 }
 
@@ -223,12 +223,12 @@ impl DeliveryContext {
             None,
         );
         if sink.subtitles
-            && let Some((path, start, source)) = &self.subtitles
+            && let Some((path, start, source, end)) = &self.subtitles
         {
             let position = self.position.unwrap_or(*start).max(*start);
             let source = source.saturating_add(position.saturating_sub(*start));
             sink.send(
-                Delivery::Control(Message::Subtitles(path.clone(), position, source)),
+                Delivery::Control(Message::Subtitles(path.clone(), position, source, *end)),
                 path.len(),
                 None,
             );
@@ -483,10 +483,12 @@ pub(super) fn run(
                 // All renditions scale the same composited image. Compositing
                 // separately at each rendition would enlarge the logo relative
                 // to the picture whenever the player selects a smaller one.
-                let prepared = frame
-                    .has_visible_logo()
-                    .then(|| frame.frame(composition_resolution.0, composition_resolution.1))
-                    .transpose()?;
+                let prepared = if frame.has_visible_graphics() {
+                    Some(frame.frame(composition_resolution.0, composition_resolution.1)?)
+                } else {
+                    frame.retire_graphics(composition_resolution.0, composition_resolution.1);
+                    None
+                };
                 let video = prepared.as_ref().unwrap_or(&frame.source);
                 for (index, profile) in profiles.iter_mut().enumerate() {
                     let _stage =
@@ -522,12 +524,12 @@ pub(super) fn run(
                     sink.send(Delivery::Control(Message::Rate(rate)), 0, None);
                 }
             }
-            Message::Subtitles(path, start, source) => {
-                context.subtitles = Some((path.clone(), start, source));
+            Message::Subtitles(path, start, source, end) => {
+                context.subtitles = Some((path.clone(), start, source, end));
                 context.position = Some(start);
                 for (sink, _) in sinks.borrow().iter().filter(|(sink, _)| sink.subtitles) {
                     sink.send(
-                        Delivery::Control(Message::Subtitles(path.clone(), start, source)),
+                        Delivery::Control(Message::Subtitles(path.clone(), start, source, end)),
                         path.len(),
                         None,
                     );

@@ -1,0 +1,56 @@
+[package]
+name = "ff-graphics"
+description = "Internal native graphics rendering and compositing for ffplayout"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+ffmpeg = ["dep:arc-swap", "dep:ffmpeg-next", "dep:rayon", "dep:log", "dep:image"]
+
+[dependencies]
+arc-swap = { version = "1", optional = true }
+rayon = { version = "1.12", optional = true }
+log = { version = "0.4", optional = true }
+anyhow = "1"
+image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
+cosmic-text = "0.19"
+rten-simd = "0.27"
+ffmpeg-next = { version = "9", optional = true, default-features = false, features = ["format", "software-scaling"] }
+
+[dev-dependencies]
+libc = "0.2"
+clap = { version = "4", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+tiny-skia = "0.12"
+yuv = { version = "0.8", default-features = false, features = ["avx", "sse", "rdm", "professional_mode"] }
+
+[[example]]
+name = "frame_blend"
+required-features = ["ffmpeg"]
+
+[[bench]]
+name = "overlay_blend"
+harness = false
+required-features = ["ffmpeg"]
+
+[[bench]]
+name = "yuv_execution"
+harness = false
+required-features = ["ffmpeg"]
+
+[[bench]]
+name = "scene_evaluation"
+harness = false
+
+[[bench]]
+name = "animated_scene"
+harness = false
+required-features = ["ffmpeg"]

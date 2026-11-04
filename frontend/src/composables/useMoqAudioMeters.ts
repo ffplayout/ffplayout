@@ -3,7 +3,7 @@ import { Effect, Signal } from '@moq/signals'
 import { authFetch } from '@/composables/authFetch'
 import { moqRelayUrl, type MoqBootstrap } from '@/composables/moqConnection'
 import { subscribeMoqAudioLevel, subscribeMoqLoudness, type MoqLoudnessMetrics } from '@/composables/moqAudioLevel'
-import { refreshMoqTicketOnFailure } from '@/composables/moqTicketRefresh'
+import { refreshMoqTicketOnDisconnect } from '@/composables/moqTicketRefresh'
 
 /** Subscribe to meters without constructing a media player or requesting A/V tracks. */
 export function useMoqAudioMeters(channel: Ref<number | undefined>, enabled: Ref<boolean>) {
@@ -48,7 +48,7 @@ export function useMoqAudioMeters(channel: Ref<number | undefined>, enabled: Ref
                 subscribeMoqLoudness(meters, (value) => {
                     loudness.value = value
                 })
-                refreshMoqTicketOnFailure(signals, connection, async (signal) => {
+                refreshMoqTicketOnDisconnect(signals, connection, async (signal) => {
                     const config = await authFetch<MoqBootstrap>(`/api/moq/config?channel=${id}`, { signal })
                     if (disposed || signal.aborted) return
                     name.set(Path.from(config.broadcast))

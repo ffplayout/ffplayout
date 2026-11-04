@@ -8,6 +8,7 @@ use axum::response::{
     IntoResponse,
     sse::{Event, KeepAlive, Sse},
 };
+use serde_json::{Map, Value, json};
 use tokio::{
     sync::{Mutex, mpsc},
     time::{MissedTickBehavior, interval},
@@ -19,6 +20,22 @@ use crate::{
     sse::Endpoint,
     utils::system::SystemStat,
 };
+
+fn playout_status_message(mut media: Map<String, Value>, running: bool) -> String {
+    if running {
+        return serde_json::to_string(&media).unwrap_or_default();
+    }
+    let mut inputs = media.remove("ingest_inputs").unwrap_or_else(|| json!([]));
+    if let Some(inputs) = inputs.as_array_mut() {
+        for input in inputs {
+            input["ready"] = json!(false);
+            input["selected"] = json!(false);
+            input["session"] = json!("");
+        }
+    }
+
+    json!({ "running": false, "ingest_inputs": inputs }).to_string()
+}
 
 #[derive(Debug, Clone)]
 struct Client {
@@ -129,11 +146,10 @@ impl Broadcaster {
                 Endpoint::Playout => {
                     let media_map = get_data_map(&client.manager).await;
 
-                    let message = if client.manager.is_alive.load(Ordering::SeqCst) {
-                        serde_json::to_string(&media_map).unwrap_or_default()
-                    } else {
-                        "not running".to_string()
-                    };
+                    let message = playout_status_message(
+                        media_map,
+                        client.manager.is_alive.load(Ordering::SeqCst),
+                    );
 
                     if !try_send_event(&client.sender, Event::default().data(message)) {
                         failed_clients.push(client.sender.clone());
@@ -171,6 +187,28 @@ impl Broadcaster {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stopped_playout_still_reports_input_labels_without_a_live_signal() {
+        let media = json!({ "audio": { "rms": -5 }, "ingest_inputs": [{
+            "id": 3, "name": "Renamed input", "auto_takeover": false,
+            "ready": true, "selected": true, "session": "old-session"
+        }] })
+        .as_object()
+        .unwrap()
+        .clone();
+        let message: Value =
+            serde_json::from_str(&playout_status_message(media.clone(), false)).unwrap();
+        assert_eq!(message["running"], false);
+        assert_eq!(message["ingest_inputs"][0]["name"], "Renamed input");
+        assert_eq!(message["ingest_inputs"][0]["ready"], false);
+        assert_eq!(message["ingest_inputs"][0]["selected"], false);
+        assert_eq!(message["ingest_inputs"][0]["session"], "");
+        assert!(message.get("audio").is_none());
+        let running: Value =
+            serde_json::from_str(&playout_status_message(media.clone(), true)).unwrap();
+        assert_eq!(running, json!(media));
+    }
 
     #[test]
     fn full_client_queue_is_rejected_without_waiting() {

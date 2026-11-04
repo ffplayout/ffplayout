@@ -1,6 +1,6 @@
 use ffmpeg_next::frame;
 
-use super::control::{AudioEffect, AudioEffectsControl};
+use super::control_audio::{AudioEffect, AudioEffectsControl};
 
 const GAIN_RAMP_MILLISECONDS: u32 = 20;
 

@@ -202,6 +202,14 @@ encoding groups at the same resolution. It reports median elapsed times after
 warmup, alternates old/new order, and makes no timing assertion. It measures
 frame copying/composition only, not codecs, network I/O or total playout CPU.
 
+The standalone [4K frame-blend example](frame-blend.md) compares premultiplied
+RGBA, linear RGB and YUVA composition, including SIMD, a fixed Rayon pool,
+complete YUV420p pipeline timings, reference images and quality metrics:
+
+```bash
+cargo run --release -p ff-graphics --features ffmpeg --example frame_blend -- --samples 15
+```
+
 The optional `processing-bench` feature prints periodic wall-clock timings for
 video and audio decode, audio processing and encoding, scale, overlay,
 subtitle, encoded-output, and desktop presentation stages. It is intended for local CPU
@@ -645,3 +653,11 @@ is not proof of a leak. Profiling adds CPU/memory overhead and can produce large
 files over hours, so check available disk space and use bounded reproductions.
 The script does not change kernel security settings, install packages or run sudo.
 On macOS, use Instruments Allocations; this helper explicitly supports Linux only.
+
+
+## Graphics crate
+
+The internal `ff-graphics` workspace crate owns native text rasterization, logo
+preparation, and the CPU compositor. Engine integration remains in `ff-engine`.
+See [graphics architecture](development/graphics-architecture.md) for module
+boundaries, the optional FFmpeg backend, compatibility adapters and validation.

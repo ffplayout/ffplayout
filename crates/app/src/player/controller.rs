@@ -10,8 +10,8 @@ use std::{
 };
 
 use ff_engine::{
-    AudioEffectsControl, AudioLevel, LiveIdleTimeout, LiveLoudnessConfig, PlaybackControl,
-    TextOverlayState,
+    AudioEffectsControl, AudioLevel, LiveIdleTimeout, LiveInputBackend, LiveListenerConfig,
+    LiveLoudnessConfig, LogoControl, ManualGraphics, PlaybackControl, TextOverlayState,
 };
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,14 @@ use crate::{
     ARGS,
     db::{handles, models::Channel},
     file::{init_storage, local::LocalStorage},
-    player::{output::player, utils::Media},
+    player::{
+        graphics::{
+            GraphicsPreparer,
+            manual::{self, ManualState},
+        },
+        output::{logo_config, player},
+        utils::Media,
+    },
     utils::{
         config::PlayoutConfig, errors::ServiceError, logging::Target, system::SystemStat,
         text::text_config,
@@ -92,6 +99,7 @@ pub struct ChannelManager {
     pub db_pool: Pool<Sqlite>,
     pub config: Arc<RwLock<PlayoutConfig>>,
     running_config: Arc<StdMutex<Option<Arc<PlayoutConfig>>>>,
+    live_listener_labels: Arc<StdMutex<HashMap<i32, (String, String)>>>,
     pub channel: Arc<Mutex<Channel>>,
     pub decoder: Arc<Mutex<Option<Child>>>,
     pub encoder: Arc<Mutex<Option<Child>>>,
@@ -103,6 +111,7 @@ pub struct ChannelManager {
     pub current_date: Arc<Mutex<String>>,
     pub list_init: Arc<AtomicBool>,
     pub current_media: Arc<Mutex<Option<Media>>>,
+    pub(crate) graphics: Arc<GraphicsPreparer>,
     pub current_list: Arc<Mutex<Vec<Media>>>,
     pub filler_list: Arc<Mutex<Vec<Media>>>,
     pub current_index: Arc<AtomicUsize>,
@@ -126,6 +135,10 @@ pub struct ChannelManager {
     pub loudness_meter: ff_engine::LoudnessMeterControl,
     pub audio_level: Arc<StdMutex<Option<AudioLevel>>>,
     pub text_overlay: TextOverlayState,
+    pub(crate) manual_graphics: ManualGraphics,
+    pub(crate) logo_control: LogoControl,
+    pub(crate) manual_state: Arc<ManualState>,
+    pub(crate) manual_jobs: Arc<tokio::sync::Semaphore>,
     pub playback_control: Arc<Mutex<PlaybackControl>>,
     pub shutdown: CancellationToken,
     pub system: SystemStat,
@@ -194,11 +207,20 @@ impl ChannelManager {
             live_output_config: Arc::new(StdMutex::new(None)),
             db_pool,
             is_alive: Arc::new(AtomicBool::new(false)),
+            live_listener_labels: Arc::new(StdMutex::new(
+                config
+                    .ingest
+                    .listeners
+                    .iter()
+                    .map(|input| (input.id, (input.name.clone(), input.backend.clone())))
+                    .collect(),
+            )),
             config: Arc::new(RwLock::new(config)),
             running_config: Arc::new(StdMutex::new(None)),
             channel: Arc::new(Mutex::new(channel)),
             list_init: Arc::new(AtomicBool::new(true)),
             current_media: Arc::new(Mutex::new(None)),
+            graphics: Arc::new(GraphicsPreparer::new()),
             current_list: Arc::new(Mutex::new(vec![Media::default()])),
             filler_list: Arc::new(Mutex::new(vec![])),
             current_index: Arc::new(AtomicUsize::new(0)),
@@ -227,6 +249,10 @@ impl ChannelManager {
             loudness_meter: ff_engine::LoudnessMeterControl::default(),
             audio_level: Arc::new(StdMutex::new(None)),
             text_overlay,
+            manual_graphics: ManualGraphics::default(),
+            logo_control: LogoControl::default(),
+            manual_state: Arc::new(ManualState::default()),
+            manual_jobs: Arc::new(tokio::sync::Semaphore::new(2)),
             playback_control: Arc::new(Mutex::new(PlaybackControl::default())),
             shutdown,
             system,
@@ -262,6 +288,21 @@ impl ChannelManager {
     }
 
     pub async fn update_config(&self, new_config: PlayoutConfig) -> Result<(), ServiceError> {
+        self.update_config_inner(new_config, false).await
+    }
+
+    pub(crate) async fn update_logo_config(
+        &self,
+        new_config: PlayoutConfig,
+    ) -> Result<(), ServiceError> {
+        self.update_config_inner(new_config, true).await
+    }
+
+    async fn update_config_inner(
+        &self,
+        new_config: PlayoutConfig,
+        refresh_logo: bool,
+    ) -> Result<(), ServiceError> {
         if new_config
             .ingest
             .listeners
@@ -275,6 +316,29 @@ impl ChannelManager {
 
         let mut config = self.config.write().await;
         let running = self.running_config();
+        let previous_logo = logo_config(&config);
+        let updated_logo = logo_config(&new_config);
+
+        if (refresh_logo || previous_logo != updated_logo) && self.is_alive.load(Ordering::SeqCst) {
+            let program = running.as_deref().unwrap_or(&config);
+            let canvas = program
+                .program
+                .as_ref()
+                .map_or((program.output.width, program.output.height), |program| {
+                    (program.width, program.height)
+                });
+            self.logo_control
+                .request(
+                    updated_logo,
+                    canvas,
+                    Some(new_config.general.channel_id),
+                    self.graphics.preparation(),
+                )
+                .map_err(|error| {
+                    ServiceError::Conflict(format!("Logo update unavailable: {error:#}"))
+                })?;
+        }
+
         {
             let mut timeouts = self
                 .live_idle_timeouts
@@ -286,9 +350,6 @@ impl ChannelManager {
                     .listeners
                     .iter()
                     .any(|input| input.id == *id)
-                    || running.as_ref().is_some_and(|config| {
-                        config.ingest.listeners.iter().any(|input| input.id == *id)
-                    })
             });
 
             for input in &new_config.ingest.listeners {
@@ -305,9 +366,64 @@ impl ChannelManager {
                 }
             }
         }
+        let ingest = self.playback_control.lock().await.live_ingest();
+        ingest.configure_automatic(
+            new_config
+                .ingest
+                .listeners
+                .iter()
+                .map(|input| (input.id, input.auto_takeover)),
+        );
+        ingest.update_listeners(self.live_listener_configs(&new_config)?);
+        if running.is_some() && config.logging.ingest_level != new_config.logging.ingest_level {
+            ff_engine::set_ingest_log_level(
+                self.id,
+                new_config
+                    .logging
+                    .ingest_level
+                    .parse()
+                    .map_err(ServiceError::Conflict)?,
+            );
+        }
+        *self
+            .live_listener_labels
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = new_config
+            .ingest
+            .listeners
+            .iter()
+            .map(|input| (input.id, (input.name.clone(), input.backend.clone())))
+            .collect();
         *config = new_config;
 
         Ok(())
+    }
+
+    pub(crate) fn live_listener_configs(
+        &self,
+        config: &PlayoutConfig,
+    ) -> Result<Vec<LiveListenerConfig>, ServiceError> {
+        config
+            .ingest
+            .listeners
+            .iter()
+            .filter(|input| input.enabled && matches!(input.backend.as_str(), "rtmp" | "srt"))
+            .map(|input| {
+                Ok(LiveListenerConfig {
+                    id: input.id,
+                    priority: input.priority,
+                    idle_timeout: self.live_idle_timeout(input.id, input.idle_timeout_ms)?,
+                    backend: if input.backend == "srt" {
+                        LiveInputBackend::Srt
+                    } else {
+                        LiveInputBackend::Rtmp
+                    },
+                    url: input.identifier.clone(),
+                    options: input.options.clone(),
+                    demuxer_options: input.demuxer_options.clone(),
+                })
+            })
+            .collect()
     }
 
     pub(crate) fn live_idle_timeout(
@@ -332,6 +448,15 @@ impl ChannelManager {
     }
 
     pub(crate) fn track_running_config(&self, config: PlayoutConfig) -> RunningConfigGuard {
+        *self
+            .live_listener_labels
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = config
+            .ingest
+            .listeners
+            .iter()
+            .map(|input| (input.id, (input.name.clone(), input.backend.clone())))
+            .collect();
         let config = Arc::new(config);
         *self
             .running_config
@@ -352,14 +477,11 @@ impl ChannelManager {
     }
 
     pub(crate) fn running_listener_label(&self, id: i32) -> Option<(String, String)> {
-        self.running_config().and_then(|config| {
-            config
-                .ingest
-                .listeners
-                .iter()
-                .find(|input| input.id == id)
-                .map(|input| (input.name.clone(), input.backend.clone()))
-        })
+        self.live_listener_labels
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&id)
+            .cloned()
     }
 
     pub async fn start(&self) -> Result<(), ServiceError> {
@@ -680,10 +802,14 @@ impl ChannelManager {
         }
 
         self.is_alive.store(false, Ordering::SeqCst);
+        self.logo_control.stop();
+        self.graphics.cancel();
+        manual::stop_runtime(self).await;
         self.playback_control.lock().await.skip_current();
         // Restarts and shutdown must also cancel an in-flight validator, not
         // only permanent stops. Its blocking FFmpeg analysis owns resources.
         self.stop_validation().await;
+        self.graphics.join(channel_id).await;
         self.stop_task(
             "task_runner",
             &self.task_runner_handle,
@@ -932,6 +1058,50 @@ mod tests {
         saved.ingest.listeners[0].idle_timeout_ms = 0;
         assert!(manager.update_config(saved).await.is_err());
         assert_eq!(control.duration(), Duration::from_millis(4500));
+        tokio::fs::remove_dir_all(manager.storage.root.read().await.clone())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn saving_listener_changes_updates_labels_and_replaces_the_desired_set() {
+        let (manager, pool) = channel_manager().await;
+        let mut saved = manager.config.read().await.clone();
+        let id = saved.ingest.listeners[0].id;
+        let _running = manager.track_running_config(saved.clone());
+        let ingest = manager.playback_control.lock().await.live_ingest();
+        saved.ingest.listeners[0].auto_takeover = false;
+        saved.ingest.listeners[0].enabled = true;
+        saved.ingest.listeners[0].name = "New name".into();
+        manager.update_config(saved.clone()).await.unwrap();
+        assert!(!ingest.automatic(id));
+        assert_eq!(manager.running_listener_label(id).unwrap().0, "New name");
+        let status = crate::player::utils::get_data_map(&manager).await;
+        assert!(ingest.snapshot().is_empty(), "no publisher is connected");
+        assert_eq!(status["ingest_inputs"][0]["name"], "New name");
+        assert_eq!(status["ingest_inputs"][0]["ready"], false);
+        assert_eq!(status["ingest_inputs"][0]["session"], "");
+
+        saved.ingest.listeners[0].name = "Renamed while waiting".into();
+        manager.update_config(saved.clone()).await.unwrap();
+        assert_eq!(
+            crate::player::utils::get_data_map(&manager).await["ingest_inputs"][0]["name"],
+            "Renamed while waiting"
+        );
+
+        saved.ingest.listeners[0].enabled = false;
+        manager.update_config(saved.clone()).await.unwrap();
+        assert!(
+            crate::player::utils::get_data_map(&manager).await["ingest_inputs"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        saved.ingest.listeners.clear();
+        manager.update_config(saved).await.unwrap();
+        assert!(manager.running_listener_label(id).is_none());
+        assert!(ingest.automatic(id));
+        pool.close().await;
         tokio::fs::remove_dir_all(manager.storage.root.read().await.clone())
             .await
             .unwrap();

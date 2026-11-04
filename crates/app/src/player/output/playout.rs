@@ -6,9 +6,8 @@ use std::{
 };
 
 use ff_engine::{
-    AsyncPlayout, AudioLevelCallback, ClipResult, EncodingConfig, HlsHealth, LiveInputBackend,
-    LiveListenerConfig, LogLevel, LogoConfig, LogoFade, OutputConfig, RecordingConfig,
-    TextOverlayState,
+    AsyncPlayout, AudioLevelCallback, ClipPlaybackOptions, ClipResult, EncodingConfig, HlsHealth,
+    LogLevel, LogoConfig, LogoFade, OutputConfig, RecordingConfig, TextOverlayState,
 };
 use log::*;
 use tokio::time::sleep;
@@ -18,6 +17,7 @@ use crate::{
     file::norm_abs_path,
     player::{
         controller::{ChannelManager, loudness_config},
+        graphics::manual,
         input::source_generator,
         process_diagnostics::ProcessDiagnostics,
         utils::{Media, sec_to_time},
@@ -28,6 +28,16 @@ use crate::{
         errors::ServiceError,
     },
 };
+
+pub(crate) fn logo_config(config: &PlayoutConfig) -> Option<LogoConfig> {
+    config.processing.add_logo.then(|| LogoConfig {
+        path: config.processing.logo_path.clone(),
+        scale: (!config.processing.logo_scale.trim().is_empty())
+            .then(|| config.processing.logo_scale.clone()),
+        opacity: config.processing.logo_opacity,
+        position: config.processing.logo_position.clone(),
+    })
+}
 
 pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
@@ -54,6 +64,9 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         manager.text_overlay.clone(),
         desktop_control_callback(manager.clone()),
     )?;
+    output_config.graphics_preparation = manager.graphics.preparation();
+    output_config.manual_graphics = manager.manual_graphics.clone();
+    output_config.logo_control = manager.logo_control.clone();
     output_config.output_timing_diagnostics = crate::ARGS.timing_diagnostics;
     let mut moq_attachments = Vec::new();
     manager.output_status.clear();
@@ -86,7 +99,19 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         .output_status
         .supports_live_updates()
         .then(|| crate::moq::watch_demand(manager.clone(), moq_demanded));
-    *manager.playback_control.lock().await = playout.playback_control();
+    {
+        let saved = manager.config.read().await;
+        let mut control = manager.playback_control.lock().await;
+        *control = playout.playback_control();
+        control.live_ingest().configure_automatic(
+            config
+                .ingest
+                .listeners
+                .iter()
+                .chain(&saved.ingest.listeners)
+                .map(|input| (input.id, input.auto_takeover)),
+        );
+    }
     if config.output.mode == OutputMode::Desktop {
         #[cfg(feature = "desktop-cpu")]
         info!(channel = config.general.channel_id;
@@ -98,46 +123,47 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         );
     }
 
-    let listeners: Vec<_> = config
-        .ingest
-        .listeners
-        .iter()
-        .filter(|input| input.enabled && matches!(input.backend.as_str(), "rtmp" | "srt"))
-        .map(|input| {
-            let backend = if input.backend == "srt" {
-                LiveInputBackend::Srt
-            } else {
-                LiveInputBackend::Rtmp
-            };
-
-            Ok(LiveListenerConfig {
-                id: input.id,
-                priority: input.priority,
-                idle_timeout: manager.live_idle_timeout(input.id, input.idle_timeout_ms)?,
-                backend,
-                url: input.identifier.clone(),
-                options: input.options.clone(),
-                demuxer_options: input.demuxer_options.clone(),
-            })
-        })
-        .collect::<Result<_, ServiceError>>()?;
+    // Attach an empty relay as well, so listeners can be added while playing.
+    let saved = manager.config.read().await;
+    let listeners = manager.live_listener_configs(&saved)?;
     let count = listeners.len();
-
+    ff_engine::set_ingest_log_level(
+        manager.id,
+        saved
+            .logging
+            .ingest_level
+            .parse()
+            .map_err(ServiceError::Conflict)?,
+    );
+    manager
+        .playback_control
+        .lock()
+        .await
+        .live_ingest()
+        .update_listeners(listeners.clone());
+    let graphics_canvas = (output_config.width, output_config.height);
+    playout
+        .start_live_listeners(listeners, output_config)
+        .await
+        .map_err(engine_error)?;
+    drop(saved);
     if count > 0 {
-        playout
-            .start_live_listeners(listeners, output_config)
-            .await
-            .map_err(engine_error)?;
         info!(channel = config.general.channel_id; "Started {count} live listener(s)");
     }
 
     let result = match (parallel, &config.output.mode) {
-        (false, OutputMode::HLS) => play_hls(manager.clone(), &config, &playout).await,
-        _ => play_loop(manager.clone(), &config, &playout, None).await,
+        (false, OutputMode::HLS) => {
+            play_hls(manager.clone(), &config, &playout, graphics_canvas).await
+        }
+        _ => play_loop(manager.clone(), &config, &playout, None, graphics_canvas).await,
     };
 
     drop(demand_watcher);
+    manager.logo_control.stop();
+    manager.graphics.cancel();
+    manual::stop_runtime(&manager).await;
     let finish_result = playout.finish().await.map_err(engine_error);
+    manager.graphics.join(config.general.channel_id).await;
     for attachment in moq_attachments {
         if let Err(error) = attachment.finish().await {
             warn!(channel = config.general.channel_id; "MoQ output shutdown: {error}");
@@ -151,6 +177,7 @@ async fn play_hls(
     manager: ChannelManager,
     config: &PlayoutConfig,
     playout: &AsyncPlayout,
+    graphics_canvas: (u32, u32),
 ) -> Result<(), ServiceError> {
     let hls_duration = u64::from(config.output.hls_segment_duration);
     let hls_health = playout
@@ -170,7 +197,7 @@ async fn play_hls(
             result??;
             Ok(())
         }
-        result = play_loop(manager, config, playout, Some(watchdog_token.clone())) => result,
+        result = play_loop(manager, config, playout, Some(watchdog_token.clone()), graphics_canvas) => result,
     };
 
     watchdog_token.cancel();
@@ -226,12 +253,15 @@ async fn play_loop(
     config: &PlayoutConfig,
     playout: &AsyncPlayout,
     cancel_token: Option<CancellationToken>,
+    graphics_canvas: (u32, u32),
 ) -> Result<(), ServiceError> {
     let id = config.general.channel_id;
     let diagnostics = crate::ARGS
         .process_diagnostics
         .then(|| ProcessDiagnostics::new(manager.id, playout.playback_control()));
     let mut node_sources = source_generator(manager.clone()).await;
+    manager.graphics.resume();
+    manual::begin_restore(&manager).await;
 
     while let Some(node) = node_sources.next().await {
         *manager.current_media.lock().await = Some(node.clone());
@@ -293,17 +323,25 @@ async fn play_loop(
         let duration = playout_duration(&node);
         let is_ad = node.ad;
         match playout
-            .play_with_timing_logo_fade_rate_and_audio(
+            .play_clip(
                 node.source.clone(),
-                (node.seek > 0.0).then_some(node.seek),
-                duration,
-                (!node.audio.is_empty()).then(|| node.audio.clone()),
-                subtitle_media_path(config, &node.source),
-                LogoFade {
-                    fade_in: !is_ad && node.last_ad,
-                    fade_out: !is_ad && node.next_ad,
+                ClipPlaybackOptions {
+                    seek_seconds: (node.seek > 0.0).then_some(node.seek),
+                    duration_seconds: duration,
+                    external_audio_path: (!node.audio.is_empty()).then(|| node.audio.clone()),
+                    subtitles_media_path: subtitle_media_path(config, &node.source),
+                    logo_fade: LogoFade {
+                        fade_in: !is_ad && node.last_ad,
+                        fade_out: !is_ad && node.next_ad,
+                    },
+                    playout_rate: 1.0,
+                    graphics: manager.graphics.for_clip(
+                        &node,
+                        &config.storage.path,
+                        graphics_canvas,
+                        id,
+                    ),
                 },
-                1.0,
             )
             .await
             .map_err(engine_error)?
@@ -463,13 +501,7 @@ pub(super) fn engine_output_config(
         .map_or(output.fps, |program| program.fps)
         .round() as u32;
 
-    let logo = config.processing.add_logo.then(|| LogoConfig {
-        path: config.processing.logo_path.clone(),
-        scale: (!config.processing.logo_scale.trim().is_empty())
-            .then(|| config.processing.logo_scale.clone()),
-        opacity: config.processing.logo_opacity,
-        position: config.processing.logo_position.clone(),
-    });
+    let logo = logo_config(config);
     let ffmpeg_log_level = config
         .logging
         .ffmpeg_level

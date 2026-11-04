@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { authFetch } from '@/composables/authFetch'
-import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
 import { useConfig } from '@/stores/config'
-import GenericModal from '@/components/utils/GenericModal.vue'
 const { t } = useI18n()
-const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 const logLevels = ['INFO', 'WARNING', 'ERROR']
@@ -25,6 +21,7 @@ function addLiveListener() {
         id: 0,
         priority: 0,
         idle_timeout_ms: 2000,
+        auto_takeover: true,
         enabled: false,
         name: '',
         backend: 'srt',
@@ -133,21 +130,10 @@ function removeListenerDemuxerOption(index: number, name: string) {
 
 async function onSubmitPlayout() {
     try {
-        const update = await configStore.setPlayoutConfig(configStore.playout)
+        await configStore.setPlayoutConfig(configStore.playout, 'ingest')
         configStore.onetimeInfo = true
-        const { requires_restart: requiresRestart } = update
 
         indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
-
-        const id = configStore.channels[configStore.i]?.id
-        const response = await authFetch<string>(`/api/control/${id}/process`, {
-            method: 'POST',
-            headers: { ...configStore.contentType, ...authStore.authHeader },
-            body: JSON.stringify({ command: 'status' }),
-        })
-        if (response === 'active' && requiresRestart) {
-            configStore.showRestartModal = true
-        }
 
         await configStore.getPlayoutConfig()
         await configStore.getPlayoutOutputs()
@@ -181,6 +167,11 @@ async function onSubmitPlayout() {
                             {{ t('config.liveListenerRemove') }}
                         </button>
                     </div>
+                    <label class="flex items-center gap-3 mb-3">
+                        <input v-model="listener.auto_takeover" type="checkbox" class="toggle toggle-primary" />
+                        <span>{{ t('config.ingestAutoTakeover') }}</span>
+                    </label>
+                    <p class="text-sm mb-4 text-base-content/70">{{ t('config.ingestAutoTakeoverHelp') }}</p>
                     <div class="grid gap-3 md:grid-cols-2">
                         <label class="fieldset">
                             <span class="fieldset-legend">{{ t('config.liveListenerName') }}</span>
@@ -345,10 +336,4 @@ async function onSubmitPlayout() {
             <button class="btn btn-primary mt-5" type="submit">{{ t('config.save') }}</button>
         </form>
     </div>
-    <GenericModal
-        :title="t('config.restartTile')"
-        :text="t('config.restartText')"
-        :show="configStore.showRestartModal"
-        :modal-action="configStore.restart"
-    />
 </template>

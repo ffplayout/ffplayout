@@ -361,11 +361,11 @@ mod tests {
         manager.update_config(saved).await.unwrap();
         assert_eq!(
             get_data_map(&manager).await["ingest_listener_name"],
-            "On air"
+            "Next listener"
         );
         assert_eq!(
             get_data_map(&manager).await["ingest_listener_backend"],
-            "rtmp"
+            "srt"
         );
 
         drop(live);

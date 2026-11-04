@@ -105,9 +105,15 @@ impl DestinationOutput {
         }
     }
 
-    fn write_vtt_subtitles(&mut self, path: &str, start: i64, source: i64) -> Result<()> {
+    fn write_vtt_subtitles(
+        &mut self,
+        path: &str,
+        start: i64,
+        source: i64,
+        end: Option<i64>,
+    ) -> Result<()> {
         match self {
-            Self::Container(output) => output.write_vtt_subtitles(path, start, source),
+            Self::Container(output) => output.write_vtt_subtitles(path, start, source, end),
             Self::Native(_) => Ok(()),
         }
     }
@@ -316,7 +322,7 @@ fn deliver_with_retry(
     let mut ready = false;
     let mut exhausted = false;
     let mut rate = 1.0;
-    let mut subtitles: Option<(String, i64, i64)> = None;
+    let mut subtitles: Option<(String, i64, i64, Option<i64>)> = None;
     let mut subtitle_position = None;
     let activity = control.activity();
     status.observe_retry(id, &activity);
@@ -343,8 +349,8 @@ fn deliver_with_retry(
             let opened = (|| -> Result<DestinationOutput> {
                 let mut opened = DestinationOutput::open(&destination, &parameters)?;
                 opened.set_playout_rate(rate);
-                if let Some((ref path, start, source)) = subtitles {
-                    opened.write_vtt_subtitles(path, start, source)?;
+                if let Some((ref path, start, source, end)) = subtitles {
+                    opened.write_vtt_subtitles(path, start, source, end)?;
                 }
                 if let Some(position) = subtitle_position {
                     opened.advance_vtt_subtitles(position)?;
@@ -434,8 +440,8 @@ fn deliver_with_retry(
                 Delivery::Control(message) => {
                     match message {
                         Message::Rate(value) => rate = value,
-                        Message::Subtitles(ref path, start, source) => {
-                            subtitles = Some((path.clone(), start, source));
+                        Message::Subtitles(ref path, start, source, end) => {
+                            subtitles = Some((path.clone(), start, source, end));
                         }
                         Message::ClearSubtitles => {
                             subtitles = None;
@@ -452,8 +458,8 @@ fn deliver_with_retry(
                                 opened.set_playout_rate(rate);
                                 Ok(())
                             }
-                            Message::Subtitles(path, start, source) => {
-                                opened.write_vtt_subtitles(&path, start, source)
+                            Message::Subtitles(path, start, source, end) => {
+                                opened.write_vtt_subtitles(&path, start, source, end)
                             }
                             Message::ClearSubtitles => {
                                 opened.clear_vtt_subtitles();
@@ -569,6 +575,86 @@ mod tests {
         fixture.send_media();
         fixture.wait("running");
         assert_eq!(endpoint.connections.load(Ordering::SeqCst), 3);
+        fixture.finish();
+    }
+
+    #[test]
+    fn repeated_outages_can_exhaust_and_manually_resume_the_same_encoded_stream() {
+        use std::sync::{Arc, atomic::AtomicUsize};
+
+        #[derive(Debug, Default)]
+        struct Endpoint {
+            unavailable: Arc<AtomicBool>,
+            attempts: AtomicUsize,
+            connections: AtomicUsize,
+        }
+
+        struct Sink(Arc<AtomicBool>);
+
+        impl crate::PacketSink for Sink {
+            fn write(&mut self, _: crate::EncodedFrame<'_>) -> Result<()> {
+                if self.0.load(Ordering::Acquire) {
+                    return Err(anyhow!("destination unavailable"));
+                }
+
+                Ok(())
+            }
+
+            fn finish(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        impl crate::OutputEndpoint for Endpoint {
+            fn connect_packets(
+                &self,
+                _: &[crate::EncodedStream],
+            ) -> Result<Box<dyn crate::PacketSink>> {
+                self.attempts.fetch_add(1, Ordering::SeqCst);
+
+                if self.unavailable.load(Ordering::Acquire) {
+                    return Err(anyhow!("destination unavailable"));
+                }
+
+                self.connections.fetch_add(1, Ordering::SeqCst);
+
+                Ok(Box::new(Sink(self.unavailable.clone())))
+            }
+        }
+
+        let endpoint = Arc::new(Endpoint::default());
+        let fixture = Fixture::configured(
+            String::new(),
+            Duration::from_millis(30),
+            Duration::from_millis(180),
+            |destination| destination.config.stream_endpoint = Some(endpoint.clone()),
+        );
+        fixture.wait("starting");
+        fixture.wait_connected();
+        fixture.send_media();
+        fixture.wait("running");
+
+        // Reuse one EncodingProfile through two complete failure windows.
+        // A successful manual recovery must not inherit the exhausted budget.
+        for expected_connections in 2..=3 {
+            endpoint.unavailable.store(true, Ordering::Release);
+            fixture.send_media();
+            fixture.wait("failed");
+            let attempts = endpoint.attempts.load(Ordering::SeqCst);
+            endpoint.unavailable.store(false, Ordering::Release);
+            std::thread::sleep(Duration::from_millis(90));
+            assert_eq!(endpoint.attempts.load(Ordering::SeqCst), attempts);
+            assert!(fixture.status.request_retry(1));
+            fixture.wait("starting");
+            fixture.wait_connected();
+            fixture.send_media();
+            fixture.wait("running");
+            assert_eq!(
+                endpoint.connections.load(Ordering::SeqCst),
+                expected_connections
+            );
+        }
+
         fixture.finish();
     }
 
@@ -850,7 +936,7 @@ mod tests {
     }
 
     #[test]
-    fn subtitle_restore_failure_preserves_manual_recovery() {
+    fn invalid_sidecar_keeps_hls_running_and_later_subtitles_can_be_loaded() {
         let directory = std::env::temp_dir().join(format!("subtitle-retry-{}", uuid_for_test()));
         std::fs::create_dir_all(&directory).unwrap();
         let media = directory.join("clip.mp4");
@@ -880,34 +966,50 @@ mod tests {
                     media.to_string_lossy().into_owned(),
                     0,
                     0,
+                    None,
                 )),
                 0,
                 None,
             )
             .unwrap();
-        fixture.wait("failed");
-        assert!(
-            !fixture.worker.as_ref().unwrap().is_finished(),
-            "subtitle restoration killed the retry worker"
-        );
-        assert!(
-            fixture.status.snapshot()[&1]
-                .error
-                .as_ref()
-                .unwrap()
-                .contains("VTT")
-        );
+        fixture.wait_connected();
+        fixture.send_media();
+        fixture.wait("running");
+        assert!(fixture.status.snapshot()[&1].error.is_none());
         std::fs::write(
             media.with_extension("vtt"),
             "WEBVTT\n\n00:00:00.000 --> 00:00:00.300\nRecovered\n",
         )
         .unwrap();
-        assert!(fixture.status.request_retry(1));
-        fixture.wait("starting");
+        fixture
+            .queue
+            .send(
+                Delivery::Control(Message::Subtitles(
+                    media.to_string_lossy().into_owned(),
+                    0,
+                    0,
+                    None,
+                )),
+                0,
+                None,
+            )
+            .unwrap();
+        fixture
+            .queue
+            .send(Delivery::Control(Message::AdvanceSubtitles(0)), 0, None)
+            .unwrap();
         fixture.wait_connected();
-        fixture.send_media();
-        fixture.wait("running");
+        assert_eq!(fixture.status.snapshot()[&1].phase, "running");
         fixture.finish();
+        assert!(
+            std::fs::read_dir(&directory)
+                .unwrap()
+                .flatten()
+                .any(|entry| {
+                    entry.path().extension().is_some_and(|ext| ext == "ts")
+                        && entry.metadata().unwrap().len() > 0
+                })
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 

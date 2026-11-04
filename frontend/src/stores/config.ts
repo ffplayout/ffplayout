@@ -181,10 +181,18 @@ export const useConfig = defineStore('config', {
                 })
         },
 
-        async setPlayoutConfig(obj: any) {
+        async setPlayoutConfig(obj: any, scope?: 'ingest') {
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
             const id = this.channels[this.i]?.id
+
+            if (scope === 'ingest') {
+                return authFetch<{ requires_restart: boolean }>(`/api/playout/config/${id}?scope=ingest`, {
+                    method: 'PUT',
+                    headers: { ...this.contentType, ...authStore.authHeader },
+                    body: JSON.stringify(obj),
+                })
+            }
 
             this.playlistLength = timeToSeconds(obj.playlist.length)
             this.playout.playlist.startInSec = timeToSeconds(obj.playlist.day_start)

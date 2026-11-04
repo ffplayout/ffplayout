@@ -1,5 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
+    collections::BTreeMap,
     ffi::CStr,
     os::raw::{c_char, c_int, c_void},
     sync::{
@@ -58,6 +59,7 @@ struct IngestLogContext {
 
 static FFMPEG_LOG_LEVEL: AtomicI32 = AtomicI32::new(ffi::AV_LOG_WARNING);
 static INGEST_LOG_LEVEL: AtomicI32 = AtomicI32::new(ffi::AV_LOG_WARNING);
+static CHANNEL_INGEST_LOG_LEVELS: Mutex<BTreeMap<i32, c_int>> = Mutex::new(BTreeMap::new());
 static CHANNEL_ID: AtomicI32 = AtomicI32::new(0);
 static LOG_DEDUP: Mutex<LogDedup> = Mutex::new(LogDedup::new());
 static SKIPPED_FFMPEG_LOG_PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
@@ -96,7 +98,11 @@ pub(crate) fn init(
         .filter(|line| !line.is_empty())
         .map(str::to_string)
         .collect();
-    ffmpeg_next::util::log::set_level(max_level(ffmpeg_level, ingest_level));
+    if let Some(id) = channel_id {
+        update_ingest_log_level(id, ingest_level);
+    } else {
+        ffmpeg_next::util::log::set_level(max_level(ffmpeg_level, ingest_level));
+    }
     set_log_callback();
     SRT_LOG_INSTALLED.get_or_init(install_srt_log_callback);
 }
@@ -288,9 +294,35 @@ pub(crate) fn take_unexpected_rtmp_stream() -> Option<(String, String)> {
     UNEXPECTED_RTMP_STREAM.with(|stream| stream.borrow_mut().take())
 }
 
+pub fn set_ingest_log_level(channel_id: i32, level: LogLevel) {
+    update_ingest_log_level(channel_id, level.as_ffmpeg_level());
+}
+
+fn update_ingest_log_level(channel_id: i32, level: FfmpegLevel) {
+    let mut levels = CHANNEL_INGEST_LOG_LEVELS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    levels.insert(channel_id, level_value(level));
+    let maximum = levels
+        .values()
+        .copied()
+        .max()
+        .unwrap_or_default()
+        .max(FFMPEG_LOG_LEVEL.load(Ordering::Relaxed))
+        .max(INGEST_LOG_LEVEL.load(Ordering::Relaxed));
+    ffmpeg_next::util::log::set_level(
+        FfmpegLevel::try_from(maximum).unwrap_or(FfmpegLevel::Warning),
+    );
+}
+
 fn configured_level(context: Option<IngestLogContext>) -> c_int {
-    if context.is_some() {
-        INGEST_LOG_LEVEL.load(Ordering::Relaxed)
+    if let Some(context) = context {
+        CHANNEL_INGEST_LOG_LEVELS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&context.channel_id)
+            .copied()
+            .unwrap_or_else(|| INGEST_LOG_LEVEL.load(Ordering::Relaxed))
     } else {
         FFMPEG_LOG_LEVEL.load(Ordering::Relaxed)
     }
@@ -622,6 +654,29 @@ mod tests {
         ffmpeg_log_fingerprint, level_value, mark_ingest_interrupted, should_skip_ffmpeg_log,
         with_ingest_logs,
     };
+
+    #[test]
+    fn live_ingest_log_level_updates_are_scoped_to_the_channel() {
+        use crate::LogLevel;
+
+        let first = IngestLogContext {
+            channel_id: 98765,
+            listener_id: 1,
+        };
+        let second = IngestLogContext {
+            channel_id: 98766,
+            listener_id: 1,
+        };
+        super::set_ingest_log_level(first.channel_id, LogLevel::Info);
+        super::set_ingest_log_level(second.channel_id, LogLevel::Warning);
+        assert_eq!(super::configured_level(Some(first)), ffi::AV_LOG_INFO);
+        super::set_ingest_log_level(first.channel_id, LogLevel::Error);
+        assert_eq!(super::configured_level(Some(first)), ffi::AV_LOG_ERROR);
+        assert_eq!(super::configured_level(Some(second)), ffi::AV_LOG_WARNING);
+        let mut levels = super::CHANNEL_INGEST_LOG_LEVELS.lock().unwrap();
+        levels.remove(&first.channel_id);
+        levels.remove(&second.channel_id);
+    }
 
     #[test]
     fn ingest_log_context_stays_on_the_listener_thread() {

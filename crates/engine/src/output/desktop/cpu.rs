@@ -8,10 +8,7 @@ use winit::window::Window;
 use super::{
     DESKTOP_VOLUME_MAX,
     graphics::RgbaBitmap,
-    render::{
-        HELP_OVERLAY_PADDING, Rect, WindowFrame, WindowLogo, fit_rect, help_panel_rect, logo_rect,
-        subtitle_rect,
-    },
+    render::{HELP_OVERLAY_PADDING, Rect, WindowFrame, fit_rect, help_panel_rect, subtitle_rect},
     video::VideoSurface,
 };
 
@@ -68,7 +65,7 @@ impl SoftbufferRenderer {
 
     pub(super) fn release_frame_resources(&mut self) {}
 
-    pub(super) fn render(&mut self, frame: &WindowFrame, size: (u32, u32)) -> Result<()> {
+    pub(super) fn render(&mut self, frame: &WindowFrame, _size: (u32, u32)) -> Result<()> {
         if self.width == 0 || self.height == 0 {
             return Ok(());
         }
@@ -77,7 +74,7 @@ impl SoftbufferRenderer {
             .surface
             .buffer_mut()
             .map_err(|error| anyhow!("{error}"))?;
-        compose_window_frame(&mut target, self.width, self.height, frame, size)?;
+        compose_window_frame(&mut target, self.width, self.height, frame);
         // Wayland uses this frame callback to throttle RedrawRequested events.
         // Without it, both softbuffer SHM buffers can be in flight and the
         // next buffer_mut call blocks waiting for the compositor.
@@ -87,15 +84,9 @@ impl SoftbufferRenderer {
 }
 
 #[cfg(feature = "desktop-cpu")]
-fn compose_window_frame(
-    target: &mut [u32],
-    width: u32,
-    height: u32,
-    frame: &WindowFrame,
-    size: (u32, u32),
-) -> Result<()> {
+fn compose_window_frame(target: &mut [u32], width: u32, height: u32, frame: &WindowFrame) {
     if width == 0 || height == 0 {
-        return Ok(());
+        return;
     }
 
     if let Some(video) = &frame.video {
@@ -109,10 +100,6 @@ fn compose_window_frame(
         target.fill(0);
     }
 
-    if let Some(logo) = &frame.logo {
-        draw_logo(target, width, height, size, logo)?;
-    }
-
     if let Some(subtitle) = &frame.subtitle {
         draw_subtitle(target, width, height, subtitle);
     }
@@ -124,8 +111,6 @@ fn compose_window_frame(
     if let Some(help) = &frame.help {
         draw_help_overlay(target, width, height, help);
     }
-
-    Ok(())
 }
 
 #[cfg(feature = "desktop-cpu")]
@@ -155,40 +140,6 @@ pub(super) fn scale_nearest(video: &VideoSurface, target: &mut [u32], stride: u3
             target[dest] = video.pixels[src];
         }
     }
-}
-
-#[cfg(feature = "desktop-cpu")]
-fn draw_logo(
-    target: &mut [u32],
-    width: u32,
-    height: u32,
-    window_size: (u32, u32),
-    logo: &WindowLogo,
-) -> Result<()> {
-    let Some(rect) = logo_rect(logo, (window_size.0.max(1), window_size.1.max(1))) else {
-        return Ok(());
-    };
-    let scale_x = f64::from(width) / f64::from(window_size.0.max(1));
-    let scale_y = f64::from(height) / f64::from(window_size.1.max(1));
-    let x = (f64::from(rect.x) * scale_x).round().max(0.0) as u32;
-    let y = (f64::from(rect.y) * scale_y).round().max(0.0) as u32;
-    let scaled_width = (f64::from(rect.width) * scale_x).round().max(1.0) as u32;
-    let scaled_height = (f64::from(rect.height) * scale_y).round().max(1.0) as u32;
-    draw_bitmap_scaled(
-        target,
-        width,
-        height,
-        &logo.bitmap,
-        Rect {
-            x,
-            y,
-            width: scaled_width,
-            height: scaled_height,
-        },
-        logo.opacity,
-    );
-
-    Ok(())
 }
 
 #[cfg(feature = "desktop-cpu")]

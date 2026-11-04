@@ -10,7 +10,7 @@ use ffmpeg_next::{Rational, Rescale, frame};
 use crate::{
     LiveLoudnessMetrics,
     analysis::loudness::{LoudnessAnalyzer, LoudnessMetrics},
-    compositor::text::TextOverlay,
+    graphics::text_adapter::{TextOverlay, TextPreparation, TextTiming},
     utils::{
         config::{RgbaColor, TextBackgroundConfig, TextConfig, TextPosition},
         ffmpeg::make_video_frame_writable,
@@ -105,7 +105,20 @@ fn render_overlay(request: RenderRequest) -> Result<Option<TextOverlay>> {
     .round()
     .max(1.0) as u32;
 
-    TextOverlay::load(&config, "", request.width, request.height, fps, 0, 0, None)
+    TextOverlay::prepare(
+        &config,
+        "",
+        TextPreparation {
+            canvas_width: request.width,
+            canvas_height: request.height,
+            frames_per_second: fps,
+            timing: TextTiming {
+                fade_start_frame: 0,
+                scroll_start_frame: 0,
+                end_frame: None,
+            },
+        },
+    )
 }
 
 #[derive(Default)]

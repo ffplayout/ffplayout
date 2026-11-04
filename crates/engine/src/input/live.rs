@@ -20,7 +20,7 @@ use ffmpeg_next::{Dictionary, ffi, format, frame, media};
 use log::{debug, error, info, warn};
 
 use crate::{
-    PlaybackControl,
+    LiveIngestControl, PlaybackControl,
     audio_mixer::{LIVE_LATENCY, LiveLoudnessControl, LiveLoudnessMetrics, LiveLoudnessProcessor},
     benchmark::{self, BenchHandle, Stage},
     output::FrameOutput,
@@ -197,6 +197,10 @@ impl Drop for LiveReaderPermit {
 }
 
 pub struct LiveReceiver {
+    pub(super) last_video_texts: crate::graphics::text_adapter::TextOverlays,
+    pub(super) texts: crate::graphics::text_adapter::TextOverlays,
+    pub(super) selection_control: Option<LiveIngestControl>,
+    pub(super) selection_revision: Option<u64>,
     pub(super) rx: Receiver<LiveEvent>,
     pub(super) pending_event: Option<LiveEvent>,
     pub(super) delay: LiveDelay,
@@ -293,12 +297,17 @@ impl fmt::Display for LiveEnded {
 impl Error for LiveEnded {}
 
 pub(super) enum LiveEvent {
+    Selection(u64),
     Started {
         session_id: u64,
         has_audio: bool,
         listener_id: i32,
     },
-    Video(u64, frame::Video),
+    Video(
+        u64,
+        frame::Video,
+        crate::graphics::text_adapter::TextOverlays,
+    ),
     Audio(u64, frame::Audio),
     Ended(u64),
 }
@@ -320,22 +329,23 @@ pub fn spawn_rtmp_listener(url: String, cfg: OutputConfig) -> LiveReceiver {
 
 /// Listen on all configured transports while presenting one selected session
 /// to the playout timeline. An on-air session is never pre-empted.
-pub fn spawn_live_listeners(
+pub fn spawn_live_listeners(inputs: Vec<LiveListenerConfig>, cfg: OutputConfig) -> LiveReceiver {
+    spawn_controlled_live_listeners(inputs, cfg, LiveIngestControl::default())
+}
+
+pub(crate) fn spawn_controlled_live_listeners(
     mut inputs: Vec<LiveListenerConfig>,
     cfg: OutputConfig,
+    control: LiveIngestControl,
 ) -> LiveReceiver {
     inputs.sort_by_key(|input| (Reverse(input.priority), input.id));
-
-    if inputs.len() == 1 {
-        let input = inputs.pop().unwrap();
-
-        return spawn_listener(input, cfg);
-    }
 
     let (tx, rx) = mpsc::sync_channel(live_channel_capacity(cfg.fps));
     let abort = Arc::new(AtomicBool::new(false));
     let benchmark = Arc::new(Mutex::new(None));
     let mut receiver = LiveReceiver::new(rx, Arc::clone(&abort), Arc::clone(&benchmark), &cfg);
+    receiver.selection_control = Some(control.clone());
+    receiver.selection_revision = Some(control.revision());
     receiver.listener_idle_timeouts = inputs
         .iter()
         .map(|input| (input.id, input.idle_timeout.clone()))
@@ -343,6 +353,7 @@ pub fn spawn_live_listeners(
     let listeners = inputs
         .into_iter()
         .map(|input| ListenerSlot {
+            config: Some(input.clone()),
             receiver: spawn_listener_with_benchmark(
                 input,
                 cfg.clone(),
@@ -360,12 +371,26 @@ pub fn spawn_live_listeners(
         .collect();
     let channel_id = cfg.channel_id.unwrap_or_default();
 
-    thread::spawn(move || relay_live_listeners(listeners, tx, abort, channel_id));
+    thread::spawn(move || {
+        relay_live_listeners(
+            listeners,
+            tx,
+            abort,
+            channel_id,
+            control.clone(),
+            Some(LiveRelayRuntime {
+                config: cfg,
+                benchmark,
+            }),
+        );
+        control.clear();
+    });
 
     receiver
 }
 
 pub(super) struct ListenerSlot {
+    pub(super) config: Option<LiveListenerConfig>,
     pub(super) receiver: LiveReceiver,
     pub(super) session: Option<(u64, bool, i32)>,
     pub(super) closed: bool,
@@ -403,17 +428,50 @@ impl ListenerSlot {
     }
 }
 
+pub(super) struct LiveRelayRuntime {
+    pub(super) config: OutputConfig,
+    pub(super) benchmark: Arc<Mutex<Option<BenchHandle>>>,
+}
+
 pub(super) fn relay_live_listeners(
     mut listeners: Vec<ListenerSlot>,
     tx: SyncSender<LiveEvent>,
     abort: Arc<AtomicBool>,
     channel_id: i32,
+    control: LiveIngestControl,
+    runtime: Option<LiveRelayRuntime>,
 ) {
+    control.register_relay();
     let mut selected: Option<(usize, u64, u64)> = None;
+    let mut selected_revision = control.revision();
     let mut next_session = 0u64;
     let mut pending_output = VecDeque::new();
 
     while !abort.load(Ordering::Relaxed) {
+        if let Some(inputs) = control.take_listener_update()
+            && let Some(runtime) = &runtime
+        {
+            update_listener_slots(
+                &mut listeners,
+                inputs,
+                runtime,
+                &control,
+                &mut selected,
+                &mut pending_output,
+            );
+        }
+        control.expire_pending();
+        if let Some((index, source_session, relay_session)) = selected
+            && let Some((_, _, id)) = listeners[index].session
+            && (!control.allows(id, source_session) || selected_revision != control.revision())
+        {
+            // Discard pending old frames before forwarding the explicit end.
+            // Already queued frames are invalidated by their selection revision.
+            selected = None;
+            pending_output.clear();
+            pending_output.push_back(LiveEvent::Ended(relay_session));
+            control.forwarding(None);
+        }
         if flush_relay_events(&tx, &mut pending_output).is_err() {
             return;
         }
@@ -444,6 +502,9 @@ pub(super) fn relay_live_listeners(
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
                         listener.closed = true;
+                        if let Some((session, _, id)) = listener.session {
+                            control.ended(id, session);
+                        }
                         listener.session = None;
                         listener.clear_pending_audio();
 
@@ -451,6 +512,7 @@ pub(super) fn relay_live_listeners(
                             && let Some((_, _, session_id)) = selected.take()
                         {
                             pending_output.push_back(LiveEvent::Ended(session_id));
+                            control.forwarding(None);
                         }
 
                         break;
@@ -459,24 +521,49 @@ pub(super) fn relay_live_listeners(
                 received = true;
 
                 let forwarded = match event {
+                    LiveEvent::Selection(_) => None,
                     LiveEvent::Started {
                         session_id,
                         has_audio,
                         listener_id,
                     } => {
+                        if let Some((previous, _, id)) = listener.session {
+                            control.ended(id, previous);
+                        }
+                        control.started(
+                            listener_id,
+                            session_id,
+                            listener.receiver.idle_timeout.duration(),
+                        );
                         listener.session = Some((session_id, has_audio, listener_id));
                         listener.clear_pending_audio();
                         None
                     }
-                    LiveEvent::Video(session_id, frame) => {
+                    LiveEvent::Video(session_id, frame, texts) => {
+                        if let Some((candidate, _, id)) = listener.session
+                            && candidate == session_id
+                        {
+                            control.video(
+                                id,
+                                session_id,
+                                listener.receiver.idle_timeout.duration(),
+                            );
+                        }
                         if selected.is_none()
                             && pending_output.is_empty()
                             && let Some((candidate, has_audio, listener_id)) = listener.session
                             && candidate == session_id
+                            && let Some(revision) =
+                                control.selection_revision(listener_id, session_id)
                         {
                             next_session = next_session.wrapping_add(1);
                             selected = Some((index, session_id, next_session));
+                            selected_revision = revision;
+                            control.forwarding(Some((listener_id, session_id)));
 
+                            if revision != 0 {
+                                pending_output.push_back(LiveEvent::Selection(revision));
+                            }
                             pending_output.push_back(LiveEvent::Started {
                                 session_id: next_session,
                                 has_audio,
@@ -487,7 +574,7 @@ pub(super) fn relay_live_listeners(
                             // source PTS still aligns the audio afterwards,
                             // while the first visible frame is not delayed by
                             // a long buffered audio-only lead-in.
-                            pending_output.push_back(LiveEvent::Video(next_session, frame));
+                            pending_output.push_back(LiveEvent::Video(next_session, frame, texts));
 
                             for audio in listener.pending_audio.drain(..) {
                                 pending_output.push_back(LiveEvent::Audio(next_session, audio));
@@ -500,7 +587,9 @@ pub(super) fn relay_live_listeners(
                                 .filter(|(active, source_session, _)| {
                                     *active == index && *source_session == session_id
                                 })
-                                .map(|(_, _, relay_session)| LiveEvent::Video(relay_session, frame))
+                                .map(|(_, _, relay_session)| {
+                                    LiveEvent::Video(relay_session, frame, texts)
+                                })
                         }
                     }
                     LiveEvent::Audio(session_id, frame) => {
@@ -527,6 +616,9 @@ pub(super) fn relay_live_listeners(
                             .session
                             .is_some_and(|(candidate, _, _)| candidate == session_id)
                         {
+                            if let Some((_, _, id)) = listener.session {
+                                control.ended(id, session_id);
+                            }
                             listener.session = None;
                             listener.clear_pending_audio();
                         }
@@ -534,6 +626,7 @@ pub(super) fn relay_live_listeners(
                         if selected.is_some_and(|(active, source_session, _)| {
                             active == index && source_session == session_id
                         }) {
+                            control.forwarding(None);
                             selected
                                 .take()
                                 .map(|(_, _, relay_session)| LiveEvent::Ended(relay_session))
@@ -559,13 +652,114 @@ pub(super) fn relay_live_listeners(
             }
         }
 
-        if listeners.iter().all(|listener| listener.closed) && pending_output.is_empty() {
+        if runtime.is_none()
+            && listeners.iter().all(|listener| listener.closed)
+            && pending_output.is_empty()
+        {
             return;
         }
 
         if !received {
-            thread::sleep(LIVE_SEND_RETRY_INTERVAL);
+            if listeners.is_empty() && pending_output.is_empty() && !abort.load(Ordering::Relaxed) {
+                thread::park();
+            } else {
+                thread::sleep(LIVE_SEND_RETRY_INTERVAL);
+            }
         }
+    }
+}
+
+pub(super) fn same_listener_transport(
+    left: &LiveListenerConfig,
+    right: &LiveListenerConfig,
+) -> bool {
+    left.backend == right.backend
+        && left.url == right.url
+        && left.options == right.options
+        && left.demuxer_options == right.demuxer_options
+}
+
+pub(super) fn update_listener_slots(
+    listeners: &mut Vec<ListenerSlot>,
+    inputs: Vec<LiveListenerConfig>,
+    runtime: &LiveRelayRuntime,
+    control: &LiveIngestControl,
+    selected: &mut Option<(usize, u64, u64)>,
+    pending: &mut VecDeque<LiveEvent>,
+) {
+    let cfg = &runtime.config;
+    let active_id =
+        selected.and_then(|(index, _, _)| listeners[index].config.as_ref().map(|input| input.id));
+    let retained = |slot: &ListenerSlot| {
+        slot.config.as_ref().is_some_and(|old| {
+            inputs
+                .iter()
+                .any(|new| old.id == new.id && same_listener_transport(old, new))
+        })
+    };
+
+    if let Some((index, _, session)) = *selected
+        && !retained(&listeners[index])
+    {
+        control.invalidate_selection(
+            active_id.expect("selected runtime listeners have a configuration"),
+        );
+        pending.clear();
+        pending.push_back(LiveEvent::Ended(session));
+        *selected = None;
+    }
+
+    // Drop obsolete receivers before opening replacements, releasing their
+    // sockets through the existing bounded reader cancellation path.
+    listeners.retain(|slot| {
+        if retained(slot) {
+            return true;
+        }
+        if let Some((session, _, id)) = slot.session {
+            control.ended(id, session);
+        }
+
+        false
+    });
+
+    for input in inputs {
+        if let Some(slot) = listeners
+            .iter_mut()
+            .find(|slot| slot.config.as_ref().is_some_and(|old| old.id == input.id))
+        {
+            slot.config = Some(input);
+        } else {
+            let mut receiver = spawn_listener_with_benchmark(
+                input.clone(),
+                cfg.clone(),
+                Arc::clone(&runtime.benchmark),
+                (cfg.fps as usize / 4).max(4),
+            );
+            receiver.idle_timeout = input.idle_timeout.clone();
+            listeners.push(ListenerSlot {
+                config: Some(input),
+                receiver,
+                session: None,
+                closed: false,
+                pending_audio: VecDeque::new(),
+                pending_audio_samples: 0,
+            });
+        }
+    }
+    listeners.sort_by_key(|slot| {
+        slot.config
+            .as_ref()
+            .map(|input| (Reverse(input.priority), input.id))
+    });
+    if let Some((index, _, _)) = selected {
+        *index = listeners
+            .iter()
+            .position(|slot| {
+                slot.config
+                    .as_ref()
+                    .is_some_and(|input| Some(input.id) == active_id)
+            })
+            .expect("the selected listener was retained");
     }
 }
 
@@ -613,6 +807,12 @@ fn spawn_listener_with_benchmark(
 }
 
 impl LiveReceiver {
+    pub(super) fn selection_current(&self) -> bool {
+        self.selection_control
+            .as_ref()
+            .is_none_or(|control| self.selection_revision == Some(control.revision()))
+    }
+
     fn new(
         rx: Receiver<LiveEvent>,
         abort: Arc<AtomicBool>,
@@ -620,6 +820,10 @@ impl LiveReceiver {
         cfg: &OutputConfig,
     ) -> Self {
         Self {
+            texts: Default::default(),
+            last_video_texts: Default::default(),
+            selection_control: None,
+            selection_revision: None,
             rx,
             pending_event: None,
             delay: LiveDelay::new(LIVE_LATENCY, cfg.fps, cfg.sample_rate),
@@ -663,6 +867,9 @@ impl LiveReceiver {
 impl Drop for LiveReceiver {
     fn drop(&mut self) {
         self.abort.store(true, Ordering::Relaxed);
+        if let Some(control) = &self.selection_control {
+            control.clear();
+        }
     }
 }
 
@@ -684,6 +891,7 @@ impl LiveReceiver {
 }
 
 pub(super) struct LiveFrameSender {
+    pub(super) texts: crate::graphics::text_adapter::TextOverlays,
     pub(super) tx: SyncSender<LiveEvent>,
     pub(super) session_id: u64,
     pub(super) diagnostics: Arc<LiveInputDiagnostics>,
@@ -697,7 +905,7 @@ impl LiveFrameSender {
     /// the RTMP reader instead of dropping frames, but the retry loop keeps
     /// checking abort flags so shutdown/restart cannot hang on a blocked send.
     pub(super) fn send_frame(&mut self, event: LiveEvent) -> Result<()> {
-        if matches!(&event, LiveEvent::Video(_, _)) {
+        if matches!(&event, LiveEvent::Video(_, _, _)) {
             self.diagnostics.video_frame_ready();
         }
         self.diagnostics.frame_ready();
@@ -716,6 +924,18 @@ impl LiveFrameSender {
 }
 
 impl FrameOutput for LiveFrameSender {
+    fn retains_text_overlays(&self) -> bool {
+        true
+    }
+
+    fn apply_text_overlays(
+        &mut self,
+        _: &mut frame::Video,
+        texts: crate::graphics::text_adapter::TextOverlays,
+    ) {
+        self.texts = texts;
+    }
+
     fn input_diagnostics_handle(&self) -> Option<Arc<LiveInputDiagnostics>> {
         Some(self.diagnostics.clone())
     }
@@ -732,6 +952,7 @@ impl FrameOutput for LiveFrameSender {
         self.send_frame(LiveEvent::Video(
             self.session_id,
             reference_video_frame(frame)?,
+            self.texts.clone(),
         ))
         .context("failed to send live video frame")
     }
@@ -833,6 +1054,7 @@ fn run_live_listener(
 
                 let (done_tx, done_rx) = mpsc::sync_channel(1);
                 let mut output = LiveFrameSender {
+                    texts: Default::default(),
                     tx: tx.clone(),
                     session_id,
                     diagnostics,

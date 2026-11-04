@@ -248,9 +248,10 @@ fn ensure_minimum_free_space(directory: &Path, minimum_free_space_gb: u32) -> Re
 
     let directory = fs::canonicalize(directory).unwrap_or_else(|_| directory.to_path_buf());
     let required = u64::from(minimum_free_space_gb) * 1024 * 1024 * 1024;
-    let available = Disks::new_with_refreshed_list()
-        .list()
-        .iter()
+    let disks = Disks::new_with_refreshed_list()
+        .context("could not enumerate disks for recording free-space check")?;
+    let available = (&disks)
+        .into_iter()
         .filter(|disk| directory.starts_with(disk.mount_point()))
         .max_by_key(|disk| disk.mount_point().as_os_str().len())
         .map(Disk::available_space)

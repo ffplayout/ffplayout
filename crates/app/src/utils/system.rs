@@ -1,13 +1,18 @@
 use std::{
     collections::HashSet,
+    ffi::OsStr,
     fmt,
+    path::Path,
     sync::{Arc, Mutex, PoisonError},
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 
 use local_ip_address::list_afinet_netifas;
 use serde::Serialize;
 use sysinfo::{
-    Disks, Networks, Process, ProcessRefreshKind, ProcessesToUpdate, System, get_current_pid,
+    Disk, Disks, Networks, Process, ProcessRefreshKind, ProcessesToUpdate, System, get_current_pid,
 };
 
 use crate::utils::{config::PlayoutConfig, sizeof_fmt};
@@ -24,11 +29,11 @@ pub struct SystemStat {
     pub swap: Swap,
     pub system: MySystem,
     #[serde(skip_serializing)]
-    info_disks: Arc<Mutex<Disks>>,
+    info_disks: Arc<Mutex<Option<Disks>>>,
     #[serde(skip_serializing)]
-    info_net: Arc<Mutex<Networks>>,
+    info_net: Arc<Mutex<Option<Networks>>>,
     #[serde(skip_serializing)]
-    info_sys: Arc<Mutex<System>>,
+    info_sys: Arc<Mutex<Option<System>>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -85,16 +90,25 @@ pub struct Swap {
 impl SystemStat {
     pub fn new() -> Self {
         let system = MySystem {
-            name: System::name(),
-            kernel: System::kernel_version(),
-            version: System::os_version(),
+            name: System::name().ok(),
+            kernel: System::kernel_version().ok(),
+            version: System::os_version().ok(),
             ffp_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         };
 
         Self {
-            info_disks: Arc::new(Mutex::new(Disks::new_with_refreshed_list())),
-            info_net: Arc::new(Mutex::new(Networks::new_with_refreshed_list())),
-            info_sys: Arc::new(Mutex::new(System::new_all())),
+            info_disks: Arc::new(Mutex::new(initialize_collector(
+                "disks",
+                Disks::new_with_refreshed_list(),
+            ))),
+            info_net: Arc::new(Mutex::new(initialize_collector(
+                "networks",
+                Networks::new_with_refreshed_list(),
+            ))),
+            info_sys: Arc::new(Mutex::new(initialize_collector(
+                "system",
+                System::new_all(),
+            ))),
             system,
             ..Default::default()
         }
@@ -109,6 +123,10 @@ impl SystemStat {
 
         tokio::task::spawn_blocking(move || {
             let mut sys = info_sys.lock().unwrap_or_else(PoisonError::into_inner);
+
+            let Some(sys) = sys.as_mut() else {
+                return (0, String::from("0.0"));
+            };
 
             sys.refresh_processes_specifics(
                 ProcessesToUpdate::Some(&[pid]),
@@ -142,8 +160,23 @@ impl SystemStat {
                 let mut networks = info_net.lock().unwrap_or_else(PoisonError::into_inner);
                 let mut sys = info_sys.lock().unwrap_or_else(PoisonError::into_inner);
 
-                disks.refresh(true);
-                networks.refresh(true);
+                if let Some(disks) = disks.as_mut() {
+                    disks.refresh(true);
+                }
+                if let Some(networks) = networks.as_mut() {
+                    networks.refresh(true);
+                }
+                let Some(sys) = sys.as_mut() else {
+                    return (
+                        Cpu::default(),
+                        Load::default(),
+                        Memory::default(),
+                        Network::default(),
+                        Storage::default(),
+                        Swap::default(),
+                    );
+                };
+
                 sys.refresh_cpu_usage();
                 sys.refresh_memory();
 
@@ -179,7 +212,7 @@ impl SystemStat {
                 let cores = sys.cpus().len() as f32;
 
                 for cpu in sys.cpus() {
-                    usage += cpu.cpu_usage();
+                    usage += cpu.usage();
                 }
 
                 let cpu = Cpu {
@@ -187,24 +220,15 @@ impl SystemStat {
                     usage: usage * cores / 100.0,
                 };
 
-                let mut storage = Storage::default();
+                let storage = storage_for_path(&storage_path, disks.as_deref().unwrap_or_default());
 
-                for disk in &*disks {
-                    if disk.mount_point().to_string_lossy().len() > 1
-                        && storage_path.starts_with(disk.mount_point())
-                    {
-                        storage.path = disk.name().to_string_lossy().to_string();
-                        storage.total = disk.total_space();
-                        storage.free = disk.available_space();
-                    }
-                }
-
-                let load_avg = System::load_average();
-                let load = Load {
-                    one: load_avg.one,
-                    five: load_avg.five,
-                    fifteen: load_avg.fifteen,
-                };
+                let load = System::load_average()
+                    .map(|load| Load {
+                        one: load.one,
+                        five: load.five,
+                        fifteen: load.fifteen,
+                    })
+                    .unwrap_or_default();
 
                 let memory = Memory {
                     total: sys.total_memory(),
@@ -214,9 +238,9 @@ impl SystemStat {
 
                 let mut network = Network::default();
 
-                for (interface_name, data) in &*networks {
-                    if !interfaces.is_empty() && interface_name == interfaces[0].0 {
-                        network.name.clone_from(interface_name);
+                for (interface_name, data) in networks.iter().flatten() {
+                    if !interfaces.is_empty() && interface_name == OsStr::new(interfaces[0].0) {
+                        network.name = interface_name.to_string_lossy().into_owned();
                         network.current_in = data.received();
                         network.total_in = data.total_received();
                         network.current_out = data.transmitted();
@@ -256,5 +280,87 @@ impl SystemStat {
 impl fmt::Display for SystemStat {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", serde_json::to_string(self).unwrap())
+    }
+}
+
+fn storage_for_path(path: &Path, disks: &[Disk]) -> Storage {
+    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    // macOS firmlinks (e.g. /Users -> the Data volume) are not resolved by
+    // canonicalize. The filesystem's device ID identifies the actual volume.
+    #[cfg(unix)]
+    let device = path.metadata().ok().map(|metadata| metadata.dev());
+    #[cfg(not(unix))]
+    let device: Option<u64> = None;
+
+    let same_device = |disk: &Disk| device.is_some_and(|id| disk.id() == Some(id));
+    let disk = disks
+        .iter()
+        .filter(|disk| same_device(disk) || path.starts_with(disk.mount_point()))
+        .max_by_key(|disk| (same_device(disk), disk.mount_point().components().count()));
+
+    disk.map_or_else(Storage::default, |disk| Storage {
+        path: disk.name().to_string_lossy().into_owned(),
+        total: disk.total_space(),
+        free: disk.available_space(),
+    })
+}
+
+fn initialize_collector<T>(name: &str, result: Result<T, sysinfo::Error>) -> Option<T> {
+    match result {
+        Ok(collector) => Some(collector),
+        Err(error) => {
+            log::warn!("System statistics: failed to initialize {name}: {error}");
+
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn storage_uses_the_filesystem_device_for_relative_and_symlinked_paths() {
+        use std::{fs, os::unix::fs::symlink};
+
+        let disks = Disks::new_with_refreshed_list().unwrap();
+        let directory = std::env::temp_dir().join(format!(
+            "system-storage-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let link = directory.join("media");
+        symlink(std::env::current_dir().unwrap(), &link).unwrap();
+
+        for path in [Path::new("."), link.as_path()] {
+            let device = path.metadata().unwrap().dev();
+            let disk = disks.iter().find(|disk| disk.id() == Some(device)).unwrap();
+            let storage = storage_for_path(path, &disks);
+            assert_eq!(storage.path, disk.name().to_string_lossy());
+            assert_eq!(storage.total, disk.total_space());
+            assert!(storage.total > 0);
+            // available_space() can query live filesystem state; concurrent
+            // writes may change it between these two observations.
+            assert!(storage.free <= storage.total);
+        }
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn storage_reports_the_root_filesystem() {
+        let disks = Disks::new_with_refreshed_list().unwrap();
+        let root = std::env::current_dir()
+            .unwrap()
+            .ancestors()
+            .last()
+            .unwrap()
+            .to_path_buf();
+        let storage = storage_for_path(&root, &disks);
+        assert!(storage.total > 0);
+        assert!(!storage.path.is_empty());
     }
 }

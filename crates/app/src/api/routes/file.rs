@@ -19,7 +19,10 @@ use crate::{
         state::AppState,
     },
     db::models::Role,
-    file::{MoveObject, PathObject, UploadStatus, UploadStatusQuery, norm_abs_path},
+    file::{
+        MoveObject, PathObject, UploadStatus, UploadStatusQuery, norm_abs_path,
+        selection::{BrowseRequest, Listing, SelectionMediaInfo},
+    },
     player::utils::import::import_file,
     utils::errors::ServiceError,
 };
@@ -66,6 +69,52 @@ pub async fn file_browser(
         Ok(obj) => Ok(Json(obj)),
         Err(e) => Err(e),
     }
+}
+
+pub async fn browse_selection(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    user: AuthUser,
+    details: AuthDetails<Role>,
+    Json(data): Json<BrowseRequest>,
+) -> Result<Json<Listing>, ServiceError> {
+    ensure_any_authority(
+        &details,
+        &[&Role::GlobalAdmin, &Role::ChannelAdmin, &Role::User],
+    )?;
+    user.ensure_channel_or_admin(id)?;
+
+    let manager = state
+        .controller
+        .read()
+        .await
+        .get(id)
+        .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    Ok(Json(manager.storage.browse_selection(&data).await?))
+}
+
+pub async fn selection_media_info(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    user: AuthUser,
+    details: AuthDetails<Role>,
+    Json(data): Json<BrowseRequest>,
+) -> Result<Json<SelectionMediaInfo>, ServiceError> {
+    ensure_any_authority(
+        &details,
+        &[&Role::GlobalAdmin, &Role::ChannelAdmin, &Role::User],
+    )?;
+    user.ensure_channel_or_admin(id)?;
+    let manager = state
+        .controller
+        .read()
+        .await
+        .get(id)
+        .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+    let info = manager.storage.selection_media_info(&data.source).await?;
+
+    Ok(Json(info))
 }
 
 /// **Create Folder**

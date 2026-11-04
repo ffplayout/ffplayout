@@ -5,16 +5,7 @@ use ffmpeg_next::{
     ffi, frame,
 };
 
-pub(crate) fn reference_video_frame(source: &frame::Video) -> Result<frame::Video> {
-    let mut referenced = frame::Video::empty();
-    let result = unsafe { ffi::av_frame_ref(referenced.as_mut_ptr(), source.as_ptr()) };
-
-    if result < 0 {
-        return Err(ffmpeg_next::Error::from(result)).context("referencing FFmpeg video frame");
-    }
-
-    Ok(referenced)
-}
+pub(crate) use ff_graphics::ffmpeg::reference_video_frame;
 
 pub(crate) fn reference_audio_frame(source: &frame::Audio) -> Result<frame::Audio> {
     let mut referenced = frame::Audio::empty();

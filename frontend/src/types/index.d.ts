@@ -190,6 +190,7 @@ declare global {
         title?: string | null
         source: string
         audio?: string
+        graphics?: unknown
         duration: number
         in: number
         out: number
@@ -253,7 +254,19 @@ declare global {
         system: { name?: string; kernel?: string; version?: string; ffp_version?: string }
     }
 
+    interface LiveInputStatus {
+        auto_takeover: boolean
+        name?: string | null
+        backend?: string | null
+        id: number
+        session: string
+        ready: boolean
+        selected: boolean
+    }
+
     interface PlayoutStatus {
+        running?: boolean
+        ingest_inputs?: LiveInputStatus[]
         media: PlaylistItem
         index: number
         audio?: AudioLevel

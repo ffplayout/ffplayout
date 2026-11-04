@@ -1,14 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use cosmic_text::Weight;
+use ff_graphics::bitmap::{StraightRgbaBitmap, source_over_straight};
 
 use crate::{
-    compositor::{
-        logo::LogoOverlay,
-        text::{TextBitmap, render_left_aligned_text_bitmap, render_wrapped_text_bitmap},
-    },
-    utils::config::{LogoConfig, RgbaColor},
+    graphics::text_adapter::{render_left_aligned_text_bitmap, render_wrapped_text_bitmap},
+    utils::config::{RgbaColor, TextWeight},
 };
 
 pub(super) const SUBTITLE_FONT_SIZE: f32 = 24.0;
@@ -16,35 +13,12 @@ pub(super) const SUBTITLE_FULLSCREEN_FONT_SIZE: f32 = 44.0;
 pub(super) const SUBTITLE_OUTLINE: u32 = 2;
 pub(super) const SUBTITLE_MAX_WIDTH_PERCENT: u32 = 92;
 
+/// Straight-alpha RGBA8 consumed by both desktop rendering backends.
 #[derive(Clone)]
 pub(super) struct RgbaBitmap {
     pub(super) pixels: Arc<[u8]>,
     pub(super) width: u32,
     pub(super) height: u32,
-}
-
-pub(super) struct DesktopLogo {
-    pub(super) bitmap: RgbaBitmap,
-    pub(super) position: String,
-    pub(super) opacity: u8,
-}
-
-pub(super) fn create_desktop_logo(
-    config: &LogoConfig,
-    output_width: u32,
-    output_height: u32,
-) -> Result<DesktopLogo> {
-    let logo = LogoOverlay::load(config, output_width, output_height)?;
-
-    Ok(DesktopLogo {
-        bitmap: RgbaBitmap {
-            pixels: yuva420p_to_rgba(&logo).into(),
-            width: logo.width,
-            height: logo.height,
-        },
-        position: config.position.clone(),
-        opacity: logo.opacity,
-    })
 }
 
 pub(super) fn create_subtitle_bitmap(
@@ -58,7 +32,7 @@ pub(super) fn create_subtitle_bitmap(
     let white = render_wrapped_text_bitmap(
         text,
         font_size,
-        Weight::SEMIBOLD,
+        TextWeight::Semibold,
         RgbaColor {
             r: 248,
             g: 248,
@@ -70,7 +44,7 @@ pub(super) fn create_subtitle_bitmap(
     let black = render_wrapped_text_bitmap(
         text,
         font_size,
-        Weight::SEMIBOLD,
+        TextWeight::Semibold,
         RgbaColor {
             r: 0,
             g: 0,
@@ -115,7 +89,7 @@ pub(super) fn create_help_bitmap(
     let bitmap = render_left_aligned_text_bitmap(
         "Keyboard shortcuts\n\nE  Previous clip\nR  Reset playlist\nT  Next clip\n\nF  Fullscreen\nEsc  Stop playout\nLeft/Right  Volume\nS  Toggle subtitles\nH  Close help",
         font_size,
-        Weight::SEMIBOLD,
+        TextWeight::Semibold,
         RgbaColor {
             r: 248,
             g: 248,
@@ -140,42 +114,10 @@ pub(super) fn subtitle_font_size(large_display: bool) -> f32 {
     }
 }
 
-fn yuva420p_to_rgba(logo: &LogoOverlay) -> Vec<u8> {
-    let width = logo.width as usize;
-    let height = logo.height as usize;
-    let y_plane = logo.frame.data(0);
-    let u_plane = logo.frame.data(1);
-    let v_plane = logo.frame.data(2);
-    let a_plane = logo.frame.data(3);
-    let y_stride = logo.frame.stride(0);
-    let u_stride = logo.frame.stride(1);
-    let v_stride = logo.frame.stride(2);
-    let a_stride = logo.frame.stride(3);
-    let mut pixels = vec![0_u8; width * height * 4];
-
-    for y in 0..height {
-        for x in 0..width {
-            let (r, g, b) = yuv_to_rgb(
-                i32::from(y_plane[y * y_stride + x]),
-                i32::from(u_plane[(y / 2) * u_stride + x / 2]),
-                i32::from(v_plane[(y / 2) * v_stride + x / 2]),
-            );
-            let destination = (y * width + x) * 4;
-            pixels[destination..destination + 4].copy_from_slice(&[
-                r,
-                g,
-                b,
-                a_plane[y * a_stride + x],
-            ]);
-        }
-    }
-    pixels
-}
-
 fn composite_bitmap(
     destination: &mut [u8],
     destination_width: u32,
-    source: &TextBitmap,
+    source: &StraightRgbaBitmap,
     x: i32,
     y: i32,
     alpha_scale: f32,
@@ -217,29 +159,9 @@ fn composite_bitmap(
 }
 
 fn alpha_composite_rgba(destination: &mut [u8], source: &[u8]) {
-    let alpha = u16::from(source[3]);
-    let inverse = 255 - alpha;
-
-    for channel in 0..3 {
-        destination[channel] =
-            ((u16::from(destination[channel]) * inverse + u16::from(source[channel]) * alpha + 127)
-                / 255) as u8;
-    }
-    destination[3] = (u16::from(destination[3]) + alpha
-        - ((u16::from(destination[3]) * alpha + 127) / 255)) as u8;
-}
-
-fn yuv_to_rgb(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
-    let c = y.saturating_sub(16);
-    let d = u - 128;
-    let e = v - 128;
-    (
-        clamp_rgb((298 * c + 409 * e + 128) >> 8),
-        clamp_rgb((298 * c - 100 * d - 208 * e + 128) >> 8),
-        clamp_rgb((298 * c + 516 * d + 128) >> 8),
-    )
-}
-
-fn clamp_rgb(value: i32) -> u8 {
-    value.clamp(0, 255) as u8
+    let pixel = destination
+        .try_into()
+        .expect("RGBA pixel has four components");
+    let source = source.try_into().expect("RGBA pixel has four components");
+    source_over_straight(pixel, source);
 }

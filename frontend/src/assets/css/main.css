@@ -12,6 +12,7 @@
     --color-primary-content: #222222;
     --color-base-content: #222222;
     --color-secondary: #c7c7c7;
+    --color-secondary-content: #000000;
     --color-accent: #f28c1b;
     --color-base-100: #ffffff;
     --color-base-200: #f2f5f7;
@@ -42,6 +43,7 @@
     --color-primary-content: #dfdfdf;
     --color-base-content: #dfdfdf;
     --color-secondary: #d3d3d3;
+    --color-secondary-content: #000000;
     --color-accent: #f28c1b;
     --color-base-100: #313131;
     --color-base-200: #222222;
@@ -122,6 +124,10 @@
     src: url('@/assets/fonts/DigitalNumbers-Regular.woff') format('woff');
     font-weight: normal;
     font-style: normal;
+}
+
+.btn {
+    @apply border border-base-content/30;
 }
 
 .splitpanes--horizontal > .splitpanes__splitter {

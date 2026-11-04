@@ -1,78 +1,93 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import videojs from 'video.js'
-import 'video.js/dist/video-js.css'
+import { computed, onBeforeUnmount, onMounted, shallowRef, watch } from 'vue'
+import type { HlsJsVideoElement } from '@videojs/html/media/hlsjs-video'
+import '@videojs/html/video/player'
+import '@videojs/html/video/neutral-skin'
+import '@videojs/html/live-video/player'
+import '@videojs/html/live-video/neutral-skin'
+import '@videojs/html/media/hlsjs-video'
 
-import { useConfig } from '@/stores/config'
+// Keep Vue's self-component resolution distinct from the <video-player> element.
+defineOptions({ name: 'VideoPlayback' })
 
-const configStore = useConfig()
+const props = withDefaults(defineProps<{ src: string; type?: string; live?: boolean }>(), { live: false })
+const media = shallowRef<HTMLVideoElement | HlsJsVideoElement>()
+const generation = shallowRef(0)
+const hls = computed(() => /mpegurl/i.test(props.type ?? '') || /\.m3u8(?:[?#]|$)/i.test(props.src))
+let retry: ReturnType<typeof setTimeout> | undefined
+let disposed = false
+let resumeAfterRetry = false
 
-const player = ref()
-
-const props = defineProps({
-    options: {
-        type: Object,
-        required: true,
-    },
-    reference: {
-        type: String,
-        required: true,
-    },
-})
-
-onMounted(() => {
-    const volume = localStorage.getItem('volume')
-
-    player.value = videojs(props.reference, props.options, function onPlayerReady() {
-        // console.log('onPlayerReady', this);
-    })
-
-    if (volume !== null) {
-        player.value.volume(volume)
+function restoreVolume() {
+    const saved = localStorage.getItem('volume')
+    const volume = saved === null ? undefined : Number(saved)
+    if (media.value && volume !== undefined && Number.isFinite(volume)) {
+        media.value.volume = Math.min(1, Math.max(0, volume))
     }
+}
 
-    player.value.on('volumechange', () => {
-        localStorage.setItem('volume', player.value.volume())
+function saveVolume() {
+    if (media.value) localStorage.setItem('volume', String(media.value.volume))
+}
+
+function retryStream() {
+    // File previews keep their error UI; only live streams retry missing media.
+    if (!props.live || retry !== undefined) return
+    retry = setTimeout(() => {
+        retry = undefined
+        if (!disposed) {
+            resumeAfterRetry = media.value?.paused === false
+            generation.value++
+        }
+    }, 2000)
+}
+
+function resumeStream() {
+    if (!resumeAfterRetry || !media.value) return
+    resumeAfterRetry = false
+    void media.value.play().catch(() => {
+        // Browser autoplay policy may still require another explicit click.
     })
+}
 
-    player.value.on('error', () => {
-        setTimeout(() => {
-            configStore.showPlayer = false
+watch(media, restoreVolume, { flush: 'post' })
+watch(
+    () => props.src,
+    () => {
+        clearTimeout(retry)
+        retry = undefined
+        resumeAfterRetry = false
+    },
+)
 
-            nextTick(() => {
-                configStore.showPlayer = true
-            })
-        }, 2000)
-    })
-})
-
+onMounted(restoreVolume)
 onBeforeUnmount(() => {
-    if (player.value) {
-        player.value.dispose()
+    disposed = true
+    clearTimeout(retry)
+    media.value?.pause()
+    if (media.value instanceof HTMLVideoElement) {
+        media.value.removeAttribute('src')
+        media.value.load()
     }
+    // Removing the custom element releases the HLS engine and its requests.
 })
 </script>
 <template>
-    <div>
-        <div v-if="options.sources">
-            <video
-                :id="reference"
-                class="video-js vjs-default-skin vjs-big-play-centered vjs-16-9"
-                width="1024"
-                height="576"
+    <component :is="live ? 'live-video-player' : 'video-player'" class="block w-full">
+        <component :is="live ? 'live-video-neutral-skin' : 'video-neutral-skin'" class="block w-full aspect-video">
+            <hlsjs-video
+                v-if="hls"
+                :key="`${src}:${generation}`"
+                ref="media"
+                :src="src"
+                :type="type"
+                preload="auto"
+                playsinline
+                @volumechange="saveVolume"
+                @error="retryStream"
+                @canplay="resumeStream"
             />
-        </div>
-    </div>
+            <video v-else :key="src" ref="media" :src="src" preload="auto" playsinline @volumechange="saveVolume" />
+        </component>
+    </component>
 </template>
-<style>
-.video-js .vjs-volume-panel.vjs-volume-panel-horizontal {
-    width: 10em;
-}
-
-.video-js .vjs-volume-panel .vjs-volume-control.vjs-volume-horizontal {
-    width: 5em;
-    height: 3em;
-    margin-right: 0;
-    opacity: 1;
-}
-</style>

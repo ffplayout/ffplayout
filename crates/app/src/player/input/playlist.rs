@@ -97,6 +97,7 @@ pub struct CurrentProgram {
     is_alive: Arc<AtomicBool>,
     last_json_path: Option<String>,
     last_node_ad: bool,
+    end_padding: bool,
 }
 
 /// Prepare a playlist iterator.
@@ -123,6 +124,7 @@ impl CurrentProgram {
             is_alive,
             last_json_path: None,
             last_node_ad: false,
+            end_padding: false,
         }
     }
 
@@ -255,6 +257,7 @@ impl CurrentProgram {
                 .await
                 .clone_from(&self.json_playlist.program);
             self.manager.current_index.store(0, Ordering::SeqCst);
+            self.end_padding = false;
         } else {
             if is_close(next_start, self.length_sec, IS_CLOSE_THRESHOLD) {
                 self.date = get_date(seek, self.start_sec, true, &self.config.channel.timezone);
@@ -774,6 +777,30 @@ impl CurrentProgram {
         self.last_json_path.clone_from(&self.json_playlist.path);
         self.last_node_ad = self.current_node.last_ad;
 
+        let now = time_in_seconds(&self.config.channel.timezone);
+        let (_, remaining) = get_delta(&self.config, &now);
+
+        if !self.config.playlist.infinit
+            && !self.end_padding
+            && remaining > 0.0
+            && remaining < IS_CLOSE_THRESHOLD
+        {
+            // Queue the short tail before the existing early playlist switch.
+            // Bypass gen_source: it skips sub-second clips and may select filler.
+            let index = self.manager.current_index.load(Ordering::SeqCst);
+            let mut padding = Media::new(index, "", false).await;
+            padding.begin = Some(now);
+            padding.duration = remaining;
+            padding.out = remaining;
+            padding.is_placeholder = true;
+            self.current_node = padding;
+            // Output may finish slightly ahead of wall time; never pad twice.
+            self.end_padding = true;
+            self.manager.list_init.store(false, Ordering::SeqCst);
+
+            return Some(self.current_node.clone());
+        }
+
         let list_init = self.manager.list_init.load(Ordering::SeqCst);
         self.check_for_playlist(list_init).await;
 
@@ -838,6 +865,7 @@ impl CurrentProgram {
 /// starts in the middle of their scheduled slot. Still images keep their first
 /// frame for the remaining slot; live transports start at their current edge.
 fn apply_init_seek(node: &mut Media, elapsed: f64) {
+    node.graphics_elapsed += elapsed.max(0.0);
     if is_live_source(&node.source) || is_image_source(&node.source) {
         node.out = (node.out - node.seek - elapsed).max(0.0);
         node.seek = 0.0;
@@ -857,6 +885,54 @@ mod tests {
             out,
             duration,
             ..Media::default()
+        }
+    }
+
+    #[test]
+    fn short_day_tail_is_black_silence_without_skipping_or_selecting_filler() {
+        use std::sync::atomic::Ordering;
+
+        use super::CurrentProgram;
+        use crate::{test_support::channel_manager, utils::time_machine::with_mock_time};
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (manager, _pool) = runtime.block_on(channel_manager());
+        for (time, start, remaining) in [
+            ("2026-11-01T23:59:59.500+00:00", 0.0, 0.5),
+            ("2026-11-02T07:59:58.500+00:00", 28_800.0, 1.5),
+        ] {
+            runtime.block_on(async {
+                let mut config = manager.config.write().await;
+                config.channel.timezone = Some(chrono_tz::UTC);
+                config.playlist.start_sec = Some(start);
+                config.playlist.length_sec = Some(86_400.0);
+                config.playlist.infinit = false;
+                *manager.current_list.lock().await = vec![Media::default(), Media::default()];
+                manager.current_index.store(1, Ordering::SeqCst);
+                manager.list_init.store(false, Ordering::SeqCst);
+            });
+            with_mock_time(time, || {
+                runtime.block_on(async {
+                    let mut program = CurrentProgram::new(manager.clone()).await;
+                    let filler_index = manager.filler_index.load(Ordering::SeqCst);
+                    let node = program.next().await.unwrap();
+                    assert!(node.source.is_empty());
+                    assert!(node.audio.is_empty());
+                    assert!(node.probe.is_none());
+                    assert!(node.is_placeholder);
+                    assert!(!node.skip, "sub-second tail must reach the engine");
+                    assert_eq!(node.seek, 0.0);
+                    assert!((node.out - remaining).abs() < 0.1, "{}", node.out);
+                    assert_eq!(node.out, node.duration);
+                    assert!(program.end_padding);
+                    assert_eq!(manager.current_index.load(Ordering::SeqCst), 1);
+                    assert_eq!(manager.current_list.lock().await.len(), 2);
+                    assert_eq!(manager.filler_index.load(Ordering::SeqCst), filler_index);
+                });
+            });
         }
     }
 
@@ -888,6 +964,7 @@ mod tests {
 
         assert_eq!(node.seek, 0.0);
         assert_eq!(node.out, 7.0);
+        assert_eq!(node.graphics_elapsed, 3.0);
     }
 
     #[test]
@@ -899,6 +976,16 @@ mod tests {
 
         assert_eq!(node.seek, 0.0);
         assert_eq!(node.out, 18.0);
+        assert_eq!(node.graphics_elapsed, 30.0);
+    }
+
+    #[test]
+    fn graphics_clock_offset_is_independent_of_the_media_in_cut() {
+        let mut node = media(12.0, 60.0, 120.0);
+        apply_init_seek(&mut node, 3.0);
+        assert_eq!(node.seek, 15.0);
+        assert_eq!(node.graphics_elapsed, 3.0);
+        assert_eq!(node.out - node.seek + node.graphics_elapsed, 48.0);
     }
 
     #[test]
