@@ -46,10 +46,18 @@ fi
 
 work_dir=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ffplayout-signing.XXXXXX")
 keychain_created=false
+restore_search_list=false
+original_keychains=()
 keychain="$work_dir/signing.keychain-db"
 cleanup() {
     local status=$?
     trap - EXIT
+    if [[ $restore_search_list == true ]]; then
+        if ! security list-keychains -d user -s ${original_keychains[@]+"${original_keychains[@]}"}; then
+            echo "Could not restore the keychain search list." >&2
+            if [[ $status == 0 ]]; then status=1; fi
+        fi
+    fi
     if [[ $keychain_created == true ]]; then
         if ! security delete-keychain "$keychain" >/dev/null 2>&1; then
             echo "Could not unregister temporary signing keychain." >&2
@@ -75,20 +83,59 @@ if [[ $operation == sign ]]; then
         printf '::add-mask::%s\n' "$signing_password"
     fi
 
+    # Save before create-keychain, which may itself update the search list.
+    search_list=$(security list-keychains -d user)
+    while IFS= read -r existing_keychain; do
+        existing_keychain=$(printf '%s\n' "$existing_keychain" | sed -E 's/^[[:space:]]*"//; s/"[[:space:]]*$//')
+        if [[ -n $existing_keychain ]]; then
+            original_keychains+=("$existing_keychain")
+        fi
+    done <<< "$search_list"
+    restore_search_list=true
+    echo "Create temporary signing keychain."
     security create-keychain -p "$signing_password" "$keychain"
     keychain_created=true
     security set-keychain-settings -lut 21600 "$keychain"
     security unlock-keychain -p "$signing_password" "$keychain"
+    security list-keychains -d user -s "$keychain" ${original_keychains[@]+"${original_keychains[@]}"}
+    echo "Import signing certificate and private key."
     security import "$work_dir/certificate.p12" -k "$keychain" \
         -P "$APPLE_CERTIFICATE_PASSWORD" -f pkcs12 \
         -T /usr/bin/codesign -T /usr/bin/security >/dev/null
+    identities=$(security find-identity -v -p codesigning "$keychain")
+    identity_pattern='^[[:space:]]*[0-9]+\)[[:space:]]+([[:xdigit:]]{40})[[:space:]]+"(.*)"'
+    identity_hash=$(printf '%s' "$APPLE_SIGNING_IDENTITY" | tr '[:lower:]' '[:upper:]')
+    identity_count=0
+    matching_count=0
+    signing_identity=''
+    while IFS= read -r identity; do
+        if [[ $identity =~ $identity_pattern ]]; then
+            fingerprint=${BASH_REMATCH[1]}
+            certificate_name=${BASH_REMATCH[2]}
+            identity_count=$((identity_count + 1))
+            if [[ $certificate_name == *"$APPLE_SIGNING_IDENTITY"* || $fingerprint == "$identity_hash" ]]; then
+                signing_identity=$fingerprint
+                matching_count=$((matching_count + 1))
+            fi
+        fi
+    done <<< "$identities"
+    if [[ $identity_count == 0 ]]; then
+        echo "No valid code-signing identity in APPLE_CERTIFICATE. Export a valid Developer ID Application certificate together with its private key as a password-protected .p12, then store its Base64 in APPLE_CERTIFICATE." >&2
+        exit 1
+    fi
+    if [[ $matching_count != 1 ]]; then
+        echo "APPLE_SIGNING_IDENTITY matches $matching_count of $identity_count valid imported identities. Set it to the certificate's full Developer ID Application name or SHA-1 fingerprint, as shown by security find-identity -v -p codesigning." >&2
+        exit 1
+    fi
+    echo "Authorize codesign access to the imported private key."
     security set-key-partition-list -S apple-tool:,apple:,codesign: \
         -s -k "$signing_password" "$keychain" >/dev/null
 
-    # Explicit keychain selection leaves the runner's default/search list intact.
+    # --keychain restricts identity lookup; chain lookup also needs the search list.
+    echo "Sign macOS binary."
     codesign --force --options runtime --timestamp --keychain "$keychain" \
         --entitlements "$entitlements" --identifier org.ffplayout.ffplayout \
-        --sign "$APPLE_SIGNING_IDENTITY" "$binary"
+        --sign "$signing_identity" "$binary"
     codesign --verify --strict --verbose=2 "$binary"
     signature=$(codesign --display --verbose=4 "$binary" 2>&1)
     team=$(printf '%s\n' "$signature" | sed -n 's/^TeamIdentifier=//p')
