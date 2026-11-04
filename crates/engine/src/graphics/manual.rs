@@ -21,6 +21,7 @@ struct Layer {
     origin: i64,
     graphics: ClipGraphics,
     scene: SceneRevision,
+    running: bool,
     rendered: bool,
 }
 
@@ -46,6 +47,7 @@ impl fmt::Debug for ManualGraphics {
 #[derive(Clone, Debug)]
 pub struct ManualLayerStatus {
     pub id: u64,
+    pub running: bool,
     pub visible: bool,
     pub active: bool,
     pub position: (i32, i32),
@@ -60,6 +62,7 @@ pub struct ManualChange<'a> {
     pub opacity: Option<f64>,
     pub z: Option<i32>,
     pub visible: Option<bool>,
+    pub fade_times_us: Option<(u64, u64)>,
 }
 
 pub(crate) struct ManualFrame {
@@ -75,6 +78,11 @@ impl ManualFrame {
 }
 
 impl ManualGraphics {
+    /// A new playout timeline starts at zero; ordinary Clear commands retain its clock.
+    pub(crate) fn reset_program_clock(&self) {
+        self.clock.store(0, Ordering::Release);
+    }
+
     pub fn revision(&self) -> u64 {
         self.state
             .lock()
@@ -91,6 +99,7 @@ impl ManualGraphics {
                 let layer = slot.scene.layers.first()?;
                 Some(ManualLayerStatus {
                     id: slot.id,
+                    running: slot.running,
                     visible: layer.visible && layer.presentation.is_visible(),
                     active: slot.rendered && layer.visible,
                     position: layer.spec.position,
@@ -126,6 +135,7 @@ impl ManualGraphics {
             origin: self.clock.load(Ordering::Acquire),
             graphics,
             scene,
+            running: true,
             rendered: false,
         });
         state
@@ -145,11 +155,12 @@ impl ManualGraphics {
             opacity,
             z,
             visible,
+            fade_times_us,
         } = change;
         ensure!(
             matches!(
                 operation,
-                "update" | "stop" | "clear" | "clear_all" | "visibility"
+                "update" | "start" | "stop" | "clear" | "clear_all" | "visibility"
             ),
             "unknown graphics operation"
         );
@@ -178,12 +189,28 @@ impl ManualGraphics {
                 let mut layers = slot.scene.layers.to_vec();
                 let layer = &mut layers[0];
 
+                if let Some((fade_in_us, fade_out_us)) = fade_times_us {
+                    layer
+                        .presentation
+                        .set_control_fades(fade_in_us, fade_out_us);
+                }
+
                 match operation {
-                    "stop" => layer.presentation.stop(
-                        self.clock
-                            .load(Ordering::Acquire)
-                            .saturating_sub(slot.origin),
-                    ),
+                    "start" => {
+                        slot.origin = self.clock.load(Ordering::Acquire);
+                        slot.running = true;
+                        slot.rendered = false;
+                        layer.presentation.restart(0);
+                        layer.visible = true;
+                    }
+                    "stop" => {
+                        slot.running = false;
+                        layer.presentation.stop(
+                            self.clock
+                                .load(Ordering::Acquire)
+                                .saturating_sub(slot.origin),
+                        );
+                    }
                     "visibility" => layer.presentation.set_visible(
                         visible.unwrap_or(true),
                         self.clock
@@ -290,6 +317,7 @@ mod tests {
             opacity: None,
             z: None,
             visible: None,
+            fade_times_us: None,
         }
     }
 
@@ -358,6 +386,246 @@ mod tests {
 
         queued.blend(&mut pixels);
         assert!(pixels.data(0).iter().any(|value| *value > 16));
+    }
+
+    #[test]
+    fn take_reports_started_before_the_first_frame_and_until_an_explicit_stop() {
+        let graphics = ManualGraphics::default();
+        graphics.frame_at(500_000).unwrap();
+        graphics.take(0, 1, fixture((32, 16))).unwrap();
+        let status = &graphics.status().1[0];
+        assert!(status.running);
+        assert!(!status.active);
+        // A frame before the take anchor must not change the requested state.
+        assert!(graphics.frame_at(480_000).unwrap().is_none());
+        assert!(graphics.status().1[0].running);
+        graphics
+            .change(
+                1,
+                ManualChange {
+                    visible: Some(false),
+                    ..operation(1, "visibility")
+                },
+            )
+            .unwrap();
+        assert!(graphics.frame_at(600_000).unwrap().is_none());
+        assert!(graphics.status().1[0].running);
+        graphics.change(2, operation(1, "stop")).unwrap();
+        assert!(!graphics.status().1[0].running);
+        graphics.change(3, operation(1, "start")).unwrap();
+        assert!(graphics.status().1[0].running);
+        assert!(graphics.frame_at(600_000).unwrap().is_none());
+        assert!(graphics.status().1[0].running);
+    }
+
+    #[test]
+    fn restarting_reuses_prepared_resources_keeps_layout_and_preserves_queued_pixels() {
+        fn luma(snapshot: Option<&ManualFrame>) -> u8 {
+            let mut pixels = frame::Video::new(Pixel::YUV420P, 32, 16);
+
+            for plane in 0..3 {
+                pixels.data_mut(plane).fill(128);
+            }
+
+            if let Some(snapshot) = snapshot {
+                snapshot.blend(&mut pixels);
+            }
+
+            pixels.data(0)[2 * pixels.stride(0) + 4]
+        }
+
+        let graphics = ManualGraphics::default();
+        let prepared = fixture((32, 16));
+        let resource = prepared.initial_scene().unwrap().layers[0].resource.clone();
+        graphics.take(0, 1, prepared).unwrap();
+        let queued = graphics.frame_at(100_000).unwrap().unwrap();
+        assert!(graphics.status().1[0].running);
+        graphics.change(1, operation(1, "stop")).unwrap();
+        assert!(!graphics.status().1[0].running);
+        assert!(graphics.status().1[0].active);
+        assert_eq!(luma(graphics.frame_at(140_000).unwrap().as_deref()), 147);
+        graphics
+            .change(
+                2,
+                ManualChange {
+                    position: Some((4, 2)),
+                    opacity: Some(0.25),
+                    z: Some(7),
+                    ..operation(1, "update")
+                },
+            )
+            .unwrap();
+        graphics
+            .change(
+                3,
+                ManualChange {
+                    visible: Some(false),
+                    ..operation(1, "visibility")
+                },
+            )
+            .unwrap();
+        graphics.change(4, operation(1, "start")).unwrap();
+        assert!(graphics.change(4, operation(1, "stop")).is_err());
+        let status = &graphics.status().1[0];
+        assert!(status.running && status.visible);
+        assert!(!status.active);
+        assert_eq!(
+            (status.position, status.opacity, status.z),
+            ((4, 2), 0.25, 7)
+        );
+        assert!(graphics.frame_at(140_000).unwrap().is_none());
+        assert_eq!(luma(graphics.frame_at(180_000).unwrap().as_deref()), 138);
+        assert_eq!(luma(graphics.frame_at(220_000).unwrap().as_deref()), 147);
+        assert_eq!(luma(Some(&queued)), 166);
+        let state = graphics.state.lock().unwrap();
+        assert_eq!(state.layers[0].origin, 140_000);
+        assert!(Arc::ptr_eq(
+            &resource,
+            &state.layers[0].scene.layers[0].resource
+        ));
+    }
+
+    #[test]
+    fn restarting_an_animation_selects_its_original_frame_time_again() {
+        use std::path::Path;
+
+        use ff_graphics::{
+            ffmpeg::{scene::CpuScene, sources::animation::AnimationOptions},
+            playback::{Repeat, Transition},
+            playlist::{Action, ClipSchedule, Event, Limits},
+            scene::{LayerId, LayerSpec, Scope},
+            source::Completion,
+            surface::ResourceKey,
+        };
+
+        fn pixels(snapshot: &ManualFrame) -> Vec<u8> {
+            let mut target = frame::Video::new(Pixel::YUV420P, 32, 16);
+
+            for plane in 0..3 {
+                target.data_mut(plane).fill(128);
+            }
+
+            snapshot.blend(&mut target);
+
+            target.data(0).to_vec()
+        }
+
+        let mut renderer = CpuScene::new(1, 1024 * 1024);
+        let key = ResourceKey { id: 1, revision: 1 };
+        let resource = renderer
+            .prepare_animation(
+                key,
+                &Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests_assets/storage/media_images/animated-logo.gif"),
+                AnimationOptions {
+                    size: Some((32, 16)),
+                    repeat: Repeat::Forever,
+                    completion: Completion::Hide,
+                },
+                || false,
+            )
+            .unwrap();
+        let schedule = ClipSchedule::compile(
+            10_000_000,
+            &[Event {
+                at_us: 0,
+                action: Action::Take {
+                    layer: LayerSpec {
+                        id: LayerId(1),
+                        resource: key,
+                        z: 0,
+                        scope: Scope::default(),
+                        canvas: (32, 16),
+                        position: (0, 0),
+                        opacity: 1.0,
+                    },
+                    transition: Transition {
+                        fade_in_us: 80_000,
+                        fade_out_us: 80_000,
+                        ..Default::default()
+                    },
+                },
+            }],
+            &[resource],
+            Limits::default(),
+        )
+        .unwrap();
+        let graphics = ManualGraphics::default();
+        graphics
+            .take(0, 1, ClipGraphics::new(renderer, schedule))
+            .unwrap();
+        let early = graphics.frame_at(100_000).unwrap().unwrap();
+        let later = graphics.frame_at(500_000).unwrap().unwrap();
+        assert_ne!(pixels(&early), pixels(&later));
+        graphics.change(1, operation(1, "stop")).unwrap();
+        assert!(graphics.frame_at(800_000).unwrap().is_none());
+        graphics.change(2, operation(1, "start")).unwrap();
+        assert!(graphics.frame_at(800_000).unwrap().is_none());
+        let restarted = graphics.frame_at(900_000).unwrap().unwrap();
+        assert_eq!(pixels(&restarted), pixels(&early));
+        assert_ne!(pixels(&restarted), pixels(&later));
+    }
+
+    #[test]
+    fn updated_control_fades_reach_the_next_visibility_change_without_restarting_the_source() {
+        let graphics = ManualGraphics::default();
+        graphics.take(0, 1, fixture((32, 16))).unwrap();
+        let queued = graphics.frame_at(100_000).unwrap().unwrap();
+        graphics
+            .change(
+                1,
+                ManualChange {
+                    fade_times_us: Some((200_000, 200_000)),
+                    ..operation(1, "update")
+                },
+            )
+            .unwrap();
+        graphics
+            .change(
+                2,
+                ManualChange {
+                    visible: Some(false),
+                    ..operation(1, "visibility")
+                },
+            )
+            .unwrap();
+        // The original 80ms fade would already be gone at this point.
+        let outgoing = graphics.frame_at(200_000).unwrap().unwrap();
+        let mut pixels = frame::Video::new(Pixel::YUV420P, 32, 16);
+
+        for plane in 0..3 {
+            pixels.data_mut(plane).fill(128);
+        }
+
+        outgoing.blend(&mut pixels);
+        assert_eq!(pixels.data(0)[2 * pixels.stride(0) + 2], 147);
+        assert!(graphics.frame_at(300_000).unwrap().is_none());
+        graphics
+            .change(
+                3,
+                ManualChange {
+                    visible: Some(true),
+                    ..operation(1, "visibility")
+                },
+            )
+            .unwrap();
+        assert!(graphics.frame_at(400_000).unwrap().is_some());
+        let state = graphics.state.lock().unwrap();
+        assert_eq!(state.layers[0].origin, 0);
+        assert_eq!(
+            state.layers[0].scene.layers[0]
+                .presentation
+                .opacity(400_000),
+            Some(0.5)
+        );
+        drop(state);
+
+        for plane in 0..3 {
+            pixels.data_mut(plane).fill(128);
+        }
+
+        queued.blend(&mut pixels);
+        assert_eq!(pixels.data(0)[2 * pixels.stride(0) + 2], 166);
     }
 
     #[test]
@@ -495,5 +763,30 @@ mod tests {
         graphics.clear();
         assert!(graphics.frame_at(201_000).unwrap().is_none());
         assert!(graphics.state.lock().unwrap().snapshots.is_empty());
+    }
+    #[test]
+    fn restoration_on_a_new_program_timeline_does_not_retain_the_previous_clock() {
+        let graphics = ManualGraphics::default();
+        graphics.frame_at(3_600_000_000).unwrap();
+        graphics.clear();
+        graphics.reset_program_clock();
+        graphics
+            .take(graphics.revision(), 1, fixture((32, 16)))
+            .unwrap();
+
+        assert!(graphics.frame_at(100_000).unwrap().is_some());
+    }
+
+    #[test]
+    fn clearing_layers_within_the_same_program_preserves_the_take_anchor() {
+        let graphics = ManualGraphics::default();
+        graphics.frame_at(3_600_000_000).unwrap();
+        graphics.clear();
+        graphics
+            .take(graphics.revision(), 1, fixture((32, 16)))
+            .unwrap();
+
+        assert!(graphics.frame_at(100_000).unwrap().is_none());
+        assert!(graphics.frame_at(3_600_100_000).unwrap().is_some());
     }
 }

@@ -201,3 +201,47 @@ opacity at its midpoint and fading before EOF. Additional schedule tests compare
 all three output planes for explicit duration beyond clip end and a truncated
 last repeat. Application and frontend tests check explicit/legacy durations,
 shortened clips, manual Stop and same-layer retakes against the same boundaries.
+
+
+## Independent signal-domain compositing reference — 2026-11-04
+
+`crates/graphics/src/ffmpeg/compositor/reference_tests.rs` supplies a test-only
+f64 source-over oracle independent of production SIMD/scalar kernels, clipping,
+alpha-bounds and cached chroma-alpha helpers. It retains floating-point results
+between reference layers, normalizes code values with explicit BT.709 limited/full
+signal offsets and averages full-resolution alpha before chroma quantization.
+It does not compare different signal-domain and linear-light policies.
+
+Run the numerical reference and the whole graphics suite with:
+
+```sh
+cargo test -p ff-graphics --features ffmpeg --lib reference_tests -- --nocapture
+cargo test -p ff-graphics --features ffmpeg --lib
+```
+
+The five tests cover:
+
+- All 65,536 foreground/background byte pairs for eight alpha values and seven
+  global opacities: 3,670,016 comparisons against the real-valued equation. Error
+  must stay within one byte level; transparent/opaque endpoints must be exact.
+- Known BT.709 black/white/red/blue code vectors, matching limited/full-range
+  signals, exact transparent/opaque frame endpoints and unchanged target tags.
+- A single opaque luma sample at each of the four positions within a chroma cell:
+  one-quarter chroma coverage and byte-exact invariance of neighboring cells.
+- Saturated red and green surfaces over blue, alpha gradients, transparent borders,
+  overlapping layers, global/presentation opacity, even negative/edge placement,
+  SIMD tails, padded strides and serial/four-thread/adaptive execution.
+- Byte-exact padding invariance. Frame-reference error bounds allow at most two
+  luma or three chroma byte levels per layer for sample rounding, alpha rounding,
+  presentation-opacity rounding and the production floor of 2×2 coverage.
+
+On the local run, the maximum absolute two-layer errors were Y=1.153428,
+U=1.379411 and V=1.172133 byte levels. These are fixture measurements, not a
+universal error bound. All five reference tests passed.
+
+Scope: inputs are already prepared straight-alpha YUVA420P with color uniform
+within each chroma cell. These tests do not establish RGBA conversion quality,
+alpha-weighted chroma preparation for nonuniform cells, mismatched source/target
+range or matrix conversion, arbitrary chroma siting, subpixel placement, visual
+golden-image correctness, HDR or linear-light composition quality. Those remain
+explicitly open in `.dev/graphics_todo.md`. Production rendering is unchanged.

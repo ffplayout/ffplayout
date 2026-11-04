@@ -127,11 +127,20 @@ impl VisibilityFade {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct StopFade {
+    start_us: i64,
+    opacity: f64,
+    duration_us: u64,
+    control_fade: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Presentation {
     start_us: i64,
     transition: Transition,
-    stopped: Option<(i64, f64, u64)>,
+    stopped: Option<StopFade>,
     visibility: Option<VisibilityFade>,
+    control_fades: Option<(u64, u64)>,
 }
 
 impl Presentation {
@@ -159,8 +168,15 @@ impl Presentation {
         transition = transition.within(duration);
         transition.repeat = Repeat::default();
         let mut fitted = Self::new(i64::try_from(start).ok()?, transition).ok()?;
-        if let Some((stop, _, _)) = self.stopped {
-            fitted.stop(stop);
+        fitted.control_fades = self.control_fades;
+
+        if let Some(stop) = self.stopped {
+            // Stop already captured its exit duration. A later control update
+            // may shorten it at a source boundary, but must not replace it.
+            fitted.control_fades = stop
+                .control_fade
+                .then_some((fitted.transition.fade_in_us, stop.duration_us));
+            fitted.stop(stop.start_us);
         }
 
         fitted.visibility = self.visibility;
@@ -176,7 +192,21 @@ impl Presentation {
             transition,
             stopped: None,
             visibility: None,
+            control_fades: None,
         })
+    }
+
+    /// Start a fresh occurrence with the same transition and source settings.
+    pub fn restart(&mut self, start_us: i64) {
+        self.start_us = start_us;
+        self.stopped = None;
+        self.visibility = None;
+    }
+
+    /// Update subsequent Show/Hide and Stop commands without changing the
+    /// source anchor, scheduled fade cycles or a fade already in progress.
+    pub fn set_control_fades(&mut self, fade_in_us: u64, fade_out_us: u64) {
+        self.control_fades = Some((fade_in_us, fade_out_us));
     }
 
     /// Fade visibility independently of source playback and scheduled fade cycles.
@@ -186,15 +216,15 @@ impl Presentation {
             return;
         }
 
+        let (fade_in_us, fade_out_us) = self
+            .control_fades
+            .unwrap_or((self.transition.fade_in_us, self.transition.fade_out_us));
+
         self.visibility = Some(VisibilityFade {
             start_us: program_us,
             from: self.visibility.map_or(1.0, |fade| fade.opacity(program_us)),
             visible,
-            duration_us: if visible {
-                self.transition.fade_in_us
-            } else {
-                self.transition.fade_out_us
-            },
+            duration_us: if visible { fade_in_us } else { fade_out_us },
         });
     }
 
@@ -228,16 +258,17 @@ impl Presentation {
         if program_us < self.start_us {
             return None;
         }
-        if let Some((stop, opacity, duration)) = self.stopped
-            && program_us >= stop
+        if let Some(stop) = self.stopped
+            && program_us >= stop.start_us
         {
-            let elapsed = (i128::from(program_us) - i128::from(stop)) as u128;
-            let duration = u128::from(duration);
-            if duration == 0 || elapsed >= duration || opacity == 0.0 {
+            let elapsed = (i128::from(program_us) - i128::from(stop.start_us)) as u128;
+            let duration = u128::from(stop.duration_us);
+
+            if duration == 0 || elapsed >= duration || stop.opacity == 0.0 {
                 return None;
             }
 
-            return Some(opacity * (1.0 - elapsed as f64 / duration as f64));
+            return Some(stop.opacity * (1.0 - elapsed as f64 / duration as f64));
         }
 
         self.transition
@@ -292,7 +323,9 @@ impl Presentation {
     pub fn stop(&mut self, program_us: i64) {
         if self.stopped.is_none() {
             let opacity = self.scheduled_opacity(program_us).unwrap_or(0.0);
-            let mut duration = self.transition.fade_out_us;
+            let mut duration = self
+                .control_fades
+                .map_or(self.transition.fade_out_us, |(_, fade_out_us)| fade_out_us);
             if self.transition.hold_us.is_some() {
                 let active = self.transition.active_duration();
                 let cycle = active + u128::from(self.transition.pause_us);
@@ -304,7 +337,12 @@ impl Presentation {
                 };
                 duration = u128::from(duration).min(remaining) as u64;
             }
-            self.stopped = Some((program_us, opacity, duration));
+            self.stopped = Some(StopFade {
+                start_us: program_us,
+                opacity,
+                duration_us: duration,
+                control_fade: self.control_fades.is_some(),
+            });
         }
     }
 }
@@ -312,6 +350,63 @@ impl Presentation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_control_fades_apply_to_show_hide_and_stop_without_retiming_playback() {
+        let mut presentation = Presentation::new(0, Transition::default()).unwrap();
+        presentation.set_control_fades(80_000, 120_000);
+        presentation.set_visible(false, 100_000);
+        assert_eq!(presentation.opacity(100_000), Some(1.0));
+        assert_eq!(presentation.opacity(160_000), Some(0.5));
+        presentation.set_control_fades(100_000, 40_000);
+        assert_eq!(presentation.opacity(160_000), Some(0.5));
+        assert_eq!(presentation.opacity(220_000), Some(0.0));
+        presentation.set_visible(true, 220_000);
+        assert_eq!(presentation.opacity(270_000), Some(0.5));
+        assert_eq!(presentation.opacity(320_000), Some(1.0));
+        assert_eq!(presentation.elapsed_us(320_000), 320_000);
+        presentation.stop(320_000);
+        assert_eq!(presentation.opacity(340_000), Some(0.5));
+        assert_eq!(presentation.opacity(360_000), None);
+        // Updating saved controls must not stretch a Stop already in progress.
+        presentation.set_control_fades(500_000, 900_000);
+        assert_eq!(presentation.opacity_before_end(340_000, 500_000), Some(0.5));
+        assert_eq!(presentation.opacity_before_end(360_000, 500_000), None);
+        // A finite source boundary still shortens the same outgoing fade.
+        assert_eq!(presentation.opacity_before_end(330_000, 340_000), Some(0.5));
+        assert_eq!(presentation.opacity_before_end(340_000, 340_000), None);
+    }
+
+    #[test]
+    fn restart_resets_stop_visibility_duration_and_entrance_without_changing_transition() {
+        let mut presentation = Presentation::new(
+            0,
+            Transition {
+                fade_in_us: 80_000,
+                fade_out_us: 80_000,
+                ..Default::default()
+            }
+            .within(300_000),
+        )
+        .unwrap();
+        presentation.set_visible(false, 90_000);
+        assert!(presentation.opacity(100_000).is_some());
+        presentation.stop(100_000);
+        assert!(presentation.stopped.is_some());
+        presentation.restart(500_000);
+        assert!(presentation.is_visible());
+        assert!(presentation.opacity(500_000).is_some());
+        assert_eq!(presentation.elapsed_us(540_000), 40_000);
+        assert_eq!(presentation.opacity(500_000), Some(0.0));
+        assert_eq!(presentation.opacity(540_000), Some(0.5));
+        assert_eq!(presentation.opacity(580_000), Some(1.0));
+        assert_eq!(presentation.opacity(760_000), Some(0.5));
+        assert!(presentation.opacity(800_000).is_none());
+        assert_eq!(presentation.opacity(800_000), None);
+        presentation.restart(900_000);
+        assert!(presentation.opacity(900_000).is_some());
+        assert_eq!(presentation.opacity(940_000), Some(0.5));
+    }
 
     #[test]
     fn visibility_fades_reverse_without_restarting_source_or_extending_its_lifetime() {
@@ -381,6 +476,7 @@ mod tests {
         }
         let mut stopped = p;
         stopped.stop(100_000);
+        stopped.set_control_fades(10_000, 5_000_000);
         let mut fitted = fitted;
         fitted.stop(100_000);
         for time in [100_000, 200_000, 300_000, 400_000, 500_000] {

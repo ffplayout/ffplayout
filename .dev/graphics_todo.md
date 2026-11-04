@@ -26,7 +26,7 @@ The architecture must support both an optimized YUV compositing path and an opti
 
 ---
 
-## Graphics frontend and manual control — 2026-11-03
+## Graphics frontend and manual control — 2026-11-04
 
 The shared Graphics page now provides manual graphics, existing Text controls and
 Program logo tabs. General Settings links to the logo tab; logo fields/database
@@ -37,7 +37,17 @@ require observed revisions; stop/clear invalidates obsolete completions. Placeme
 preview and program-pixel dragging are available in both the playlist and manual
 editors. The browser preview does not simulate final video/color/timing. See
 [Graphics control](../docs/graphics_control.md) for limits and recovery semantics.
-Templates, persisted graphic presets and exact render-backed previews remain open.
+Manual layer settings and requested playback/visibility state now persist per channel,
+with DaisyUI collapse editors and background restoration. Reusable templates and
+exact render-backed previews remain open. The shared placement canvas supports
+checkerboard transparency, program-pixel dragging, proportional corner resizing,
+fit-to-canvas and center snapping with alignment guides. Tiny graphics use an
+expanded dashed drag area with only the bottom-right resize handle; numeric sizing remains
+available. It edits source size;
+applying a new size to a running manual layer still requires Take/Start.
+Status-poll recovery clears retrieval errors without hiding command failures.
+A fresh playout resets the manual graphics clock with its new program timeline;
+Clear within the same run preserves the current clock.
 Historical milestone descriptions below predate this additional HTTP/frontend work.
 
 Program-logo changes now apply through a lazy, tracked preparation/retirement
@@ -71,11 +81,12 @@ typed engine playback options. Ready logo/text/clip snapshots now share one
 ordered layer handoff and composition dispatch. Native logo/text activation,
 replacement and resource states now use `SceneController`. CPU plane/color descriptors and bounded native preparation are implemented;
 general backend negotiation and new asset renderers remain separate work.
-GPU, Servo, templates and new HTTP/frontend graphics APIs are not implemented.
+GPU, Servo and templates are not implemented. Manual HTTP/frontend controls are
+implemented in the application adapter; see Phase 8.
 
 ---
 
-## Status reconciliation — 2026-11-03
+## Status reconciliation — 2026-11-04
 
 Checkboxes below distinguish the existing CPU logo/text implementation from the
 planned general scene engine. A completed item may explicitly name its current
@@ -103,7 +114,8 @@ The engine accepts prepared clip scenes, evaluates their clip-local clock and
 passes immutable snapshots through output fan-out. Existing logo/text ordering
 and HLS rendition/layout behaviour remain the compatibility baseline. The optional
 playlist JSON adapter now prepares static PNGs and bounded GIF/video assets asynchronously. Templates,
-new HTTP controls, SVG, GPU and Servo remain separate work. Do not repeat the
+SVG, GPU and Servo remain separate work. Manual HTTP controls and the shared
+Graphics page are implemented (Phase 8). Do not repeat the
 completed extraction or scheduling/engine integration. The latest increment adds
 bounded entrance preparation and first-visible-frame selection from ready lookahead.
 
@@ -127,10 +139,22 @@ Completed-scope evidence map:
 Graphics-only implementation paths above are relative to `crates/graphics/src/`
 unless qualified as an engine/application/benchmark path.
 
-**Next work:** independent signal-domain alpha/color references and visual cases;
-full-channel long-run/multi-channel tests; then anchors/relative layout and the
-new graphics HTTP/frontend controls. SVG/shapes, richer transitions and templates
-remain independent later features. GPU/Servo are future adapter work.
+**Next work, in priority order:**
+
+1. Extend the completed prepared-YUVA signal reference through RGBA preparation,
+   color conversion and independent visual fixtures (Phases 3/4/10).
+2. Full-channel long-run, simultaneous multi-channel and output fan-out measurements
+   with animated graphics, live ingest and repeated replacements (Phase 10).
+3. Generalized anchors, normalized/relative placement and explicit fit/aspect
+   policies (Phase 2). The implemented browser Fit button is not this layout model.
+4. Exact renderer-backed preview and reusable templates with editable text/image
+   groups (Phases 7/8); the current preview is a browser placement aid.
+5. SVG/shapes and slide/scale/easing/crossfade transitions as independent features
+   (Phases 5/6), followed by broader source/backend contracts.
+
+GPU/Servo/HDR and production linear-light compositing remain optional later work.
+The unchecked items below retain their detailed acceptance requirements; ordinary
+manual controls, persistence and placement editing are no longer pending work.
 
 ### Scene core delivered in this increment
 
@@ -365,7 +389,7 @@ CPU compositor / future GPU compositor
 - [x] Admit bounded preparation requests with acknowledgements and loading/ready/active/failed resource states; require ready resources before activation.
 - [x] Guard current native/playlist preparation with resource revisions, source generations, scene epochs and weak publication tickets; reject retired completions.
 - [x] Cancel and join current text, logo, playlist-preparation and streamed-asset workers outside frame processing; retain unfinished handles across restart.
-- [x] Keep current file preparation/decoding/rasterization off the video thread and consume ready results. Templates and new HTTP controls are not implemented.
+- [x] Keep current file preparation/decoding/rasterization off the video thread and consume ready results. Templates remain separate; manual HTTP controls are implemented in the application adapter.
 - [x] Support cached static/animated logo sources and prepared text, with shared native preparation admission/budgets. Future renderer scheduling remains separate.
 - [x] Define native resource ownership, shared leases, cancellation and worker lifetime; future backend contracts remain separate.
 - [x] Contain recoverable native preparation/decode/composition errors by skipping a failed layer or retaining last-good pixels; malformed playlist graphics do not stop media.
@@ -487,10 +511,13 @@ Implement and validate a mathematically consistent alpha-compositing model.
 
 Continue using the existing YUV compositing approach where appropriate.
 
-- [ ] Verify correct source-over alpha blending.
+- [x] Verify straight-alpha source-over onto opaque video against an independent
+  f64 signal-domain oracle, including every input byte pair and quantization bounds.
 - [x] Support partial transparency and global opacity in the current CPU YUV compositor.
 - [x] Preserve transparent/opaque alpha endpoints; skip zero-alpha pixels and cached transparent borders, retaining SIMD handling for visible regions.
-- [ ] Correctly account for limited-range versus full-range video.
+- [x] Verify offset-preserving blending for matching BT.709 limited/full-range
+  source/target samples, exact endpoints and unchanged metadata.
+- [ ] Validate source preparation and range/matrix conversion for mismatched inputs.
 - [ ] Handle chroma subsampling without introducing unnecessary color bleeding.
 - [x] Apply documented even alignment, visible-region clipping and alpha bounds
   for current CPU YUV420 composition, including negative/odd requested coordinates.
@@ -503,9 +530,16 @@ Pay special attention to chroma blending at partially transparent edges.
 
 ### Correctness Reference — Signal-Domain YUV
 
-- [ ] Reuse or extend an independent high-precision reference with the same signal-domain blending, color assumptions, and chroma reduction as the fast path.
-- [ ] Compare optimized output against that reference with explicit quantization tolerances.
-- [ ] Test transparent-pixel invariance, opaque endpoints, coverage-weighted chroma edges, and overlapping layers.
+- [x] Add a separate f64 signal-domain reference with explicit BT.709 limited/full
+  signal offsets and 2×2 alpha coverage averaged before byte quantization.
+- [x] Compare SIMD dispatch and serial/parallel/adaptive frame blending against
+  that reference with documented rounding bounds; keep f64 between reference layers.
+- [x] Test exact transparent/opaque endpoints, single-sample chroma coverage,
+  saturated red/green over blue, opacity gradients, overlapping layers, even
+  negative/edge clipping, SIMD tails, strides and unchanged padding.
+- [ ] Extend independent references through RGBA preparation, nonuniform source
+  chroma within a 2×2 cell, mismatched color metadata and arbitrary siting. These
+  tests currently begin with prepared straight-alpha YUVA420P samples.
 
 ### Quality Reference — Linear RGB Compositor
 
@@ -670,7 +704,7 @@ animation_time = current_program_pts - animation_start_pts;
   pixels can hold indefinitely and finite/forever fade cycles can include pauses.
 - [x] Internal transitions use separate fade-in/out durations in integer microseconds
   on program time, with linear easing. The playlist adapter translates user-facing
-  seconds; new HTTP controls remain open. Zero duration gives an immediate take/stop.
+  seconds for playlist and manual HTTP controls. Zero duration gives an immediate take/stop.
 - [x] Support indefinite hold until `Stop`, or finite hold followed automatically
   by fade-out, all on program time. Fade cycles may repeat a finite number of
   times or forever only when hold is finite and total cycle duration is positive.
@@ -691,13 +725,17 @@ animation_time = current_program_pts - animation_start_pts;
   within budget. `Clear` removes that layer immediately; shared preparation/cache
   resources may remain ready but cannot activate it automatically. `ClearAll`
   invalidates pending preparations as well.
-- [x] Reject taking an already-active layer rather than restarting its fade.
-  Layout/opacity updates preserve its presentation clock. Source replacement
-  requires explicit clear/take; smooth crossfading two resources remains separate.
+- [x] The scene-core controller rejects taking an already-active layer; playlist
+  replacement follows its clear/take contract. Manual Take explicitly replaces
+  and restarts its single layer, while Start reuses unchanged prepared resources.
+  Layout/opacity updates preserve the clock; smooth crossfading remains separate.
 - [x] Test clear/take source restarts, obsolete-request retirement, cancellation
   and queued-pixel lifetime for current cached/streamed CPU assets.
-- [ ] Integrate independent restart commands and smooth replacement transitions
-  with cancellation when those commands/transitions are introduced.
+- [x] Implement manual Stop/Start and explicit Take restart, retaining prepared
+  resources when unchanged; Show/Hide preserves animation phase. Updated control
+  fades apply to subsequent Show/Hide and Stop without altering an ongoing fade.
+- [ ] Add source-only restart independent of the layer transition and smooth
+  replacement/crossfade transitions with cancellation.
 - [x] Keep transition evaluation independent of rasterizer, decoder and compositor
   backend, so future GPU/Servo surfaces can use the same native opacity timeline.
 - [x] Test current fades with zero/short durations, differing program FPS, base
@@ -809,11 +847,15 @@ Adapt paths and naming to existing project conventions.
 - [x] Add authenticated manual take/update/stop/visibility/clear controls on a
   shared Graphics/Text/Program-logo page, with program-pixel placement preview
   reused by the playlist editor. Keep legacy logo sizing and HLS behavior.
-- [ ] Add exact renderer-backed canvas/video preview and persisted graphic presets.
+- [x] Add shared checkerboard placement preview, proportional resize handles at
+  top-left/bottom-right, fit-to-canvas and center snapping with guides. Publish
+  combined size/position edits atomically. Check all four locale key sets.
+- [ ] Add exact renderer-backed canvas/video preview.
+- [ ] Add reusable graphic templates (Phase 7).
 - [x] Define internal FIFO submission and equal-time playlist declaration order without coalescing.
 - [x] Require observed revisions for manual HTTP commands; reject intervening changes/preparation completions with conflicts.
 - [x] Define current worker cancellation/join/restart exclusion, clock-epoch reset and clip-occurrence disposal.
-- [x] Define manual graphics as transient channel state: retained through clips/live and cleared at stop/restart; stale prepared results cannot republish. Templates remain separate.
+- [x] Persist manual layer settings/names and requested running/visibility state per channel; release runtime resources at stop and restore visible active layers in the background. Hidden/stopped layers prepare lazily; fade/source phase is not persisted. Templates remain separate.
 - [x] Keep current controllers, preparation services, budgets and playlist file containment per channel; controller isolation is tested.
 - [x] Test manual graphics authorization/channel isolation, revision conflicts, failed sources, and scoped administrator-only logo saves through HTTP routes.
 
@@ -914,10 +956,13 @@ compilation before rendering. Empty schedules produce no graphics.
 This adapter supports static PNGs plus cached/streamed GIF/video assets. The
 frontend playlist editor now provides a reusable action form, validation and
 read-only JSON inspection. Automatic splitting of graphics-bearing clips is
-explicitly disabled until per-part timelines can be reconstructed. A canvas
-editor/preview, manual live HTTP controls, templates, animated PNGs and migration
-of all legacy layers into one z-index domain remain separate work. Existing animated program logos remain supported.
-No database migration or new HTTP endpoint is introduced.
+explicitly disabled until per-part timelines can be reconstructed. Shared canvas
+placement editing and manual live HTTP controls are implemented (Phase 8).
+Templates, exact renderer-backed preview, animated PNGs and migration of all
+legacy layers into one z-index domain remain separate work. Existing animated
+program logos remain supported. The playlist adapter itself needs no schema
+change; manual graphics persistence extends migration 8 and uses GET/POST
+`/api/graphics/{channel}`.
 
 ---
 
@@ -931,14 +976,17 @@ Create reproducible reference test cases for:
 
 - [x] Verify white antialiased text over black with the native renderer; the glyph alpha is applied once.
 - [ ] Saturated red text over blue video.
-- [ ] Semitransparent gradients.
+- [x] Numerically validate semitransparent alpha gradients on prepared saturated
+  YUVA surfaces; independent visual/rasterization fixtures remain separate.
 - [ ] Soft shadows.
 - [x] Compare overlapping CPU scene layers/fades with existing surface blending for pixel compatibility.
-- [ ] Add independent high-precision/golden-image references for overlapping transparent graphics.
+- [x] Add independent f64 numerical references for overlapping prepared transparent graphics.
+- [ ] Add independent golden-image references including asset rasterization and preparation.
 - [x] Exercise transparent PNG borders and cached alpha bounds in the existing compositor; broader color-policy references remain open.
 - [x] Test documented even-alignment/clipping of odd/negative CPU graphic positions.
 - [ ] Independently validate subpixel/odd-position chroma quality; arbitrary-siting support remains open.
-- [ ] Rec.709 limited-range content.
+- [x] Validate matching BT.709 limited/full signal blending numerically.
+- [ ] Validate BT.709 conversion/preparation end to end, including chroma-edge quality.
 - [x] Test multiple staggered layers with animated opacity against independently selected source frames and existing blend kernels.
 - [ ] Add independent color/alpha quality references for multilayer animated-opacity scenes.
 - [ ] Color-conversion round trips.

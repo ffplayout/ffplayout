@@ -2055,7 +2055,7 @@ dependencies = [
 
 [[package]]
 name = "ff-engine"
-version = "2.8.0-beta.2"
+version = "2.8.0-beta.3"
 dependencies = [
  "anyhow",
  "block2 0.6.2",
@@ -2087,7 +2087,7 @@ dependencies = [
 
 [[package]]
 name = "ff-graphics"
-version = "2.8.0-beta.2"
+version = "2.8.0-beta.3"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -2130,7 +2130,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "2.8.0-beta.2"
+version = "2.8.0-beta.3"
 dependencies = [
  "anyhow",
  "argon2",
@@ -7051,6 +7051,8 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sqlx-core",
+ "sqlx-mysql",
+ "sqlx-postgres",
  "sqlx-sqlite",
  "syn 2.0.119",
  "thiserror 2.0.21",

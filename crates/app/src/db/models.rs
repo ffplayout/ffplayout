@@ -3,12 +3,23 @@ use std::{error::Error, fmt, str::FromStr};
 use chrono_tz::Tz;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Pool, Row, Sqlite, sqlite::SqliteRow};
+use serde_json::Value;
+use sqlx::{FromRow, Pool, Row, Sqlite, sqlite::SqliteRow, types::Json};
 
 use crate::{
     db::handles,
     utils::config::{OutputMode, PlayoutConfig},
 };
+
+/// Desired manual graphics state; playback clocks and prepared pixels stay in the engine.
+#[derive(Clone, Debug, Serialize, Deserialize, FromRow)]
+pub struct GraphicLayer {
+    pub layer_id: i64,
+    pub name: String,
+    pub settings: Json<Value>,
+    pub running: bool,
+    pub visible: bool,
+}
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct GlobalSettings {

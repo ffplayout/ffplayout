@@ -3,3 +3,6 @@ pub mod metadata;
 pub mod overlay;
 pub mod scene;
 pub mod surface;
+
+#[cfg(test)]
+mod reference_tests;

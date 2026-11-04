@@ -41,7 +41,7 @@ async fn manual_graphics_authorization_revision_and_failure_isolation() {
             StatusCode::BAD_REQUEST,
         ),
         (
-            json!({"revision": 0, "action": "take", "layer": 1, "source": "logo.gif", "fade_out": 1}),
+            json!({"revision": 0, "action": "take", "layer": 1, "source": "logo.gif", "fade_in": 0, "fade_out": 0, "repeat": 1, "source_repeat": "forever", "source_end": "hide"}),
             StatusCode::OK,
         ),
         (
@@ -54,7 +54,7 @@ async fn manual_graphics_authorization_revision_and_failure_isolation() {
         ),
         (
             json!({"revision": 1, "action": "update", "layer": 1, "opacity": 2}),
-            StatusCode::CONFLICT,
+            StatusCode::BAD_REQUEST,
         ),
         (
             json!({"revision": 1, "action": "update", "layer": 1, "position": [10, 20], "opacity": 0.5}),
@@ -88,6 +88,44 @@ async fn manual_graphics_authorization_revision_and_failure_isolation() {
     assert_eq!(status["revision"], 2);
     assert_eq!(status["layers"].as_array().unwrap().len(), 1);
     assert_eq!(status["layers"][0]["position"], json!([10, 20]));
+    assert_eq!(status["layers"][0]["running"], true);
+    // Restart must reuse the admitted asset even if its file is no longer present.
+    tokio::fs::remove_file(fixture.root.join("storage/logo.gif"))
+        .await
+        .unwrap();
+
+    for (revision, action, running) in [(2, "stop", false), (3, "start", true)] {
+        let response = fixture
+            .app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                "/api/graphics/1",
+                Some(&user),
+                json!({"revision": revision, "action": action, "layer": 1}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = fixture
+            .app
+            .clone()
+            .oneshot(json_request(
+                "GET",
+                "/api/graphics/1",
+                Some(&user),
+                json!({}),
+            ))
+            .await
+            .unwrap();
+        let status: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+        assert_eq!(status["revision"], revision + 1);
+        assert_eq!(status["layers"][0]["running"], running);
+        assert_eq!(status["layers"][0]["position"], json!([10, 20]));
+        assert_eq!(status["layers"][0]["opacity"], 0.5);
+    }
+
     let response = fixture
         .app
         .clone()
@@ -95,12 +133,45 @@ async fn manual_graphics_authorization_revision_and_failure_isolation() {
             "POST",
             "/api/graphics/1",
             Some(&user),
-            json!({"revision": 2, "action": "clear_all"}),
+            json!({"revision": 4, "action": "clear_all"}),
         ))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     manager.is_alive.store(false, Ordering::SeqCst);
+    for (channel, expected) in [(2, StatusCode::FORBIDDEN), (1, StatusCode::OK)] {
+        let response = fixture.app.clone().oneshot(json_request(
+            "POST", &format!("/api/graphics/{channel}"), Some(&user),
+            json!({"revision":5,"action":"save","layer":0,"name":"Stored while stopped", "settings":{"source":"not-present.png"}}),
+        )).await.unwrap();
+        assert_eq!(response.status(), expected);
+    }
+
+    let (revision, saved) = handles::select_graphic_layers(&fixture.state.pool, 1)
+        .await
+        .unwrap();
+    assert_eq!(revision, 6);
+    assert_eq!(saved[0].name, "Stored while stopped");
+    assert!(!saved[0].running);
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/graphics/1",
+            Some(&user),
+            json!({"revision":6,"action":"clear","layer":0}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        handles::select_graphic_layers(&fixture.state.pool, 1)
+            .await
+            .unwrap()
+            .1
+            .is_empty()
+    );
 }
 
 #[tokio::test]

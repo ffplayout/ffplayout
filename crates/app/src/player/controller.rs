@@ -29,7 +29,10 @@ use crate::{
     db::{handles, models::Channel},
     file::{init_storage, local::LocalStorage},
     player::{
-        graphics::GraphicsPreparer,
+        graphics::{
+            GraphicsPreparer,
+            manual::{self, ManualState},
+        },
         output::{logo_config, player},
         utils::Media,
     },
@@ -134,6 +137,7 @@ pub struct ChannelManager {
     pub text_overlay: TextOverlayState,
     pub(crate) manual_graphics: ManualGraphics,
     pub(crate) logo_control: LogoControl,
+    pub(crate) manual_state: Arc<ManualState>,
     pub(crate) manual_jobs: Arc<tokio::sync::Semaphore>,
     pub playback_control: Arc<Mutex<PlaybackControl>>,
     pub shutdown: CancellationToken,
@@ -247,6 +251,7 @@ impl ChannelManager {
             text_overlay,
             manual_graphics: ManualGraphics::default(),
             logo_control: LogoControl::default(),
+            manual_state: Arc::new(ManualState::default()),
             manual_jobs: Arc::new(tokio::sync::Semaphore::new(2)),
             playback_control: Arc::new(Mutex::new(PlaybackControl::default())),
             shutdown,
@@ -799,7 +804,7 @@ impl ChannelManager {
         self.is_alive.store(false, Ordering::SeqCst);
         self.logo_control.stop();
         self.graphics.cancel();
-        self.manual_graphics.clear();
+        manual::stop_runtime(self).await;
         self.playback_control.lock().await.skip_current();
         // Restarts and shutdown must also cancel an in-flight validator, not
         // only permanent stops. Its blocking FFmpeg analysis owns resources.

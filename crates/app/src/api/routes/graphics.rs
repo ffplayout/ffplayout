@@ -51,7 +51,7 @@ pub async fn graphics_status(
 ) -> Result<Json<Value>, ServiceError> {
     let manager = channel_manager(&state, id, &user, &details).await?;
 
-    Ok(Json(manual::status(&manager).await))
+    Ok(Json(manual::status(&manager).await?))
 }
 
 pub async fn graphics_command(

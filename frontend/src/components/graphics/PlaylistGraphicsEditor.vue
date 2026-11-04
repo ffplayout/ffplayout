@@ -16,6 +16,8 @@ const props = defineProps<{
     channel: number
     load: BrowserLoader
     manual?: boolean
+    embedded?: boolean
+    fixedLayer?: boolean
     canvasOverride?: [number, number]
 }>()
 const emit = defineEmits<{ validity: [valid: boolean] }>()
@@ -133,15 +135,15 @@ function source(path: string) {
 </script>
 
 <template>
-    <section class="mt-4 border-t border-base-content/30 pt-3">
-        <div class="flex items-center justify-between gap-2">
+    <section :class="embedded ? 'pt-3' : 'mt-4 border-t border-base-content/30 pt-3'">
+        <div v-if="!embedded" class="flex items-center justify-between gap-2">
             <h4 class="font-bold">
                 {{ t('graphicsEditor.title') }}
                 <span class="badge badge-sm">{{ t('graphicsEditor.experimental') }}</span>
             </h4>
             <span v-if="events && !manual" class="text-sm">{{ events.length }}/256</span>
         </div>
-        <p class="text-sm text-base-content/70 my-2">
+        <p v-if="!embedded" class="text-sm text-base-content/70 my-2">
             {{ t(manual ? 'graphicsPage.manualHelp' : 'graphicsEditor.help') }}
         </p>
         <p v-if="events === undefined" role="alert" class="text-warning text-sm">
@@ -157,7 +159,7 @@ function source(path: string) {
             {{ t('graphicsEditor.preserve') }}
         </p>
         <div v-for="(event, index) in events" :key="index" class="border border-base-content/30 rounded-sm mb-2">
-            <div class="flex items-center gap-1 bg-base-200 p-2">
+            <div v-if="!embedded" class="flex items-center gap-1 bg-base-200 p-2">
                 <button
                     type="button"
                     class="text-start flex-1 min-w-0 text-sm font-semibold"
@@ -197,7 +199,7 @@ function source(path: string) {
                     <i class="bi-trash" />
                 </button>
             </div>
-            <div v-if="selected === index" class="p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div v-if="embedded || selected === index" class="p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label v-if="!manual" class="fieldset"
                     ><span>{{ t('graphicsEditor.at') }}</span
                     ><input
@@ -224,6 +226,7 @@ function source(path: string) {
                     ><span>{{ t('graphicsEditor.layer') }}</span
                     ><input
                         :value="event.layer"
+                        :disabled="fixedLayer"
                         type="number"
                         min="0"
                         step="1"
@@ -266,7 +269,7 @@ function source(path: string) {
                         mediaInfo?.width && mediaInfo?.height ? [mediaInfo.width, mediaInfo.height] : undefined
                     "
                     :opacity="event.opacity ?? undefined"
-                    @position="update(index, { position: $event })"
+                    @layout="update(index, $event)"
                 />
                 <template v-if="event.action === 'take' || event.action === 'update'">
                     <div class="fieldset sm:col-span-2">

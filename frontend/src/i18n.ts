@@ -30,7 +30,8 @@ export const locales = [
 
 const instance = createI18n({
     legacy: false,
-    locale: 'en-US',
+    locale: 'en',
+    fallbackLocale: 'en',
     messages: {
         de: deDE,
         en: enUS,

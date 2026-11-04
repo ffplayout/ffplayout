@@ -680,6 +680,8 @@ impl Playout {
         #[cfg(not(feature = "desktop-base"))]
         benchmark::start(config.channel_id);
 
+        config.manual_graphics.reset_program_clock();
+
         Self {
             config,
             output,

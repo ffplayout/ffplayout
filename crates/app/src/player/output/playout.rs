@@ -17,6 +17,7 @@ use crate::{
     file::norm_abs_path,
     player::{
         controller::{ChannelManager, loudness_config},
+        graphics::manual,
         input::source_generator,
         process_diagnostics::ProcessDiagnostics,
         utils::{Media, sec_to_time},
@@ -160,6 +161,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     drop(demand_watcher);
     manager.logo_control.stop();
     manager.graphics.cancel();
+    manual::stop_runtime(&manager).await;
     let finish_result = playout.finish().await.map_err(engine_error);
     manager.graphics.join(config.general.channel_id).await;
     for attachment in moq_attachments {
@@ -259,6 +261,7 @@ async fn play_loop(
         .then(|| ProcessDiagnostics::new(manager.id, playout.playback_control()));
     let mut node_sources = source_generator(manager.clone()).await;
     manager.graphics.resume();
+    manual::begin_restore(&manager).await;
 
     while let Some(node) = node_sources.next().await {
         *manager.current_media.lock().await = Some(node.clone());

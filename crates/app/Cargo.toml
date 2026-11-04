@@ -101,6 +101,7 @@ sysinfo = { version = "0.40", default-features = false, features = [
     "linux-tmpfs",
 ] }
 sqlx = { version = "0.9", default-features = false, features = [
+    "json",
     "macros",
     "migrate",
     "runtime-tokio",

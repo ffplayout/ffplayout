@@ -5,12 +5,24 @@ export default {
             'Wiederholungen zählen einschließlich des ersten Durchlaufs. Fade-Zyklen brauchen eine endliche Dauer. Z-Index ordnet die manuellen Grafiken untereinander.',
         title: 'Grafiken',
         manualHelp:
-            'Manuelle Programmgrafiken bleiben über Clipwechsel und Live-Ingest hinweg sichtbar. Maximal acht Ebenen. Take ersetzt dieselbe Ebene; Stop blendet aus, Clear entfernt sie sofort. Playlist-Grafiken und Programmlogo bleiben unabhängig.',
+            'Bis zu acht Layer pro Kanal werden mit ihren Einstellungen und dem Start-/Sichtbarkeitszustand gespeichert. Sie bleiben über Clipwechsel, Live-Ingest und Neustarts erhalten. Clear löscht den gespeicherten Layer.',
         stopped: 'Zum Einblenden zuerst den Kanal starten.',
         take: 'Einblenden',
+        layerName: 'Name',
+        saveLayer: 'Einstellungen speichern',
+        addLayer: 'Layer hinzufügen',
+        newLayer: 'Neuer Layer',
+        started: 'Gestartet',
+        hidden: 'Verborgen',
+        layerStopped: 'Gestoppt',
+        unsaved: 'Ungespeicherte Änderungen',
+        resetEdits: 'Änderungen verwerfen',
+        saveHelp:
+            'Speichern merkt sich alle Einstellungen. Geänderte Fades gelten beim nächsten Show/Hide oder Stop. Take startet von vorne. Anwenden übernimmt Position, Deckkraft, Z-Index und Fade-Zeiten.',
+        start: 'Starten',
         stop: 'Ausblenden',
         toggle: 'Anzeigen / verbergen',
-        update: 'Layout übernehmen',
+        update: 'Layout und Fades übernehmen',
         clear: 'Entfernen',
         clearAll: 'Alle manuellen Grafiken entfernen',
         logoHelp:
@@ -29,10 +41,14 @@ export default {
         tabs: { 'graphics-live': 'Grafiken', 'graphics-text': 'Text', 'graphics-logo': 'Programmlogo' },
     },
     graphicsCanvas: {
+        compact:
+            'Bei kleinen Grafiken ist der gestrichelte Verschieberahmen vergrößert. Der Skaliergriff rechts unten bleibt verfügbar.',
         title: 'Positionsvorschau',
         move: 'Grafik ziehen oder mit Pfeiltasten verschieben',
+        resize: 'Proportional skalieren (Pfeiltasten: 2 px, Umschalt: 10 px)',
+        fit: 'In die Programmfläche einpassen',
         placeholder: 'Grafik',
-        help: 'Positionsvorschau auf der Programmfläche, ohne Video und Fade-Zeiten. Ziehen oder Pfeiltasten verwenden (2 px; Umschalt: 10 px).',
+        help: 'Positionsvorschau ohne Video und Fade-Zeiten. Grafik ziehen oder Pfeiltasten verwenden (2 px; Umschalt: 10 px). Der Eckgriff skaliert mit dem Seitenverhältnis der Quelle. Größenänderungen gelten beim nächsten Grafik- bzw. Clipstart. Beim Ziehen nahe der horizontalen oder vertikalen Mitte rastet die Grafik ein; Hilfslinien zeigen die Ausrichtung.',
         unavailable: 'Der Browser kann dieses Format nicht darstellen. Der Positionsrahmen bleibt bedienbar.',
     },
     graphicsEditor: {
