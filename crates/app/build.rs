@@ -44,6 +44,47 @@ fn run_npm(args: &[&str]) {
     }
 }
 
+#[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
+fn prepare_frontend() {
+    println!("cargo:rerun-if-env-changed=FFPLAYOUT_FRONTEND_PREBUILT");
+
+    if matches!(
+        std::env::var("FFPLAYOUT_FRONTEND_PREBUILT").as_deref(),
+        Ok("1")
+    ) {
+        assert!(
+            Path::new("../../frontend/dist/index.html").is_file(),
+            "FFPLAYOUT_FRONTEND_PREBUILT=1 requires a completed frontend build in frontend/dist"
+        );
+        println!("cargo:rerun-if-changed=../../frontend/dist");
+
+        return;
+    }
+
+    // Watch inputs rather than dist, which the default build generates itself.
+    for path in [
+        "../../frontend/src",
+        "../../frontend/public",
+        "../../frontend/index.html",
+        "../../frontend/env.d.ts",
+        "../../frontend/tsconfig.app.json",
+        "../../frontend/tsconfig.node.json",
+        "../../tsconfig.json",
+        "../../vite.config.ts",
+        "../../package.json",
+        "../../package-lock.json",
+    ] {
+        println!("cargo:rerun-if-changed={path}");
+    }
+
+    if !Path::new(RUN_P_BIN).exists() {
+        info!("run-p not found, installing frontend dependencies with npm ci");
+        run_npm(&["ci"]);
+    }
+
+    run_npm(&["run", "build"]);
+}
+
 #[cfg(windows)]
 fn embed_windows_resources() {
     const ICON_PATH: &str = "../../frontend/public/favicon.ico";
@@ -62,32 +103,7 @@ fn main() {
     embed_windows_resources();
 
     #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
-    {
-        // These files live outside the Cargo package. Watch the frontend inputs
-        // individually so changes rebuild the embedded assets without watching
-        // frontend/dist, which this build script generates itself.
-        for path in [
-            "../../frontend/src",
-            "../../frontend/public",
-            "../../frontend/index.html",
-            "../../frontend/env.d.ts",
-            "../../frontend/tsconfig.app.json",
-            "../../frontend/tsconfig.node.json",
-            "../../tsconfig.json",
-            "../../vite.config.ts",
-            "../../package.json",
-            "../../package-lock.json",
-        ] {
-            println!("cargo:rerun-if-changed={path}");
-        }
-
-        if !Path::new(RUN_P_BIN).exists() {
-            info!("run-p not found, installing frontend dependencies with npm ci");
-            run_npm(&["ci"]);
-        }
-
-        run_npm(&["run", "build"]);
-    }
+    prepare_frontend();
 
     println!("cargo:rerun-if-env-changed=FFPLAYOUT_VAAPI_SHARED");
     if matches!(std::env::var("FFPLAYOUT_VAAPI_SHARED").as_deref(), Ok("1")) {

@@ -30,13 +30,13 @@ tar -cf - --exclude=dist --exclude=node_modules \
     frontend package.json package-lock.json vite.config.ts tsconfig.json | \
     tar -xf - -C "$frontend_work"
 echo 'Build frontend in isolated Alpine workspace'
-(cd "$frontend_work" && npm ci && npm run build-only)
+(cd "$frontend_work" && npm ci --include=optional && npm run build)
 rm -rf frontend/dist
 mkdir -p frontend/dist
 cp -R "$frontend_work/frontend/dist/." frontend/dist/
 
 echo 'Build ffplayout for musl'
-cargo build --locked --release --target "$rust_target" --package ffplayout \
+FFPLAYOUT_FRONTEND_PREBUILT=1 cargo build --locked --release --target "$rust_target" --package ffplayout \
     --no-default-features --features "$features"
 
 echo 'Verify fully static ELF binary'

@@ -111,7 +111,11 @@ tools dynamically so Bindgen can load libclang. Explicit musl target builds
 remain fully static; the packaging script checks for an ELF interpreter and
 dynamic dependencies before publishing the binary.
 Frontend dependencies are installed in the container's own temporary workspace,
-so `npm ci` does not replace the host's `node_modules`. Download caches and the
+so `npm ci` does not replace the host's `node_modules`. After type-checking and
+building there, `FFPLAYOUT_FRONTEND_PREBUILT=1` tells Cargo to embed the copied
+`frontend/dist` without invoking the host workspace's npm dependencies again.
+This option requires an existing `frontend/dist/index.html`; Cargo watches the
+prebuilt distribution for changes. Download caches and the
 stopped container are reused as with the other targets. The first build compiles
 FFmpeg and its dependencies from source and can take considerably longer,
 especially under x86_64 emulation on Apple Silicon.
