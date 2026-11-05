@@ -89,6 +89,8 @@ fn animated_avif_uses_auxiliary_track_references() {
     );
     let movie = child(bytes, b"moov").unwrap().unwrap();
     assert_eq!(track_alpha(movie).unwrap(), Some((1, 2, Alpha::Straight)));
+    assert!(track_srgb(movie, 1).unwrap());
+    assert!(!track_srgb(movie, 2).unwrap());
     let mut unrelated = movie.to_vec();
     let offset = unrelated
         .windows(ALPHA_TYPE.len())
@@ -96,4 +98,66 @@ fn animated_avif_uses_auxiliary_track_references() {
         .unwrap();
     unrelated[offset + ALPHA_TYPE.len() - 2] = b'x';
     assert_eq!(track_alpha(&unrelated).unwrap(), None);
+}
+
+#[test]
+fn only_explicit_full_range_srgb_properties_enable_rgb_restoration() {
+    let srgb = [b"nclx".as_slice(), &[0, 1, 0, 13, 0, 0, 128]].concat();
+    assert!(srgb_color(&srgb).unwrap());
+
+    for (offset, value) in [(5, 9), (7, 16), (9, 1), (10, 0)] {
+        let mut other = srgb.clone();
+        other[offset] = value;
+        assert!(!srgb_color(&other).unwrap());
+    }
+
+    for length in 0..srgb.len() {
+        assert!(srgb_color(&srgb[..length]).is_err());
+    }
+
+    assert!(!srgb_color(b"prof arbitrary ICC profile").unwrap());
+    // The colr property belongs to the color item, not its alpha image.
+    let ipco = atom(b"ipco", &atom(b"colr", &srgb));
+    let ipma = atom(b"ipma", &[0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 1, 1, 0, 2, 0]);
+    let metadata = [vec![0; 4], atom(b"iprp", &[ipco, ipma].concat())].concat();
+    let properties = item_properties(&metadata).unwrap();
+    assert!(properties[&1].srgb);
+    assert!(!properties[&2].srgb);
+}
+
+#[test]
+fn rgb_restoration_keeps_identity_planes_and_preserves_explicit_yuv() {
+    for (yuv, rgb) in [
+        (Pixel::YUV444P, Pixel::GBRP),
+        (Pixel::YUV444P10LE, Pixel::GBRP10LE),
+        (Pixel::YUV444P12LE, Pixel::GBRP12LE),
+    ] {
+        let mut frame = frame::Video::new(yuv, 4, 2);
+        frame.set_color_space(Space::Unspecified);
+
+        for plane in 0..3 {
+            frame.data_mut(plane).fill(70 + plane as u8 * 20);
+        }
+
+        let pixels: Vec<_> = (0..3).map(|plane| frame.data(plane).to_vec()).collect();
+        restore_srgb(&mut frame);
+        assert_eq!(frame.format(), rgb);
+        assert_eq!(frame.color_space(), Space::RGB);
+        assert_eq!(frame.color_range(), Range::JPEG);
+
+        for (plane, expected) in pixels.iter().enumerate() {
+            assert_eq!(frame.data(plane), expected);
+        }
+    }
+
+    for (format, space) in [
+        (Pixel::YUV444P, Space::BT709),
+        (Pixel::YUV420P, Space::Unspecified),
+    ] {
+        let mut frame = frame::Video::new(format, 4, 2);
+        frame.set_color_space(space);
+        restore_srgb(&mut frame);
+        assert_eq!(frame.format(), format);
+        assert_eq!(frame.color_space(), space);
+    }
 }

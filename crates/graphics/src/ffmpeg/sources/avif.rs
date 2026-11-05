@@ -7,7 +7,13 @@ use std::{
 };
 
 use anyhow::{Context, Result, ensure};
-use ffmpeg_next::format;
+use ffmpeg_next::{
+    format, frame,
+    util::{
+        color::{Primaries, Range, Space, TransferCharacteristic},
+        format::pixel::Pixel,
+    },
+};
 
 use crate::surface::Alpha;
 
@@ -22,6 +28,7 @@ pub(super) struct Association {
     pub color: usize,
     pub alpha: usize,
     pub mode: Alpha,
+    pub srgb: bool,
 }
 
 pub(super) fn streams(input: &format::context::Input) -> Result<Option<Association>> {
@@ -116,6 +123,13 @@ pub(super) fn streams(input: &format::context::Input) -> Result<Option<Associati
             color: index(color)?,
             alpha: index(alpha)?,
             mode,
+            srgb: if movie.is_empty() {
+                item_properties(&metadata)?
+                    .get(&color)
+                    .is_some_and(|properties| properties.srgb)
+            } else {
+                track_srgb(&movie, color)?
+            },
         })
     })
     .transpose()
@@ -163,14 +177,20 @@ fn integer(bytes: &mut &[u8], size: usize) -> Result<u64> {
         .fold(0, |number, byte| (number << 8) | u64::from(*byte)))
 }
 
-fn item_alpha(metadata: &[u8], color: u32) -> Result<Option<(u32, Alpha)>> {
+#[derive(Default)]
+struct ItemProperties {
+    alpha: bool,
+    srgb: bool,
+}
+
+fn item_properties(metadata: &[u8]) -> Result<HashMap<u32, ItemProperties>> {
     let mut metadata = metadata;
     take(&mut metadata, 4)?; // meta FullBox header
     let Some(properties) = child(metadata, b"iprp")? else {
-        return Ok(None);
+        return Ok(HashMap::new());
     };
     let Some(property_boxes) = child(properties, b"ipco")? else {
-        return Ok(None);
+        return Ok(HashMap::new());
     };
     let property_boxes = boxes(property_boxes)?;
     let mut associations = HashMap::new();
@@ -190,7 +210,9 @@ fn item_alpha(metadata: &[u8], color: u32) -> Result<Option<(u32, Alpha)>> {
         for _ in 0..count {
             let id = integer(&mut data, if version == 0 { 2 } else { 4 })? as u32;
             let count = integer(&mut data, 1)?;
-            let mut alpha = false;
+            let properties = associations
+                .entry(id)
+                .or_insert_with(ItemProperties::default);
 
             for _ in 0..count {
                 let index = integer(&mut data, if flags & 1 == 0 { 1 } else { 2 })? as usize
@@ -200,15 +222,22 @@ fn item_alpha(metadata: &[u8], color: u32) -> Result<Option<(u32, Alpha)>> {
                     let (kind, value) = property_boxes
                         .get(index - 1)
                         .context("invalid AVIF property index")?;
-                    alpha |= kind == b"auxC" && value.get(4..) == Some(ALPHA_TYPE);
+                    properties.alpha |= kind == b"auxC" && value.get(4..) == Some(ALPHA_TYPE);
+                    properties.srgb |= kind == b"colr" && srgb_color(value)?;
                 }
             }
 
-            *associations.entry(id).or_insert(false) |= alpha;
             ensure!(associations.len() <= ENTRY_LIMIT, "too many AVIF items");
         }
     }
 
+    Ok(associations)
+}
+
+fn item_alpha(metadata: &[u8], color: u32) -> Result<Option<(u32, Alpha)>> {
+    let associations = item_properties(metadata)?;
+    let mut metadata = metadata;
+    take(&mut metadata, 4)?;
     let Some(mut references) = child(metadata, b"iref")? else {
         return Ok(None);
     };
@@ -224,7 +253,12 @@ fn item_alpha(metadata: &[u8], color: u32) -> Result<Option<(u32, Alpha)>> {
         for _ in 0..count {
             let target = integer(&mut reference, if version == 0 { 2 } else { 4 })? as u32;
 
-            if kind == *b"auxl" && target == color && associations.get(&source) == Some(&true) {
+            if kind == *b"auxl"
+                && target == color
+                && associations
+                    .get(&source)
+                    .is_some_and(|properties| properties.alpha)
+            {
                 ensure!(alpha.is_none(), "multiple AVIF alpha images");
                 alpha = Some(source);
             }
@@ -247,6 +281,97 @@ fn item_alpha(metadata: &[u8], color: u32) -> Result<Option<(u32, Alpha)>> {
     }))
 }
 
+fn srgb_color(mut data: &[u8]) -> Result<bool> {
+    if take(&mut data, 4)? != b"nclx" {
+        return Ok(false);
+    }
+
+    let primaries = integer(&mut data, 2)?;
+    let transfer = integer(&mut data, 2)?;
+    let matrix = integer(&mut data, 2)?;
+    let full_range = integer(&mut data, 1)? & 0x80 != 0;
+
+    Ok(primaries == 1 && transfer == 13 && matrix == 0 && full_range)
+}
+
+fn track_id(track: &[u8]) -> Result<u32> {
+    let mut header = child(track, b"tkhd")?.context("AVIF track has no header")?;
+    let version = integer(&mut header, 1)?;
+    take(&mut header, if version == 1 { 19 } else { 11 })?;
+
+    Ok(integer(&mut header, 4)? as u32)
+}
+
+fn track_samples(track: &[u8]) -> Result<Vec<BoxRef<'_>>> {
+    let mut sample = Some(track);
+
+    for kind in [b"mdia", b"minf", b"stbl", b"stsd"] {
+        sample = sample.map(|data| child(data, kind)).transpose()?.flatten();
+    }
+
+    let Some(mut sample) = sample else {
+        return Ok(Vec::new());
+    };
+    take(&mut sample, 8)?; // stsd FullBox header and entry count
+    let mut entries = Vec::new();
+
+    for (kind, mut entry) in boxes(sample)?
+        .into_iter()
+        .filter(|(kind, _)| kind == b"av01")
+    {
+        take(&mut entry, 78)?; // VisualSampleEntry
+        entries.push((kind, entry));
+    }
+
+    Ok(entries)
+}
+
+fn track_srgb(movie: &[u8], color: u32) -> Result<bool> {
+    for (_, track) in boxes(movie)?
+        .into_iter()
+        .filter(|(kind, _)| kind == b"trak")
+    {
+        if track_id(track)? != color {
+            continue;
+        }
+
+        for (_, entry) in track_samples(track)? {
+            if let Some(data) = child(entry, b"colr")? {
+                return srgb_color(data);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
+/// FFmpeg 8 may ignore the AVIF nclx property when the AV1 sequence omits
+/// its own color description, exposing identity-matrix RGB planes as YUV444.
+pub(super) fn restore_srgb(frame: &mut frame::Video) {
+    if !matches!(frame.color_space(), Space::Unspecified | Space::RGB) {
+        return;
+    }
+
+    let rgb = match frame.format() {
+        Pixel::YUV444P => Pixel::GBRP,
+        Pixel::YUV444P10LE => Pixel::GBRP10LE,
+        Pixel::YUV444P10BE => Pixel::GBRP10BE,
+        Pixel::YUV444P12LE => Pixel::GBRP12LE,
+        Pixel::YUV444P12BE => Pixel::GBRP12BE,
+        Pixel::GBRP | Pixel::GBRP10LE | Pixel::GBRP10BE | Pixel::GBRP12LE | Pixel::GBRP12BE => {
+            frame.format()
+        }
+        _ => return,
+    };
+    // Identity-matrix AV1 already stores G, B, R in these planes: only their
+    // interpretation changes; converting them as YUV would corrupt the colors.
+    frame.set_format(rgb);
+    frame.set_color_space(Space::RGB);
+    frame.set_color_range(Range::JPEG);
+    frame.set_color_primaries(Primaries::BT709);
+    frame.set_color_transfer_characteristic(TransferCharacteristic::IEC61966_2_1);
+}
+
 fn track_alpha(movie: &[u8]) -> Result<Option<(u32, u32, Alpha)>> {
     let mut alpha = None;
     let mut premultiplied = Vec::new();
@@ -255,10 +380,7 @@ fn track_alpha(movie: &[u8]) -> Result<Option<(u32, u32, Alpha)>> {
         .into_iter()
         .filter(|(kind, _)| kind == b"trak")
     {
-        let mut header = child(track, b"tkhd")?.context("AVIF track has no header")?;
-        let version = integer(&mut header, 1)?;
-        take(&mut header, if version == 1 { 19 } else { 11 })?;
-        let id = integer(&mut header, 4)? as u32;
+        let id = track_id(track)?;
         let references = child(track, b"tref")?.unwrap_or_default();
 
         if let Some(mut data) = child(references, b"prem")? {
@@ -275,21 +397,7 @@ fn track_alpha(movie: &[u8]) -> Result<Option<(u32, u32, Alpha)>> {
             targets.is_empty(),
             "AVIF alpha track must reference one color track"
         );
-        let mut sample = Some(track);
-
-        for kind in [b"mdia", b"minf", b"stbl", b"stsd"] {
-            sample = sample.map(|data| child(data, kind)).transpose()?.flatten();
-        }
-
-        let Some(mut sample) = sample else { continue };
-        take(&mut sample, 8)?; // stsd FullBox header and entry count
-
-        for (_, mut entry) in boxes(sample)?
-            .into_iter()
-            .filter(|(kind, _)| kind == b"av01")
-        {
-            take(&mut entry, 78)?; // VisualSampleEntry
-
+        for (_, entry) in track_samples(track)? {
             if child(entry, b"auxi")?.and_then(|data| data.get(4..)) == Some(ALPHA_TYPE) {
                 ensure!(alpha.is_none(), "multiple AVIF alpha tracks");
                 alpha = Some((color, id));

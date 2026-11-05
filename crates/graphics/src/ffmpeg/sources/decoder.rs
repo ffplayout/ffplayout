@@ -36,6 +36,7 @@ pub struct LogoDecoder {
     high_quality: bool,
     source_alpha: Option<Alpha>,
     container_alpha: Option<Alpha>,
+    container_srgb: bool,
     alpha: Option<AuxiliaryDecoder>,
     stream: usize,
     time_base: Rational,
@@ -68,6 +69,8 @@ impl LogoDecoder {
             .transpose()?;
         let source_alpha = preparation::stream_alpha(&stream);
         let container_alpha = association.map(|association| association.mode);
+        let container_srgb = decoder.id() == codec::Id::AV1
+            && association.is_some_and(|association| association.srgb);
         let fps = stream.avg_frame_rate();
         let default_duration_us = if fps.numerator() > 0 && fps.denominator() > 0 {
             i64::from(fps.denominator()).saturating_mul(1_000_000) / i64::from(fps.numerator())
@@ -105,6 +108,7 @@ impl LogoDecoder {
             high_quality: true,
             source_alpha,
             container_alpha,
+            container_srgb,
             alpha,
             stream: stream_index,
             time_base,
@@ -244,7 +248,11 @@ impl LogoDecoder {
             .filter(|duration| *duration > 0)
             .unwrap_or(fallback_duration);
         let alpha = decoded.alpha;
-        let decoded = decoded.video;
+        let mut decoded = decoded.video;
+
+        if self.container_srgb {
+            avif::restore_srgb(&mut decoded);
+        }
 
         ensure!(
             decoded.width() <= 8192 && decoded.height() <= 8192,
