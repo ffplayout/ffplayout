@@ -3,7 +3,7 @@ FROM rust:1-alpine3.23 AS toolchain
 
 RUN apk add --no-cache \
         autoconf automake bash binutils build-base bzip2 ca-certificates \
-        clang clang-dev cmake curl git gperf libtool linux-headers \
+        clang clang-dev cmake curl diffutils git gperf libtool linux-headers \
         meson nasm ninja nodejs npm perl pkgconf python3 xz && \
     test "$(uname -m)" = x86_64 && \
     test -f "$(g++ -print-file-name=libstdc++.a)" && \
