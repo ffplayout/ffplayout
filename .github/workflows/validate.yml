@@ -39,8 +39,6 @@ jobs:
         if: runner.os == 'macOS'
         run: echo 'RUSTFLAGS=-Csplit-debuginfo=packed' >> $GITHUB_ENV
 
-      - uses: Swatinem/rust-cache@v2
-
       - name: Install FFmpeg libraries on Linux
         if: runner.os == 'Linux'
         run: |
@@ -85,6 +83,18 @@ jobs:
 
           echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
           echo "$ffmpegDir\bin" >> $env:GITHUB_PATH
+
+      - name: Identify FFmpeg version for Rust cache
+        id: ffmpeg
+        shell: bash
+        run: |
+          version="$(ffmpeg -version)"
+          printf 'version=%s\n' "${version%%$'\n'*}" >> "$GITHUB_OUTPUT"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # FFmpeg bindings depend on native headers, which Cargo.lock does not track.
+          key: native-ffmpeg-v1-${{ matrix.os }}-${{ steps.ffmpeg.outputs.version }}
 
       - name: Frontend checks
         if: runner.os == 'Linux'
