@@ -16,10 +16,10 @@
   },
   "dependencies": {
     "@moq/watch": "^0.6.6",
-    "@tailwindcss/vite": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.4",
     "@unhead/vue": "^3.4.3",
-    "@videojs/hlsjs-video": "10.2.0",
-    "@videojs/html": "10.2.0",
+    "@videojs/hlsjs-video": "10.3.0",
+    "@videojs/html": "10.3.0",
     "@vueform/multiselect": "^2.6.11",
     "@vuepic/vue-datepicker": "^14.0.0",
     "@vueuse/core": "^15.0.0",
@@ -29,9 +29,9 @@
     "jwt-decode": "^4.0.0",
     "pinia": "^4.1.0",
     "splitpanes": "^4.1.2",
-    "tailwindcss": "^4.3.3",
-    "vue": "^3.5.44",
-    "vue-i18n": "^11.4.17",
+    "tailwindcss": "^4.3.4",
+    "vue": "^3.5.45",
+    "vue-i18n": "^11.4.18",
     "vue-router": "^5.4.0",
     "vue-virtual-sortable": "^3.1.0"
   },
@@ -49,7 +49,7 @@
     "npm-run-all2": "^9.0.4",
     "prettier": "3.9.10",
     "typescript": "~6.0.3",
-    "vite": "^8.3.5",
+    "vite": "^8.3.6",
     "vite-plugin-vue-devtools": "^8.2.1",
     "vue-tsc": "^3.3.14"
   }
