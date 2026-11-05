@@ -211,3 +211,19 @@ test('explicit and legacy durations fit shortened clips before Stop and retake v
         assert.ok(validateGraphicEvents(events, 5).some((issue) => issue.code === 'activeLayer'))
     }
 })
+
+test('scaling quality defaults to high, round-trips Standard and rejects invalid wire values', () => {
+    assert.equal(newGraphicEvent('take').high_quality, true)
+    const standard = [take(0, { high_quality: false })]
+    assert.equal(readGraphicEvents(standard)?.[0]?.high_quality, false)
+    assert.deepEqual(codes(standard), [])
+    const legacy = [take()]
+    delete legacy[0]!.high_quality
+    assert.ok(readGraphicEvents(legacy))
+    for (const invalid of [null, 0, 'high']) {
+        assert.equal(
+            readGraphicEvents([take(0, { high_quality: invalid } as unknown as Partial<GraphicEvent>)]),
+            undefined,
+        )
+    }
+})

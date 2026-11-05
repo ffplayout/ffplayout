@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 usage() {
-    echo "Usage: ./scripts/build.sh [--profiling] <debian-shared|debian-static>"
+    echo "Usage: ./scripts/build.sh [--profiling] <debian-shared|debian-static|alpine-static>"
     echo "  --profiling  Keep release debug symbols for CPU profiling (including .deb)."
 }
 
@@ -120,7 +120,7 @@ if [[ -z $target ]]; then
 fi
 
 case $target in
-    debian-shared | debian-static) ;;
+    debian-shared | debian-static | alpine-static) ;;
     *)
         echo "Unknown target: $target"
         exit 1
@@ -146,7 +146,22 @@ fi
 echo "Using container CLI: $container_cli"
 
 if [[ -z ${CARGO_FEATURES:-} ]]; then
-    select_cargo_features
+    if [[ $target == alpine-static ]]; then
+        CARGO_FEATURES=embed_frontend
+    else
+        select_cargo_features
+    fi
+fi
+
+if [[ $target == alpine-static ]]; then
+    if printf '%s' "$CARGO_FEATURES" | grep -Eq '(^|[,[:space:]])([^,[:space:]]*/)?desktop(-[[:alnum:]_-]+)?([,[:space:]]|$)'; then
+        echo "alpine-static supports server outputs only; remove desktop features." >&2
+        exit 1
+    fi
+    if [[ ${FFMPEG_VAAPI:-0} != 0 ]]; then
+        echo "alpine-static does not support VAAPI or Intel VPL." >&2
+        exit 1
+    fi
 fi
 
 build_step "Generate manual" ./scripts/man_create.sh
@@ -178,12 +193,22 @@ if [[ $target == "debian-shared" ]]; then
 
     tar -czvf "ffplayout-v${version}_debian.tar.gz" --exclude='*.db' --exclude='*.db-shm' \
         --exclude='*.db-wal' assets docker docs LICENSE README.md -C ./target/release ffplayout
-elif [[ $target == "debian-static" ]]; then
-    rm -f "ffplayout_${version}-1_amd64.deb"
-    rm -f ./target/debian-static/ffplayout
-    rm -f "./target/debian-static/ffplayout_${version}-1_amd64.deb"
-    rm -f ./target/release/ffplayout
-    mkdir -p ./target/debian-static
+elif [[ $target == "debian-static" || $target == "alpine-static" ]]; then
+    static_dockerfile=./docker/static.Dockerfile
+    static_image=localhost/ffplayout-static-builder:latest
+    static_description="Debian static"
+    if [[ $target == alpine-static ]]; then
+        static_dockerfile=./docker/musl.Dockerfile
+        static_image=localhost/ffplayout-musl-builder:latest
+        static_description="Alpine musl static"
+        rm -f "ffplayout-v${version}_linux-musl-x86_64.tar.gz"
+    else
+        rm -f "ffplayout_${version}-1_amd64.deb"
+        rm -f "./target/$target/ffplayout_${version}-1_amd64.deb"
+        rm -f ./target/release/ffplayout
+    fi
+    rm -f "./target/$target/ffplayout"
+    mkdir -p "./target/$target"
 
     static_cargo_features=$CARGO_FEATURES
     ffmpeg_component_args=()
@@ -194,19 +219,25 @@ elif [[ $target == "debian-static" ]]; then
         ffmpeg_component_args+=(--build-arg FFMPEG_AVFILTER=1)
     fi
 
-    build_step "Prepare Debian static builder image (cache check/build)" "$container_cli" build \
+    build_step "Prepare $static_description builder image (cache check/build)" "$container_cli" build \
         --platform linux/amd64 \
         --build-arg FFMPEG_VERSION="${FFMPEG_VERSION:-release/9.0}" \
         --build-arg FFMPEG_VAAPI="${FFMPEG_VAAPI:-0}" \
         ${ffmpeg_component_args[@]+"${ffmpeg_component_args[@]}"} \
         --build-arg CARGO_FEATURES="$static_cargo_features" \
         --target static-builder \
-        -t localhost/ffplayout-static-builder:latest \
-        -f ./docker/static.Dockerfile .
+        -t "$static_image" \
+        -f "$static_dockerfile" .
 
-    container_run_env localhost/ffplayout-static-builder:latest \
+    container_run_env "$static_image" \
         -v "$(pwd)":/src:z \
-        -v "$(pwd)/target/debian-static":/artifacts:z
+        -v "$(pwd)/target/$target":/artifacts:z
 
-    mv "./target/debian-static/ffplayout_${version}-1_amd64.deb" .
+    if [[ $target == alpine-static ]]; then
+        build_step "Package static musl binary" tar -czf "ffplayout-v${version}_linux-musl-x86_64.tar.gz" \
+            --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' \
+            assets docker docs migrations LICENSE README.md -C ./target/alpine-static ffplayout
+    else
+        mv "./target/debian-static/ffplayout_${version}-1_amd64.deb" .
+    fi
 fi

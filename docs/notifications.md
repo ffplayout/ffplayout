@@ -7,7 +7,7 @@ no additional notification-specific dependency is required.
 
 ## Configuration
 
-Configure the shared connection under **Configuration → Global → HTTP Push
+Configure the shared connection under **Settings → Global → HTTP Push
 Notifications**. This requires a global admin.
 
 - **Push Server**: The base HTTP or HTTPS URL, for example `https://ntfy.sh` or
@@ -16,8 +16,8 @@ Notifications**. This requires a global admin.
   service. Leaving the field empty after a token has been saved keeps the
   existing token.
 
-After saving a push server, configure each channel under **Configuration →
-Playout → HTTP Push Notifications**:
+After saving a push server, configure each channel under **Settings →
+General → HTTP Push Notifications**:
 
 - **Topic**: The channel/topic path at the push service, for example
   `ffplayout-alerts`.

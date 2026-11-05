@@ -113,11 +113,12 @@ clocks remain the compatibility baseline.
 The engine accepts prepared clip scenes, evaluates their clip-local clock and
 passes immutable snapshots through output fan-out. Existing logo/text ordering
 and HLS rendition/layout behaviour remain the compatibility baseline. The optional
-playlist JSON adapter now prepares static PNGs and bounded GIF/video assets asynchronously. Templates,
+playlist JSON adapter now prepares static PNGs and bounded GIF/AVIF/video assets asynchronously. Templates,
 SVG, GPU and Servo remain separate work. Manual HTTP controls and the shared
 Graphics page are implemented (Phase 8). Do not repeat the
-completed extraction or scheduling/engine integration. The latest increment adds
-bounded entrance preparation and first-visible-frame selection from ready lookahead.
+completed extraction or scheduling/engine integration. Recent increments add bounded entrance preparation, first-visible-frame
+selection from ready lookahead, metadata-aware alpha preparation, per-source
+quality controls and a configurable animation cache (migration 8).
 
 **How to read this status:** checked items describe the implemented CPU/native
 scope only. Partially delivered requirements are split into completed foundations
@@ -273,8 +274,8 @@ renderer or source crossfade is implied.
 
 - [x] Support GIF and local video playlist assets through the existing logo decoder
   and common CPU scene compositor, with source timestamps independent of playout FPS.
-- [x] Cache sources within 256 frames/five seconds/64 MiB completely; switch larger
-  assets to tracked background decoding with up to 500 ms/16 frames/64 MiB lookahead.
+- [x] Cache sources within 256 frames/five seconds/configurable bytes (128 MiB default) completely; switch larger
+  assets to tracked background decoding with up to 500 ms/16 frames/configurable byte lookahead.
   Restrict inputs to regular local files and non-nesting demuxers; check cancellation.
 - [x] Coalesce up to 32 presentation requests per streaming asset, support worker-side
   seek/looping, discard inactive/obsolete work and park satisfied/hidden sources.
@@ -304,7 +305,10 @@ renderer or source crossfade is implied.
   finite repeats, stop/clear, resource retirement and zero-graphics overhead.
 
 Animated PNGs and further decoder/source unification remain separate work.
-Single frames exceeding 64 MiB still require smaller dimensions. Program-logo streaming is unchanged.
+Single frames exceeding the configured cache still require smaller dimensions. Program-logo streaming uses the same configurable per-source ceiling and falls
+back to bounded decoding under shared channel-budget pressure. Evicted private
+and published cache references release their leases; temporary pressure retains
+the last ready image while the worker waits. See [source processing settings](../docs/graphics_control.md#source-processing-and-animation-cache).
 
 ---
 
@@ -452,6 +456,37 @@ Create an abstraction that supports different graphics surfaces and compositing 
   compatibility/strict-admission policies; preserving tags alone is not conversion.
 - [ ] Design for future 10-bit and HDR support without requiring immediate implementation.
 - [x] Distinguish straight, encoded-premultiplied and linear-premultiplied alpha; the CPU YUVA path accepts straight alpha only.
+- [x] Carry explicit AVIF `prem` and available FFmpeg frame/stream alpha metadata
+  through source preparation. Unknown sources keep the legacy straight interpretation;
+  do not guess from pixels. Preserve builds using older FFmpeg headers.
+- [x] Normalize encoded-premultiplied source RGB with 16-bit intermediates and
+  zero-alpha/overshoot handling before straight-YUVA composition. Keep encoded/linear
+  alpha descriptors independent of future backend storage.
+- [x] Scale new alpha source surfaces in associated RGB, fuse unassociation with
+  final YUVA quantization and prepare coverage-weighted 2×2 chroma. Reuse this for
+  scaled manual/playlist PNGs and keep unscaled compatible sources on the old path.
+- [x] Test real straight/premultiplied 8-/10-bit AVIFs and animations, soft/hidden
+  edges, tiny alpha, YUV offsets and native-path compatibility. Add reproducible
+  1080p/4K wall/CPU/RSS source-preparation measurements in graphics-testing.md.
+- [x] Expose per-layer/Program Logo high-quality scaling (default on), retaining
+  premultiplied-alpha normalization in both modes. Include quality in asset reuse keys.
+- [x] Persist a per-channel animation-cache setting (32–1024 MiB, default 128 MiB).
+  Apply it without playout restart to new preparations and reload an enabled
+  Program Logo; existing layers adopt it on their next Take/Start. Keep shared
+  resource, frame/time and output-cache limits independent.
+- [x] Optimize source alpha preparation with runtime SIMD, packed ARM64 NEON
+  quantization, exact RGBA8 expansion and SIMD associated-RGB16 filtering.
+  Share the capped four-thread graphics executor with immediate serial fallback;
+  reuse geometry-bounded scratch rather than creating per-source pools.
+- [x] Verify serial/parallel band boundaries, scalar/SIMD quantization (within one
+  output code value), exact alpha association, immutable input and scratch reuse.
+  Compare reference/serial/four-thread/adaptive preparation for RGB16, RGBA8 and
+  YUVA8 with separate wall/aggregate CPU/RSS measurements.
+- [ ] Extend alpha-aware filtering to the existing cached resizing of already
+  prepared YUVA between output composition resolutions; source preparation above
+  does not change HLS rendition behavior.
+- [ ] Add an explicit color policy for linear-premultiplied/HDR source normalization;
+  the current SDR adapter rejects these cases instead of treating them as encoded RGB.
 - [ ] Ensure alpha is not incorrectly applied to offset-encoded YUV components.
 - [x] Describe current CPU surfaces with independent format, color, alpha, geometry and storage metadata.
 - [x] Specify encoded versus linear premultiplication separately from pixel layout (`Alpha`); current CPU YUVA preparation requires straight alpha.
@@ -626,7 +661,7 @@ Logo configuration adapter → Graphics layer
 
 Implemented initial scope: existing logo configuration maps to a persistent
 program source with local PNG/GIF/video decoding, exact rational loop periods,
-64 MiB/256-frame/5-second caching, bounded streaming lookahead, immutable per-frame
+configurable-byte/256-frame/5-second caching, bounded streaming lookahead, immutable per-frame
 selection before fan-out, error containment and cancellation/join. See
 `docs/animated_logos.md` for supported test formats and limitations. The current
 single-logo implementation uses one owned worker per channel source. Playlist
@@ -939,11 +974,11 @@ compilation before rendering. Empty schedules produce no graphics.
   stop, visibility, clear and clear-all. Separate finite/forever transition cycles.
 - [x] Optional invisible `pause` between transition cycles, with no trailing pause
   after the final repeat; stop during a gap cancels future repetitions.
-- [x] Prepare local PNGs off the video thread with one bounded background slot
-  per channel. Publish via a nonblocking readiness cell and weak cancellation
+- [x] Prepare local graphics off the video thread with at most two active background
+  jobs and one waiting occurrence per channel. Publish via a nonblocking readiness cell and weak cancellation
   ticket; late results use the current scheduled phase rather than restarting it.
-- [x] Keep preparation state/slot on the channel across restarts, cancel publication
-  on stop and join tracked work with a bounded wait. Retain the slot/handle after
+- [x] Keep preparation state/slots on the channel across restarts, cancel publication
+  on stop and join tracked work with a bounded wait. Retain occupied slots/handles after
   timeout until the old job finishes. Keep scene-only limits out of legacy text.
 - [x] Preserve effective-item elapsed time independently from source `in` during
   startup/live resume, including still images and live transport playlist items.
@@ -953,7 +988,7 @@ compilation before rendering. Empty schedules produce no graphics.
   configuration omits graphics, preserves its JSON and leaves media playing.
 - [x] Document usage and limits as experimental in `docs/playlist_graphics.md`.
 
-This adapter supports static PNGs plus cached/streamed GIF/video assets. The
+This adapter supports static PNGs plus cached/streamed GIF/AVIF/video assets. The
 frontend playlist editor now provides a reusable action form, validation and
 read-only JSON inspection. Automatic splitting of graphics-bearing clips is
 explicitly disabled until per-part timelines can be reconstructed. Shared canvas

@@ -75,7 +75,7 @@ async function save() {
         if (version !== generation) return
         const actual = await authFetch<PlayoutConfigExt>(`/api/playout/config/${id}`)
         if (version !== generation) return
-        const keys = ['add_logo', 'logo', 'logo_scale', 'logo_opacity', 'logo_position'] as const
+        const keys = ['add_logo', 'logo', 'logo_scale', 'logo_opacity', 'logo_position', 'logo_high_quality'] as const
         for (const key of keys) {
             Object.assign(config.playoutSaved.processing, { [key]: actual.processing[key] })
             Object.assign(config.playout.processing, { [key]: actual.processing[key] })
@@ -138,6 +138,13 @@ onBeforeUnmount(() => {
                     required
                     class="input input-sm w-36"
             /></label>
+            <div class="fieldset">
+                <label class="flex gap-2 items-center">
+                    <input v-model="form.logo_high_quality" type="checkbox" class="toggle toggle-sm" />
+                    {{ t('graphicsPage.highQuality') }}
+                </label>
+                <p class="text-xs">{{ t('graphicsPage.qualityHelp') }}</p>
+            </div>
             <LogoSizeEditor v-model="form.logo_scale" />
             <label class="fieldset"
                 ><span>{{ t('graphicsEditor.position') }}</span

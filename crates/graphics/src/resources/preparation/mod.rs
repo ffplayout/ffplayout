@@ -5,7 +5,7 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{
         Arc, Condvar, Mutex, OnceLock, PoisonError, TryLockError,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -41,6 +41,7 @@ struct Service {
     shared: Arc<Shared>,
     worker: Mutex<Option<JoinHandle<()>>>,
     budget: ResourceBudget,
+    animation_cache_bytes: AtomicUsize,
     media: Mutex<Vec<MediaWorker>>,
 }
 
@@ -85,6 +86,7 @@ impl PreparationService {
             }),
             worker: Mutex::new(None),
             budget,
+            animation_cache_bytes: AtomicUsize::new(128 * 1024 * 1024),
             media: Mutex::new(Vec::new()),
         }))
     }
@@ -92,6 +94,24 @@ impl PreparationService {
     #[cfg(feature = "ffmpeg")]
     pub(crate) fn downgrade(&self) -> PreparationWeak {
         PreparationWeak(Arc::downgrade(&self.0))
+    }
+
+    /// Per-source cache ceiling for newly prepared animations. Existing sources
+    /// keep their snapshot until reloaded; changing it never interrupts playback.
+    pub fn set_animation_cache_mib(&self, mib: u32) -> Result<()> {
+        ensure!(
+            (32..=1024).contains(&mib),
+            "animation cache must be within 32..1024 MiB"
+        );
+        self.0
+            .animation_cache_bytes
+            .store(mib as usize * 1024 * 1024, Ordering::Release);
+
+        Ok(())
+    }
+
+    pub fn animation_cache_bytes(&self) -> usize {
+        self.0.animation_cache_bytes.load(Ordering::Acquire)
     }
 
     pub fn budget(&self) -> ResourceBudget {
@@ -358,6 +378,25 @@ mod tests {
             assert!(Instant::now() < deadline);
             thread::sleep(Duration::from_millis(1));
         }
+    }
+
+    #[test]
+    fn animation_cache_setting_is_shared_validated_and_preserved_across_resume() {
+        let service = PreparationService::default();
+        let clone = service.clone();
+        assert_eq!(clone.animation_cache_bytes(), 128 * 1024 * 1024);
+        service.set_animation_cache_mib(32).unwrap();
+        assert_eq!(clone.animation_cache_bytes(), 32 * 1024 * 1024);
+        clone.set_animation_cache_mib(1024).unwrap();
+
+        for invalid in [0, 31, 1025, u32::MAX] {
+            assert!(service.set_animation_cache_mib(invalid).is_err());
+            assert_eq!(service.animation_cache_bytes(), 1024 * 1024 * 1024);
+        }
+
+        service.cancel();
+        service.resume();
+        assert_eq!(clone.animation_cache_bytes(), 1024 * 1024 * 1024);
     }
 
     #[cfg(feature = "ffmpeg")]

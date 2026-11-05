@@ -414,7 +414,13 @@ impl FrozenScene {
 
     fn supported(&self, layer: &FrozenLayer, target: &frame::Video, color: ColorEncoding) -> bool {
         target.format() == Pixel::YUV420P
-            && layer.color == color
+            // Decoded sources retain their actual matrix/range in frame metadata.
+            // The legacy signal blender accepts that unspecified compatibility
+            // label without relabeling those pixels as BT.601 Limited.
+            && (layer.color == color
+                || (self.policy == ColorPolicy::LegacySignal
+                    && layer.color == ColorEncoding::Unspecified
+                    && color != ColorEncoding::Srgb))
             && (self.policy == ColorPolicy::LegacySignal
                 || self.policy.supports(
                     color_properties(&layer.frame.surface.frame),

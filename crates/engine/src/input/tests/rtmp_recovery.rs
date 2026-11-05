@@ -348,6 +348,8 @@ fn rtmp_reception_pauses_and_reconnects_feed_three_hls_variants() -> Result<()> 
             },
         );
         config.logo = Some(LogoConfig {
+            high_quality: true,
+            cache_mib: 128,
             path: Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tests_assets/storage/logo.png")
                 .to_string_lossy()

@@ -1,13 +1,9 @@
-use std::sync::{
-    OnceLock,
-    atomic::{AtomicBool, Ordering},
-};
-
 use ffmpeg_next::frame;
-use rayon::{ThreadPool, ThreadPoolBuilder, prelude::*};
+use rayon::{ThreadPool, prelude::*};
 
 use crate::{
     blend::{Plane, PlaneMut, blend_plane},
+    ffmpeg::execution,
     preparation::ResourceLease,
 };
 
@@ -141,28 +137,8 @@ pub enum BlendExecution<'a> {
     Adaptive,
 }
 
-static SHARED_POOL: OnceLock<Option<ThreadPool>> = OnceLock::new();
-// Selected after measuring both process CPU time and latency in the benchmark.
-// On the measured ARM64 host, ~3.7M pixels gave 3.2x lower latency with
-// ~18% more CPU; below ~2.1M pixels CPU overhead was ~30% or higher.
+// Selected from aggregate CPU and latency measurements; see graphics testing.
 const PARALLEL_MIN_PIXELS: usize = 3_500_000;
-static POOL_BUSY: AtomicBool = AtomicBool::new(false);
-
-struct PoolPermit<'a>(&'a AtomicBool);
-
-impl<'a> PoolPermit<'a> {
-    fn acquire(flag: &'a AtomicBool) -> Option<Self> {
-        flag.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .ok()
-            .map(|_| Self(flag))
-    }
-}
-
-impl Drop for PoolPermit<'_> {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
-    }
-}
 
 fn use_parallel(width: usize, height: usize) -> bool {
     width.saturating_mul(height) >= PARALLEL_MIN_PIXELS && height >= 8
@@ -171,34 +147,8 @@ fn use_parallel(width: usize, height: usize) -> bool {
 /// Warm the shared executor during resource preparation, away from frame blending.
 pub(crate) fn prepare_execution(bounds: OverlayBounds) {
     if use_parallel(bounds.width, bounds.height) {
-        let _ = shared_pool();
+        let _ = execution::pool();
     }
-}
-
-fn shared_pool() -> Option<&'static ThreadPool> {
-    SHARED_POOL
-        .get_or_init(|| {
-            let threads = std::thread::available_parallelism()
-                .map_or(1, usize::from)
-                .min(4);
-            if threads < 2 {
-                return None;
-            }
-            match ThreadPoolBuilder::new()
-                .num_threads(threads)
-                .thread_name(|i| format!("graphics-{i}"))
-                .build()
-            {
-                Ok(pool) => Some(pool),
-                Err(error) => {
-                    log::warn!(
-                        "graphics worker pool unavailable; using serial compositing: {error}"
-                    );
-                    None
-                }
-            }
-        })
-        .as_ref()
 }
 
 /// Destination must be writable YUV420P; prepared sources are immutable YUVA420P.
@@ -230,15 +180,14 @@ pub fn blend_overlay_with_execution(
     // channel's large overlay. Explicit benchmark execution bypasses this gate.
     let permit = match execution {
         BlendExecution::Adaptive if use_parallel(clip.width, clip.height) => {
-            PoolPermit::acquire(&POOL_BUSY)
+            execution::try_shared()
         }
         _ => None,
     };
     let pool = match execution {
         BlendExecution::Serial => None,
         BlendExecution::Parallel(pool) => Some(pool),
-        BlendExecution::Adaptive if permit.is_some() => shared_pool(),
-        BlendExecution::Adaptive => None,
+        BlendExecution::Adaptive => permit.as_ref().map(|permit| permit.pool),
     };
     if let Some(pool) = pool {
         pool.install(|| blend_clipped(target, overlay, &clip, opacity, Some(pool)));
@@ -373,7 +322,9 @@ mod tests {
     use ffmpeg_next::{frame, util::format::pixel::Pixel};
 
     use super::*;
+    use crate::ffmpeg::execution::PoolPermit;
     use rayon::ThreadPoolBuilder;
+    use std::sync::atomic::AtomicBool;
 
     #[test]
     fn chroma_alpha_averages_each_luma_block() {
@@ -575,7 +526,7 @@ mod tests {
         }
         let bounds = alpha_bounds(&source);
         prepare_execution(bounds);
-        if let Some(pool) = shared_pool() {
+        if let Some(pool) = execution::pool() {
             assert!(pool.current_num_threads() <= 4);
         }
         let overlay = OverlayFrame {

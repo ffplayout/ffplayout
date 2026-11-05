@@ -977,6 +977,8 @@ mod tests {
         ffmpeg_next::init().unwrap();
         let mut config = OutputConfig::new(320, 180, 25, 48_000);
         let logo_config = LogoConfig {
+            high_quality: true,
+            cache_mib: 128,
             path: std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tests_assets/storage/logo.png")
                 .to_string_lossy()

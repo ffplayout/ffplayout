@@ -13,9 +13,10 @@ workspace = true
 
 [features]
 default = []
-ffmpeg = ["dep:arc-swap", "dep:ffmpeg-next", "dep:rayon", "dep:log", "dep:image"]
+ffmpeg = ["dep:arc-swap", "dep:ffmpeg-next", "dep:rayon", "dep:log", "dep:image", "dep:fast_image_resize"]
 
 [dependencies]
+fast_image_resize = { version = "6.1", optional = true, default-features = false, features = ["std"] }
 arc-swap = { version = "1", optional = true }
 rayon = { version = "1.12", optional = true }
 log = { version = "0.4", optional = true }
@@ -24,6 +25,9 @@ image = { version = "0.25", optional = true, default-features = false, features 
 cosmic-text = "0.19"
 rten-simd = "0.27"
 ffmpeg-next = { version = "9", optional = true, default-features = false, features = ["format", "software-scaling"] }
+
+[build-dependencies]
+pkg-config = "0.3"
 
 [dev-dependencies]
 libc = "0.2"
@@ -52,5 +56,10 @@ harness = false
 
 [[bench]]
 name = "animated_scene"
+harness = false
+required-features = ["ffmpeg"]
+
+[[bench]]
+name = "source_preparation"
 harness = false
 required-features = ["ffmpeg"]

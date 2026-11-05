@@ -27,6 +27,7 @@ use streaming::StreamSource;
 
 #[derive(Clone, Copy)]
 pub struct AnimationOptions {
+    pub high_quality: bool,
     pub size: Option<(u32, u32)>,
     pub repeat: Repeat,
     pub completion: Completion,
@@ -136,6 +137,11 @@ impl CpuScene {
         options: AnimationOptions,
         cancelled: impl Fn() -> bool,
     ) -> Result<Arc<Resource>> {
+        let cache_bytes = self
+            .preparation
+            .as_ref()
+            .and_then(PreparationWeak::upgrade)
+            .map_or(128 * 1024 * 1024, |service| service.animation_cache_bytes());
         let started = Instant::now();
         let cancelled = || cancelled() || started.elapsed() > Duration::from_secs(10);
         ensure!(!cancelled(), "animation preparation cancelled");
@@ -182,6 +188,7 @@ impl CpuScene {
             position: "0:0".into(),
         };
         let mut decoder = LogoDecoder::new(input, style.clone(), 2, 2)?;
+        decoder.set_high_quality(options.high_quality);
         let mut frames: Vec<(FrameTiming, Arc<OverlayFrame>)> = Vec::new();
         let mut bytes = 0_usize;
         let mut descriptor: Option<SurfaceDescriptor> = None;
@@ -196,8 +203,8 @@ impl CpuScene {
             ensure!(!cancelled(), "animation preparation cancelled");
             // Switch to streaming instead of retaining an entire long source.
             ensure!(
-                decoded.surface.storage_bytes() <= 64 * 1024 * 1024,
-                "one animation frame exceeds 64 MiB; reduce size"
+                decoded.surface.storage_bytes() <= cache_bytes,
+                "one animation frame exceeds animation cache budget; reduce size"
             );
             let reservation = self
                 .budget
@@ -208,7 +215,7 @@ impl CpuScene {
                 && (stream_from_start
                     || frames.len() >= 256
                     || decoded.timing.end_us() > 5_000_000
-                    || bytes.saturating_add(decoded.surface.storage_bytes()) > 64 * 1024 * 1024
+                    || bytes.saturating_add(decoded.surface.storage_bytes()) > cache_bytes
                     || reservation.is_err())
             {
                 drop(reservation);
@@ -219,7 +226,9 @@ impl CpuScene {
                 let first = frames
                     .first()
                     .ok_or_else(|| {
-                        anyhow::anyhow!("one animation frame exceeds 64 MiB; reduce size")
+                        anyhow::anyhow!(
+                            "one animation frame exceeds animation cache budget; reduce size"
+                        )
                     })?
                     .1
                     .clone();
@@ -278,16 +287,15 @@ impl CpuScene {
                 .checked_add(size)
                 .ok_or_else(|| anyhow::anyhow!("animation byte count overflow"))?;
             ensure!(
-                bytes <= 64 * 1024 * 1024,
-                "animation exceeds 64 MiB prepared pixels"
+                bytes <= cache_bytes,
+                "animation exceeds animation cache budget prepared pixels"
             );
             let lease = reservation?;
             let frame = crate::ffmpeg::reference_video_frame(&logo.frame)?;
             let bounds = logo.as_overlay().bounds;
             let (width, height) = (frame.width(), frame.height());
             let alpha = logo.as_overlay().chroma_alpha.to_vec();
-            let current =
-                yuva_descriptor(&frame, bounds, alpha.len(), ColorEncoding::Bt601Limited)?;
+            let current = yuva_descriptor(&frame, bounds, alpha.len(), ColorEncoding::Unspecified)?;
             if let Some(first) = descriptor {
                 ensure!(
                     (current.width, current.height) == (first.width, first.height),
@@ -350,6 +358,7 @@ mod tests {
 
     fn options() -> AnimationOptions {
         AnimationOptions {
+            high_quality: true,
             size: Some((16, 16)),
             repeat: Repeat::Forever,
             completion: Completion::Hide,
@@ -395,6 +404,136 @@ mod tests {
         );
 
         target.data(0).to_vec()
+    }
+
+    #[test]
+    fn hq_tagged_sources_keep_metadata_and_blend_in_cached_and_streaming_modes() {
+        use crate::ffmpeg::compositor::metadata::ColorPolicy;
+        use crate::ffmpeg::sources::logo::blend_logo;
+        use ffmpeg_next::util::color::{Range, Space};
+
+        for (name, streaming, range) in [
+            ("animated-logo-alpha-bt709.mkv", false, Range::MPEG),
+            ("animated-logo-alpha-bt709-full.mkv", false, Range::JPEG),
+            ("animated-logo-alpha-bt709-long.mkv", true, Range::MPEG),
+        ] {
+            let service = crate::preparation::PreparationService::default();
+            let mut cpu = CpuScene::new(1, 128 * 1024 * 1024).with_preparation(&service);
+            let resource = cpu
+                .prepare_animation(
+                    ResourceKey { id: 1, revision: 1 },
+                    &path(name),
+                    options(),
+                    || false,
+                )
+                .unwrap();
+            let prepared = cpu.surfaces.get(&resource).unwrap();
+            assert_eq!(prepared.stream.is_some(), streaming);
+            assert_eq!(resource.descriptor.color, ColorEncoding::Unspecified);
+            let metadata = resource.descriptor.metadata.unwrap().color;
+            assert_eq!(metadata.matrix, 1);
+            let poster = prepared.poster().unwrap();
+            assert_eq!(poster.frame.color_space(), Space::BT709);
+            assert_eq!(poster.frame.color_range(), range);
+            let selected = scene(resource, 0);
+            let deadline = Instant::now() + Duration::from_secs(3);
+
+            let sampled = loop {
+                let sampled = cpu.freeze(&selected, 150_000, Scope::default());
+                if !sampled.is_empty() {
+                    break sampled;
+                }
+
+                assert!(Instant::now() < deadline, "source did not prepare {name}");
+                std::thread::sleep(Duration::from_millis(1));
+            };
+            let mut actual = frame::Video::new(Pixel::YUV420P, 32, 32);
+            let mut expected = frame::Video::new(Pixel::YUV420P, 32, 32);
+
+            for target in [&mut actual, &mut expected] {
+                target.data_mut(0).fill(40);
+                target.data_mut(1).fill(128);
+                target.data_mut(2).fill(128);
+            }
+
+            let mut decoder = LogoDecoder::new(
+                format::input(&path(name)).unwrap(),
+                LogoStyle {
+                    scale: Some("16:16".into()),
+                    opacity: 1.0,
+                    position: "0:0".into(),
+                },
+                32,
+                32,
+            )
+            .unwrap();
+            let expected_frame = loop {
+                let decoded = decoder.next_frame().unwrap().unwrap();
+
+                if decoded.timing.start_us <= 150_000 && 150_000 < decoded.timing.end_us() {
+                    break decoded;
+                }
+            };
+            blend_logo(&mut expected, &expected_frame.surface, 1.0);
+            let report = sampled.blend(&mut actual, ColorEncoding::Bt601Limited);
+            assert_eq!(report.blended, 1, "{name}");
+
+            for plane in 0..3 {
+                for row in 0..actual.plane_height(plane) as usize {
+                    let width = actual.plane_width(plane) as usize;
+                    assert_eq!(
+                        &actual.data(plane)[row * actual.stride(plane)..][..width],
+                        &expected.data(plane)[row * expected.stride(plane)..][..width],
+                        "{name}, plane={plane}"
+                    );
+                }
+            }
+
+            assert_eq!(
+                sampled.blend(&mut actual, ColorEncoding::Srgb).unsupported,
+                1
+            );
+            // Unspecified compatibility labels do not bypass strict admission.
+            cpu = cpu.with_color_policy(ColorPolicy::MatchingSignal);
+            let strict = cpu.freeze(&selected, 150_000, Scope::default());
+            assert_eq!(
+                strict
+                    .blend(&mut actual, ColorEncoding::Bt601Limited)
+                    .unsupported,
+                1
+            );
+            cpu.stop_streams();
+            drop((sampled, strict, poster, cpu));
+            assert!(service.shutdown(Duration::from_secs(2)));
+        }
+    }
+
+    #[test]
+    fn configured_cache_selects_cached_or_streaming_preparation() {
+        for (mib, streaming) in [(32, true), (128, false)] {
+            let service = crate::preparation::PreparationService::default();
+            service.set_animation_cache_mib(mib).unwrap();
+            let mut cpu = CpuScene::new(1, 128 * 1024 * 1024).with_preparation(&service);
+            let resource = cpu
+                .prepare_animation(
+                    ResourceKey { id: 1, revision: 1 },
+                    &path("animated-logo.gif"),
+                    AnimationOptions {
+                        size: Some((2048, 2048)),
+                        high_quality: false,
+                        ..options()
+                    },
+                    || false,
+                )
+                .unwrap();
+            assert_eq!(
+                cpu.surfaces.get(&resource).unwrap().stream.is_some(),
+                streaming
+            );
+            cpu.stop_streams();
+            drop(cpu);
+            assert!(service.shutdown(Duration::from_secs(2)));
+        }
     }
 
     #[test]
@@ -490,6 +629,7 @@ mod tests {
                     ResourceKey { id: 1, revision: 1 },
                     &path(name),
                     AnimationOptions {
+                        high_quality: true,
                         repeat: Repeat::Count(NonZeroU32::MIN),
                         ..options()
                     },
@@ -582,6 +722,7 @@ mod tests {
                 ResourceKey { id: 1, revision: 1 },
                 &path("animated-logo.gif"),
                 AnimationOptions {
+                    high_quality: true,
                     repeat: Repeat::default(),
                     ..options()
                 },
@@ -689,6 +830,7 @@ mod tests {
                     ResourceKey { id, revision: id },
                     &path("animated-logo.gif"),
                     AnimationOptions {
+                        high_quality: true,
                         repeat: Repeat::Count(NonZeroU32::new(2).unwrap()),
                         completion,
                         ..options()
@@ -846,6 +988,7 @@ mod tests {
                     ResourceKey { id: 1, revision: 1 },
                     &path("animated-logo-video.mkv"),
                     AnimationOptions {
+                        high_quality: true,
                         repeat: Repeat::Count(NonZeroU32::MIN),
                         completion,
                         ..options()
@@ -965,6 +1108,7 @@ mod tests {
                 ResourceKey { id: 1, revision: 1 },
                 &path("animated-logo-video.mkv"),
                 AnimationOptions {
+                    high_quality: true,
                     size: Some((1280, 720)),
                     ..options()
                 },
@@ -1562,6 +1706,7 @@ mod tests {
                 ResourceKey { id: 4, revision: 4 },
                 &path("animated-logo.gif"),
                 AnimationOptions {
+                    high_quality: true,
                     size: Some((3, 4)),
                     ..options()
                 },

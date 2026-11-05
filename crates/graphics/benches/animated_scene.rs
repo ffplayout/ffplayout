@@ -144,6 +144,7 @@ fn main() -> Result<()> {
             },
             &root.join(file),
             AnimationOptions {
+                high_quality: true,
                 size: Some((320, 180)),
                 repeat: Repeat::Forever,
                 completion: Completion::Hide,

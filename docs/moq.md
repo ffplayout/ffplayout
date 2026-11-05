@@ -79,6 +79,8 @@ Codec and server buffers add to this delay; it is not an end-to-end latency guar
 applies immediately without restarting encoding. When enabled, the public Vue
 page `/moq/player?channel=ID` uses the same component and can be opened without
 login. Its bootstrap endpoint `/moq/config?channel=ID` is unavailable otherwise.
+This optional public player is intended for testing and small previews, rather
+than distributing a channel to many viewers.
 
 The relay checks every WebSocket/QUIC/WebTransport admission. Anonymous viewers
 receive a subscription grant for exactly one enabled, public channel and cannot

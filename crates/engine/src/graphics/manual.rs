@@ -518,6 +518,7 @@ mod tests {
                 &Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../tests_assets/storage/media_images/animated-logo.gif"),
                 AnimationOptions {
+                    high_quality: true,
                     size: Some((32, 16)),
                     repeat: Repeat::Forever,
                     completion: Completion::Hide,

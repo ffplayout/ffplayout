@@ -47,10 +47,10 @@ until settings change.
 
 #### Manual live takeover
 
-In **Settings → Ingest**, each listener has its own **Automatically put live inputs on air** switch, enabled by default. Disable it for an input to keep that signal on standby until selected manually. Saving this policy does not require a channel restart and does not interrupt a source already on air. Listener policies are stored per row in `config_live_input.auto_takeover`. Listener IDs remain stable across configuration updates.
+In **Settings → Ingest**, each listener has its own **Automatically put this input on air** switch, enabled by default. Disable it for an input to keep that signal on standby until selected manually. Saving this policy does not require a channel restart and does not interrupt a source already on air. Listener policies are stored per row in `config_live_input.auto_takeover`. Listener IDs remain stable across configuration updates.
 
-The player page shows a small button for each enabled, manually controlled input below
-the playout controls. Unlock the controls first. **No signal** is disabled;
+The player page shows a small button for each enabled, manually controlled input next to
+the control-lock button. Unlock the controls first. **No signal** is disabled;
 **Go live** selects a ready source; **End live** returns to the playlist at the
 current scheduled time. Selecting another ready input switches sources without
 restarting the outputs. The publisher can remain connected after **End live**.
@@ -74,8 +74,11 @@ Set `active` to `false` to end that selection. The command is idempotent, requir
 rejects tokens belonging to a previous connection. The public player has no
 ingest controls.
 
-When an incoming stream produces video, ffplayout pauses the currently playing
-content and switches to the live source. The output remains continuous.
+When an accepted incoming stream produces video, ffplayout switches the program
+output to that live source. The playlist clock continues in the background; the
+player marks the currently scheduled clip and counts down its remaining time,
+including subsequent entries. Ending live returns to the current scheduled
+position. The output remains continuous.
 
 In rare cases, it may happen that, for a short moment after switching, the image freezes, but then it will continue. Also, a brief frame flicker might occur.
 

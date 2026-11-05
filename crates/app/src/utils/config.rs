@@ -602,7 +602,7 @@ impl Logging {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Processing {
     pub mode: ProcessMode,
@@ -614,6 +614,10 @@ pub struct Processing {
     pub logo_scale: String,
     pub logo_opacity: f64,
     pub logo_position: String,
+    #[serde(default = "default_graphics_quality")]
+    pub logo_high_quality: bool,
+    #[serde(default = "default_graphics_cache_mib")]
+    pub graphics_cache_mib: u32,
     #[serde(default)]
     pub vtt_enable: bool,
     #[serde(default)]
@@ -624,6 +628,35 @@ pub struct Processing {
     pub vtt_language: String,
     #[serde(default)]
     pub vtt_default: bool,
+}
+
+impl Default for Processing {
+    fn default() -> Self {
+        Self {
+            mode: ProcessMode::default(),
+            add_logo: false,
+            logo: String::new(),
+            logo_path: String::new(),
+            logo_scale: String::new(),
+            logo_opacity: 0.0,
+            logo_position: String::new(),
+            logo_high_quality: true,
+            graphics_cache_mib: 128,
+            vtt_enable: false,
+            vtt_dummy: None,
+            vtt_name: String::new(),
+            vtt_language: String::new(),
+            vtt_default: false,
+        }
+    }
+}
+
+fn default_graphics_quality() -> bool {
+    true
+}
+
+fn default_graphics_cache_mib() -> u32 {
+    128
 }
 
 fn default_vtt_name() -> String {
@@ -644,6 +677,8 @@ impl Processing {
             logo_scale: config.processing_logo_scale.clone(),
             logo_opacity: config.processing_logo_opacity,
             logo_position: config.processing_logo_position.clone(),
+            logo_high_quality: config.processing_logo_high_quality,
+            graphics_cache_mib: config.processing_graphics_cache_mib,
             vtt_enable: config.processing_vtt_enable,
             vtt_dummy: config.processing_vtt_dummy.clone(),
             vtt_name: config.processing_vtt_name.clone(),

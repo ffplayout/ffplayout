@@ -72,7 +72,7 @@ CARGO_FEATURES=desktop,embed_frontend,ffmpeg-filter,ffmpeg-device \\
     ./scripts/build.sh debian-static
 ```
 
-To retain release debug symbols for CPU profiling, add `--profiling` to either
+To retain release debug symbols for CPU profiling, add `--profiling` to a
 container build target:
 
 ```bash
@@ -80,14 +80,49 @@ CARGO_FEATURES=embed_frontend ./scripts/build.sh debian-shared --profiling
 # Or: ./scripts/build.sh debian-static --profiling
 ```
 
-This sets `CARGO_PROFILE_RELEASE_DEBUG=1` and
+### Alpine / musl static build
+
+`docker/musl.Dockerfile` provides a separate, experimental Alpine 3.23 builder
+for `x86_64-unknown-linux-musl`. Use it through the same build script:
+
+```bash
+./scripts/build.sh alpine-static
+# Optional debug symbols:
+./scripts/build.sh alpine-static --profiling
+# Optional FFmpeg components:
+CARGO_FEATURES=embed_frontend,ffmpeg-filter,ffmpeg-device ./scripts/build.sh alpine-static
+```
+
+The default is `embed_frontend`; this target supports server outputs only.
+Desktop features and `FFMPEG_VAAPI=1` are rejected. FFmpeg and the software codec
+libraries are built against musl; VAAPI and Intel VPL are not included. The
+Debian builders remain available for desktop and hardware-accelerated builds.
+
+The binary is written to `target/alpine-static/ffplayout`, with a distribution
+archive at `ffplayout-v<VERSION>_linux-musl-x86_64.tar.gz`. No Debian or Alpine
+package is produced. The build checks the ELF program headers and dynamic section
+and rejects binaries requiring a dynamic loader or shared libraries, then runs
+`ffplayout --version`. The target Linux system still needs its normal CA
+certificates for certificate verification.
+
+Cargo artifacts use `target/alpine-musl/`, separate from the Debian build cache.
+Frontend dependencies are installed in the container's own temporary workspace,
+so `npm ci` does not replace the host's `node_modules`. Download caches and the
+stopped container are reused as with the other targets. The first build compiles
+FFmpeg and its dependencies from source and can take considerably longer,
+especially under x86_64 emulation on Apple Silicon.
+
+### Container build settings
+
+The `--profiling` option sets `CARGO_PROFILE_RELEASE_DEBUG=1` and
 `CARGO_PROFILE_RELEASE_STRIP=false` in the build container. Release optimizations
 remain enabled, and debug symbols are retained in both the binary and Debian
 package. These two environment variables can also be passed directly or set in
 `.env`; `--profiling` overrides their values. Build artifacts will be larger.
 
 The build script keeps one stopped build container per workspace and target
-(`ffplayout-build-debian-shared-…` / `ffplayout-build-debian-static-…`). Cargo and
+(`ffplayout-build-debian-shared-…`, `ffplayout-build-debian-static-…`, or
+`ffplayout-build-alpine-static-…`). Cargo and
 npm download caches inside it survive subsequent builds. Containers are reused
 regardless of age; a changed builder image requires recreation.
 Features, `.env` values and profiling settings are

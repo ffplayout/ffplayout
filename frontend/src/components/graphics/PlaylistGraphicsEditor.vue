@@ -39,7 +39,7 @@ const browsing = ref<number>()
 const beyondEnd = computed(() => events.value?.some((event) => event.at >= props.duration))
 const repeats = ['repeat', 'source_repeat'] as const
 const transitions = ['fade_in', 'duration', 'fade_out', 'pause'] as const
-const extensions = ['png', 'gif', 'mov', 'qt', 'mp4', 'm4v', 'mkv', 'webm', 'avi', 'ts', 'm2ts', 'mts']
+const extensions = ['png', 'gif', 'avif', 'mov', 'qt', 'mp4', 'm4v', 'mkv', 'webm', 'avi', 'ts', 'm2ts', 'mts']
 
 const sourcePath = computed(() => {
     const event = selected.value === undefined ? undefined : events.value?.[selected.value]
@@ -258,6 +258,18 @@ function source(path: string) {
                     ></span>
                     <GraphicSourceInfo :info="mediaInfo" />
                 </label>
+                <div v-if="event.action === 'take'" class="fieldset sm:col-span-2">
+                    <label class="flex gap-2 items-center">
+                        <input
+                            type="checkbox"
+                            class="toggle toggle-sm"
+                            :checked="event.high_quality !== false"
+                            @change="update(index, { high_quality: checked($event) })"
+                        />
+                        {{ t('graphicsPage.highQuality') }}
+                    </label>
+                    <p class="text-xs">{{ t('graphicsPage.qualityHelp') }}</p>
+                </div>
                 <GraphicPositionEditor
                     v-if="event.action === 'take' && event.source && canvas[0] > 0 && canvas[1] > 0"
                     :channel="channel"

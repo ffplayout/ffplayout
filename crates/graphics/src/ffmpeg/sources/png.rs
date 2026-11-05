@@ -7,17 +7,20 @@ use std::{
 };
 
 use anyhow::{Context, Result, ensure};
-use ffmpeg_next::{format::Pixel, frame, software::scaling};
+use ffmpeg_next::{
+    format::Pixel,
+    frame,
+    util::color::{Range, Space, TransferCharacteristic},
+};
 use image::{DynamicImage, ImageDecoder, Limits, codecs::png::PngDecoder};
 
 use crate::{
     bitmap::StraightRgbaBitmap,
-    surface::{ColorEncoding, Resource, ResourceKey},
+    surface::{Alpha, ColorEncoding, Resource, ResourceKey},
 };
 
 use crate::ffmpeg::{
-    compositor::{metadata::copy_color_properties, scene::CpuScene},
-    text::rgba_to_yuva420p,
+    compositor::scene::CpuScene, sources::preparation::SourcePreparation, text::rgba_to_yuva420p,
 };
 
 impl CpuScene {
@@ -28,6 +31,16 @@ impl CpuScene {
         key: ResourceKey,
         path: &Path,
         size: Option<(u32, u32)>,
+    ) -> Result<Arc<Resource>> {
+        self.prepare_png_with_quality(key, path, size, true)
+    }
+
+    pub fn prepare_png_with_quality(
+        &mut self,
+        key: ResourceKey,
+        path: &Path,
+        size: Option<(u32, u32)>,
+        high_quality: bool,
     ) -> Result<Arc<Resource>> {
         if let Some((width, height)) = size {
             ensure!(
@@ -85,7 +98,7 @@ impl CpuScene {
         );
         let input_workspace = width as usize * height as usize * 16;
         let output_workspace =
-            size.map_or(0, |(width, height)| width as usize * height as usize * 4);
+            size.map_or(0, |(width, height)| width as usize * height as usize * 12);
         let _pixel_workspace = self
             .budget
             .as_ref()
@@ -99,29 +112,36 @@ impl CpuScene {
                 pixels[offset + x * 4..offset + x * 4 + 4].copy_from_slice(&pixel.0);
             }
         }
+        drop(rgba);
         let bitmap = StraightRgbaBitmap {
             width,
             height,
             pixels,
         };
-        let mut prepared = rgba_to_yuva420p(&bitmap)?;
-        if let Some((width, height)) = size
-            && (width, height) != (bitmap.width, bitmap.height)
+        let prepared = if let Some(size) = size
+            && size != (bitmap.width, bitmap.height)
         {
-            let mut scaler = scaling::Context::get(
-                Pixel::YUVA420P,
-                bitmap.width,
-                bitmap.height,
-                Pixel::YUVA420P,
-                width,
-                height,
-                scaling::flag::Flags::BILINEAR,
-            )?;
-            let mut scaled = frame::Video::empty();
-            scaler.run(&prepared, &mut scaled)?;
-            copy_color_properties(&prepared, &mut scaled);
-            prepared = scaled;
-        }
+            let mut source = frame::Video::new(Pixel::RGBA, bitmap.width, bitmap.height);
+            source.set_color_space(Space::RGB);
+            source.set_color_range(Range::JPEG);
+            source.set_color_transfer_characteristic(TransferCharacteristic::IEC61966_2_1);
+            let stride = source.stride(0);
+            let width = bitmap.width as usize * 4;
+
+            for (row, pixels) in bitmap.pixels.chunks_exact(width).enumerate() {
+                source.data_mut(0)[row * stride..row * stride + width].copy_from_slice(pixels);
+            }
+
+            SourcePreparation::default().prepare_with_quality(
+                &source,
+                None,
+                Alpha::Straight,
+                size,
+                high_quality,
+            )?
+        } else {
+            rgba_to_yuva420p(&bitmap)?
+        };
 
         self.prepare_yuva(key, prepared, ColorEncoding::Bt601Limited)
     }

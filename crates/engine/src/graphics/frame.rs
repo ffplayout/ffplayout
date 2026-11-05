@@ -262,6 +262,8 @@ mod tests {
         Arc::new(
             LogoOverlay::load(
                 &LogoConfig {
+                    high_quality: true,
+                    cache_mib: 128,
                     path: std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                         .join("../../tests_assets/storage/media_images/animated-logo.gif")
                         .to_string_lossy()

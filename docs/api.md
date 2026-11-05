@@ -90,7 +90,7 @@ listed authenticated endpoints also enforce the channel assignment where an
 | Method | Endpoint | Access | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/playout/config/{id}` | `GA, CA, U` | Read the complete `PlayoutConfig`. |
-| `PUT` | `/api/playout/config/{id}` | `GA, CA` | Replace the complete `PlayoutConfig`. Use the response from `GET` as the request shape. The response contains `requires_restart`; mail, notification, and volume changes are runtime-safe and return `false`. |
+| `PUT` | `/api/playout/config/{id}` | `GA, CA` | Replace the complete `PlayoutConfig`. Use the response from `GET` as the request shape. The response contains `requires_restart`. Mail, notification, volume, program-logo and graphics-cache changes are runtime-safe; supported ingest policy/name updates and compatible output updates can also apply without restarting. Other changes may require a restart. Scoped `?scope=logo` and `?scope=graphics_cache` requests retain unrelated fields; see [graphics control](graphics_control.md). |
 | `GET` | `/api/playout/outputs/{id}` | `GA, CA, U` | List configured outputs for the channel. |
 | `GET` | `/api/playout/codecs/{id}` | `GA, CA, U` | List supported codecs for HLS, RTMP, SRT, UDP, and custom outputs, including compatible hardware encoders and their curated encoder-setting schema. |
 | `GET` | `/api/text/fonts` | `GA, CA, U` | List available font families. |

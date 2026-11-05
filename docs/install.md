@@ -52,7 +52,7 @@ ffplayout macOS release. Review the
 The Windows release does not include FFmpeg DLLs. Install them separately:
 
 1. Download and extract the Windows desktop archive from the [ffplayout release page](https://github.com/ffplayout/ffplayout/releases/latest).
-2. Download the [BtbN FFmpeg 8.1 GPL shared build](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-shared-9.0.zip).
+2. Download the [BtbN FFmpeg 9.0 GPL shared build](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-shared-9.0.zip).
 3. Extract the FFmpeg archive and copy all `*.dll` files from its `bin` directory into the ffplayout `bin` directory next to `ffplayout.exe`. Alternatively, add the extracted FFmpeg `bin` directory to the system `PATH`.
 4. Start `bin\ffplayout.exe`.
 

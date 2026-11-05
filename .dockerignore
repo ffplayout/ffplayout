@@ -1,0 +1,14 @@
+.git
+.cache
+.vite
+.env
+target
+tmp
+node_modules
+frontend/dist
+*.deb
+*.rpm
+*.zip
+*.db
+*.db-shm
+*.db-wal

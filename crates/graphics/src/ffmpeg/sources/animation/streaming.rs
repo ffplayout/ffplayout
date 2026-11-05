@@ -30,7 +30,11 @@ use super::AnimationOptions;
 
 type Instance = (u64, u64, i64);
 type Frames = VecDeque<(FrameTiming, Arc<OverlayFrame>)>;
-const LIMIT: usize = 64 * 1024 * 1024;
+
+struct CacheLimits {
+    frame_bytes: usize,
+    max_bytes: usize,
+}
 const LOOKAHEAD: i64 = 500_000;
 
 struct Request {
@@ -90,9 +94,12 @@ impl StreamSource {
         let state = shared.clone();
         let path = path.to_path_buf();
         let budget = service.budget();
-        let frame_bytes = bytes(&poster);
+        let limits = CacheLimits {
+            frame_bytes: bytes(&poster),
+            max_bytes: service.animation_cache_bytes(),
+        };
         let task = service.spawn_media(move |stop| {
-            if let Err(error) = run(path, style, options, &state, &budget, &stop, frame_bytes)
+            if let Err(error) = run(path, style, options, &state, &budget, &stop, limits)
                 && !stop.is_cancelled()
             {
                 state.failed.store(true, Ordering::Release);
@@ -303,13 +310,18 @@ fn run(
     shared: &Shared,
     budget: &ResourceBudget,
     stop: &Cancellation,
-    frame_bytes: usize,
+    limits: CacheLimits,
 ) -> Result<()> {
+    let CacheLimits {
+        frame_bytes,
+        max_bytes: cache_bytes,
+    } = limits;
     let mut input_options = Dictionary::new();
     input_options.set("protocol_whitelist", "file");
     input_options.set("format_whitelist", "gif,mov,matroska,webm,avi,mpegts");
     let input = format::input_with_dictionary(&path, input_options)?;
     let mut decoder = LogoDecoder::new(input, style, 2, 2)?;
+    decoder.set_high_quality(options.high_quality);
     decoder.initialize_origin(|| stop.is_cancelled())?;
     let mut cache = Frames::new();
     let mut processed = BTreeMap::<Instance, i64>::new();
@@ -400,7 +412,7 @@ fn run(
                         .map(|(_, frame)| bytes(frame))
                         .sum::<usize>()
                         .saturating_add(bytes(last))
-                        > LIMIT;
+                        > cache_bytes;
                 if full {
                     if cache
                         .front()
@@ -458,8 +470,8 @@ fn run(
             let logo = decoded.surface;
             let size = logo.storage_bytes();
             ensure!(
-                size <= LIMIT,
-                "one animation frame exceeds 64 MiB; reduce size"
+                size <= cache_bytes,
+                "one animation frame exceeds animation cache budget; reduce size"
             );
             // Eviction and accounting happen on the decoder thread. Queued
             // video snapshots keep their own channel-budgeted leases.
@@ -470,7 +482,7 @@ fn run(
                         .map(|(_, frame)| bytes(frame))
                         .sum::<usize>()
                         .saturating_add(size)
-                        > LIMIT)
+                        > cache_bytes)
             {
                 cache.pop_front();
             }
@@ -481,7 +493,7 @@ fn run(
             let frame = reference_video_frame(&logo.frame)?;
             let bounds = logo.as_overlay().bounds;
             let alpha = logo.as_overlay().chroma_alpha.to_vec();
-            yuva_descriptor(&frame, bounds, alpha.len(), ColorEncoding::Bt601Limited)?;
+            yuva_descriptor(&frame, bounds, alpha.len(), ColorEncoding::Unspecified)?;
             let (width, height) = (frame.width(), frame.height());
             end = decoded.timing.end_us();
             loop_end = decoded.loop_end;
