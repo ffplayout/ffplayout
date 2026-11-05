@@ -118,7 +118,7 @@ SVG, GPU and Servo remain separate work. Manual HTTP controls and the shared
 Graphics page are implemented (Phase 8). Do not repeat the
 completed extraction or scheduling/engine integration. Recent increments add bounded entrance preparation, first-visible-frame
 selection from ready lookahead, metadata-aware alpha preparation, per-source
-quality controls and a configurable animation cache (migration 8).
+quality controls and a configurable animation cache.
 
 **How to read this status:** checked items describe the implemented CPU/native
 scope only. Partially delivered requirements are split into completed foundations
@@ -996,7 +996,7 @@ placement editing and manual live HTTP controls are implemented (Phase 8).
 Templates, exact renderer-backed preview, animated PNGs and migration of all
 legacy layers into one z-index domain remain separate work. Existing animated
 program logos remain supported. The playlist adapter itself needs no schema
-change; manual graphics persistence extends migration 8 and uses GET/POST
+change; manual graphics persist per channel and use GET/POST
 `/api/graphics/{channel}`.
 
 ---

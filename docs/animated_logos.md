@@ -6,8 +6,8 @@ channel is running, including during live ingest. See
 
 The existing logo path accepts a static image, animated GIF, or local video file.
 Animated sources repeat indefinitely, ignoring a file's finite repeat count.
-Animation uses the existing logo path; migration 8 adds the quality/cache controls
-described below. Existing logo scale, position,
+Animation uses the existing logo path and the quality/cache controls described
+below. Existing logo scale, position,
 opacity and fades apply. Paths remain relative to channel storage in the frontend.
 
 GIF frame delays may differ from one image to the next. Video presentation
@@ -147,8 +147,7 @@ and playlist graphics snapshot the new limit; existing layers keep their cache
 until taken/started again. An enabled Program Logo is reloaded in the background
 and keeps its previous surface until the replacement is ready. This avoids
 partially discarding a fully cached animation during playback. Channel settings
-persist in migration 8; per-layer quality persists in existing JSON definitions
-without changing their database schema.
+persist in the database; per-layer quality persists in existing JSON definitions.
 
 ## Timing and outputs
 

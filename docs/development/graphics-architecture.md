@@ -726,7 +726,7 @@ fallbacks; the lead window is a preparation opportunity, not a hard latency boun
 
 ### Source-processing settings
 
-Migration 8 persists `processing.logo_high_quality` (default true) and
+Channel configuration persists `processing.logo_high_quality` (default true) and
 `processing.graphics_cache_mib` (32–1024, default 128). Playlist/manual takes have
 an independent `high_quality` field, default true. These control source preparation,
 not the fast per-frame YUVA blend. The shared channel pixel/workspace budget stays
