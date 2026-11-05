@@ -43,6 +43,8 @@ enum GraphicAction {
     Take {
         layer: u64,
         source: String,
+        #[serde(default = "high_quality_default")]
+        high_quality: bool,
         #[serde(default)]
         size: Option<(u32, u32)>,
         #[serde(default)]
@@ -135,6 +137,10 @@ impl Repetitions {
             Self::Keyword(Forever::Forever) => Repeat::Forever,
         }
     }
+}
+
+fn high_quality_default() -> bool {
+    true
 }
 
 fn full_opacity() -> f64 {
@@ -459,6 +465,7 @@ struct Asset {
     size: Option<(u32, u32)>,
     source_repeat: u32,
     source_end: SourceEnd,
+    high_quality: bool,
 }
 
 #[cfg(test)]
@@ -499,7 +506,7 @@ fn prepare_scene_budgeted(
     );
     let parsed: Vec<GraphicEvent> =
         serde_json::from_value(data.clone()).context("invalid graphics event")?;
-    let mut renderer = CpuScene::new(64, 64 * 1024 * 1024);
+    let mut renderer = CpuScene::new(64, 256 * 1024 * 1024);
     if let Some(preparation) = &preparation {
         renderer = renderer.with_preparation(preparation);
     }
@@ -519,6 +526,7 @@ fn prepare_scene_budgeted(
             GraphicAction::Take {
                 layer,
                 source,
+                high_quality,
                 size,
                 position,
                 opacity,
@@ -573,6 +581,7 @@ fn prepare_scene_budgeted(
                             path,
                             size,
                             source_repeat: source_repeat.count(),
+                            high_quality,
                             source_end,
                         };
                         if let Some(resource) = assets.get(&asset) {
@@ -698,12 +707,13 @@ fn prepare_source(
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
     {
-        return renderer.prepare_png(key, &asset.path, asset.size);
+        return renderer.prepare_png_with_quality(key, &asset.path, asset.size, asset.high_quality);
     }
     renderer.prepare_animation(
         key,
         &asset.path,
         AnimationOptions {
+            high_quality: asset.high_quality,
             size: asset.size,
             repeat,
             completion: match asset.source_end {
@@ -743,6 +753,23 @@ mod tests {
             .evaluate(frame.position_us, Scope::default())
             .next()
             .map(|layer| layer.content.opacity)
+    }
+
+    #[test]
+    fn source_reuse_separates_scaling_quality_and_legacy_events_default_to_high() {
+        let schedule = compile(json!([
+            {"at":0,"action":"take","layer":1,"source":"lower-third.png","size":[64,36]},
+            {"at":0,"action":"take","layer":2,"source":"lower-third.png","size":[64,36],"high_quality":false},
+            {"at":0,"action":"take","layer":3,"source":"lower-third.png","size":[64,36],"high_quality":true}
+        ]), 1_000_000).unwrap();
+        let frame = schedule.frame_at(Some(0)).unwrap();
+        let layers = &frame.scene.layers;
+        assert_eq!(layers.len(), 3);
+        assert_eq!(layers[0].resource.key, layers[2].resource.key);
+        assert_ne!(layers[0].resource.key, layers[1].resource.key);
+        assert!(compile(json!([
+            {"at":0,"action":"take","layer":1,"source":"lower-third.png","high_quality":"false"}
+        ]), 1_000_000).is_err());
     }
 
     #[test]

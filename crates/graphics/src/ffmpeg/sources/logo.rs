@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
-use ffmpeg_next::{codec, frame, media, software::scaling, util::format::pixel::Pixel};
+use anyhow::{Context, Result, anyhow};
+use ffmpeg_next::{frame, util::format::pixel::Pixel};
 
 use crate::{
     even,
@@ -12,11 +12,13 @@ use crate::{
         },
         reference_video_frame,
     },
-    layout::{logo_dimensions, logo_position},
+    layout::logo_position,
     preparation::{ResourceBudget, ResourceLease},
     style::LogoStyle,
     surface::{ColorEncoding, SurfaceDescriptor},
 };
+
+use super::decoder::LogoDecoder;
 
 #[derive(Clone)]
 pub struct LogoOverlay {
@@ -64,7 +66,7 @@ impl LogoOverlay {
 
     pub fn from_input(
         config: &LogoStyle,
-        mut ictx: ffmpeg_next::format::context::Input,
+        ictx: ffmpeg_next::format::context::Input,
         source_label: &str,
         output_width: u32,
         output_height: u32,
@@ -73,87 +75,14 @@ impl LogoOverlay {
             return Err(anyhow!("logo opacity must be between 0.0 and 1.0"));
         }
 
-        let stream = ictx
-            .streams()
-            .best(media::Type::Video)
-            .ok_or_else(|| anyhow!("logo {} contains no video/image stream", source_label))?;
+        let mut decoder = LogoDecoder::new(ictx, config.clone(), output_width, output_height)
+            .with_context(|| format!("opening logo {source_label}"))?;
+        let first = decoder
+            .next_frame()
+            .with_context(|| format!("decoding logo {source_label}"))?
+            .with_context(|| format!("logo {source_label} produced no frame"))?;
 
-        let stream_index = stream.index();
-        let ctx = codec::context::Context::from_parameters(stream.parameters())?;
-        let mut decoder = ctx.decoder().video()?;
-
-        let input_width = decoder.width();
-        let input_height = decoder.height();
-
-        let (width, height) = logo_dimensions(
-            config.scale.as_deref(),
-            input_width,
-            input_height,
-            output_width,
-            output_height,
-        )?;
-
-        // Convert the logo directly to YUVA420P.
-        // Plane 0 = Y
-        // Plane 1 = U
-        // Plane 2 = V
-        // Plane 3 = Alpha
-        let mut scaler = scaling::Context::get(
-            decoder.format(),
-            input_width,
-            input_height,
-            Pixel::YUVA420P,
-            width,
-            height,
-            scaling::flag::Flags::BILINEAR,
-        )?;
-
-        let mut decoded = frame::Video::empty();
-        let mut yuva = None;
-
-        for (packet_stream, packet) in ictx.packets() {
-            if packet_stream.index() != stream_index {
-                continue;
-            }
-
-            decoder.send_packet(&packet)?;
-
-            if decoder.receive_frame(&mut decoded).is_ok() {
-                let mut scaled = frame::Video::empty();
-                scaler.run(&decoded, &mut scaled)?;
-                yuva = Some(scaled);
-                break;
-            }
-        }
-
-        if yuva.is_none() {
-            decoder.send_eof()?;
-
-            if decoder.receive_frame(&mut decoded).is_ok() {
-                let mut scaled = frame::Video::empty();
-                scaler.run(&decoded, &mut scaled)?;
-                yuva = Some(scaled);
-            }
-        }
-
-        let frame = yuva.ok_or_else(|| anyhow!("logo {} produced no frame", source_label))?;
-        let (x, y) = logo_position(&config.position, output_width, output_height, width, height)?;
-        let bounds = alpha_bounds(&frame);
-        if config.opacity > 0.0 {
-            prepare_execution(bounds);
-        }
-
-        Ok(Self {
-            lease: None,
-            chroma_alpha: chroma_alpha(&frame, width, height).into(),
-            bounds,
-            frame,
-            x: even(x),
-            y: even(y),
-            width,
-            height,
-            opacity: (config.opacity * 255.0).round().clamp(0.0, 255.0) as u8,
-        })
+        Ok(Arc::unwrap_or_clone(first.surface))
     }
 
     /// Prepare an already scaled YUVA surface outside the compositor hot path.

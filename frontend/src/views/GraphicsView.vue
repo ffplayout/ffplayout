@@ -5,7 +5,7 @@ import { useHead } from '@unhead/vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 const { t } = useI18n()
 const route = useRoute()
-const tabs = ['graphics-live', 'graphics-text', 'graphics-logo'] as const
+const tabs = ['graphics-live', 'graphics-text', 'graphics-logo', 'graphics-settings'] as const
 const activeTab = computed(() => tabs.find((tab) => tab === route.name) ?? tabs[0])
 const title = computed(() => t(`graphicsPage.tabs.${activeTab.value}`))
 useHead({

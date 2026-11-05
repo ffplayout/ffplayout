@@ -44,3 +44,23 @@ Configure rate-limited log alerts for topic-based HTTP push services.
 ### **[ffplayout API](/docs/api.md)**
 
 Control the engine, playlist and config with the API.
+
+### **[Graphics Control](graphics_control.md)**
+
+Manage persistent manual layers, text, the program logo, source quality and animation caching.
+
+### **[Playlist Graphics](playlist_graphics.md)**
+
+Schedule graphics with positioning, fades and repetitions per clip.
+
+### **[Animated Logos](animated_logos.md)**
+
+Supported image/video sources, alpha handling, timing and resource limits.
+
+### **[MoQ Playback](moq.md)**
+
+Experimental browser preview and optional public test player.
+
+### **[Frontend Screenshots](images/README.md)**
+
+An illustrated overview of the web interface.

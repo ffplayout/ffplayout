@@ -8,6 +8,7 @@ export interface GraphicEvent {
     action: GraphicAction
     layer?: number
     source?: string
+    high_quality?: boolean
     size?: [number, number] | null
     position?: [number, number] | null
     opacity?: number | null
@@ -53,6 +54,7 @@ export function readGraphicEvents(value: unknown): GraphicEvent[] | undefined {
             ['position', 'opacity', 'z_index', 'fade_in', 'fade_out', 'pause'].some((key) => item[key] === null)
         )
             return undefined
+        if (item.high_quality !== undefined && typeof item.high_quality !== 'boolean') return undefined
         if (item.source != null && typeof item.source !== 'string') return undefined
         if (item.visible != null && typeof item.visible !== 'boolean') return undefined
         if (
@@ -74,6 +76,7 @@ export function newGraphicEvent(action: GraphicAction, at = 0, layer = 1): Graph
             action,
             layer,
             source: '',
+            high_quality: true,
             position: [0, 0],
             opacity: 1,
             z_index: 0,

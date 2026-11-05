@@ -40,7 +40,8 @@ crates/graphics/src/
 ├── layout/                   # logo geometry and renderer-independent styles
 └── ffmpeg/
     ├── compositor/           # YUVA kernels, scene composition and scaling caches
-    ├── sources/              # logo surfaces, incremental decoder and static PNG loading
+    ├── sources/              # PNG/AVIF/video decoding, alpha preparation and animation caches
+    ├── execution.rs          # shared bounded Rayon execution for preparation and blending
     └── text.rs               # native bitmap-to-YUVA preparation
 ```
 
@@ -95,7 +96,9 @@ without any FFmpeg dependency. Backends apply their own pixel alignment rules.
 ## Compatibility adapters in the engine
 
 `crates/engine/src/graphics/` contains `logo_adapter.rs`, `text_adapter.rs`,
-`source.rs` (owned preparation/cache lifecycle), `program.rs` (selection before
+`source.rs` (owned preparation/cache lifecycle), `clip.rs`, `manual.rs`,
+`control.rs` and `logo_control.rs` (clip/manual integration and live updates),
+`program.rs` (selection before
 output fan-out), and `frame.rs` (ready-layer snapshots and composition dispatch).
 Rasterization, decoding and blend kernels live in `ff-graphics`.
 
@@ -109,7 +112,7 @@ Rasterization, decoding and blend kernels live in `ff-graphics`.
   engine resolves content and passes the resulting string with a `TextStyle`.
   Immutable text snapshots retain placement and opacity with each video frame
   through file/live queues and loudness lookahead. The final compositor blends
-  video, logo, clip graphics, configured text, then runtime text; scaled text bitmaps are cached
+  video, logo, clip graphics, manual graphics, configured text, then runtime text; scaled text bitmaps are cached
   per composition resolution.
 - Existing exported color/position/weight types are re-exported through the
   engine, preserving callers' import paths.
@@ -141,11 +144,13 @@ Fully transparent or offscreen graphics do no blending work.
 The default compositor uses serial SIMD below 3,500,000 visible luma pixels.
 Larger regions may use a process-wide Rayon pool capped at four workers (also
 limited by available parallelism). Large visible-opacity prepared resources warm
-the executor outside frame blending. Small/transparent graphics do not initialize
-it. A nonblocking permit prevents channels from queueing behind one another:
-when another adaptive blend owns the pool, the caller runs serially. Pool setup
+the executor outside frame blending. Small/transparent blend regions do not
+initialize it, although large source preparation can use the same pool. A nonblocking permit prevents channels from queueing behind one another:
+when another preparation or adaptive blend owns the pool, the caller runs serially. Pool setup
 failure is logged once and falls back to serial execution. No pool is created
-per channel or frame, and there are no new unsafe pixel views.
+per channel or frame. The blend path retains borrowed plane views. Source
+preparation has separate bounded output-plane views and native SIMD kernels;
+see [source preparation and alpha handling](../animated_logos.md).
 
 The threshold is a conservative heuristic derived from local ARM64 measurements,
 not a hardware-independent CPU guarantee. At about 3.7M/8.3M pixels, four workers
@@ -189,7 +194,7 @@ allocation and keeps backend content outside the scene module. It complements
 `SceneRevision`: existing text/logo clocks can publish ready layers without
 submitting new control commands or allocating command receipts every video frame.
 
-The engine's `GraphicsFrame` maps logo, clip graphics, configured text and runtime
+The engine's `GraphicsFrame` maps logo, clip graphics, manual graphics, configured text and runtime
 text into this model. The clip scene is a group with its own layer IDs and z-order;
 the outer group order deliberately preserves existing configuration/API behavior.
 This does not expose a new global z-index setting for legacy logo/text.
@@ -234,7 +239,9 @@ presentation timing. Existing native fade/scroll evaluation supplies the final
 pose; controller presentations use an indefinite, unfaded hold. The evaluated
 controller layer controls admission, visibility and ordering of the ready pixels.
 Text descriptors name the existing BT.601-limited preparation policy; logo color
-metadata remains explicitly unspecified. This does not implement color negotiation.
+metadata retains actual prepared-frame tags without guessing missing values.
+Its legacy compatibility label remains unspecified. This does not implement
+general color negotiation.
 
 On clip completion, text resources are released but the program logo survives.
 Queued snapshots keep their own ready pixels. Clock rewind clears the old epoch
@@ -310,7 +317,9 @@ wide scrolling-text and shared-resolution tests.
 `scene`, `surface` and `playback` now provide a backend-independent first core.
 They are usable/tested with `ffmpeg::scene::CpuScene`. Prepared clip scenes now
 reach production engine output fan-out alongside the compatibility logo/text
-adapters. This does not add frontend controls or public graphics HTTP endpoints.
+adapters. Application-owned frontend controls, persistence and HTTP endpoints
+are documented in [graphics control](../graphics_control.md); they remain outside
+the backend-independent scene core.
 
 - `SceneControl::submit` never waits for queue capacity. A full/closed channel
   returns the command to its caller; receipts carry accepted/rejected outcomes
@@ -459,7 +468,8 @@ Live override marks real live and gap-filled frames as suppressing clip graphics
 actual file video re-enables them. The audio lookahead queue snapshots that flag
 with each frame, so delayed file/live frames cannot pick up a later global flag.
 Program-wide logos and configured/runtime text keep their existing behavior.
-The current draw order is logo → clip scene in `(z, ID)` order → existing texts.
+The current draw order is logo → clip scene in `(z, ID)` order → manual scene
+in its own `(z, ID)` order → configured text → runtime text.
 Full migration of legacy layers into a single z-index domain remains separate.
 
 Shared program frames carry immutable scene/time/asset handles into the existing
@@ -486,7 +496,7 @@ fade pixels/live suppression/backwards seek/next-clip cleanup, queued asset/cach
 lifetime, and identical shared-resolution pixel references. Existing HLS, desktop,
 recording, live recovery and output-isolation tests remain compatibility checks.
 
-### Application PNG preparation
+### Application graphics preparation
 
 `player::graphics` owns the JSON event schema and conversion into core events;
 application playlist/storage conventions do not enter the graphics crate. `Media`
@@ -498,29 +508,25 @@ invalidate the entire media playlist. Graphics participate in playlist equality,
 allowing a graphics-only edit to be saved, while the runtime elapsed-item offset
 is skipped during serialization. The frontend keeps this field on save/load.
 
-At item selection the adapter acquires one per-channel preparation permit without
-waiting, creates a deferred `ClipGraphics`, and submits a blocking preparation
-job to Tokio's existing worker pool. There is no new per-frame channel, dedicated
-thread, or task for items without graphics. A busy permit omits that occurrence
-with a warning. `ClipGraphicsPreparation` holds only a weak destination; cancelled
-requests are checked between assets. In-progress local I/O/decode is not forcibly
-interrupted. The preparer and its single slot belong to `ChannelManager`, surviving
-playout restarts. Stop cancels preparation/publication and joins the tracked job;
-after a two-second timeout, its handle and occupied slot remain retained until
-the old operation finishes. A restarted playout cannot launch a competing job.
-Normal playout completion performs the same cancellation/join cleanup. Completion
-publishes immutable prepared state through `OnceLock`;
-video only calls its nonblocking `get` and evaluates the current frame's clock.
-Late readiness never shifts a scheduled fade or flashes an already ended graphic.
+At item selection, the per-channel preparer submits background work with at most
+two active preparation jobs and one waiting occurrence. A new clip cancels obsolete
+jobs and replaces the waiting occurrence; a spare worker can prepare the current
+clip while old non-interruptible local I/O finishes. Stop cancels jobs and drops
+waiting work. Tracked handles and occupied slots survive the shared two-second
+join deadline, preventing unbounded overlap across restarts. Clips without
+graphics create no preparation job. Completion publishes immutable state through
+`OnceLock`; video only polls readiness and evaluates its current clock. Late
+readiness never shifts a fade or flashes an already ended graphic.
 
-Paths use the existing channel-storage normalization/containment helper, including
-symlink resolution. The graphics backend decodes only bounded regular PNG files,
-rejects animation, pads odd dimensions transparently, and uses the established
-RGBA-to-YUVA preparation and scaler. Input file, decoded image, prepared-source,
-event and history limits are independent from destination caches. Multiple takes
-of one path/size reuse its resource within the occurrence. A bad asset is omitted
-without suppressing other layers; malformed event logic omits this clip's scene,
-never its media. New templates and animated playlist assets remain future work.
+Paths use channel-storage normalization/containment, including symlink resolution.
+PNG preparation is bounded separately from GIF/AVIF/local-video decoding. Short
+animations cache timed surfaces; longer sources use tracked background decoders.
+Shared source preparation handles alpha metadata, high-quality scaling and
+configurable cache limits; see [animated logos](../animated_logos.md). Multiple
+takes of matching source/size/quality/playback options reuse resources within an
+occurrence. A bad asset omits its dependent actions without suppressing other
+layers; malformed event logic omits this clip's scene, never its media. Templates
+remain future work; animated playlist assets and manual controls are implemented.
 
 ## Audit scope and remaining correctness work
 
@@ -538,10 +544,10 @@ The following current assumptions remain explicit:
   scales coverage once. This differs in representation from the laboratory's
   premultiplied RGB/YUV paths; their buffers are not interchangeable.
 - Native text preparation currently uses fixed limited-range RGB-to-YUV
-  coefficients (BT.601-style); logo preparation uses the FFmpeg scaler. Neither
-  constitutes a general per-surface primaries/transfer/matrix/range contract.
-  Matching arbitrary BT.709/full-range inputs, explicit chroma siting and HDR
-  remain correctness/format work rather than completed capabilities.
+  coefficients (BT.601-style). Image/video preparation preserves source color tags
+  and handles encoded-premultiplied alpha, but production blending still mixes
+  encoded signal values. General color conversion between arbitrary surfaces,
+  explicit chroma siting and HDR remain separate correctness/format work.
 - Current layout/clipping aligns graphic positions/regions to 2×2 chroma blocks.
   Tests cover that existing behaviour; they do not establish exact arbitrary
   odd-pixel placement. Extending chroma reconstruction needs its own reference.
@@ -665,7 +671,8 @@ fit option is introduced in this increment.
 `CpuScene` stores a prepared source containing a static surface, a small immutable
 animation, or a streaming source. GIF/video decoding reuses `LogoDecoder`.
 Initial preparation runs on the existing application preparation worker. A source
-exceeding 256 frames, five seconds or 64 MiB switches to a background decoder
+exceeding 256 frames, five seconds or its configured per-source byte ceiling
+(default 128 MiB) switches to a background decoder
 registered with the channel's `PreparationService`. Scene references to that
 service are weak; queued video never becomes the owner responsible for joining
 workers. Cancellation tickets only signal/wake. The service retains join handles,
@@ -690,8 +697,8 @@ from queued frames, so the last playback owner cancels decoders even if video is
 still draining. Asynchronous publication transfers/adds playback ownership safely.
 
 Cached frames, streaming buffers, scaling caches and queued references carry
-channel-budget leases. Streaming lookahead is capped at 16 frames/64 MiB and
-500 ms per decoder. The global channel pixel/workspace/job budgets still apply;
+channel-budget leases. Streaming lookahead is capped at 16 frames, the configured
+per-source byte ceiling and 500 ms per decoder. The global channel pixel/workspace/job budgets still apply;
 a temporary budget shortage pauses the decoder, not video. The source's poster
 counts towards scene admission, while dynamic pixels count towards the shared
 channel budget. These are accounted graphics limits, not process RSS limits.
@@ -707,7 +714,7 @@ claim their IDs before future states, so a future retake cannot evict an active
 presentation's decoder request. Same-timestamp events use their final snapshot.
 
 A preparation request holds its source-local target fixed until activation. The
-worker publishes refcounted lookahead frames (within the existing 16-frame/64 MiB
+worker publishes refcounted lookahead frames (within the existing 16-frame/configured-byte
 cache limits), allowing the first visible program tick to choose the correct
 source frame without waiting for a decoder round trip. This matters when source
 and program frame boundaries differ. Ready windows share accounted pixel leases;
@@ -716,3 +723,15 @@ still suspend demand and release cache/ready windows. Clip disposal, live suppre
 and channel shutdown keep their established cancellation and join boundaries.
 Unplanned seeks, late preparation or immediate controls retain last-good/poster
 fallbacks; the lead window is a preparation opportunity, not a hard latency bound.
+
+### Source-processing settings
+
+Migration 8 persists `processing.logo_high_quality` (default true) and
+`processing.graphics_cache_mib` (32–1024, default 128). Playlist/manual takes have
+an independent `high_quality` field, default true. These control source preparation,
+not the fast per-frame YUVA blend. The shared channel pixel/workspace budget stays
+256 MiB; the per-source cache ceiling is not an RSS reservation or a guarantee of
+full caching. New takes/clip preparation snapshot the limit; program-logo changes
+reload in the background without restarting playout. Program-logo streaming also
+falls back from full caching under shared-budget pressure and retains its last
+ready pixels while waiting for leases. See [graphics control](../graphics_control.md).

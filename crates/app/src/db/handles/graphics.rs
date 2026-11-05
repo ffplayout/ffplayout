@@ -7,7 +7,7 @@ use crate::{db::models::GraphicLayer, utils::errors::ProcessError};
 
 const LEGACY_MIGRATION: &str = "ALTER TABLE config_live_input ADD COLUMN auto_takeover INTEGER NOT NULL DEFAULT 1\n    CHECK (auto_takeover IN (0, 1));\n";
 
-/// Only the exact previously shipped development migration is eligible for upgrade.
+/// Only exact previously shipped development migrations are eligible for upgrade.
 /// Unknown checksums still go through SQLx's normal mismatch rejection.
 pub(super) async fn upgrade_manual_graphics_schema(
     pool: &SqlitePool,
@@ -23,13 +23,39 @@ pub(super) async fn upgrade_manual_graphics_schema(
         return Ok(());
     }
 
-    let old = Migration::new(
-        8,
-        "manual live takeover".into(),
-        MigrationType::Simple,
-        sqlx::SqlStr::from_static(LEGACY_MIGRATION),
-        false,
-    );
+    let schema = include_str!("../../../../../migrations/00008_live_takeover_and_graphics.sql");
+    let (_, graphics_extension) = schema
+        .split_once("-- Persistent manual program graphics.\n")
+        .ok_or_else(|| ProcessError::DB("Graphics migration extension missing".into()))?;
+    let (previous_graphics, processing_extension) = schema
+        .split_once(
+            "-- Per-source graphics preparation options, applied without restarting playout.\n",
+        )
+        .ok_or_else(|| {
+            ProcessError::DB("Graphics processing migration extension missing".into())
+        })?;
+    let legacy = [
+        (
+            Migration::new(
+                8,
+                "manual live takeover".into(),
+                MigrationType::Simple,
+                sqlx::SqlStr::from_static(LEGACY_MIGRATION),
+                false,
+            ),
+            graphics_extension,
+        ),
+        (
+            Migration::new(
+                8,
+                "live takeover and graphics".into(),
+                MigrationType::Simple,
+                sqlx::SqlStr::from_static(previous_graphics),
+                false,
+            ),
+            processing_extension,
+        ),
+    ];
     let Some(current) = migrator.iter().find(|migration| migration.version == 8) else {
         return Ok(());
     };
@@ -37,28 +63,28 @@ pub(super) async fn upgrade_manual_graphics_schema(
         sqlx::query_as("SELECT version, checksum, success FROM _sqlx_migrations")
             .fetch_all(pool)
             .await?;
-    let legacy = applied.iter().any(|(version, checksum, success)| {
-        *version == 8 && *success && checksum.as_slice() == old.checksum.as_ref()
+    let known = legacy.iter().find(|(old, _)| {
+        applied.iter().any(|(version, checksum, success)| {
+            *version == 8 && *success && checksum.as_slice() == old.checksum.as_ref()
+        })
     });
     let compatible = applied.iter().all(|(version, checksum, success)| {
         *success
             && migrator.iter().any(|migration| {
                 migration.version == *version
                     && (checksum.as_slice() == migration.checksum.as_ref()
-                        || (*version == 8 && checksum.as_slice() == old.checksum.as_ref()))
+                        || (*version == 8
+                            && legacy
+                                .iter()
+                                .any(|(old, _)| checksum.as_slice() == old.checksum.as_ref())))
             })
     });
 
-    if !legacy || !compatible {
+    let Some((old, extension)) = known.filter(|_| compatible) else {
         return Ok(());
-    }
-
-    let schema = include_str!("../../../../../migrations/00008_live_takeover_and_graphics.sql")
-        .split_once("-- Persistent manual program graphics.\n")
-        .ok_or_else(|| ProcessError::DB("Graphics migration extension missing".into()))?
-        .1;
+    };
     let mut transaction = pool.begin().await?;
-    sqlx::raw_sql(schema).execute(&mut *transaction).await?;
+    sqlx::raw_sql(*extension).execute(&mut *transaction).await?;
     sqlx::query("UPDATE _sqlx_migrations SET description = $1, checksum = $2 WHERE version = 8 AND checksum = $3")
         .bind(current.description.as_ref())
         .bind(current.checksum.as_ref())
@@ -216,6 +242,61 @@ mod tests {
                 .checksum
                 .as_ref()
         );
+    }
+
+    #[tokio::test]
+    async fn previous_graphics_migration_adds_processing_fields_and_preserves_layers() {
+        let pool = legacy_pool().await;
+        let (previous, _) = include_str!(
+            "../../../../../migrations/00008_live_takeover_and_graphics.sql"
+        )
+        .split_once(
+            "-- Per-source graphics preparation options, applied without restarting playout.\n",
+        )
+        .unwrap();
+        let (_, graphics) = previous
+            .split_once("-- Persistent manual program graphics.\n")
+            .unwrap();
+        sqlx::raw_sql(graphics).execute(&pool).await.unwrap();
+        let old = Migration::new(
+            8,
+            "live takeover and graphics".into(),
+            MigrationType::Simple,
+            SqlStr::from_static(previous),
+            false,
+        );
+        sqlx::query("UPDATE _sqlx_migrations SET checksum = $1 WHERE version = 8")
+            .bind(old.checksum.as_ref())
+            .execute(&pool)
+            .await
+            .unwrap();
+        let row = GraphicLayer {
+            layer_id: 3,
+            name: "Lower third".into(),
+            settings: Json(json!({"action":"take","at":0,"layer":3,"source":"lower-third.png"})),
+            running: true,
+            visible: false,
+        };
+        store_graphic_layers(&pool, 1, 0, &[row]).await.unwrap();
+        db_migrate(&pool).await.unwrap();
+        db_migrate(&pool).await.unwrap();
+        let (revision, layers) = select_graphic_layers(&pool, 1).await.unwrap();
+        assert_eq!(revision, 1);
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0].name, "Lower third");
+        assert!(layers[0].running && !layers[0].visible);
+        let options: (bool, i64) = sqlx::query_as(
+            "SELECT logo_high_quality, graphics_cache_mib FROM config_processing LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(options, (true, 128));
+        let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM _sqlx_migrations")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version, 8);
     }
 
     #[tokio::test]

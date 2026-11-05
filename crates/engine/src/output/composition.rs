@@ -528,6 +528,8 @@ mod tests {
         }
         source.set_pts(Some(42));
         let config = LogoConfig {
+            high_quality: true,
+            cache_mib: 128,
             path: Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tests_assets/storage/logo.png")
                 .to_string_lossy()

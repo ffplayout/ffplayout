@@ -1,11 +1,12 @@
 # Playlist graphics (experimental)
 
-Playlist items accept an optional `graphics` array for static PNGs, animated GIFs and local videos, multiple
+Playlist items accept an optional `graphics` array for static PNG/AVIF images, animated GIF/AVIF sources and local videos, multiple
 layers, opacity/z-index, fades and finite or endless repetitions. Existing
 playlists remain valid. No migration or feature flag is required. The frontend
 provides an experimental action form in the playlist clip editor and preserves
-this data on save/load. A canvas preview/editor and manual live graphics controls
-are not implemented.
+this data on save/load. Its position canvas supports proportional resizing,
+center snapping and a transparency checkerboard. Independent manual live layers
+are available on the [Graphics page](graphics_control.md).
 
 ## Frontend editing
 
@@ -14,7 +15,9 @@ On the player page, edit a playlist item and use its **Graphics** section:
 1. Add actions and select their time (seconds after the clip's effective start),
    action type and layer ID. The file browser selects local channel-storage paths.
 2. Configure take position/size, opacity/z-index, fades, optional total duration,
-   repeat pauses, fade-cycle count and independent GIF/video repeat/end policy.
+   repeat pauses, fade-cycle count and independent animated-source repeat/end policy.
+   Source resolution and duration are shown when available. High quality scaling
+   is enabled by default and can be disabled per take.
    Update actions change only checked properties. Stop fades out; Clear removes
    immediately; Visibility changes visibility without restarting source time.
 3. Keep actions ordered by time. Move buttons allow explicit equal-time ordering;
@@ -115,6 +118,7 @@ by `at`; equal-time actions retain declaration order.
 | --- | --- | --- |
 | `position` | `[0, 0]` | `[x, y]` in program-canvas pixels. Negative positions are clipped; YUV420 aligns placement to even pixels. |
 | `size` | native size | Prepared `[width, height]`, both even and within 2..8192. Both axes are explicit; a different aspect ratio stretches the image. Odd native PNGs are transparently padded at the right/bottom before YUV conversion/scaling. |
+| `high_quality` | `true` | Alpha-correct source scaling for cleaner edges. Disable for faster straight-alpha scaling. Premultiplied sources are normalized in both modes. Applies when preparing a new take/clip. |
 | `opacity` | `1.0` | Base opacity in `[0, 1]`, multiplied once with fade opacity and image alpha. |
 | `z_index` | `0` | Higher values draw above lower values; ties sort by layer ID. |
 | `fade_in` | `0.0` | Entrance duration. |
@@ -216,22 +220,29 @@ blocking jobs retain their resource reservations until they actually exit.
 Streaming assets have separate tracked decoder tasks.
 
 Only regular local files within channel storage are accepted, including symlink
-containment checks. GIF and video containers MOV/MP4, Matroska/WebM, AVI and MPEG-TS are accepted through restricted file-only demuxing. Remote URLs, nested playlists, animated PNGs, SVG and templates remain unsupported. Existing animated program-logo support is unchanged.
+containment checks. GIF, AVIF and video containers MOV/MP4, Matroska/WebM, AVI and MPEG-TS are accepted through restricted file-only demuxing. Remote URLs, nested playlists, animated PNGs, SVG and templates remain unsupported. Program logos use the same source preparation; see [supported alpha formats](animated_logos.md).
 
 Per occurrence: 256 events, 32 active layers, 64 unique path/size/source-playback combinations,
-4096 retained scene-history nodes, and a shared 64 MiB prepared-surface budget.
-PNG files are limited to 16 MiB, decoded PNG input/RGBA size to 64 MiB, and dimensions
-to 8192. Destination scaling has separate bounded caches. These limits exclude
+4096 retained scene-history nodes, and a 256 MiB scene admission budget, also subject to the shared channel budget.
+PNG files are limited to 16 MiB, decoded PNG input/RGBA and prepared PNG storage
+to 64 MiB, and dimensions to 8192. Destination scaling has separate bounded caches. These limits exclude
 some temporary decoder/scaler buffers and queued video; they are not an RSS cap.
 Animations are cached completely if they fit within 256 frames, five seconds and
-64 MiB of prepared pixels (a single held frame can last longer). Larger sources, or sources that encounter shared cache-budget pressure, switch automatically to a tracked
-background decoder. Its lookahead targets 500 ms (rounded to source frames), with at most 16 frames/64 MiB
-in its decoder cache. A single prepared frame must fit within 64 MiB; reduce
-`size` otherwise. Regular local video files are not limited to 64 MiB compressed.
+the configured per-source animation-cache ceiling (default 128 MiB; a single held frame can last longer). Larger sources, or sources that encounter shared cache-budget pressure, switch automatically to a tracked
+background decoder. Its lookahead targets 500 ms (rounded to source frames), with at most 16 frames and the configured per-source byte ceiling
+in its decoder cache. A single prepared frame must fit within that ceiling; reduce
+`size` otherwise. Regular local video files have no 64 MiB compressed-file limit.
 The initial preparation has a cooperative ten-second deadline; it cannot interrupt
-a codec call. The scene's 64 MiB admission limit accounts cached sources and
+a codec call. The scene's 256 MiB admission limit accounts cached sources and
 streaming poster frames; dynamic frames and queued references use the shared
 256 MiB channel pixel/workspace budget. Decoder internals are outside that budget.
+
+**Graphics → Settings → Animation cache (MiB)** configures
+32–1024 MiB per source. This is allocated on demand and does not enlarge the
+shared 256 MiB channel budget. Changes apply to newly loaded graphics; Take/Start
+reloads an existing manual layer, and the next clip prepares playlist graphics
+with the new limit. The program logo reloads in the background. No playout restart
+is required. See [graphics control](graphics_control.md) for persistence and API details.
 
 One decoder worker per streaming asset serves up to 32 coalesced presentation
 requests, including simultaneous takes with different start times. Worker count

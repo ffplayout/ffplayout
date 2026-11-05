@@ -22,7 +22,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - send emails and [HTTP push notifications](/docs/notifications.md) for log alerts
 - overlay a [static or animated logo](docs/animated_logos.md)
 - control manual graphics, text and the program logo on the [Graphics page](docs/graphics_control.md) (**experimental** for manual graphics)
-- schedule [PNG graphics/lower thirds](docs/playlist_graphics.md) per playlist clip, with fades and repetitions (**experimental**)
+- schedule [image/video graphics and lower thirds](docs/playlist_graphics.md) per playlist clip, with fades and repetitions (**experimental**)
 - overlay text, controllable through [web frontend](/frontend/)
 - loop playlist infinitely
 - [remote source](/docs/remote_source.md)
@@ -38,8 +38,8 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
   - fit target resolution
   - add silence if audio duration is too short
   - hold the last frame if video duration is too short
-- [output](/docs/output.md): **stream**, **desktop**, and **HLS**
-- RTMP [live ingest](/docs/live_ingest.md)
+- [output](/docs/output.md): **stream**, **desktop**, **HLS**, and experimental **MoQ**
+- RTMP/SRT [live ingest](/docs/live_ingest.md)
 - image source (will loop until out duration is reached)
 - import playlist from text or m3u file, with CLI or frontend
 - generate playlist based on [template](/docs/playlist_gen.md)
@@ -49,7 +49,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - WebVTT [subtitles](/docs/closed_captions.md) in HLS mode (experimental *)
 - multiple simultaneous [outputs](/docs/output.md) per channel, with individual resolutions and a shared program frame rate (experimental *)
 - explicit encoding sharing between compatible outputs, including selection of an HLS rendition as the encoding source (experimental *)
-- built-in [MoQ playback](/docs/moq.md) in the frontend: private publication starts on demand with a three-minute grace period; the optional public player publishes continuously and is disabled by default (experimental *)
+- built-in [MoQ playback](/docs/moq.md) in the frontend: private publication starts on demand with a three-minute grace period; the optional public player publishes continuously and is disabled by default; it is intended for testing and small previews rather than serving many viewers (experimental *)
 - independent output reconnection: automatic retries every 15 seconds for up to three minutes, followed by a manual retry option; successful media delivery resets the retry window (experimental *)
 
 **\* Experimental features do not guarantee the same stability and may fail under unusual circumstances. Code and configuration options may change in the future.**

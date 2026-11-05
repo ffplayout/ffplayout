@@ -31,6 +31,8 @@ use crate::{
 
 pub(crate) fn logo_config(config: &PlayoutConfig) -> Option<LogoConfig> {
     config.processing.add_logo.then(|| LogoConfig {
+        high_quality: config.processing.logo_high_quality,
+        cache_mib: config.processing.graphics_cache_mib,
         path: config.processing.logo_path.clone(),
         scale: (!config.processing.logo_scale.trim().is_empty())
             .then(|| config.processing.logo_scale.clone()),
@@ -41,6 +43,11 @@ pub(crate) fn logo_config(config: &PlayoutConfig) -> Option<LogoConfig> {
 
 pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.read().await.clone();
+    manager
+        .graphics
+        .preparation()
+        .set_animation_cache_mib(config.processing.graphics_cache_mib)
+        .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
     let _running_config = manager.track_running_config(config.clone());
     *manager
         .live_output_config

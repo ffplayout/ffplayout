@@ -1,23 +1,25 @@
 # Graphics control (experimental)
 
 The **Graphics** page groups manual graphics, existing text controls and the
-program logo in three tabs. The former `/message` link redirects to the Text tab.
+program logo in four vertical tabs: Graphics, Text, Program Logo and Settings. The former `/message` link redirects to the Text tab.
 Existing text presets, logo database fields and configuration APIs remain valid.
 Migration 8 includes per-channel graphics settings and revision storage. The known
-earlier version of migration 8 upgrades automatically after the normal database
-backup; unrelated checksum changes are still rejected.
+earlier versions of migration 8 upgrade automatically after the normal database
+backup; unrelated checksum changes are still rejected. Migration 8 adds the
+program-logo quality setting and per-channel animation-cache limit.
 
 ## Manual graphics
 
-Select a local PNG, GIF or video from channel storage. Set a layer ID, program-pixel
+Select a local PNG, AVIF, GIF or video from channel storage. The editor displays
+source resolution and duration when available. Set a layer ID, program-pixel
 position, optional source size, opacity, z-index and fade/source repetition settings.
 The placement preview supports dragging and arrow keys (2 pixels, Shift: 10 pixels).
-Its corner handle resizes proportionally using the source aspect ratio and enables
+Its corner handles resize proportionally using the source aspect ratio and enables
 source-size override. The handle also supports arrow keys (2 program pixels of
 width, Shift: 10). Sizes stay even and within 2..8192 pixels for YUVA composition.
 Fit into program canvas makes oversized graphics fully visible and their handles
 reachable. Position and size controls stay in sync. Save/Take or a fresh clip start
-applies a changed source size; Apply layout and fades does not reload source assets.
+applies a changed source size or high-quality scaling mode; Apply layout and fades does not reload source assets.
 It is a browser placement aid: it does not simulate the video background, exact
 compositing colors, fades or source timing. Browser-incompatible codecs retain an
 editable position rectangle when metadata is available.
@@ -62,11 +64,12 @@ removing previously working graphics. Status is refreshed once per second while
 this tab is mounted. A revision conflict requires refreshing before retrying; the
 UI refreshes status after every command. Navigating away does not clear graphics.
 
-## Program logo
+## Program Logo
 
 All existing logo settings have moved from General Settings to **Graphics → Program
-logo**. A link remains in General Settings. Animated sources continue looping.
-Saving updates only the five logo fields, even if other settings have unsaved edits.
+Logo**. A link remains in General Settings. Animated sources continue looping.
+Saving updates only the program-logo settings, including high-quality scaling,
+even if other settings have unsaved edits.
 Editing requires channel/global administrator rights; authorized channel users can
 view the settings. Logo changes apply during playback and live ingest without a
 channel restart. New files and sizes are prepared in the background; the active
@@ -83,6 +86,26 @@ control-lock acquisition. Channel shutdown cancels/joins the worker through the
 existing graphics preparation service. Other pending configuration changes can
 still require a restart; editing the logo itself does not.
 
+## Source processing and animation cache
+
+**High quality scaling** filters color and transparency together to avoid fringes
+at transparent edges. It is enabled by default per layer and for the program
+logo. Disabling it uses faster straight-alpha scaling. Premultiplied sources are
+normalized in both modes; this does not change the fast YUVA frame blend.
+Layer source-processing changes apply on the next Take/Start or clip start;
+program-logo changes prepare a replacement while playback continues.
+
+**Graphics → Settings → Animation cache (MiB)** stores a per-channel,
+per-source ceiling of 32–1024 MiB, default 128 MiB. Memory is allocated as needed;
+the shared 256 MiB channel pixel/workspace budget still applies. Increasing this
+ceiling does not guarantee complete caching: frame-count/time limits and channel
+budget pressure can still select bounded background decoding.
+
+Cache changes affect newly loaded sources. Use Take/Start to reload an existing
+manual layer; playlist graphics use the new limit on the next clip preparation.
+The program logo reloads in the background. No channel restart is required.
+Saving cache settings requires channel/global administrator rights.
+
 ## HTTP API
 
 - `GET /api/graphics/{channel}` returns `revision`, `running`, the active program `canvas` and manual layer status. Each layer reports requested `running` state separately
@@ -94,10 +117,14 @@ still require a restart; editing the logo itself does not.
   Save/Take accept `{action, revision, layer, name, settings}`; `settings` is a
   playlist Take definition with time fixed at zero. Legacy flattened Take bodies
   remain accepted. Status includes each layer's full `settings`, `name` and `error`.
-- `PUT /api/playout/config/{channel}?scope=logo` saves only the program-logo fields.
+- `PUT /api/playout/config/{channel}?scope=logo` saves only the program-logo fields,
+  including `processing.logo_high_quality`.
+- `PUT /api/playout/config/{channel}?scope=graphics_cache` saves only
+  `processing.graphics_cache_mib` (32–1024). Both scoped requests use the
+  `PlayoutConfig` body shape; unrelated fields are retained.
 
 All routes enforce authentication and channel access. Manual operations permit the
-same roles as existing text controls. Logo configuration retains administrator-only
+same roles as existing text controls. Logo and cache configuration retain administrator-only
 writes. Commands with obsolete revisions fail with 409. Preparation is limited to
 two concurrent requests per channel, shares the channel's graphics resource budget,
 and cancels restoration/preparation at channel shutdown. State-changing commands

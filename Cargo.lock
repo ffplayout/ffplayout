@@ -2007,6 +2007,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fast_image_resize"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9c50201dc184ba6553da1695aac20a042efffbe2d84542cee31917c86c3ab1e"
+dependencies = [
+ "cfg-if",
+ "document-features",
+ "num-traits",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "fastbloom"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2093,10 +2105,12 @@ dependencies = [
  "arc-swap",
  "clap",
  "cosmic-text",
+ "fast_image_resize",
  "ffmpeg-next",
  "image",
  "libc",
  "log",
+ "pkg-config",
  "rayon",
  "rten-simd",
  "tiny-skia 0.12.0",

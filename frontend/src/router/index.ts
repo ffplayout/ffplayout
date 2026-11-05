@@ -72,6 +72,11 @@ const router = createRouter({
                     name: 'graphics-logo',
                     component: () => import('@/components/graphics/ProgramLogoEditor.vue'),
                 },
+                {
+                    path: 'settings',
+                    name: 'graphics-settings',
+                    component: () => import('@/components/graphics/GraphicsCacheSettings.vue'),
+                },
             ],
         },
         {

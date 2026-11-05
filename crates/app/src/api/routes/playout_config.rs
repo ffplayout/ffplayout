@@ -90,6 +90,7 @@ pub struct PlayoutConfigUpdate {
 pub enum ConfigUpdateScope {
     Ingest,
     Logo,
+    GraphicsCache,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -193,6 +194,8 @@ fn requires_playout_restart(current: &PlayoutConfig, updated: &PlayoutConfig) ->
                 "logo_scale",
                 "logo_opacity",
                 "logo_position",
+                "logo_high_quality",
+                "graphics_cache_mib",
             ] {
                 processing.remove(key);
             }
@@ -402,7 +405,18 @@ pub async fn update_playout_config(
         scoped.processing.logo_scale = data.processing.logo_scale;
         scoped.processing.logo_opacity = data.processing.logo_opacity;
         scoped.processing.logo_position = data.processing.logo_position;
+        scoped.processing.logo_high_quality = data.processing.logo_high_quality;
         data = scoped;
+    }
+    if query.scope == Some(ConfigUpdateScope::GraphicsCache) {
+        let mut scoped = config.clone();
+        scoped.processing.graphics_cache_mib = data.processing.graphics_cache_mib;
+        data = scoped;
+    }
+    if !(32..=1024).contains(&data.processing.graphics_cache_mib) {
+        return Err(ServiceError::BadRequest(
+            "Animation cache must be within 32..1024 MiB".into(),
+        ));
     }
     let config_id = config.general.id;
 
@@ -659,7 +673,13 @@ pub async fn update_playout_config(
     let running_config = manager.running_config();
     let baseline = running_config.as_deref().unwrap_or(&config);
     let mut requires_restart = !ingest_only && requires_playout_restart(baseline, &new_config);
-    if !ingest_only && query.scope != Some(ConfigUpdateScope::Logo) && running_config.is_some() {
+    if !ingest_only
+        && !matches!(
+            query.scope,
+            Some(ConfigUpdateScope::Logo | ConfigUpdateScope::GraphicsCache)
+        )
+        && running_config.is_some()
+    {
         if !requires_restart && manager.output_status.supports_live_updates() {
             crate::player::output::update_outputs(&manager, &new_config)?;
         } else if serde_json::to_value((&baseline.output, &baseline.outputs)).ok()
@@ -881,6 +901,17 @@ mod tests {
 
     use super::{requires_playout_restart, running_listener_port_in_use};
     use crate::utils::config::{LiveInput, PlayoutConfig};
+
+    #[test]
+    fn graphics_quality_and_cache_changes_do_not_restart_playout() {
+        let current = PlayoutConfig::default();
+        let mut updated = current.clone();
+        updated.processing.logo_high_quality = false;
+        updated.processing.graphics_cache_mib = 1024;
+        assert!(!requires_playout_restart(&current, &updated));
+        updated.processing.vtt_enable = !current.processing.vtt_enable;
+        assert!(requires_playout_restart(&current, &updated));
+    }
 
     #[test]
     fn logo_configuration_is_live_but_unrelated_processing_changes_still_restart() {

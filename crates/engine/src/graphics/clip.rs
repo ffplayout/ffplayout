@@ -390,6 +390,7 @@ pub(crate) mod tests {
                 &Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../tests_assets/storage/media_images/animated-logo-video.mkv"),
                 AnimationOptions {
+                    high_quality: true,
                     size: Some((16, 16)),
                     repeat: Repeat::Forever,
                     completion: Completion::Hide,
@@ -472,6 +473,7 @@ pub(crate) mod tests {
                 &Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../tests_assets/storage/media_images/animated-logo-video.mkv"),
                 AnimationOptions {
+                    high_quality: true,
                     size: Some((16, 16)),
                     repeat: Repeat::Forever,
                     completion: Completion::Hide,

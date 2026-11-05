@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use ffmpeg_next::{ffi, frame};
 
 pub mod compositor;
+mod execution;
 pub mod sources;
 pub mod text;
 

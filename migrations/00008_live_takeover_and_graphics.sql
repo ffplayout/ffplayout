@@ -16,3 +16,9 @@ CREATE TABLE config_graphics (
     visible INTEGER NOT NULL DEFAULT 1 CHECK (visible IN (0, 1)),
     PRIMARY KEY (channel_id, layer_id)
 );
+-- Per-source graphics preparation options, applied without restarting playout.
+ALTER TABLE config_processing
+ADD COLUMN logo_high_quality INTEGER NOT NULL DEFAULT 1 CHECK (logo_high_quality IN (0, 1));
+
+ALTER TABLE config_processing
+ADD COLUMN graphics_cache_mib INTEGER NOT NULL DEFAULT 128 CHECK (graphics_cache_mib BETWEEN 32 AND 1024);

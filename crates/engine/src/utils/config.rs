@@ -1260,6 +1260,8 @@ impl FromStr for LogLevel {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LogoConfig {
+    pub high_quality: bool,
+    pub cache_mib: u32,
     pub path: String,
     pub scale: Option<String>,
     pub opacity: f64,

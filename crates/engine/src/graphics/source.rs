@@ -7,12 +7,12 @@ use std::{
         atomic::{AtomicBool, AtomicI64, Ordering},
     },
     thread::{self, JoinHandle},
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use anyhow::{Context, Result, ensure};
 use ff_graphics::{
-    ffmpeg::source::LogoDecoder,
+    ffmpeg::source::{LogoDecoder, SourceFrame},
     preparation::{PreparationService, ResourceBudget},
     source::{FrameTiming, LoopDuration},
     style::LogoStyle,
@@ -31,7 +31,8 @@ use super::{
     text_adapter::TextOverlays,
 };
 
-const CACHE_BYTES: usize = 64 * 1024 * 1024;
+#[cfg(test)]
+const CACHE_BYTES: usize = 128 * 1024 * 1024;
 const CACHE_FRAMES: usize = 256;
 const CACHE_TIME_US: i64 = 5_000_000;
 const LOOKAHEAD_US: i64 = 500_000;
@@ -207,6 +208,8 @@ impl SourceKey {
     pub(super) fn same_media(&self, other: &Self) -> bool {
         self.config.path == other.config.path
             && self.config.scale == other.config.scale
+            && self.config.high_quality == other.config.high_quality
+            && self.config.cache_mib == other.config.cache_mib
             && self.width == other.width
             && self.height == other.height
             && self.revision == other.revision
@@ -462,6 +465,8 @@ fn prepare(
     })
     .context("opening logo asset")?;
     let mut decoder = LogoDecoder::new(input, style, width, height)?;
+    decoder.set_high_quality(config.high_quality);
+    let cache_bytes = config.cache_mib.clamp(32, 1024) as usize * 1024 * 1024;
     let mut frames = VecDeque::<PreparedFrame>::new();
     let mut bytes = 0_usize;
     let mut duration: Option<LoopDuration> = None;
@@ -469,6 +474,7 @@ fn prepare(
     let mut complete = true;
     let mut end_us = 0;
     let mut eof = false;
+    let mut pending: Option<SourceFrame> = None;
 
     while !shared.stop.load(Ordering::Relaxed) {
         if !complete && !shared.visible.load(Ordering::Relaxed) {
@@ -480,12 +486,15 @@ fn prepare(
         let local = duration.map_or(requested, |duration| duration.position_us(requested));
 
         if !complete {
+            let previous_len = frames.len();
+
             if (eof && frames.is_empty())
                 || frames
                     .front()
                     .is_some_and(|frame| local < frame.timing.start_us)
             {
                 decoder.rewind().context("rewinding animated logo")?;
+                pending = None;
                 frames.clear();
                 bytes = 0;
                 end_us = 0;
@@ -501,11 +510,15 @@ fn prepare(
                     bytes = bytes.saturating_sub(old.surface.0.storage_bytes());
                 }
             }
+
+            if frames.len() != previous_len {
+                publish_ready(shared, &frames, duration, false);
+            }
         }
 
         let capacity = frames.back().is_none_or(|frame| {
             frames.len() < CACHE_FRAMES
-                && bytes.saturating_add(frame.surface.0.storage_bytes()) <= CACHE_BYTES
+                && bytes.saturating_add(frame.surface.0.storage_bytes()) <= cache_bytes
         });
 
         if !complete
@@ -518,6 +531,8 @@ fn prepare(
                 bytes = bytes.saturating_sub(old.surface.0.storage_bytes());
             }
 
+            publish_ready(shared, &frames, duration, false);
+
             continue;
         }
 
@@ -525,35 +540,57 @@ fn prepare(
             !eof && (complete || capacity && end_us <= local.saturating_add(LOOKAHEAD_US));
 
         if can_decode {
-            match decoder.next_frame_with_cancel(|| shared.stop.load(Ordering::Relaxed))? {
-                Some(mut frame) => {
-                    if let Some(budget) = budget {
-                        frame.surface = Arc::new(
-                            frame
-                                .surface
-                                .positioned(None, width, height)?
-                                .with_budget(budget)?,
-                        );
-                    }
+            let next = match pending.take() {
+                Some(frame) => Some(frame),
+                None => decoder.next_frame_with_cancel(|| shared.stop.load(Ordering::Relaxed))?,
+            };
 
+            match next {
+                Some(mut frame) => {
                     let size = frame.surface.storage_bytes();
                     ensure!(
-                        size <= CACHE_BYTES,
-                        "one prepared logo frame exceeds the 64 MiB budget; reduce logo scale"
+                        size <= cache_bytes,
+                        "one prepared logo frame exceeds the animation cache budget; reduce logo scale"
                     );
+                    let reserved = match budget {
+                        Some(budget) => frame
+                            .surface
+                            .positioned(None, width, height)
+                            .and_then(|surface| surface.with_budget(budget))
+                            .map(Arc::new),
+                        None => Ok(frame.surface.clone()),
+                    };
 
                     if complete
-                        && (bytes.saturating_add(size) > CACHE_BYTES
+                        && (bytes.saturating_add(size) > cache_bytes
                             || frames.len() >= CACHE_FRAMES
-                            || frame.timing.end_us() > CACHE_TIME_US)
+                            || frame.timing.end_us() > CACHE_TIME_US
+                            || (!frames.is_empty() && reserved.is_err()))
                     {
+                        drop(reserved);
                         complete = false;
                         decoder.rewind().context("starting bounded logo playback")?;
                         frames.clear();
                         bytes = 0;
                         end_us = 0;
+                        // Drop the shared cache references too, before retrying
+                        // admission. Program/output snapshots retain their leases.
+                        publish_ready(shared, &frames, duration, false);
                         continue;
                     }
+
+                    match reserved {
+                        Ok(surface) => frame.surface = surface,
+                        Err(_) if !complete => {
+                            // Retain just this decoded frame. Output snapshots or
+                            // other graphics may temporarily own the remaining budget.
+                            pending = Some(frame);
+                            thread::park_timeout(Duration::from_millis(25));
+                            continue;
+                        }
+                        Err(error) => return Err(error),
+                    }
+
                     end_us = frame.timing.end_us();
                     loop_end = frame.loop_end;
                     bytes = bytes.saturating_add(size);
@@ -568,14 +605,7 @@ fn prepare(
                     eof = true;
                 }
             }
-            {
-                let mut ready = shared.ready.lock().unwrap_or_else(PoisonError::into_inner);
-                // The shared view stores references only. Decoder work, scaling
-                // and alpha preparation happen before acquiring this short lock.
-                ready.frames.clone_from(&frames);
-                ready.duration = duration;
-                ready.complete = eof && complete;
-            }
+            publish_ready(shared, &frames, duration, eof && complete);
 
             if eof && complete {
                 // Static assets and short cached loops retain no decoder/thread.
@@ -593,6 +623,20 @@ fn prepare(
     Ok(())
 }
 
+/// Publish only immutable references, releasing evicted cache leases on this
+/// preparation worker rather than leaving stale references in the shared view.
+fn publish_ready(
+    shared: &Shared,
+    frames: &VecDeque<PreparedFrame>,
+    duration: Option<LoopDuration>,
+    complete: bool,
+) {
+    let mut ready = shared.ready.lock().unwrap_or_else(PoisonError::into_inner);
+    ready.frames.clone_from(frames);
+    ready.duration = duration;
+    ready.complete = complete;
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -606,6 +650,8 @@ mod tests {
 
     fn config(name: &str) -> LogoConfig {
         LogoConfig {
+            high_quality: true,
+            cache_mib: 128,
             path: Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tests_assets/storage/media_images")
                 .join(name)
@@ -688,6 +734,86 @@ mod tests {
             );
             thread::sleep(Duration::from_millis(1));
         }
+    }
+
+    #[test]
+    fn channel_budget_pressure_switches_logo_to_streaming_and_retries_held_snapshots() {
+        let limit = 256 * 1024 * 1024;
+        let budget = ResourceBudget::new(limit, 1024, 16);
+        let other_graphics = budget.reserve(252 * 1024 * 1024).unwrap();
+        let mut config = config("animated-logo-video.mkv");
+        config.cache_mib = 128;
+        config.high_quality = false;
+        config.scale = Some("512:512".into());
+        let mut source = LogoSource::open(config, 512, 512, None, 0, Some(budget.clone())).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+
+        // Fill the available channel quota without reaching the per-logo limit.
+        let held = loop {
+            source.at(0);
+            assert!(!source.shared.failed.load(Ordering::Acquire));
+            assert!(Instant::now() < deadline);
+            let ready = source.shared.ready.lock().unwrap();
+
+            if ready.frames.len() == 5 {
+                assert!(!ready.complete);
+                break ready.frames.clone();
+            }
+
+            drop(ready);
+            thread::sleep(Duration::from_millis(1));
+        };
+        source.at(2_000_000);
+        thread::sleep(Duration::from_millis(75));
+        assert!(!source.shared.failed.load(Ordering::Acquire));
+        assert!(!source.worker.as_ref().unwrap().is_finished());
+        assert!(budget.usage().0 <= limit);
+        // Releasing output snapshots must unblock admission without recreating
+        // the source or requesting a different timestamp.
+        drop(held);
+
+        for time in [2_000_000, 2_400_000, 3_000_000] {
+            let deadline = Instant::now() + Duration::from_secs(5);
+
+            loop {
+                source.at(time);
+                assert!(!source.shared.failed.load(Ordering::Acquire));
+                assert!(Instant::now() < deadline, "logo stalled at {time}");
+                let ready = source.shared.ready.lock().unwrap();
+
+                if ready
+                    .frames
+                    .iter()
+                    .any(|frame| frame.timing.start_us <= time && time < frame.timing.end_us())
+                {
+                    break;
+                }
+
+                drop(ready);
+                thread::sleep(Duration::from_millis(1));
+            }
+
+            assert!(budget.usage().0 <= limit);
+        }
+
+        drop(source);
+        drop(other_graphics);
+        assert_eq!(budget.usage(), (0, 0, 0));
+    }
+
+    #[test]
+    fn cache_or_quality_changes_require_new_pixels_but_layout_changes_reuse_them() {
+        let original = config("animated-logo.gif");
+        let key = SourceKey::new(&original, 64, 64);
+        let mut updated = original.clone();
+        updated.opacity = 0.5;
+        updated.position = "10:10".into();
+        assert!(key.same_media(&SourceKey::new(&updated, 64, 64)));
+        updated.high_quality = false;
+        assert!(!key.same_media(&SourceKey::new(&updated, 64, 64)));
+        updated = original;
+        updated.cache_mib = 32;
+        assert!(!key.same_media(&SourceKey::new(&updated, 64, 64)));
     }
 
     #[test]
@@ -1008,13 +1134,17 @@ mod tests {
     #[test]
     fn single_frame_cache_rewinds_after_evicting_the_last_frame() {
         let mut config = config("animated-logo.gif");
+        config.cache_mib = 64; // Keep the one-frame boundary independent of the default.
         config.scale = Some("4096:3072".into());
         let mut source = LogoSource::open(config, 4096, 3072, None, 0, None).unwrap();
         let mut first = None;
         let mut previous = None;
 
         for time in [0, 100_000, 400_000, 600_000, 700_000] {
-            let deadline = Instant::now() + Duration::from_secs(5);
+            // This cache-boundary regression intentionally prepares 12-megapixel
+            // frames. Debug conversion is much slower than release preparation;
+            // throughput is measured separately by the graphics benchmark.
+            let deadline = Instant::now() + Duration::from_secs(30);
 
             loop {
                 if let Some(frame) = source.at(time) {
@@ -1027,6 +1157,10 @@ mod tests {
                     }
                 }
 
+                assert!(
+                    !source.shared.failed.load(Ordering::Acquire),
+                    "logo preparation failed at {time}"
+                );
                 assert!(Instant::now() < deadline, "logo froze at {time}");
                 thread::sleep(Duration::from_millis(1));
             }

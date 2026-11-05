@@ -57,7 +57,7 @@ export type PlayoutConfig = { general: General, mail: Mail, notification: Notifi
 
 export type ProcessMode = "folder" | "playlist";
 
-export type Processing = { mode: ProcessMode, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, vtt_enable: boolean, vtt_dummy: string | null, vtt_name: string, vtt_language: string, vtt_default: boolean, };
+export type Processing = { mode: ProcessMode, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, logo_high_quality: boolean, graphics_cache_mib: number, vtt_enable: boolean, vtt_dummy: string | null, vtt_name: string, vtt_language: string, vtt_default: boolean, };
 
 export type ProgramFormat = { width: number, height: number, fps: number, };
 

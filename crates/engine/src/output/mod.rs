@@ -462,6 +462,8 @@ mod tests {
         }
         writer.finish().unwrap();
         let logo_config = LogoConfig {
+            high_quality: true,
+            cache_mib: 128,
             path: std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tests_assets/storage/logo.png")
                 .to_string_lossy()

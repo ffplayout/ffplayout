@@ -201,6 +201,12 @@ impl ChannelManager {
             text_overlay.set(Some(text_config(preset, text, preset.use_filename)));
         }
 
+        let graphics = Arc::new(GraphicsPreparer::new());
+        graphics
+            .preparation()
+            .set_animation_cache_mib(config.processing.graphics_cache_mib)
+            .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
+
         Ok(Self {
             id: channel.id,
             moq_demand: Arc::new(crate::moq::Demand::default()),
@@ -220,7 +226,7 @@ impl ChannelManager {
             channel: Arc::new(Mutex::new(channel)),
             list_init: Arc::new(AtomicBool::new(true)),
             current_media: Arc::new(Mutex::new(None)),
-            graphics: Arc::new(GraphicsPreparer::new()),
+            graphics,
             current_list: Arc::new(Mutex::new(vec![Media::default()])),
             filler_list: Arc::new(Mutex::new(vec![])),
             current_index: Arc::new(AtomicUsize::new(0)),
@@ -318,6 +324,10 @@ impl ChannelManager {
         let running = self.running_config();
         let previous_logo = logo_config(&config);
         let updated_logo = logo_config(&new_config);
+        self.graphics
+            .preparation()
+            .set_animation_cache_mib(new_config.processing.graphics_cache_mib)
+            .map_err(|error| ServiceError::BadRequest(error.to_string()))?;
 
         if (refresh_logo || previous_logo != updated_logo) && self.is_alive.load(Ordering::SeqCst) {
             let program = running.as_deref().unwrap_or(&config);

@@ -455,6 +455,8 @@ mod tests {
     fn snapshots_survive_clip_boundaries_and_slow_consumers_without_changing_phase() {
         let mut config = OutputConfig::new(64, 64, 25, 48_000);
         config.logo = Some(LogoConfig {
+            high_quality: true,
+            cache_mib: 128,
             path: std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tests_assets/storage/media_images/animated-logo.gif")
                 .to_string_lossy()
@@ -556,6 +558,8 @@ mod tests {
 
         let mut config = OutputConfig::new(64, 64, 25, 48_000);
         config.logo = Some(LogoConfig {
+            high_quality: true,
+            cache_mib: 128,
             path: std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tests_assets/storage/media_images/animated-logo.gif")
                 .to_string_lossy()

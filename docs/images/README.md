@@ -2,7 +2,7 @@
 
 [Back to the main README](../../README.md)
 
-Screenshots of the ffplayout web interface in dark mode at 1920 × 1080. Media names and paths use example data.
+Screenshots of the ffplayout web interface in dark mode, all 1920 pixels wide. Most images are 1080 pixels high; General Settings uses 2200 pixels, Outputs 1800 pixels and the Graphics Layer Editor 2600 pixels to show their complete content. Media names and paths use example data.
 
 ## Sign In
 
@@ -37,6 +37,10 @@ Screenshots of the ffplayout web interface in dark mode at 1920 × 1080. Media n
 ### Program Logo
 
 ![Program logo settings](graphics-logo.png)
+
+### Settings
+
+![Graphics settings shared by program logo, manual layers and playlist graphics](graphics-settings.png)
 
 ## Logging
 

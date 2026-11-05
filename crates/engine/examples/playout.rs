@@ -182,6 +182,8 @@ fn main() -> Result<()> {
     }
     config = config.with_volume(args.volume)?;
     config.logo = args.logo.clone().map(|path| LogoConfig {
+        high_quality: true,
+        cache_mib: 128,
         path,
         scale: args.logo_scale.clone(),
         opacity: args.logo_opacity,
