@@ -14,23 +14,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-26.04
             platform: x86_64-unknown-linux-gnu
             variant: server
             features: embed_frontend
             deb_arch: amd64
             rpm_arch: x86_64
-          - os: ubuntu-latest
+          - os: ubuntu-26.04
             platform: x86_64-unknown-linux-gnu
             variant: desktop
             features: embed_frontend,desktop
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-26.04-arm
             platform: aarch64-unknown-linux-gnu
             variant: server
             features: embed_frontend
             deb_arch: arm64
             rpm_arch: aarch64
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-26.04-arm
             platform: aarch64-unknown-linux-gnu
             variant: desktop
             features: embed_frontend,desktop
@@ -84,9 +84,6 @@ jobs:
       - name: Install build dependencies on Linux
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y software-properties-common
-          sudo add-apt-repository -y ppa:ubuntuhandbook1/ffmpeg7
           sudo apt-get update
           packages=(
             ffmpeg
