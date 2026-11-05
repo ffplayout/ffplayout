@@ -3,10 +3,6 @@
 The **Graphics** page groups manual graphics, existing text controls and the
 program logo in four vertical tabs: Graphics, Text, Program Logo and Settings. The former `/message` link redirects to the Text tab.
 Existing text presets, logo database fields and configuration APIs remain valid.
-Migration 8 includes per-channel graphics settings and revision storage. The known
-earlier versions of migration 8 upgrade automatically after the normal database
-backup; unrelated checksum changes are still rejected. Migration 8 adds the
-program-logo quality setting and per-channel animation-cache limit.
 
 ## Manual graphics
 

@@ -3,7 +3,7 @@ FROM rust:1-alpine3.23 AS toolchain
 
 RUN apk add --no-cache \
         autoconf automake bash binutils build-base bzip2 ca-certificates \
-        clang clang-dev cmake curl git gperf libtool linux-headers \
+        clang clang-dev cmake curl diffutils git gperf libtool linux-headers \
         meson nasm ninja nodejs npm perl pkgconf python3 xz && \
     test "$(uname -m)" = x86_64 && \
     test -f "$(g++ -print-file-name=libstdc++.a)" && \
@@ -167,10 +167,11 @@ ENV PKG_CONFIG=/usr/bin/pkg-config \
     CARGO_BUILD_TARGET=x86_64-unknown-linux-musl \
     CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=gcc \
     CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=+crt-static" \
-    CARGO_TARGET_DIR=/src/target/alpine-musl \
+    CARGO_TARGET_DIR=/src/target/alpine-musl-host-dynamic \
     CARGO_FEATURES="$CARGO_FEATURES"
 
 WORKDIR /src
 COPY scripts/build-musl.sh /usr/local/bin/build-ffplayout-musl
+COPY --chmod=755 scripts/rustc-musl-host.sh /usr/local/bin/rustc-musl-host
 
 CMD ["sh", "-c", "exec sh /usr/local/bin/build-ffplayout-musl"]
