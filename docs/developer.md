@@ -105,7 +105,11 @@ and rejects binaries requiring a dynamic loader or shared libraries, then runs
 `ffplayout --version`. The target Linux system still needs its normal CA
 certificates for certificate verification.
 
-Cargo artifacts use `target/alpine-musl/`, separate from the Debian build cache.
+Cargo artifacts use `target/alpine-musl-host-dynamic/`, separate from the Debian
+build cache and earlier musl builds. A Rust compiler wrapper links host build
+tools dynamically so Bindgen can load libclang. Explicit musl target builds
+remain fully static; the packaging script checks for an ELF interpreter and
+dynamic dependencies before publishing the binary.
 Frontend dependencies are installed in the container's own temporary workspace,
 so `npm ci` does not replace the host's `node_modules`. Download caches and the
 stopped container are reused as with the other targets. The first build compiles

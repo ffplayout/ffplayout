@@ -16,7 +16,9 @@ fi
 
 # Use an explicit target and an isolated cache, even when .env overrides Cargo
 # defaults. This also keeps target-only Rust flags away from host proc macros.
-export CARGO_TARGET_DIR=/src/target/alpine-musl
+# A separate cache also invalidates old, statically linked host build scripts.
+export CARGO_TARGET_DIR=/src/target/alpine-musl-host-dynamic
+export RUSTC_WRAPPER=/usr/local/bin/rustc-musl-host
 rust_target=x86_64-unknown-linux-musl
 binary="$CARGO_TARGET_DIR/$rust_target/release/ffplayout"
 
