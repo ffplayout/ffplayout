@@ -40,9 +40,9 @@ RUN apt-get update && \
 
 WORKDIR /tmp
 
-RUN curl --retry 20 --retry-max-time 5 -L -f -o "zlib-1.3.2.tar.gz" "https://zlib.net/zlib-1.3.2.tar.gz" && \
-    tar xf "zlib-1.3.2.tar.gz" && \
-    cd "zlib-1.3.2" && \
+RUN curl --retry 20 --retry-max-time 5 -L -f -o "zlib-1.4.tar.gz" "https://zlib.net/zlib-1.4.tar.gz" && \
+    tar xf "zlib-1.4.tar.gz" && \
+    cd "zlib-1.4" && \
     ./configure --prefix="$LOCALDESTDIR" --static && \
     make -j "$(nproc)" && \
     make install
