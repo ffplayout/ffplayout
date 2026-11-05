@@ -650,9 +650,13 @@ impl ChannelManager {
     /// Wait for the active playout run to return and release its engine resources.
     ///
     /// `stop_all` requests that the current clip is skipped before this method
-    /// is called. Avoid cancelling the supervisor up front: doing so can abort
-    /// `player` before it reaches `AsyncPlayout::finish`.
+    /// is called. Cancelling its token interrupts retry waits without dropping
+    /// an active `player`; only the timeout below may abort that task.
     pub async fn stop_supervisor(&self) {
+        if let Some(token) = self.supervisor_token.lock().await.take() {
+            token.cancel();
+        }
+
         let task = self.supervisor_handle.lock().await.take();
 
         if let Some(mut task) = task {
@@ -669,10 +673,6 @@ impl ChannelManager {
                     let _ = task.await;
                 }
             }
-        }
-
-        if let Some(token) = self.supervisor_token.lock().await.take() {
-            token.cancel();
         }
     }
 
@@ -869,26 +869,28 @@ impl ChannelController {
     }
 }
 
+fn next_retry_delay(previous: Duration, run_time: Duration) -> Duration {
+    if run_time < Duration::from_secs(5) {
+        cmp::min(previous * 2, Duration::from_secs(180))
+    } else {
+        Duration::from_secs(1)
+    }
+}
+
 async fn supervisor_loop(
     manager: ChannelManager,
     token: CancellationToken,
     channel_id: i32,
     generation: usize,
 ) {
-    const MAX_DELAY: Duration = Duration::from_secs(180);
-    let mut elapsed = Duration::from_secs(5);
     let mut retry_delay = Duration::from_millis(500);
 
     loop {
-        if token.is_cancelled() {
+        if token.is_cancelled() || manager.shutdown.is_cancelled() {
             break;
         }
-        let active = {
-            let channel = manager.channel.lock().await;
-            channel.active
-        };
 
-        if !active {
+        if !manager.channel.lock().await.active {
             break;
         }
 
@@ -896,45 +898,44 @@ async fn supervisor_loop(
         manager.list_init.store(true, Ordering::SeqCst);
 
         let timer = Instant::now();
+        let result = run_channel(manager.clone()).await;
+        let run_time = timer.elapsed();
 
-        if let Err(e) = run_channel(manager.clone()).await {
-            manager.stop_all(false).await;
+        if token.is_cancelled()
+            || manager.shutdown.is_cancelled()
+            || !manager.is_alive.load(Ordering::SeqCst)
+            || !manager.channel.lock().await.active
+        {
+            break;
+        }
 
-            let active = {
-                let channel = manager.channel.lock().await;
-                channel.active
-            };
+        manager.stop_all(false).await;
 
-            if !active {
-                break;
-            }
+        if token.is_cancelled()
+            || manager.shutdown.is_cancelled()
+            || !manager.channel.lock().await.active
+        {
+            break;
+        }
 
-            if timer.elapsed() < elapsed {
-                elapsed += retry_delay;
-                retry_delay = cmp::min(retry_delay * 2, MAX_DELAY);
-            } else {
-                elapsed = Duration::from_secs(5);
-                retry_delay = Duration::from_secs(1);
-            }
+        retry_delay = next_retry_delay(retry_delay, run_time);
 
-            let retry_msg = format!(
-                "Retry in <span class=\"log-number\">{}</span> seconds",
-                retry_delay.as_secs()
-            );
+        let retry_msg = format!(
+            "Retry in <span class=\"log-number\">{}</span> seconds",
+            retry_delay.as_secs()
+        );
 
-            error!(target: Target::All.as_str(), channel = channel_id; "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e} | {retry_msg}");
+        match result {
+            Err(e) => error!(target: Target::All.as_str(), channel = channel_id;
+                "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e} | {retry_msg}"),
+            Ok(()) => warn!(target: Target::All.as_str(), channel = channel_id;
+                "Channel <span class=\"log-number\">{channel_id}</span> ended unexpectedly while still active | {retry_msg}"),
+        }
 
-            trace!(
-                "Runtime has <span class=\"log-number\">{}</span> active tasks",
-                tokio::runtime::Handle::current()
-                    .metrics()
-                    .num_alive_tasks()
-            );
-
-            tokio::select! {
-                _ = token.cancelled() => break,
-                _ = sleep(retry_delay) => {}
-            }
+        tokio::select! {
+            _ = token.cancelled() => break,
+            _ = manager.shutdown.cancelled() => break,
+            _ = sleep(retry_delay) => {}
         }
     }
 
@@ -1022,9 +1023,117 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::channel_manager;
+    use crate::{
+        test_support::channel_manager,
+        utils::config::{OutputMode, ProcessMode},
+    };
 
     use super::*;
+
+    #[test]
+    fn retries_grow_to_three_minutes_and_reset_after_a_stable_run() {
+        let mut delay = Duration::from_millis(500);
+
+        for expected in [1, 2, 4, 8, 16, 32, 64, 128, 180, 180] {
+            delay = next_retry_delay(delay, Duration::ZERO);
+            assert_eq!(delay, Duration::from_secs(expected));
+        }
+
+        assert_eq!(
+            next_retry_delay(delay, Duration::from_millis(4999)),
+            Duration::from_secs(180)
+        );
+        delay = next_retry_delay(delay, Duration::from_secs(5));
+        assert_eq!(delay, Duration::from_secs(1));
+        assert_eq!(
+            next_retry_delay(delay, Duration::ZERO),
+            Duration::from_secs(2)
+        );
+    }
+
+    #[tokio::test]
+    async fn supervisor_throttles_empty_sources_and_errors_and_cancels_retry_waits() {
+        for fail in [false, true] {
+            for shutdown in [false, true] {
+                let (manager, pool) = channel_manager().await;
+                let root = manager.storage.root.read().await.clone();
+                {
+                    let mut config = manager.config.write().await;
+                    config.processing.mode = ProcessMode::Folder;
+                    config.processing.add_logo = false;
+                    config.output.mode = OutputMode::Stream;
+                    config.output.discard = true;
+                    config.outputs.clear();
+                    config.ingest.listeners.clear();
+                    if fail {
+                        config.audio.volume = f64::NAN;
+                    }
+                }
+                manager.channel.lock().await.active = true;
+                manager.is_alive.store(true, Ordering::SeqCst);
+                let result =
+                    tokio::time::timeout(Duration::from_secs(5), run_channel(manager.clone()))
+                        .await
+                        .unwrap();
+                assert_eq!(
+                    result.is_err(),
+                    fail,
+                    "exercise both normal EOF and error returns"
+                );
+                manager.is_alive.store(false, Ordering::SeqCst);
+                manager.start().await.unwrap();
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    while manager.is_alive.load(Ordering::SeqCst) {
+                        sleep(Duration::from_millis(5)).await;
+                    }
+                })
+                .await
+                .expect("returned run must enter retry cleanup");
+                sleep(Duration::from_millis(100)).await;
+                assert!(
+                    !manager.is_alive.load(Ordering::SeqCst),
+                    "must not restart immediately"
+                );
+                assert!(
+                    !manager
+                        .supervisor_handle
+                        .lock()
+                        .await
+                        .as_ref()
+                        .unwrap()
+                        .is_finished()
+                );
+                // Only a new player run can apply this config value to the runtime control.
+                assert_ne!(manager.audio_effects.volume(), 0.25);
+                manager.config.write().await.audio.volume = 0.25;
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    while manager.audio_effects.volume() != 0.25
+                        || manager.is_alive.load(Ordering::SeqCst)
+                    {
+                        sleep(Duration::from_millis(5)).await;
+                    }
+                })
+                .await
+                .expect("retry must start a new run and return to backoff");
+                sleep(Duration::from_millis(100)).await;
+                if shutdown {
+                    manager.shutdown.cancel();
+                    let task = manager.supervisor_handle.lock().await.take().unwrap();
+                    tokio::time::timeout(Duration::from_millis(500), task)
+                        .await
+                        .unwrap()
+                        .unwrap();
+                } else {
+                    tokio::time::timeout(Duration::from_millis(500), manager.stop_supervisor())
+                        .await
+                        .expect("stop must interrupt the retry delay");
+                }
+                assert!(!manager.is_alive.load(Ordering::SeqCst));
+                pool.close().await;
+                tokio::fs::remove_dir_all(root).await.unwrap();
+            }
+        }
+    }
 
     #[tokio::test]
     async fn temporary_stop_cancels_and_joins_the_validator() {
