@@ -21,8 +21,11 @@ use crate::{
     file::init_storage,
     player::controller::ChannelController,
     utils::{
-        channels::initialize_channels, errors::ServiceError, mail::MailQueue,
-        paths::validate_directory_path, system::SystemStat,
+        channels::initialize_channels,
+        errors::ServiceError,
+        mail::MailQueue,
+        paths::{prepare_writable_directories, validate_directory_path},
+        system::SystemStat,
     },
 };
 
@@ -93,18 +96,22 @@ pub async fn complete_setup(
             path.to_string()
         }
     };
-    let paths = [
-        PathBuf::from(&settings.logs),
-        PathBuf::from(channel_path(&settings.public)),
-        PathBuf::from(channel_path(&settings.playlists)),
-        PathBuf::from(channel_path(&settings.storage)),
+    let mut paths = vec![
+        ("Logging", PathBuf::from(&settings.logs)),
+        ("Public", PathBuf::from(&settings.public)),
+        ("Playlist", PathBuf::from(&settings.playlists)),
+        ("Storage", PathBuf::from(&settings.storage)),
     ];
 
-    for path in paths {
-        tokio::fs::create_dir_all(&path).await.map_err(|error| {
-            ServiceError::Conflict(format!("Cannot create {}: {error}", path.display()))
-        })?;
+    if settings.shared {
+        paths.extend([
+            ("Public", PathBuf::from(channel_path(&settings.public))),
+            ("Playlist", PathBuf::from(channel_path(&settings.playlists))),
+            ("Storage", PathBuf::from(channel_path(&settings.storage))),
+        ]);
     }
+
+    let directories = prepare_writable_directories(paths).await?;
 
     let setup = InitialSetup {
         channel_public: channel_path(&settings.public),
@@ -160,6 +167,8 @@ pub async fn complete_setup(
     controllers.write().await.managers.extend(managers);
     let queues = std::mem::take(&mut *pending_queues.lock().await);
     mail_queues.lock().await.extend(queues);
+
+    directories.commit();
 
     Ok(())
 }

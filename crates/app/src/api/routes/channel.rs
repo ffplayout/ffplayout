@@ -18,6 +18,7 @@ use crate::{
         channels::{create_channel, delete_channel},
         config::get_config,
         errors::ServiceError,
+        paths::prepare_channel_directories,
     },
 };
 
@@ -118,7 +119,12 @@ pub async fn patch_channel(
         data.storage = channel.storage;
     }
 
+    let global = handles::select_global(&state.pool).await?;
+    let directories = prepare_channel_directories(&data, &global.logs).await?;
+
     handles::update_channel(&state.pool, id, data.clone()).await?;
+    directories.commit();
+
     let new_config = get_config(&state.pool, id).await?;
 
     manager.update_config(new_config).await?;

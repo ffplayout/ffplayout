@@ -51,6 +51,15 @@ cargo clippy --all-features --all-targets -- --deny warnings
 
 ## Readability
 
+- These formatting rules apply equally to production code and tests.
+- Separate variable declarations/assignments from subsequent function calls or
+  assertions with a blank line. When returning to variable declarations or
+  assignments after calls or assertions, insert another blank line. This also
+  applies to filesystem operations such as `fs::write` and test macros such as
+  `assert_eq!`. Group consecutive declarations, assignments, closely related
+  calls, and related assertions without blank lines inside each group. Separate
+  logical steps, not individual statements; avoid a blank line after every call
+  or assertion.
 - Give functions, variables, and types names that reveal their purpose. Keep
   functions focused on one coherent task; extract a helper when it makes the
   control flow easier to understand.

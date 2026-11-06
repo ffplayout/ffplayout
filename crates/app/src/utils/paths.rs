@@ -1,7 +1,122 @@
 use std::{
+    collections::HashSet,
     fs,
+    io::{self, Write},
     path::{Component, Path, PathBuf},
 };
+
+use uuid::Uuid;
+
+use crate::{db::models::Channel, utils::errors::ServiceError};
+
+/// Owns only directories created by this validation. Failed saves remove them
+/// in reverse order, and only while empty; existing directories are untouched.
+#[derive(Default)]
+pub struct WritableDirectories {
+    created: Vec<PathBuf>,
+}
+
+impl WritableDirectories {
+    pub fn commit(mut self) {
+        self.created.clear();
+    }
+
+    fn prepare(&mut self, path: &Path) -> io::Result<()> {
+        let mut missing = Vec::new();
+        let mut ancestor = path;
+
+        while !ancestor.try_exists()? {
+            missing.push(ancestor.to_path_buf());
+            ancestor = ancestor
+                .parent()
+                .ok_or_else(|| io::Error::other("no existing parent"))?;
+        }
+
+        for directory in missing.into_iter().rev() {
+            match fs::create_dir(&directory) {
+                Ok(()) => self.created.push(directory),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+        }
+
+        let probe = path.join(format!(".ffplayout-write-test-{}", Uuid::new_v4()));
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe)?;
+        let result = file
+            .write_all(b"ffplayout directory check\n")
+            .and_then(|()| file.sync_all());
+
+        drop(file);
+
+        let cleanup = fs::remove_file(&probe);
+
+        result.and(cleanup)
+    }
+}
+
+impl Drop for WritableDirectories {
+    fn drop(&mut self) {
+        for directory in self.created.iter().rev() {
+            // Never recursively remove data another request may have created.
+            let _ = fs::remove_dir(directory);
+        }
+    }
+}
+
+/// Probe with the service's actual credentials, including ACL and mount policy.
+/// All filesystem work runs outside the async executor's worker threads.
+pub async fn prepare_writable_directories(
+    paths: Vec<(&'static str, PathBuf)>,
+) -> Result<WritableDirectories, ServiceError> {
+    tokio::task::spawn_blocking(move || {
+        // Validate every path before creating anything.
+        for (name, path) in &paths {
+            if path.as_os_str().to_string_lossy().trim() != path.as_os_str().to_string_lossy() {
+                return Err(ServiceError::BadRequest(format!(
+                    "{name} path must not have leading or trailing whitespace"
+                )));
+            }
+
+            validate_directory_path(name, &path.to_string_lossy())
+                .map_err(ServiceError::BadRequest)?;
+        }
+
+        let mut directories = WritableDirectories::default();
+        let mut checked = HashSet::new();
+
+        for (name, path) in paths {
+            if !checked.insert(path.clone()) {
+                continue;
+            }
+
+            directories.prepare(&path).map_err(|error| {
+                ServiceError::BadRequest(format!(
+                    "{name} directory {} is not writable by the ffplayout service: {error}",
+                    path.display()
+                ))
+            })?;
+        }
+
+        Ok(directories)
+    })
+    .await?
+}
+
+pub async fn prepare_channel_directories(
+    channel: &Channel,
+    logs: &str,
+) -> Result<WritableDirectories, ServiceError> {
+    prepare_writable_directories(vec![
+        ("Logging", PathBuf::from(logs)),
+        ("Public", PathBuf::from(&channel.public)),
+        ("Playlist", PathBuf::from(&channel.playlists)),
+        ("Storage", PathBuf::from(&channel.storage)),
+    ])
+    .await
+}
 
 /// Directories that must never be used directly as ffplayout data directories.
 const PROTECTED_SYSTEM_PATHS: &[&str] = &[
@@ -108,9 +223,10 @@ pub(crate) fn resolve_existing_ancestor(path: &Path) -> std::io::Result<PathBuf>
 
 #[cfg(test)]
 mod tests {
-    use super::validate_directory_path;
     #[cfg(unix)]
     use std::{fs, os::unix::fs::symlink};
+
+    use super::validate_directory_path;
 
     #[test]
     fn rejects_empty_and_relative_paths() {
@@ -158,5 +274,122 @@ mod tests {
         assert!(validate_directory_path("Recording", link.to_str().unwrap()).is_err());
         fs::remove_file(link).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod writable_tests {
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use std::{env, fs, path::PathBuf};
+
+    use uuid::Uuid;
+
+    use super::prepare_writable_directories;
+
+    fn root() -> PathBuf {
+        env::current_dir()
+            .unwrap()
+            .join("target")
+            .join(format!("write-check-{}", Uuid::new_v4()))
+    }
+
+    #[tokio::test]
+    async fn probes_leave_no_files_and_failed_saves_remove_only_new_empty_directories() {
+        let root = root();
+
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("existing"), b"keep").unwrap();
+
+        let new = root.join("new/nested");
+        let prepared = prepare_writable_directories(vec![
+            ("Storage", root.clone()),
+            ("Playlist", new.clone()),
+        ])
+        .await
+        .unwrap();
+
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 2);
+        assert_eq!(fs::read_dir(&new).unwrap().count(), 0);
+
+        drop(prepared);
+
+        assert!(!root.join("new").exists());
+        assert_eq!(fs::read(root.join("existing")).unwrap(), b"keep");
+
+        let prepared = prepare_writable_directories(vec![("Storage", new.clone())])
+            .await
+            .unwrap();
+
+        prepared.commit();
+
+        assert!(new.is_dir());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn failure_in_a_later_directory_rolls_back_earlier_creation() {
+        let root = root();
+
+        fs::create_dir_all(&root).unwrap();
+
+        let file = root.join("file");
+
+        fs::write(&file, b"keep").unwrap();
+
+        let result = prepare_writable_directories(vec![
+            ("Storage", root.join("new/nested")),
+            ("Playlist", file.clone()),
+        ])
+        .await;
+        let error = result.err().unwrap().to_string();
+
+        assert!(error.contains("Playlist") && error.contains("not writable"));
+        assert!(!root.join("new").exists());
+
+        assert_eq!(fs::read(&file).unwrap(), b"keep");
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn rollback_keeps_new_directories_that_have_received_data() {
+        let root = root();
+        let new = root.join("nested");
+        let prepared = prepare_writable_directories(vec![("Storage", new.clone())])
+            .await
+            .unwrap();
+
+        fs::write(new.join("media"), b"keep").unwrap();
+
+        drop(prepared);
+
+        assert_eq!(fs::read(new.join("media")).unwrap(), b"keep");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn existing_read_only_directory_is_rejected_without_changing_its_permissions() {
+        let root = root();
+
+        fs::create_dir_all(&root).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o555)).unwrap();
+
+        let result = prepare_writable_directories(vec![("Storage", root.clone())]).await;
+        let mode = fs::metadata(&root).unwrap().permissions().mode() & 0o777;
+
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+
+        // A root service may legitimately write here despite mode bits.
+        if env::var("USER").as_deref() != Ok("root") {
+            assert!(result.is_err());
+        }
+
+        assert_eq!(mode, 0o555);
     }
 }

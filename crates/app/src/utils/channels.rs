@@ -7,7 +7,10 @@ use tokio::sync::{Mutex, RwLock};
 use crate::{
     db::{handles, models::Channel},
     player::controller::{ChannelController, ChannelManager},
-    utils::{config::get_config, errors::ServiceError, mail::MailQueue, system::SystemStat},
+    utils::{
+        config::get_config, errors::ServiceError, mail::MailQueue,
+        paths::prepare_channel_directories, system::SystemStat,
+    },
 };
 
 pub async fn initialize_channels(
@@ -64,6 +67,8 @@ pub async fn create_channel(
     system: SystemStat,
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
+    let global = handles::select_global(conn).await?;
+    let directories = prepare_channel_directories(&target_channel, &global.logs).await?;
     let channel = handles::create_channel_records(conn, target_channel).await?;
 
     let config = match get_config(conn, channel.id).await {
@@ -94,6 +99,7 @@ pub async fn create_channel(
 
     controllers.write().await.add(manager);
     queue.lock().await.push(m_queue);
+    directories.commit();
 
     Ok(channel)
 }

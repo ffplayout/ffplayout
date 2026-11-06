@@ -1,4 +1,6 @@
-use std::sync::atomic::Ordering;
+use std::{env, fs, sync::atomic::Ordering};
+
+use ffplayout::utils::config::EncodingSource;
 
 use super::*;
 
@@ -682,4 +684,110 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
             .text_preset_id,
         None
     );
+}
+
+#[tokio::test]
+#[serial]
+async fn unwritable_channel_and_recording_paths_are_rejected_before_database_changes() {
+    let fixture = security_fixture().await;
+    let admin = access_token(&fixture.state, 2).await;
+    let root = env::current_dir()
+        .unwrap()
+        .join("target")
+        .join(format!("path-api-{}", uuid_for_test()));
+
+    fs::create_dir_all(&root).unwrap();
+
+    let blocker = root.join("file");
+
+    fs::write(&blocker, b"keep").unwrap();
+    // Keep this test's destinations inside a supported application data root.
+    sqlx::query("UPDATE config_global SET logs = $1")
+        .bind(root.to_string_lossy().as_ref())
+        .execute(&fixture.state.pool)
+        .await
+        .unwrap();
+
+    let before = handles::select_channel(&fixture.state.pool, &1)
+        .await
+        .unwrap();
+    let mut changed = before.clone();
+
+    changed.name = "must not persist".into();
+    changed.public = root.join("new-public").to_string_lossy().into_owned();
+    changed.playlists = blocker.to_string_lossy().into_owned();
+    changed.storage = root.join("new-storage").to_string_lossy().into_owned();
+
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(json_request(
+            "PATCH",
+            "/api/channel/1",
+            Some(&admin),
+            serde_json::to_value(changed).unwrap(),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let message: String = serde_json::from_slice(&body).unwrap();
+
+    assert!(message.contains("Playlist") && message.contains("not writable"));
+
+    let after = handles::select_channel(&fixture.state.pool, &1)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        serde_json::to_value(before).unwrap(),
+        serde_json::to_value(after).unwrap()
+    );
+    assert!(!root.join("new-public").exists());
+    assert!(!root.join("new-storage").exists());
+
+    let manager = fixture.state.controller.read().await.get(1).unwrap();
+    let mut config = manager.config.read().await.clone();
+    let before = handles::select_recording(&fixture.state.pool, 1)
+        .await
+        .unwrap();
+
+    config.recording.enable = true;
+    config.recording.source = EncodingSource::Encode;
+    config.recording.path = blocker.to_string_lossy().into_owned();
+
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(json_request(
+            "PUT",
+            "/api/playout/config/1",
+            Some(&admin),
+            serde_json::to_value(config).unwrap(),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let message: String = serde_json::from_slice(&body).unwrap();
+
+    assert!(
+        message.contains("Recording") && message.contains("not writable"),
+        "{message}"
+    );
+
+    let after = handles::select_recording(&fixture.state.pool, 1)
+        .await
+        .unwrap();
+
+    assert_eq!(before.path, after.path);
+    assert_eq!(before.enabled, after.enabled);
+    assert_eq!(fs::read(&blocker).unwrap(), b"keep");
+    assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+
+    fs::remove_dir_all(root).unwrap();
 }
