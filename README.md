@@ -45,8 +45,8 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - generate playlist based on [template](/docs/playlist_gen.md)
 - run an [external task](/docs/external_tasks.md) when a clip starts
 - During playlist import, all video clips are validated and, if desired, checked to ensure that the audio track is not completely muted.
-- run multiple channels (experimental *)
-- WebVTT [subtitles](/docs/closed_captions.md) in HLS mode (experimental *)
+- run multiple channels
+- WebVTT [subtitles](/docs/closed_captions.md) in HLS mode
 - multiple simultaneous [outputs](/docs/output.md) per channel, with individual resolutions and a shared program frame rate (experimental *)
 - explicit encoding sharing between compatible outputs, including selection of an HLS rendition as the encoding source (experimental *)
 - built-in [MoQ playback](/docs/moq.md) in the frontend: private publication starts on demand with a three-minute grace period; the optional public player publishes continuously and is disabled by default; it is intended for testing and small previews rather than serving many viewers (experimental *)
