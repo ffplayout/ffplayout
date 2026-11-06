@@ -1316,17 +1316,20 @@ fn live_reception_pauses_resume_through_three_real_hls_encoders() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&directory).unwrap();
-    let mut config = OutputConfig::new(1280, 720, 25, 48_000);
+    // Exercise three real encoders without requiring three broadcast-sized
+    // renditions to keep up while the rest of the test suite shares the CPU.
+    // Resolution and compression efficiency are not part of this regression.
+    let mut config = OutputConfig::new(320, 180, 25, 48_000);
     config
         .video_options
-        .insert("preset".into(), "faster".into());
+        .insert("preset".into(), "ultrafast".into());
     config.video_options.insert("quality".into(), "23".into());
     config.destinations.push(OutputDestination {
         id: 5,
         config: config.clone(),
         target: OutputTarget::Hls {
             playlist: directory.join("master.m3u8").to_string_lossy().into_owned(),
-            variants: [(1280, 720), (854, 480), (480, 270)]
+            variants: [(320, 180), (256, 144), (160, 90)]
                 .into_iter()
                 .enumerate()
                 .map(|(i, (width, height))| HlsVariant {
@@ -1351,7 +1354,7 @@ fn live_reception_pauses_resume_through_three_real_hls_encoders() {
     let control = crate::PlaybackControl::default();
     let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
     wrapper.start_live_session(0.0);
-    let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 1280, 720);
+    let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 320, 180);
     for plane in 0..video.planes() {
         video.data_mut(plane).fill(128);
     }
