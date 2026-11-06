@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, PoisonError},
 };
 
@@ -25,6 +25,7 @@ use crate::{
     utils::{
         config::{OutputMode, PlayoutConfig, get_config},
         errors::ServiceError,
+        paths::prepare_writable_directories,
     },
 };
 
@@ -624,6 +625,15 @@ pub async fn update_playout_config(
         }
     }
 
+    let recording_directories = if data.recording.enable {
+        Some(
+            prepare_writable_directories(vec![("Recording", PathBuf::from(&data.recording.path))])
+                .await?,
+        )
+    } else {
+        None
+    };
+
     // Reserve the SQLite writer before checking other channels. Concurrent
     // saves must not both observe the same listener port as available.
     let mut transaction = state.pool.begin_with("BEGIN IMMEDIATE").await?;
@@ -653,6 +663,11 @@ pub async fn update_playout_config(
     handles::update_recording_on(&mut transaction, id, &data.recording).await?;
     handles::update_configuration_on(&mut transaction, config_id, data).await?;
     transaction.commit().await?;
+
+    if let Some(directories) = recording_directories {
+        directories.commit();
+    }
+
     let new_config = get_config(&state.pool, id).await?;
     let mut queues = state.mail_queues.lock().await;
 

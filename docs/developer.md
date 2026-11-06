@@ -704,3 +704,97 @@ The internal `ff-graphics` workspace crate owns native text rasterization, logo
 preparation, and the CPU compositor. Engine integration remains in `ff-engine`.
 See [graphics architecture](development/graphics-architecture.md) for module
 boundaries, the optional FFmpeg backend, compatibility adapters and validation.
+
+## Compare glibc and musl performance
+
+`scripts/benchmark-libc.py` builds the same production kernels in the Debian
+and Alpine builder images, then runs both executables directly on the same
+native x86-64 Linux host. No running playout instance or database is needed.
+The host must support the glibc version used by the Debian builder.
+Use an idle machine; other builds, CPU frequency changes and thermal throttling
+can affect the results. These measurements cover CPU processing, not real-time
+output scheduling, network throughput or device underruns.
+
+First prepare the builder images using the existing Debian-static and
+Alpine-static build instructions above. The benchmark script uses
+`localhost/ffplayout-static-builder:latest` and
+`localhost/ffplayout-musl-builder:latest` by default; override either with
+`--glibc-image` or `--musl-image`. It does not rebuild these potentially expensive
+images automatically. Ensure both images use the same FFmpeg revision and Rust
+version. Their exact environment and image IDs are saved with the results.
+
+```bash
+python3 scripts/benchmark-libc.py --container-cli podman
+```
+
+The first compilation can take several minutes. Cargo caches are isolated per
+libc and builder image under `target/libc-benchmarks/build/`. The source tree is mounted read-only;
+benchmark builds do not rebuild the frontend or replace host dependencies.
+For an offline build using a complete local Cargo registry, pass
+`--registry ~/.cargo/registry`. Existing binaries can be measured again without
+rebuilding:
+
+```bash
+python3 scripts/benchmark-libc.py --run-only --rounds 7 --threads 4
+```
+
+For a quick functional check, rather than a performance conclusion:
+
+```bash
+python3 scripts/benchmark-libc.py --rounds 2 --samples 3 --iterations 2
+```
+
+The suites cover:
+
+- Graphics: straight and encoded-premultiplied RGBA16 preparation, 1080p and 4K
+  downscaling, reusable versus recreated preparation state, and 1080p/4K YUVA
+  compositing. Serial and explicit Rayon worker variants exercise the same
+  production kernels, including their SIMD implementations.
+- Audio: LUFS gain control with lookahead limiting, live dynamics with compression
+  and limiting, and multiple independent channels processed serially or through
+  a persistent Rayon pool. A separate case recreates dynamics state per iteration
+  to include allocator and initialization costs. Each channel processes 48 blocks
+  of 1024 stereo samples at 48 kHz per iteration: 1.024 seconds of audio.
+
+An example of running just one kernel directly after building is:
+
+```bash
+target/libc-benchmarks/bin/musl/graphics \
+  --case prepare_4k_parallel --samples 15 --iterations 10 --threads 4
+```
+
+Each case runs in a fresh process for each libc and round. The runner alternates
+which libc runs first. Inputs and warmup counts are identical. Source generation
+and thread-pool creation are outside the timed region. Output allocation and
+cleanup remain included in graphics preparation; compositing and audio include
+identical input resets. Warm cases reuse production scratch buffers. The build
+uses the same optimized release profile, LTO, one codegen unit and generic
+x86-64 CPU settings; runtime SIMD dispatch remains enabled. ELF checks require a
+static musl executable and a dynamically linked glibc executable.
+
+Results are written to `target/libc-benchmarks/`:
+
+- `report.md`: a compact comparison; positive percentages mean musl took longer.
+- `summary.csv`: medians across process rounds, p95 batch timings, minimum and
+  maximum round medians, process CPU time, peak RSS and sampled output checksums.
+- `measurements.jsonl`: every individual process result and its parameters.
+- `environment.json`, `bin/*/environment.txt`, image IDs and ELF reports:
+  information needed to reproduce and interpret the build comparison.
+
+Wall time describes elapsed latency. CPU time includes all process threads, so
+parallelism may reduce wall time while consuming more CPU. The reported p95 is
+of per-batch average times, not individual frame latency. Peak RSS includes setup
+and is the process high-water mark; it cannot establish memory leaks or memory
+released after processing. On Linux, peak RSS comes from `VmHWM` in
+`/proc/self/status`, avoiding a pre-exec high-water mark inherited from the
+Python launcher. Allocator-specific host tuning and library preloads
+are removed from measurement environments. Checksum differences are reported for
+investigation; they are not hidden by the timing summary.
+
+Debian and Alpine also differ in compiler and native-library configuration.
+These are comparisons of the two recorded builds, not proof that libc alone
+caused a difference. The runner rejects differing libavutil versions; also compare
+recorded FFmpeg revisions and compiler versions before drawing conclusions.
+
+See [recorded benchmark results and sustained playout observations](development/libc-benchmark-results.md)
+for the measured comparison and the one-hour playout test.

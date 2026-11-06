@@ -80,8 +80,8 @@ async function addNewChannel() {
 
             indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
         })
-        .catch(() => {
-            indexStore.msgAlert('error', t('config.updateChannelFailed'), 3)
+        .catch((cause: unknown) => {
+            indexStore.msgAlert('error', cause instanceof Error ? cause.message : t('config.updateChannelFailed'), 8)
         })
 }
 
@@ -119,8 +119,8 @@ async function updateChannel() {
 
             indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
         })
-        .catch(() => {
-            indexStore.msgAlert('error', t('config.updateChannelFailed'), 3)
+        .catch((cause: unknown) => {
+            indexStore.msgAlert('error', cause instanceof Error ? cause.message : t('config.updateChannelFailed'), 8)
         })
 }
 
