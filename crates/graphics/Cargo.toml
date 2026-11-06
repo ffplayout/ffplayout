@@ -63,3 +63,8 @@ required-features = ["ffmpeg"]
 name = "source_preparation"
 harness = false
 required-features = ["ffmpeg"]
+
+[[bench]]
+name = "libc_graphics"
+harness = false
+required-features = ["ffmpeg"]
