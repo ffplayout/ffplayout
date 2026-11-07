@@ -10,6 +10,9 @@ use anyhow::{Context, Result, anyhow};
 use ffmpeg::{Packet, codec, format, frame, util::rational::Rational};
 use ffmpeg_next as ffmpeg;
 
+#[cfg(test)]
+mod recovery_tests;
+
 use crate::{
     HlsHealth,
     analysis::{audio_level::AudioLevelMeter, loudness::LoudnessMeter},
@@ -58,6 +61,8 @@ pub(super) struct EncodedOutput {
     transcoded_recording: Option<Box<Self>>,
     recording_monitor: Option<RecordingMonitor>,
     channel_id: Option<i32>,
+    // Drop after mux: its worker must release the FFmpeg context before these locks.
+    _hls_session: Option<hls::HlsSession>,
 }
 
 #[derive(Clone)]
@@ -273,11 +278,7 @@ impl EncodedOutput {
                 .with_context(|| format!("failed to create HLS directory {}", parent.display()))?;
         }
 
-        if matches!(output_format, EncodedFormat::Hls { .. }) && !uses_var_stream_map {
-            hls::remove_master_playlist(path)?;
-        }
-
-        let hls_start_number = if matches!(output_format, EncodedFormat::Hls { .. }) {
+        let hls_session = if matches!(output_format, EncodedFormat::Hls { .. }) {
             let resume_playlists =
                 hls_resume_playlist_paths(path, &hls_playlist_path, hls_variants)?;
             let master_playlist = uses_var_stream_map.then(|| {
@@ -285,10 +286,25 @@ impl EncodedOutput {
                     .to_string_lossy()
                     .into_owned()
             });
-            hls::prepare_resume_start_number(&resume_playlists, master_playlist.as_deref())?
+
+            Some(hls::HlsSession::acquire(
+                &resume_playlists,
+                master_playlist.as_deref(),
+                vtt_subtitles,
+            )?)
         } else {
             None
         };
+
+        if hls_session.is_some() && !uses_var_stream_map {
+            hls::remove_master_playlist(path)?;
+        }
+
+        let hls_start_number = hls_session
+            .as_ref()
+            .map(hls::HlsSession::prepare_resume_start_number)
+            .transpose()?
+            .flatten();
         // Network outputs get a write timeout so a stalled TCP connection
         // surfaces as an error instead of blocking the playout worker forever.
         let mut octx = match output_format {
@@ -547,6 +563,7 @@ impl EncodedOutput {
             transcoded_recording,
             recording_monitor: None,
             channel_id: cfg.channel_id,
+            _hls_session: hls_session,
         })
     }
 

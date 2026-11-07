@@ -820,6 +820,8 @@ impl ParallelOutput {
         if let Err(error) = self.reconcile(&mut workers) {
             log::error!("Output update failed: {error:#}");
         }
+        Self::wait_for_encoding_capacity(&workers, 0, None);
+
         for worker in workers.iter() {
             worker.send(Message::Rate(rate), 0, None);
         }
@@ -839,6 +841,8 @@ impl ParallelOutput {
         }
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         self.reconcile(&mut workers)?;
+        Self::wait_for_encoding_capacity(&workers, path.len(), None);
+
         for worker in workers.iter() {
             worker.send(
                 Message::Subtitles(path.to_string(), start, source, end),
@@ -858,6 +862,8 @@ impl ParallelOutput {
         }
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         self.reconcile(&mut workers)?;
+        Self::wait_for_encoding_capacity(&workers, 0, None);
+
         for worker in workers.iter() {
             worker.send(Message::ClearSubtitles, 0, None);
         }
@@ -874,6 +880,9 @@ impl ParallelOutput {
         let mut workers = self.workers.lock().unwrap_or_else(PoisonError::into_inner);
         self.reconcile(&mut workers)?;
         if active {
+            // A ready branch, including one without captions, must keep playing.
+            Self::wait_for_encoding_capacity(&workers, 0, None);
+
             for worker in workers.iter().filter(|worker| worker.subtitles) {
                 worker.send(Message::AdvanceSubtitles(position), 0, None);
             }
@@ -2008,6 +2017,101 @@ mod tests {
     }
 
     #[test]
+    fn control_messages_wait_for_a_recoverable_full_encoding_queue() {
+        ffmpeg_next::init().unwrap();
+        for message in ["advance", "write", "clear", "rate"] {
+            let config = OutputConfig::new(1280, 720, 25, 48_000);
+            let output = ParallelOutput::start(&config, false).unwrap();
+            let control = Arc::new(PipelineControl::default());
+            let worker = DestinationWorker {
+                encoding_revision: String::new(),
+                gop: 50,
+                subtitles: true,
+                id: 1,
+                ids: vec![1, 2],
+                video_resolutions: Vec::new(),
+                queue: PipelineQueue::new(ENCODING_QUEUE_LIMITS, control.clone()),
+                control: control.clone(),
+                worker: None,
+                channel: 1,
+                status: config.output_status.clone(),
+                progress: None,
+            };
+            for index in 0..32_i64 {
+                let mut video = frame::Video::new(Pixel::YUV420P, 1280, 720);
+                video.set_pts(Some(index));
+                for plane in 0..video.planes() {
+                    video.data_mut(plane).fill(128);
+                }
+                let bytes = (0..video.planes())
+                    .map(|plane| video.data(plane).len())
+                    .sum();
+                let prepared = ProgramVideo::new(
+                    &video,
+                    output.compositor.clone(),
+                    None,
+                    0.0,
+                    BTreeMap::new(),
+                )
+                .unwrap();
+                worker.send(Message::Video(prepared), bytes, Some(index * 40_000));
+                for part in 0..2 {
+                    let mut audio =
+                        frame::Audio::new(Sample::F32(Type::Planar), 1024, ChannelLayout::STEREO);
+                    audio.set_rate(48_000);
+                    for plane in 0..2 {
+                        audio.plane_mut::<f32>(plane).fill(0.0);
+                    }
+                    let bytes = (0..audio.planes())
+                        .map(|plane| audio.data(plane).len())
+                        .sum();
+                    worker.send(
+                        Message::Audio(audio),
+                        bytes,
+                        Some(index * 40_000 + part * 20_000),
+                    );
+                }
+                worker.send(Message::AdvanceSubtitles(index * 40), 0, None);
+            }
+            assert!(!control.cancelled());
+            assert!(worker.queue.would_block(0, None));
+            let description = worker.queue.capacity_description(0, None);
+            assert!(description.contains("queued_items=128 item_limit=128"));
+            let queue = worker.queue.clone();
+            output.workers.lock().unwrap().push(worker);
+            output.context.lock().unwrap().subtitles = Some(("clip.mp4".into(), 0, 0, None));
+            let consumer = thread::spawn(move || {
+                thread::sleep(Duration::from_millis(20));
+                queue.try_recv()
+            });
+
+            match message {
+                "advance" => output.advance_vtt_subtitles(1320).unwrap(),
+                "write" => output.write_vtt_subtitles("next.mp4", 0, 0, None).unwrap(),
+                "clear" => output.clear_vtt_subtitles().unwrap(),
+                "rate" => output.set_playout_rate(1.0),
+                _ => unreachable!(),
+            }
+
+            let received = consumer.join().unwrap();
+
+            assert!(
+                !control.cancelled(),
+                "{message} disabled a recoverable queue"
+            );
+            assert!(received.unwrap().is_some());
+            assert!(
+                config
+                    .output_status
+                    .snapshot()
+                    .values()
+                    .all(|state| state.phase != "failed")
+            );
+            eprintln!("control message {message}: output remains active, {description}");
+        }
+    }
+
+    #[test]
     fn ingest_timestamp_gap_does_not_disable_a_nearly_empty_encoding_queue() {
         let control = Arc::new(PipelineControl::default());
         let worker = DestinationWorker {
@@ -2075,6 +2179,60 @@ mod tests {
         assert!(workers[0].control.cancelled());
         assert!(!workers[1].control.cancelled());
         assert!(workers[1].queue.try_recv().unwrap().is_some());
+    }
+
+    #[test]
+    fn subtitle_progress_does_not_delay_a_ready_independent_output() {
+        let config = OutputConfig::new(320, 180, 25, 48_000);
+        let output = ParallelOutput::start(&config, false).unwrap();
+
+        for (id, subtitles) in [(1, true), (2, false)] {
+            let control = Arc::new(PipelineControl::default());
+            let worker = DestinationWorker {
+                encoding_revision: String::new(),
+                gop: 50,
+                subtitles,
+                id,
+                ids: vec![id],
+                video_resolutions: Vec::new(),
+                queue: PipelineQueue::new(
+                    QueueLimits {
+                        items: 1,
+                        bytes: 1024,
+                        duration_us: i64::MAX,
+                    },
+                    control.clone(),
+                ),
+                control,
+                worker: None,
+                channel: 1,
+                status: config.output_status.clone(),
+                progress: None,
+            };
+
+            if subtitles {
+                worker.send(Message::Rate(1.0), 0, None);
+            }
+
+            output.workers.lock().unwrap().push(worker);
+        }
+
+        output.context.lock().unwrap().subtitles = Some(("clip.mp4".into(), 0, 0, None));
+        let started = std::time::Instant::now();
+
+        output.advance_vtt_subtitles(100).unwrap();
+        assert!(started.elapsed() < ENCODING_BURST_WAIT / 2);
+
+        let workers = output.workers.lock().unwrap();
+
+        assert!(workers[0].control.cancelled());
+        assert!(!workers[1].control.cancelled());
+        assert!(workers[1].queue.try_recv().unwrap().is_none());
+        workers[1].send(Message::Rate(1.0), 0, None);
+        assert!(matches!(
+            workers[1].queue.try_recv().unwrap(),
+            Some(Message::Rate(1.0))
+        ));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     ffi::CString,
-    fs,
+    fs::{self, File, OpenOptions},
     io::ErrorKind,
     path::{Path, PathBuf},
     ptr,
@@ -96,14 +96,97 @@ pub(super) fn output_context(path: &str) -> Result<ffmpeg::format::context::Outp
 
 pub(super) fn remove_master_playlist(path: &str) -> Result<()> {
     let master = master_playlist_path(path);
+    if Path::new(path) == master {
+        return Ok(());
+    }
+
+    let _session = HlsSession::acquire(&[master.to_string_lossy().into_owned()], None, false)?;
+
     remove_playlist(&master)
 }
 
-pub(super) fn prepare_resume_start_number(
-    media_playlists: &[String],
-    master_playlist: Option<&str>,
-) -> Result<Option<u64>> {
-    prepare_resume_start_number_at(media_playlists, master_playlist, SystemTime::now())
+/// Files stay present so every process locks the same inode, including after a crash.
+/// Closing these handles releases ownership; lock files must never be unlinked.
+pub(super) struct HlsSession {
+    _locks: Vec<File>,
+    media_playlists: Vec<String>,
+    master_playlist: Option<String>,
+}
+
+impl HlsSession {
+    pub(super) fn acquire(
+        media_playlists: &[String],
+        master_playlist: Option<&str>,
+        subtitles: bool,
+    ) -> Result<Self> {
+        let mut paths = cleanup_playlist_paths(media_playlists, master_playlist)?;
+
+        // FFmpeg attaches the single subtitle track to the first rendition only.
+        // Reserve its path even before the first master has been written.
+        if subtitles && let Some(playlist) = media_playlists.first() {
+            let path = Path::new(playlist);
+            let stem = path.file_stem().context("HLS playlist has no file stem")?;
+
+            paths.push(
+                path.with_file_name(format!("{}_vtt.m3u8", stem.to_string_lossy()))
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+
+        let mut lock_paths = paths
+            .into_iter()
+            .map(|path| {
+                let path = Path::new(&path);
+                let name = path.file_name().context("HLS playlist has no file name")?;
+                let parent = path
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                    .unwrap_or_else(|| Path::new("."));
+                let parent = fs::canonicalize(parent).with_context(|| {
+                    format!("failed to resolve HLS directory {}", parent.display())
+                })?;
+
+                Ok(parent.join(format!(".{}.lock", name.to_string_lossy())))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        lock_paths.sort();
+        lock_paths.dedup();
+        let mut locks = Vec::new();
+
+        for lock_path in lock_paths {
+            let lock = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&lock_path)
+                .with_context(|| format!("failed to open HLS lock {}", lock_path.display()))?;
+
+            lock.try_lock().with_context(|| {
+                format!(
+                    "HLS playlist is already in use or cannot be locked: {}",
+                    lock_path.display()
+                )
+            })?;
+            locks.push(lock);
+        }
+
+        Ok(Self {
+            _locks: locks,
+            media_playlists: media_playlists.to_vec(),
+            master_playlist: master_playlist.map(str::to_owned),
+        })
+    }
+
+    pub(super) fn prepare_resume_start_number(&self) -> Result<Option<u64>> {
+        prepare_resume_start_number_at(
+            &self.media_playlists,
+            self.master_playlist.as_deref(),
+            SystemTime::now(),
+        )
+    }
 }
 
 fn prepare_resume_start_number_at(
