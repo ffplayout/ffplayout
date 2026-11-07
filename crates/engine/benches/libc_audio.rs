@@ -11,7 +11,7 @@ use ffmpeg_next::{
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 
-#[path = "../../bench_support/mod.rs"]
+#[path = "../../../benches/support/mod.rs"]
 mod support;
 
 const RATE: u32 = 48_000;

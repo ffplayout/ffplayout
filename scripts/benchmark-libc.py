@@ -177,7 +177,7 @@ def main():
                     'revision': execute(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], capture_output=True).stdout.strip(),
                     'working_diff_sha256': hashlib.sha256(execute(['git', '-C', str(ROOT), 'diff', 'HEAD'], capture_output=True).stdout.encode()).hexdigest(),
                     'benchmark_source_sha256': {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                                                for path in [ROOT / 'crates/bench_support/mod.rs', ROOT / 'crates/graphics/benches/libc_graphics.rs', ROOT / 'crates/engine/benches/libc_audio.rs']},
+                                                for path in [ROOT / 'benches/support/mod.rs', ROOT / 'crates/graphics/benches/libc_graphics.rs', ROOT / 'crates/engine/benches/libc_audio.rs']},
                     'arguments': {key: str(value) for key, value in vars(args).items()}}
         (output / 'environment.json').write_text(json.dumps(metadata, indent=2) + '\n')
         for variant in ['glibc', 'musl']:

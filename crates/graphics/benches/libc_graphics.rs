@@ -19,7 +19,7 @@ use ffmpeg_next::{
 };
 use rayon::ThreadPoolBuilder;
 
-#[path = "../../bench_support/mod.rs"]
+#[path = "../../../benches/support/mod.rs"]
 mod support;
 
 const CASES: &[&str] = &[
