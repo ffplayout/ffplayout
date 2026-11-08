@@ -700,7 +700,7 @@ impl EncodedOutput {
         let mut frame = frame.clone();
         let frames = benchmark::measure(Stage::AudioProcess, || {
             if apply_effects {
-                self.audio_effects.process(&mut frame);
+                self.audio_effects.process(&mut frame)?;
             }
             self.audio_level_meter.process_frame(&frame);
             self.loudness_meter.process_frame(&frame);

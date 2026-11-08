@@ -89,10 +89,13 @@ impl Channel {
             let future = &self.input[end..end + preview];
 
             if dynamics {
-                self.dynamics.process(black_box(&mut self.audio), future);
+                self.dynamics
+                    .process(black_box(&mut self.audio), future)
+                    .expect("benchmark audio processing");
             } else {
                 self.loudness
-                    .process_with_lookahead(black_box(&mut self.audio), future);
+                    .process_with_lookahead(black_box(&mut self.audio), future)
+                    .expect("benchmark audio processing");
             }
 
             checksum ^= u64::from(black_box(self.audio.plane::<f32>(0)[512]).to_bits());

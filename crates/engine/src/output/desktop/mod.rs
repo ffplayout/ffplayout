@@ -783,7 +783,7 @@ impl DesktopFrameSender {
                     self.audio_effects
                         .lock()
                         .map_err(|_| anyhow!("audio effect chain lock poisoned"))?
-                        .process(&mut frame);
+                        .process(&mut frame)?;
                 }
 
                 self.audio_level_meter.process_frame(&frame);

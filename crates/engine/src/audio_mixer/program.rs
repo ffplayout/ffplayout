@@ -124,7 +124,7 @@ impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
 
         if self.scope == LoudnessScope::Off {
             if let Some(volume) = self.state.volume.as_mut() {
-                volume.process(&mut frame);
+                volume.process(&mut frame)?;
             }
 
             return self.output.encode_processed_audio(&frame);
@@ -210,12 +210,12 @@ impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
                                     &future,
                                     hold_gain,
                                     self.state.volume.as_mut(),
-                                );
-                            });
+                                )
+                            })?;
                             self.control.set_metrics(processor.metrics());
                         }
                     } else if let Some(volume) = self.state.volume.as_mut() {
-                        volume.process(&mut frame);
+                        volume.process(&mut frame)?;
                     }
 
                     self.last_audio_source = Some(live);

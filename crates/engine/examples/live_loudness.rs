@@ -309,7 +309,7 @@ fn main() -> Result<()> {
         &mut samples,
     )?;
     flush_decode_resampler(&mut decode_resampler, &mut loudness, &mut samples)?;
-    loudness.flush(&mut samples);
+    loudness.flush(&mut samples)?;
     write_ready_audio(
         &mut samples,
         frame_size,
@@ -467,9 +467,14 @@ impl LoudnessPipeline {
         })
     }
 
-    fn process(&mut self, mut frame: frame::Audio, samples: &mut [Vec<f32>; CHANNELS]) {
-        let analysis =
-            (self.lookahead_samples > 0).then(|| self.processor.analyze_buffered(&mut frame));
+    fn process(
+        &mut self,
+        mut frame: frame::Audio,
+        samples: &mut [Vec<f32>; CHANNELS],
+    ) -> Result<()> {
+        let analysis = (self.lookahead_samples > 0)
+            .then(|| self.processor.analyze_buffered(&mut frame))
+            .transpose()?;
 
         self.buffered_samples += frame.samples();
         self.pending.push_back((frame, analysis));
@@ -478,13 +483,15 @@ impl LoudnessPipeline {
         while self.pending.front().is_some_and(|(frame, _)| {
             self.buffered_samples.saturating_sub(frame.samples()) >= preview_samples
         }) {
-            self.emit_front(samples);
+            self.emit_front(samples)?;
         }
+
+        Ok(())
     }
 
-    fn emit_front(&mut self, samples: &mut [Vec<f32>; CHANNELS]) {
+    fn emit_front(&mut self, samples: &mut [Vec<f32>; CHANNELS]) -> Result<()> {
         let Some((mut frame, analysis)) = self.pending.pop_front() else {
-            return;
+            return Ok(());
         };
         self.buffered_samples -= frame.samples();
         let limit = self.required_samples();
@@ -508,21 +515,25 @@ impl LoudnessPipeline {
         }
 
         if let Some(dynamics) = self.dynamics.as_mut() {
-            dynamics.process(&mut frame, &future);
+            dynamics.process(&mut frame, &future)?;
         } else if let Some(analysis) = analysis {
             self.processor
-                .apply_buffered_gain(&mut frame, &analysis, &future);
+                .apply_buffered_gain(&mut frame, &analysis, &future)?;
         } else {
-            self.processor.process_with_lookahead(&mut frame, &future);
+            self.processor.process_with_lookahead(&mut frame, &future)?;
         }
 
         append_frame(samples, &frame);
+
+        Ok(())
     }
 
-    fn flush(&mut self, samples: &mut [Vec<f32>; CHANNELS]) {
+    fn flush(&mut self, samples: &mut [Vec<f32>; CHANNELS]) -> Result<()> {
         while !self.pending.is_empty() {
-            self.emit_front(samples);
+            self.emit_front(samples)?;
         }
+
+        Ok(())
     }
 
     fn required_samples(&self) -> usize {
@@ -557,7 +568,7 @@ fn decode_and_normalize(
             decoded.set_channel_layout(channel_layout(decoder));
         }
         let converted = resample_frame(resampler, &decoded)?;
-        loudness.process(converted, samples);
+        loudness.process(converted, samples)?;
     }
     Ok(())
 }
@@ -574,7 +585,7 @@ fn flush_decode_resampler(
         if resampler.flush(&mut converted)?.is_none() || converted.samples() == 0 {
             return Ok(());
         }
-        loudness.process(converted, samples);
+        loudness.process(converted, samples)?;
     }
 }
 

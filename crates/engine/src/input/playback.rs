@@ -680,7 +680,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 lookahead_samples(self.live.sample_rate) + TRUE_PEAK_FUTURE_SAMPLES,
             );
             make_audio_frame_writable(&mut frame)?;
-            loudness.process_with_lookahead(&mut frame, &future);
+            loudness.process_with_lookahead(&mut frame, &future)?;
             self.live.loudness_control.set_metrics(loudness.metrics());
         }
         self.output.encode_live_audio(&frame)?;

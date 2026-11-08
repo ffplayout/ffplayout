@@ -32,7 +32,7 @@ chrono = { version = "0.4", default-features = false, features = [
     "std",
 ] }
 cpal = { version = "0.18", optional = true }
-ebur128-stream = "=0.2.0"
+ff-audio = { path = "../audio" }
 ffmpeg-next = { version = "9", default-features = false, features = [
     "format",
     "software-resampling",
@@ -90,10 +90,6 @@ required-features = ["desktop-base"]
 [[example]]
 name = "live_transcription"
 required-features = ["desktop-base", "transcription-example"]
-
-[[bench]]
-name = "audio_dynamics"
-harness = false
 
 [[bench]]
 name = "libc_audio"

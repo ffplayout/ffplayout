@@ -3,10 +3,6 @@ use std::{collections::VecDeque, time::Duration};
 use anyhow::Result;
 use ffmpeg_next::{Rational, Rescale, frame};
 
-mod stats;
-
-pub(crate) use stats::AudioStatsOverlay;
-
 use crate::{
     BufferedLoudnessAnalysis, LiveDynamicsProcessor, LiveLoudnessMeasurement, LiveLoudnessMetrics,
     LiveLoudnessProcessor,
@@ -14,6 +10,8 @@ use crate::{
     output::FrameOutput,
     utils::ffmpeg::{make_audio_frame_writable, reference_audio_frame, reference_video_frame},
 };
+
+use super::stats::AudioStatsOverlay;
 
 enum PendingFrame {
     Video(frame::Video),
@@ -136,12 +134,12 @@ impl<'a, O: FrameOutput> LoudnessPreview<'a, O> {
                     }
 
                     if let Some(dynamics) = self.dynamics.as_mut() {
-                        dynamics.process(&mut audio, &future);
+                        dynamics.process(&mut audio, &future)?;
                     } else if let Some(analysis) = analysis {
                         self.processor
-                            .apply_buffered_gain(&mut audio, &analysis, &future);
+                            .apply_buffered_gain(&mut audio, &analysis, &future)?;
                     } else {
-                        self.processor.process_with_lookahead(&mut audio, &future);
+                        self.processor.process_with_lookahead(&mut audio, &future)?;
                     }
 
                     let metrics = self.metrics();
@@ -200,7 +198,8 @@ impl<O: FrameOutput> FrameOutput for LoudnessPreview<'_, O> {
         make_audio_frame_writable(&mut audio)?;
 
         let analysis = (self.lookahead_samples > 0 && self.dynamics.is_none())
-            .then(|| self.processor.analyze_buffered(&mut audio));
+            .then(|| self.processor.analyze_buffered(&mut audio))
+            .transpose()?;
 
         self.buffered_samples += audio.samples();
         self.pending.push_back(PendingFrame::Audio(audio, analysis));

@@ -15,14 +15,14 @@ struct Bin {
 /// merges the closest adjacent ranges. Energy sums are never quantized.
 /// An ambiguous gate crossing returns no measurement unless the whole range
 /// of possible results fits within +/- MAX_ERROR_LU of its midpoint.
-pub(super) struct IntegratedLoudness {
+pub(crate) struct IntegratedLoudness {
     bins: Vec<Bin>,
     energy: f64,
     count: u64,
 }
 
 impl IntegratedLoudness {
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             bins: Vec::with_capacity(MAX_BINS),
             energy: 0.0,
@@ -30,7 +30,7 @@ impl IntegratedLoudness {
         }
     }
 
-    pub(super) fn record(&mut self, momentary_lufs: f64) {
+    pub(crate) fn record(&mut self, momentary_lufs: f64) {
         if !momentary_lufs.is_finite() || momentary_lufs <= ABSOLUTE_GATE_LUFS {
             return;
         }
@@ -101,7 +101,7 @@ impl IntegratedLoudness {
         left.max_lufs = right.max_lufs;
     }
 
-    pub(super) fn integrated_lufs(&self) -> Option<f64> {
+    pub(crate) fn integrated_lufs(&self) -> Option<f64> {
         if self.count == 0 {
             return None;
         }
