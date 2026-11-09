@@ -8,7 +8,7 @@ output_directory=${1:?Usage: package-deb.sh OUTPUT_DIRECTORY dynamic|static [VER
 linkage=${2:?Missing FFmpeg linkage mode}
 version=${3:-$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)}
 distribution=$(deb_distribution_suffix /etc/os-release)
-package_version=$(deb_package_version "$version" "$distribution")
+package_version=$(deb_package_version "$version" "$distribution" "$linkage")
 architecture=$(dpkg --print-architecture)
 package="$output_directory/ffplayout_${package_version}_${architecture}.deb"
 args=(--no-build -p ffplayout --manifest-path crates/app/Cargo.toml --deb-version "$package_version" -o "$package")

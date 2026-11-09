@@ -27,8 +27,13 @@ bash scripts/package-deb.sh dist dynamic "$GITHUB_REF_NAME"
 if [[ -n ${RPM_ARCH:-} ]]; then
     cargo install cargo-generate-rpm --locked
     package_version=$(printf '%s' "${GITHUB_REF_NAME#v}" | tr '-' '~')
+    rpm_package="dist/ffplayout-${GITHUB_REF_NAME}-1.${RPM_ARCH}.rpm"
+
     cargo generate-rpm -p crates/app \
         --set-metadata "version = \"$package_version\"" \
         --set-metadata 'release = "1"' \
-        -o "dist/ffplayout-${GITHUB_REF_NAME}-1.${RPM_ARCH}.rpm"
+        -o "$rpm_package"
+
+    echo "RPM runtime requirements: $rpm_package"
+    rpm -qpR "$rpm_package"
 fi

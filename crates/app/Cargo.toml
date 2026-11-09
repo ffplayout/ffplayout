@@ -145,7 +145,6 @@ priority = "optional"
 section = "net"
 license-file = ["../../LICENSE", "0"]
 depends = "$auto"
-suggests = ["ffmpeg"]
 copyright = "Copyright (c) 2024, Jonathan Baecker. All rights reserved."
 assets = [
     [
@@ -231,5 +230,4 @@ assets = [
     { source = "../../assets/ffplayout.conf", dest = "/usr/share/ffplayout/ffplayout.conf.example", mode = "644" },
     { source = "../../debian/postinst", dest = "/usr/share/ffplayout/postinst", mode = "755" },
 ]
-auto-req = "no"
 post_install_script = "/usr/share/ffplayout/postinst"

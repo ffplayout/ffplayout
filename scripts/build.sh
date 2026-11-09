@@ -181,7 +181,13 @@ fi
 
 source scripts/lib/deb-package.sh
 # Both Debian builder images use Trixie, independently of the host OS.
-deb_version=$(deb_package_version "$version" deb13)
+deb_linkage=dynamic
+
+if [[ $target == debian-static ]]; then
+    deb_linkage=static
+fi
+
+deb_version=$(deb_package_version "$version" deb13 "$deb_linkage")
 
 echo "Compile ffplayout \"$version\""
 echo ""

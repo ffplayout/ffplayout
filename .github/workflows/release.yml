@@ -168,6 +168,9 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           ./scripts/man_create.sh
+          # Keep the output directory owned by the runner, even when the
+          # package files are produced by root inside the build container.
+          mkdir -p dist
           if [[ "${{ matrix.variant }}" == "server" ]]; then
             docker run --rm -v "$PWD:/src" -w /src \
               -e GITHUB_REF_NAME -e CARGO_BUILD_JOBS \
@@ -181,7 +184,6 @@ jobs:
           else
             cargo build --release --no-default-features --features "${{ matrix.features }}"
           fi
-          mkdir -p dist
           archive_suffix=""
           if [[ -n "${{ matrix.distribution }}" ]]; then
             archive_suffix="_${{ matrix.distribution }}"

@@ -329,8 +329,10 @@ Debian packages use revision 1 and a build-distribution suffix, without
 version-specific exceptions. For example, Debian 13 produces
 `ffplayout_2.8.1-1+deb13_amd64.deb`; Ubuntu 26.04 produces
 `ffplayout_2.8.1-1+ubuntu26.04_amd64.deb`. The suffix is part of both the
-filename and the internal package version. Local static-FFmpeg builds use
-the same naming scheme, without a separate static suffix. Server archives
+filename and the internal package version. Local static-FFmpeg packages add
+`.static`, for example `ffplayout_2.8.1-1+deb13.static_amd64.deb`, so they do
+not overwrite dynamic packages. Both variants retain the package name
+`ffplayout` and cannot be installed alongside each other. Server archives
 also carry a distribution suffix to prevent release artifact collisions.
 Static builds remain local and are not part of the release workflow. Dynamic packages require distribution FFmpeg
 libraries even if equivalent libraries were installed manually; the binary
