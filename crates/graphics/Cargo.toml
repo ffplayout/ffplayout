@@ -23,7 +23,7 @@ log = { version = "0.4", optional = true }
 anyhow = "1"
 image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
 cosmic-text = "0.19"
-rten-simd = "0.27"
+rten-simd = "0.28"
 ffmpeg-next = { version = "9", optional = true, default-features = false, features = ["format", "software-scaling"] }
 
 [build-dependencies]
