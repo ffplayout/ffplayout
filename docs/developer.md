@@ -299,6 +299,45 @@ cargo build --release -p ffplayout
 cargo deb --no-build -p ffplayout
 ```
 
+For checked packages, use `bash scripts/package-deb.sh dist dynamic` after
+building, or pass `static` when FFmpeg is linked statically. This uses
+`cargo-deb`'s `$auto` dependency discovery, checks the package version and
+architecture, and verifies FFmpeg dependencies against the selected linkage
+mode. Install `dpkg-dev` and `binutils` in the packaging environment. Package
+inside the same distribution used to build the binary so dependency versions
+come from the correct system libraries.
+
+Both Debian container builds use this helper. The shared builder installs
+FFmpeg filter/device development packages only when `FFMPEG_AVFILTER=1` or
+`FFMPEG_AVDEVICE=1`; `scripts/build.sh` derives those arguments from the Cargo
+features. Device development packages may bring filter libraries transitively.
+Desktop audio and VAAPI development packages also follow the build selection.
+Cargo default features are disabled so selecting a server build does not
+implicitly enable desktop output.
+
+The release workflow builds separate server packages inside Debian Trixie and
+Ubuntu 26.04 on native amd64 and arm64 runners. Each release package is installed
+in a fresh container of the same distribution and checked with
+`ffplayout --version`. Local Debian container builds use a fresh Trixie container.
+Repeat that check manually with:
+
+```bash
+bash scripts/test-deb-install.sh dist/ffplayout_2.8.1-1+deb13_amd64.deb podman
+```
+
+Debian packages use revision 1 and a build-distribution suffix, without
+version-specific exceptions. For example, Debian 13 produces
+`ffplayout_2.8.1-1+deb13_amd64.deb`; Ubuntu 26.04 produces
+`ffplayout_2.8.1-1+ubuntu26.04_amd64.deb`. The suffix is part of both the
+filename and the internal package version. Local static-FFmpeg builds use
+the same naming scheme, without a separate static suffix. Server archives
+also carry a distribution suffix to prevent release artifact collisions.
+Static builds remain local and are not part of the release workflow. Dynamic packages require distribution FFmpeg
+libraries even if equivalent libraries were installed manually; the binary
+archive remains available for such installations. A package with statically
+linked FFmpeg has no FFmpeg library dependencies. This does not make it fully
+static: dependencies such as glibc can remain.
+
 For RHEL-based systems, build the release binary first, then generate the RPM
 from `crates/app`:
 

@@ -2036,7 +2036,7 @@ dependencies = [
 
 [[package]]
 name = "ff-audio"
-version = "2.8.0"
+version = "2.8.1"
 dependencies = [
  "anyhow",
  "ebur128-stream",
@@ -2044,7 +2044,7 @@ dependencies = [
 
 [[package]]
 name = "ff-engine"
-version = "2.8.0"
+version = "2.8.1"
 dependencies = [
  "anyhow",
  "block2 0.6.2",
@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "ff-graphics"
-version = "2.8.0"
+version = "2.8.1"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -2123,7 +2123,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "2.8.0"
+version = "2.8.1"
 dependencies = [
  "anyhow",
  "argon2",
@@ -4431,9 +4431,9 @@ dependencies = [
 
 [[package]]
 name = "notify-types"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a437a9308232ce794b1e7fdf540d38ea37efc3c73492640c13b4c8568b8f108"
+checksum = "8c491a384baf9fec20df565cdb8138a12809d4c7439763b566eb8114c5d59979"
 dependencies = [
  "bitflags 2.13.2",
 ]

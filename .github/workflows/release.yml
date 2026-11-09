@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   build:
-    name: ${{ matrix.platform }}-${{ matrix.variant }}
+    name: ${{ matrix.platform }}-${{ matrix.variant }}${{ matrix.distribution && format('-{0}', matrix.distribution) || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -20,6 +20,17 @@ jobs:
             features: embed_frontend
             deb_arch: amd64
             rpm_arch: x86_64
+            distribution: deb13
+            build_image: rust:slim-trixie
+            runtime_image: debian:trixie
+          - os: ubuntu-26.04
+            platform: x86_64-unknown-linux-gnu
+            variant: server
+            features: embed_frontend
+            deb_arch: amd64
+            distribution: ubuntu26.04
+            build_image: ubuntu:26.04
+            runtime_image: ubuntu:26.04
           - os: ubuntu-26.04
             platform: x86_64-unknown-linux-gnu
             variant: desktop
@@ -30,6 +41,17 @@ jobs:
             features: embed_frontend
             deb_arch: arm64
             rpm_arch: aarch64
+            distribution: deb13
+            build_image: rust:slim-trixie
+            runtime_image: debian:trixie
+          - os: ubuntu-26.04-arm
+            platform: aarch64-unknown-linux-gnu
+            variant: server
+            features: embed_frontend
+            deb_arch: arm64
+            distribution: ubuntu26.04
+            build_image: ubuntu:26.04
+            runtime_image: ubuntu:26.04
           - os: ubuntu-26.04-arm
             platform: aarch64-unknown-linux-gnu
             variant: desktop
@@ -146,36 +168,30 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           ./scripts/man_create.sh
-          cargo build --release --no-default-features --features "${{ matrix.features }}"
+          if [[ "${{ matrix.variant }}" == "server" ]]; then
+            docker run --rm -v "$PWD:/src" -w /src \
+              -e GITHUB_REF_NAME -e CARGO_BUILD_JOBS \
+              -e RPM_ARCH="${{ matrix.rpm_arch }}" \
+              "${{ matrix.build_image }}" bash scripts/release-linux.sh
+            source scripts/lib/deb-package.sh
+            package_version=$(deb_package_version "$GITHUB_REF_NAME" "${{ matrix.distribution }}")
+            bash scripts/test-deb-install.sh \
+              "dist/ffplayout_${package_version}_${{ matrix.deb_arch }}.deb" \
+              docker "${{ matrix.runtime_image }}"
+          else
+            cargo build --release --no-default-features --features "${{ matrix.features }}"
+          fi
           mkdir -p dist
+          archive_suffix=""
+          if [[ -n "${{ matrix.distribution }}" ]]; then
+            archive_suffix="_${{ matrix.distribution }}"
+          fi
           tar --transform 's#^target/release/##' \
-            -czf "dist/ffplayout-${{ github.ref_name }}_${{ matrix.variant }}_${{ matrix.platform }}.tar.gz" \
+            -czf "dist/ffplayout-${{ github.ref_name }}_${{ matrix.variant }}_${{ matrix.platform }}${archive_suffix}.tar.gz" \
             --exclude='*.db' \
             --exclude='*.db-shm' \
             --exclude='*.db-wal' \
             assets docker docs migrations LICENSE README.md target/release/ffplayout
-          if [[ "${{ matrix.variant }}" == "server" ]]; then
-            cargo install cargo-deb --locked
-            cargo install cargo-generate-rpm --locked
-            package_version="${GITHUB_REF_NAME#v}"
-            package_version="$(printf '%s' "$package_version" | sed 's/-/~/g')"
-            cargo_deb_args=(
-              --no-build
-              -p ffplayout
-              --manifest-path crates/app/Cargo.toml
-              --deb-version "${package_version}-1"
-              -o "dist/ffplayout_${{ github.ref_name }}-1_${{ matrix.deb_arch }}.deb"
-            )
-            if [[ "${{ matrix.deb_arch }}" == "arm64" ]]; then
-              cargo_deb_args+=(--variant arm64)
-            fi
-            cargo deb "${cargo_deb_args[@]}"
-            cargo generate-rpm \
-              -p crates/app \
-              --set-metadata "version = \"${package_version}\"" \
-              --set-metadata "release = \"1\"" \
-              -o "dist/ffplayout-${{ github.ref_name }}-1.${{ matrix.rpm_arch }}.rpm"
-          fi
 
       - name: Build on macOS
         if: runner.os == 'macOS'

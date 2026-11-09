@@ -179,15 +179,32 @@ if [[ -z $version ]]; then
     exit 1
 fi
 
+source scripts/lib/deb-package.sh
+# Both Debian builder images use Trixie, independently of the host OS.
+deb_version=$(deb_package_version "$version" deb13)
+
 echo "Compile ffplayout \"$version\""
 echo ""
 
+ffmpeg_component_args=()
+
+if [[ ",$CARGO_FEATURES," == *,ffmpeg-device,* ]]; then
+    ffmpeg_component_args+=(--build-arg FFMPEG_AVDEVICE=1)
+fi
+
+if [[ ",$CARGO_FEATURES," == *,ffmpeg-filter,* ]]; then
+    ffmpeg_component_args+=(--build-arg FFMPEG_AVFILTER=1)
+fi
+
 if [[ $target == "debian-shared" ]]; then
-    rm -f "ffplayout_${version}-1_amd64.deb"
+    rm -f "ffplayout_${deb_version}_amd64.deb"
     rm -f "ffplayout-v${version}_debian.tar.gz"
 
     build_step "Prepare Debian shared builder image (cache check/build)" \
-        "$container_cli" build --platform linux/amd64 -t rust-debian -f ./docker/shared.Dockerfile .
+        "$container_cli" build --platform linux/amd64 --build-arg CARGO_FEATURES="$CARGO_FEATURES" \
+        --build-arg FFMPEG_VAAPI="${FFMPEG_VAAPI:-0}" \
+        ${ffmpeg_component_args[@]+"${ffmpeg_component_args[@]}"} \
+        -t rust-debian -f ./docker/shared.Dockerfile .
     shared_docker_args=(-v "$(pwd)":/src:z)
     container_run_env rust-debian "${shared_docker_args[@]}"
 
@@ -203,21 +220,14 @@ elif [[ $target == "debian-static" || $target == "alpine-static" ]]; then
         static_description="Alpine musl static"
         rm -f "ffplayout-v${version}_linux-musl-x86_64.tar.gz"
     else
-        rm -f "ffplayout_${version}-1_amd64.deb"
-        rm -f "./target/$target/ffplayout_${version}-1_amd64.deb"
+        rm -f "ffplayout_${deb_version}_amd64.deb"
+        rm -f "./target/$target/ffplayout_${deb_version}_amd64.deb"
         rm -f ./target/release/ffplayout
     fi
     rm -f "./target/$target/ffplayout"
     mkdir -p "./target/$target"
 
     static_cargo_features=$CARGO_FEATURES
-    ffmpeg_component_args=()
-    if [[ ",$static_cargo_features," == *,ffmpeg-device,* ]]; then
-        ffmpeg_component_args+=(--build-arg FFMPEG_AVDEVICE=1)
-    fi
-    if [[ ",$static_cargo_features," == *,ffmpeg-filter,* ]]; then
-        ffmpeg_component_args+=(--build-arg FFMPEG_AVFILTER=1)
-    fi
 
     build_step "Prepare $static_description builder image (cache check/build)" "$container_cli" build \
         --platform linux/amd64 \
@@ -238,6 +248,11 @@ elif [[ $target == "debian-static" || $target == "alpine-static" ]]; then
             --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' \
             assets docker docs migrations LICENSE README.md -C ./target/alpine-static ffplayout
     else
-        mv "./target/debian-static/ffplayout_${version}-1_amd64.deb" .
+        mv "./target/debian-static/ffplayout_${deb_version}_amd64.deb" .
     fi
+fi
+
+if [[ $target == debian-shared || $target == debian-static ]]; then
+    build_step "Test Debian package installation" bash scripts/test-deb-install.sh \
+        "ffplayout_${deb_version}_amd64.deb" "$container_cli"
 fi
