@@ -8,14 +8,20 @@ arguments, ffplayout starts the API and frontend on
 ffplayout --listen 127.0.0.1:8787
 ```
 
-All JSON endpoints return an error object with a `detail` field on failure.
+Error bodies are not uniform: authentication handlers commonly return an object
+such as `{ "detail": "Incorrect credentials!" }`, while application errors
+usually return a JSON string such as `"Access denied"`. Framework rejections
+(for example, an invalid JSON body) can use a different response format. Check
+the HTTP status first and do not assume every error has a `detail` field.
+
 Unless noted otherwise, `/api` endpoints require:
 
 ```http
 Authorization: Bearer <ACCESS_TOKEN>
 ```
 
-`{id}` always means a channel ID. Channel-scoped requests are available only
+`{id}` means a channel ID unless the endpoint identifies another resource
+(for example, `/api/user/{id}`). Channel-scoped requests are available only
 to users assigned to that channel, unless they are a global admin.
 
 ## Authentication and setup
@@ -29,7 +35,7 @@ These endpoints do not use a bearer token.
 | `POST` | `/auth/refresh` | `{ "refresh": "..." }`. Rotates it and returns a new `{ "access": "...", "refresh": "..." }` pair. |
 | `POST` | `/auth/logout` | `{ "refresh": "..." }`. Revokes the complete refresh-token family for the session. |
 | `GET` | `/api/setup` | Reports whether first-time setup is required. |
-| `POST` | `/api/setup` | Completes first-time setup. It works only while no user exists; directory paths must be absolute and cannot be protected system paths. |
+| `POST` | `/api/setup` | Completes first-time setup. It works only while no user exists; directory paths must be absolute, writable by the service process, and cannot be protected system paths. |
 
 Access tokens are valid for 45 minutes and refresh tokens for 14 days. Refresh
 tokens are single-use: each successful refresh replaces the submitted token.
@@ -58,8 +64,11 @@ curl -X POST http://127.0.0.1:8787/api/setup \
 ```
 
 The JWT `secret` is neither exposed nor accepted by the API.
-Directory paths are accepted only by this first-time setup endpoint. Change
-them later locally with `ffplayout -i`.
+Global setup directory paths cannot be changed through `/api/global`; change
+them later locally with `ffplayout -i`. Channel-specific `public`, `playlists`
+and `storage` paths can be changed by a global admin through
+`PATCH /api/channel/{id}`. Setup, channel and enabled recording destinations
+are checked for write access before the corresponding settings are saved.
 
 ## Roles
 
@@ -90,10 +99,21 @@ listed authenticated endpoints also enforce the channel assignment where an
 | Method | Endpoint | Access | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/playout/config/{id}` | `GA, CA, U` | Read the complete `PlayoutConfig`. |
-| `PUT` | `/api/playout/config/{id}` | `GA, CA` | Replace the complete `PlayoutConfig`. Use the response from `GET` as the request shape. The response contains `requires_restart`. Mail, notification, volume, program-logo and graphics-cache changes are runtime-safe; supported ingest policy/name updates and compatible output updates can also apply without restarting. Other changes may require a restart. Scoped `?scope=logo` and `?scope=graphics_cache` requests retain unrelated fields; see [graphics control](graphics_control.md). |
+| `PUT` | `/api/playout/config/{id}` | `GA, CA` | Replace the complete `PlayoutConfig`. Use the response from `GET` as the request shape. The response contains `requires_restart`. Mail, notification, volume, program-logo and graphics-cache changes are runtime-safe; supported ingest policy/name updates and compatible output updates can also apply without restarting. Other changes may require a restart. Scoped `?scope=ingest`, `?scope=logo` and `?scope=graphics_cache` requests retain unrelated fields; see below. |
 | `GET` | `/api/playout/outputs/{id}` | `GA, CA, U` | List configured outputs for the channel. |
+| `POST` | `/api/playout/outputs/{id}/{output}/retry` | `GA, CA` | Request reconnection of a failed output destination. No body; returns `true` when accepted. Returns HTTP 409 when the channel is not running or no failed destination can be retried. Acceptance does not mean reconnection has completed. |
 | `GET` | `/api/playout/codecs/{id}` | `GA, CA, U` | List supported codecs for HLS, RTMP, SRT, UDP, and custom outputs, including compatible hardware encoders and their curated encoder-setting schema. |
 | `GET` | `/api/text/fonts` | `GA, CA, U` | List available font families. |
+
+Scoped configuration updates use the same `PlayoutConfig` request shape as a
+full update:
+
+- `?scope=ingest` changes only `ingest` and `logging.ingest_level`.
+- `?scope=logo` changes only the program-logo fields in `processing`.
+- `?scope=graphics_cache` changes only `processing.graphics_cache_mib`.
+
+See [live ingest](live_ingest.md) and [graphics control](graphics_control.md)
+for runtime behavior and the individual graphics settings.
 
 `PUT /api/playout/config/{id}` validates output mode, codecs, HLS subtitle
 settings, text preset references, and volume before persisting the change.
@@ -138,6 +158,7 @@ Uncompressed video codecs such as `rawvideo` and lossless audio codecs such as
 | `POST` | `/api/control/{id}/text` | `GA, CA, U` | A `TextPreset` object. Send an empty `text` with `use_filename: false` to clear the overlay. |
 | `POST` | `/api/control/{id}/playout` | `GA, CA, U` | `{ "control": "back" \| "next" \| "reset" }` |
 | `PUT` | `/api/control/{id}/audio` | `GA, CA` | `{ "volume": 0.0 }`, from `0.0` through `1.5`. |
+| `PUT` | `/api/control/{id}/ingest` | `GA, CA, U` | `{ "listener_id": 1, "session": "<SESSION>", "active": true }`. Select a ready live input; use `active: false` to end the selection. Returns `"Success"` when accepted. |
 | `GET` | `/api/control/{id}/media/current` | `GA, CA, U` | Read the current media and playout state. |
 | `POST` | `/api/control/{id}/process` | `GA, CA, U` | `{ "command": "status" \| "start" \| "stop" \| "restart" }` |
 
@@ -148,12 +169,35 @@ Process stop and restart remain available. The `ingest` field in current-media
 responses and playout events indicates an actual live takeover, not merely a
 listener waiting for a connection.
 
+Manual ingest selection requires automatic takeover to be disabled for that
+listener and the current listener's `session` token from `ingest_inputs` in
+the playout SSE events. Automatic-mode listeners, stale sessions, unavailable
+inputs and attempts while the channel is stopped return HTTP 409. Ending a manual
+selection does not disable or disconnect the listener. See
+[manual live takeover](live_ingest.md#manual-live-takeover).
+
 ```bash
 curl -X POST http://127.0.0.1:8787/api/control/1/process \
   -H 'Authorization: Bearer <ACCESS_TOKEN>' \
   -H 'Content-Type: application/json' \
   --data '{"command":"restart"}'
 ```
+
+## Graphics control (experimental)
+
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/graphics/{id}` | `GA, CA, U` | Read `revision`, channel `running` state, the program `canvas`, and manual layer settings and status. |
+| `POST` | `/api/graphics/{id}` | `GA, CA, U` | Send a graphics action with the latest `revision`. Returns `{ "revision": <NEW_REVISION> }`. |
+
+Actions are `save`, `take`, `update`, `start`, `stop`, `visibility`, `clear` and
+`clear_all`. Commands with an outdated revision return HTTP 409. For example,
+`{ "action": "stop", "revision": 4, "layer": 1 }` stops layer 1 using revision 4.
+Read the current revision before sending a command; the example revision is
+not a fixed value. Save/Take requests include the layer's `name` and `settings`.
+See [graphics control HTTP API](graphics_control.md#http-api) for action
+payloads, persistence, preparation limits and layer-state semantics, and
+[playlist graphics](playlist_graphics.md) for clip-local graphics actions.
 
 ## Playlists and programme data
 
@@ -182,6 +226,8 @@ rejected.
 | Method | Endpoint | Request body or query |
 | --- | --- | --- |
 | `POST` | `/api/file/{id}/browse` | `{ "source": "", "folders_only": false }` |
+| `POST` | `/api/file/{id}/browse-selection` | `{ "source": "folder/clip.mp4", "initial": true }`. List paths for a file/folder picker, without the media-extension filter. |
+| `POST` | `/api/file/{id}/media-info` | `{ "source": "folder/clip.mp4" }`. Inspect a selected local file; returns duration and optional video dimensions. |
 | `POST` | `/api/file/{id}/create-folder` | `{ "source": "folder" }` |
 | `POST` | `/api/file/{id}/rename` | Rename or move a file/folder: `{ "source": "old", "target": "new" }` |
 | `POST` | `/api/file/{id}/remove` | `{ "source": "file.mp4", "recursive": false }` |
@@ -189,6 +235,21 @@ rejected.
 | `PUT` | `/api/file/{id}/upload?path=folder` | Chunked `multipart/form-data` upload |
 | `PUT` | `/api/file/{id}/import?file=list.m3u&date=YYYY-MM-DD` | `multipart/form-data` with a file field |
 | `POST` | `/api/file/{id}/access-token` | `{ "filename": "folder/file.mp4" }` |
+
+The selection endpoints accept paths relative to the storage root or absolute
+paths inside that root. Paths outside the root and parent traversal are
+rejected. `browse-selection` returns `path`, `breadcrumbs`, `folders`, `files`,
+`selected_path` and `fallback`. Entries contain `name` and an absolute `path`;
+files also have a `size` in bytes. Hidden entries are omitted. `source` defaults
+to an empty string (the storage root), and `initial` defaults to `false`.
+With `initial: true`, a file opens its parent directory and sets `selected_path`;
+a missing path falls back to its nearest existing directory inside the root
+and sets `fallback: true`. Subsequent navigation should use `initial: false`.
+
+`media-info` returns `{ "duration": 12.5, "source_duration": 12.5,
+"width": 1920, "height": 1080 }`. Durations are in seconds. If a positive
+source duration is unavailable, `duration` defaults to 10 seconds and
+`source_duration` is `null`; unavailable dimensions are also `null`.
 
 The upload status response is `{ "received_ranges": [[start, end], ...] }`.
 Each `PUT` request contains `fileName`, `start`, `end`, `size`, `batch_id`, and
@@ -233,7 +294,24 @@ browser `EventSource` URL.
 3. Connect to `GET /data/event/{id}?endpoint=playout&uuid=<UUID>` or
    `GET /data/event/{id}?endpoint=system&uuid=<UUID>`.
 
+Add `audio_meter=true` to a playout event URL to request audio-meter updates.
+
 The UUID expires after 30 minutes and is bound to the request IP address.
+
+## MoQ preview (experimental)
+
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/moq/capabilities` | Public | Reports `{ "available": true }` for MoQ integration. This does not guarantee that a channel output or relay is running. |
+| `GET` | `/api/moq/config?channel={id}` | `GA, CA, U` | Obtain private playback configuration and a playback ticket for an enabled MoQ output. Enforces channel access. |
+| `GET` | `/moq/config?channel={id}` | Public, when enabled for the channel | Obtain public playback configuration. Returns HTTP 404 when public access is disabled. |
+| `GET` | `/moq/relay?channel={id}&ticket=<TICKET>` | Playback ticket, or enabled public access | WebSocket upgrade to the MoQ relay. Public playback can omit `ticket`. |
+
+Bootstrap responses contain `broadcast`, `relay_url`, `relay_port`, `delay_ms`
+and `ticket` (`null` for public playback). An unavailable relay returns HTTP
+503. Private bootstrap responses must not be cached; obtain a fresh ticket
+when reconnecting. See [MoQ output and browser preview](moq.md) for output
+configuration, relay transports and access control.
 
 ## Public HLS files
 
