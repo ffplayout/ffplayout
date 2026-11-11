@@ -110,11 +110,26 @@ pub(crate) fn open_network_output(
     }
 }
 
+/// UDP and RTSP have their own receive timeout; `rw_timeout` alone does not
+/// cover their input wait paths. Do not set this option on other protocols:
+/// for RTMP, for example, `timeout` also enables listener mode.
+pub(crate) fn network_input_options(path: &str) -> Dictionary<'static> {
+    let mut options = network_io_options();
+
+    if path.split_once("://").is_some_and(|(scheme, _)| {
+        scheme.eq_ignore_ascii_case("udp") || scheme.eq_ignore_ascii_case("rtsp")
+    }) {
+        options.set("timeout", NETWORK_IO_TIMEOUT_US);
+    }
+
+    options
+}
+
 /// Opens a media input, applying a read timeout for network sources so a
 /// stalled remote server cannot hang the playout thread forever.
 pub(crate) fn open_media_input(path: &str) -> Result<format::context::Input, FfmpegError> {
     if is_network_url(path) {
-        format::input_with_dictionary(&path, network_io_options())
+        format::input_with_dictionary(&path, network_input_options(path))
     } else {
         format::input(&path)
     }
@@ -122,9 +137,129 @@ pub(crate) fn open_media_input(path: &str) -> Result<format::context::Input, Ffm
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{
+        collections::BTreeMap,
+        env,
+        net::{TcpListener, UdpSocket},
+        process::Command,
+        sync::mpsc,
+        thread,
+        time::{Duration, Instant},
+    };
 
-    use super::{is_live_input, is_network_url, network_output_options};
+    use super::{
+        is_live_input, is_network_url, network_input_options, network_output_options,
+        open_media_input,
+    };
+
+    #[test]
+    fn input_receive_timeout_is_only_set_for_udp_and_rtsp() {
+        for path in [
+            "udp://127.0.0.1:5000",
+            "UDP://239.1.1.2:5000",
+            "rtsp://localhost/live",
+            "RTSP://localhost/live",
+        ] {
+            let options = network_input_options(path);
+
+            assert_eq!(options.get("timeout"), Some(super::NETWORK_IO_TIMEOUT_US));
+            assert_eq!(
+                options.get("rw_timeout"),
+                Some(super::NETWORK_IO_TIMEOUT_US)
+            );
+        }
+
+        for path in [
+            "rtmp://localhost/live",
+            "srt://localhost:5000",
+            "http://localhost/video.ts",
+            "https://localhost/video.ts",
+        ] {
+            let options = network_input_options(path);
+
+            assert_eq!(options.get("timeout"), None);
+            assert_eq!(
+                options.get("rw_timeout"),
+                Some(super::NETWORK_IO_TIMEOUT_US)
+            );
+        }
+    }
+
+    // Run blocking FFmpeg calls in a child: a timeout regression must fail the
+    // test rather than leave the whole CI process waiting on a silent source.
+    fn check_silent_input_timeout(protocol: &str, test_name: &str) {
+        if env::var("FFPLAYOUT_TEST_SILENT_INPUT").as_deref() != Ok(protocol) {
+            let mut child = Command::new(env::current_exe().unwrap())
+                .args(["--exact", test_name, "--nocapture"])
+                .env("FFPLAYOUT_TEST_SILENT_INPUT", protocol)
+                .spawn()
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(25);
+
+            loop {
+                if let Some(status) = child.try_wait().unwrap() {
+                    assert!(status.success(), "silent {protocol} input test failed");
+                    return;
+                }
+
+                if Instant::now() >= deadline {
+                    child.kill().unwrap();
+                    child.wait().unwrap();
+                    panic!("silent {protocol} input did not time out");
+                }
+
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+
+        let (done, receiver) = mpsc::channel::<()>();
+        let (url, server) = if protocol == "udp" {
+            let reservation = UdpSocket::bind("127.0.0.1:0").unwrap();
+            let address = reservation.local_addr().unwrap();
+
+            drop(reservation);
+            (format!("udp://{address}"), None)
+        } else {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = thread::spawn(move || {
+                let (_connection, _) = listener.accept().unwrap();
+
+                let _ = receiver.recv_timeout(Duration::from_secs(20));
+            });
+
+            (format!("rtsp://{address}/silent"), Some(server))
+        };
+        let started = Instant::now();
+        let result = open_media_input(&url);
+        let elapsed = started.elapsed();
+
+        drop(done);
+
+        if let Some(server) = server {
+            server.join().unwrap();
+        }
+
+        assert!(result.is_err(), "silent input unexpectedly opened");
+        assert!(
+            elapsed >= Duration::from_secs(8),
+            "input failed before the receive timeout: {elapsed:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(20),
+            "receive timeout took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn silent_udp_input_times_out() {
+        check_silent_input_timeout("udp", "utils::helper::tests::silent_udp_input_times_out");
+    }
+
+    #[test]
+    fn silent_rtsp_input_times_out() {
+        check_silent_input_timeout("rtsp", "utils::helper::tests::silent_rtsp_input_times_out");
+    }
 
     #[test]
     fn udp_open_consumes_packet_size_and_rejects_unused_options() {

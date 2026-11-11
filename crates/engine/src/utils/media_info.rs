@@ -8,7 +8,7 @@ use ffmpeg_next::{
 };
 use log::{error, info};
 
-use crate::utils::helper::{is_network_url, network_io_options, open_media_input};
+use crate::utils::helper::{is_network_url, network_input_options, open_media_input};
 
 const SILENCE_SAMPLE_RATE: u32 = 48_000;
 const SILENCE_CHANNEL_LAYOUT: ChannelLayout = ChannelLayout::STEREO;
@@ -173,7 +173,7 @@ pub fn detect_audio_silence_with_cancel(
         format::input_with_interrupt_and_dictionary(
             &path,
             move || interrupt(),
-            network_io_options(),
+            network_input_options(path),
         )?
     } else {
         format::input_with_interrupt(&path, move || interrupt())?
