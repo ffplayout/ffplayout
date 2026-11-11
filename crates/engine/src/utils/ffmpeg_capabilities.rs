@@ -302,6 +302,38 @@ pub fn validate_muxer_options(
     muxer_name: &str,
     options: &BTreeMap<String, String>,
 ) -> Result<(), String> {
+    if muxer_name == "hls"
+        && let Some(packager) = options.get("ffplayout_packager")
+    {
+        if !matches!(packager.as_str(), "ffmpeg" | "native") {
+            return Err(format!("unknown HLS packager {packager:?}"));
+        }
+
+        let mut remaining = options.clone();
+
+        remaining.remove("ffplayout_packager");
+
+        if packager == "native" {
+            for (key, value) in &remaining {
+                let supported = match key.as_str() {
+                    "hls_flags" => value.split('+').all(|flag| flag == "program_date_time"),
+                    "hls_delete_threshold" => value.parse::<i32>().is_ok_and(|value| value >= 1),
+                    _ => false,
+                };
+
+                if !supported {
+                    return Err(format!(
+                        "native HLS packager does not support {key}={value}"
+                    ));
+                }
+            }
+
+            return Ok(());
+        }
+
+        return validate_muxer_options(muxer_name, &remaining);
+    }
+
     if options.is_empty() {
         return Ok(());
     }
@@ -470,6 +502,31 @@ mod tests {
             "not-a-number".to_string(),
         )]);
         assert!(validate_muxer_options("hls", &invalid_value).is_err());
+    }
+
+    #[test]
+    fn validates_packager_selection_without_forwarding_it_to_ffmpeg() {
+        let mut options = BTreeMap::from([("ffplayout_packager".to_owned(), "native".to_owned())]);
+
+        assert!(validate_muxer_options("hls", &options).is_ok());
+        options.insert("hls_flags".into(), "program_date_time".into());
+        assert!(validate_muxer_options("hls", &options).is_ok());
+        options.insert("hls_delete_threshold".into(), "3".into());
+        assert!(validate_muxer_options("hls", &options).is_ok());
+
+        for invalid in ["0", "-1", "2147483648", "invalid"] {
+            options.insert("hls_delete_threshold".into(), invalid.into());
+            assert!(validate_muxer_options("hls", &options).is_err());
+        }
+
+        options.remove("hls_delete_threshold");
+        options.insert("hls_init_time".into(), "1".into());
+        assert!(validate_muxer_options("hls", &options).is_err());
+        options.insert("ffplayout_packager".into(), "ffmpeg".into());
+        assert!(validate_muxer_options("hls", &options).is_ok());
+        options.insert("ffplayout_packager".into(), "unknown".into());
+        assert!(validate_muxer_options("hls", &options).is_err());
+        assert!(validate_muxer_options("mpegts", &options).is_err());
     }
 
     #[test]

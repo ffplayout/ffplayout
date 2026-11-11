@@ -110,6 +110,7 @@ pub(super) fn remove_master_playlist(path: &str) -> Result<()> {
 pub(super) struct HlsSession {
     _locks: Vec<File>,
     media_playlists: Vec<String>,
+    owned_playlists: Vec<String>,
     master_playlist: Option<String>,
 }
 
@@ -123,16 +124,19 @@ impl HlsSession {
 
         // FFmpeg attaches the single subtitle track to the first rendition only.
         // Reserve its path even before the first master has been written.
-        if subtitles && let Some(playlist) = media_playlists.first() {
+        if let Some(playlist) = media_playlists.first() {
             let path = Path::new(playlist);
             let stem = path.file_stem().context("HLS playlist has no file stem")?;
+            let subtitle_path = path.with_file_name(format!("{}_vtt.m3u8", stem.to_string_lossy()));
 
-            paths.push(
-                path.with_file_name(format!("{}_vtt.m3u8", stem.to_string_lossy()))
-                    .to_string_lossy()
-                    .into_owned(),
-            );
+            if subtitles || subtitle_path.exists() {
+                paths.push(subtitle_path.to_string_lossy().into_owned());
+            }
         }
+
+        paths.sort();
+        paths.dedup();
+        let owned_playlists = paths.clone();
 
         let mut lock_paths = paths
             .into_iter()
@@ -176,11 +180,61 @@ impl HlsSession {
         Ok(Self {
             _locks: locks,
             media_playlists: media_playlists.to_vec(),
+            owned_playlists,
             master_playlist: master_playlist.map(str::to_owned),
         })
     }
 
+    fn reset_for_packager_change(&self, native: bool) -> Result<bool> {
+        let playlists =
+            cleanup_playlist_paths(&self.media_playlists, self.master_playlist.as_deref())?;
+        let mut changed = false;
+
+        for path in &playlists {
+            let content = match fs::read_to_string(path) {
+                Ok(content) => content,
+                Err(error) if error.kind() == ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Err(error).with_context(|| format!("reading HLS playlist {path}"));
+                }
+            };
+
+            if content.lines().any(|line| line.starts_with("#EXTINF:")) {
+                let was_native = content
+                    .lines()
+                    .any(|line| line == "# ffplayout-packager: native");
+                changed |= was_native != native;
+            }
+        }
+
+        if changed {
+            // Ownership locks are already held for current and previous master
+            // children. Remove only these resources, never the whole directory.
+            prune_unreferenced_segments(&self.owned_playlists)?;
+            remove_stale_playlists(&self.owned_playlists, self.master_playlist.as_deref())?;
+        }
+
+        Ok(changed)
+    }
+
+    pub(super) fn prepare_native_resume(&self) -> Result<Option<u64>> {
+        if self.reset_for_packager_change(true)? {
+            return Ok(None);
+        }
+
+        prepare_resume_at(
+            &self.media_playlists,
+            self.master_playlist.as_deref(),
+            SystemTime::now(),
+            false,
+        )
+    }
+
     pub(super) fn prepare_resume_start_number(&self) -> Result<Option<u64>> {
+        if self.reset_for_packager_change(false)? {
+            return Ok(None);
+        }
+
         prepare_resume_start_number_at(
             &self.media_playlists,
             self.master_playlist.as_deref(),
@@ -194,8 +248,20 @@ fn prepare_resume_start_number_at(
     master_playlist: Option<&str>,
     now: SystemTime,
 ) -> Result<Option<u64>> {
+    prepare_resume_at(media_playlists, master_playlist, now, true)
+}
+
+fn prepare_resume_at(
+    media_playlists: &[String],
+    master_playlist: Option<&str>,
+    now: SystemTime,
+    prune: bool,
+) -> Result<Option<u64>> {
     let cleanup_playlists = cleanup_playlist_paths(media_playlists, master_playlist)?;
-    prune_unreferenced_segments(&cleanup_playlists)?;
+
+    if prune {
+        prune_unreferenced_segments(&cleanup_playlists)?;
+    }
 
     let mut latest = None;
 
@@ -396,6 +462,12 @@ fn segment_families(
         .collect::<HashSet<_>>();
 
     for playlist in media_playlists {
+        // Populated playlists establish ownership through their actual resources,
+        // including video renditions whose names happen to end in `_vtt`.
+        if !playlist_segment_entries(playlist)?.is_empty() {
+            continue;
+        }
+
         let stem = Path::new(playlist)
             .file_stem()
             .and_then(|stem| stem.to_str())
@@ -746,5 +818,59 @@ mod tests {
             "v:0,a:0,s:0,sgroup:subs,name:high,language:de-DE,default:NO v:1,a:1,name:low"
         };
         assert_eq!(map, expected);
+    }
+}
+
+#[cfg(test)]
+mod packager_switch_tests {
+    use super::*;
+
+    #[test]
+    fn backend_switch_removes_inactive_subtitles_and_retained_media() {
+        let directory =
+            std::env::temp_dir().join(format!("hls-backend-inactive-{}", std::process::id()));
+
+        fs::remove_dir_all(&directory).ok();
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join("stream.m3u8"),
+            "#EXTM3U\n# ffplayout-packager: native\n#EXTINF:1.0,\nstream_1.ts\n",
+        )
+        .unwrap();
+        fs::write(
+            directory.join("stream_vtt.m3u8"),
+            "#EXTM3U\n# ffplayout-packager: native\n#EXTINF:1.0,\nstream0.vtt\n",
+        )
+        .unwrap();
+
+        for name in [
+            "stream_0.ts",
+            "stream_1.ts",
+            "stream0.vtt",
+            "stream9.vtt",
+            "foreign_0.ts",
+        ] {
+            fs::write(directory.join(name), "media").unwrap();
+        }
+
+        let path = directory.join("stream.m3u8").to_string_lossy().into_owned();
+        let session = HlsSession::acquire(&[path], None, false).unwrap();
+
+        assert!(session.prepare_resume_start_number().unwrap().is_none());
+
+        for name in [
+            "stream.m3u8",
+            "stream_vtt.m3u8",
+            "stream_0.ts",
+            "stream_1.ts",
+            "stream0.vtt",
+            "stream9.vtt",
+        ] {
+            assert!(!directory.join(name).exists(), "{name} was not cleared");
+        }
+
+        assert!(directory.join("foreign_0.ts").exists());
+        drop(session);
+        fs::remove_dir_all(directory).unwrap();
     }
 }

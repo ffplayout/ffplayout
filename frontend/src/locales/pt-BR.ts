@@ -561,6 +561,10 @@ export default {
             'As playlists e segmentos HLS são gravados em live/<name>.m3u8. No momento, é permitido apenas um output HLS por canal.',
         streamUrl: 'URL de destino do stream',
         hlsSettings: 'Configurações HLS',
+        hlsPackager: 'Empacotador HLS',
+        hlsPackagerNative: 'Nativo (experimental)',
+        hlsPackagerHelp:
+            'MPEG-TS local com H.264/AAC. Suporta variantes e WebVTT. Alterar o empacotador reinicia esta saída.',
         hlsPlaylistName: 'Nome da playlist',
         outputFormat: 'Formato de saída',
         hlsSegmentDuration: 'Duração do segmento (segundos)',
@@ -583,7 +587,7 @@ export default {
         protocolOptionValue: 'Valor',
         muxerOptions: 'Opções do multiplexador',
         muxerOptionsHelp:
-            'Opções adicionais do multiplexador FFmpeg para esta saída. Para HLS, defina hls_flags como program_date_time para emitir EXT-X-PROGRAM-DATE-TIME. As opções exigidas pelo ffplayout permanecem ativas.',
+            'Opções adicionais do multiplexador FFmpeg para esta saída. Para HLS, defina hls_flags como program_date_time para emitir EXT-X-PROGRAM-DATE-TIME. As opções exigidas pelo ffplayout permanecem ativas. Nos dois empacotadores HLS, hls_delete_threshold define quantos segmentos antigos são mantidos fora da playlist (padrão: 1).',
         addMuxerOption: 'Adicionar opção do multiplexador',
         muxerOptionName: 'Nome da opção',
         muxerOptionValue: 'Valor',

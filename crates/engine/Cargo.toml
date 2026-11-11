@@ -33,6 +33,7 @@ chrono = { version = "0.4", default-features = false, features = [
 ] }
 cpal = { version = "0.18", optional = true }
 ff-audio = { path = "../audio" }
+ff-hls = { path = "../hls" }
 ffmpeg-next = { version = "9", default-features = false, features = [
     "format",
     "software-resampling",

@@ -222,6 +222,26 @@ The integrated MoQ output provides a public player at `/moq/player?channel=1`
 when public access is explicitly enabled for that output (off by default).
 See [Experimental MoQ preview](moq.md) for configuration and transport.
 
+### Experimental native packager
+
+HLS settings offer **FFmpeg** (default) and **Native (experimental)**. The native
+backend supports local MPEG-TS with H.264/AAC, adaptive variants and WebVTT with
+`X-TIMESTAMP-MAP`. Selecting a different backend recreates only that output.
+The selection is stored with existing output options and survives restart.
+
+The engine supports A/B comparisons in separate directories using the same
+encoding source; integration tests cover this. Application configuration still
+allows one enabled HLS output per channel. Use the selector for sequential
+comparisons in the web interface. Never run two writers against the same playlists.
+
+The initial native backend supports segment durations of 1–60 seconds and
+playlist sizes of 1–10000. Unsupported codec/container options are rejected.
+It remains experimental pending player and long-running qualification. See
+[architecture and limitations](development/hls-packager.md).
+
+Switching between packagers clears this output’s HLS playlists and segments and
+starts fresh. Restarting with the same packager retains normal resume behavior.
+
 ## Multiple output instances
 
 The **Outputs** configuration tab presents up to eight output instances as

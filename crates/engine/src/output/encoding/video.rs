@@ -2,7 +2,8 @@ use std::{ffi::CString, ptr};
 
 use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{
-    self as ffmpeg, Packet, Rational, codec, frame, software::scaling, util::format::pixel::Pixel,
+    self as ffmpeg, Packet, Rational, Rescale, codec, frame, software::scaling,
+    util::format::pixel::Pixel,
 };
 
 use crate::{HlsVariant, OutputConfig, utils::config::video_codec_uses_bitrate};
@@ -14,6 +15,7 @@ pub(in crate::output) struct VideoOutputStream {
     scaled_frame: Option<frame::Video>,
     vaapi_upload: Option<VaapiUpload>,
     cpu_format: Pixel,
+    keyframe_interval: Option<i64>,
 }
 
 // SAFETY: all fields are exclusively owned. In addition to FFmpeg's Send
@@ -56,6 +58,21 @@ impl VideoOutputStream {
         } else {
             frame
         };
+
+        // Use the common program PTS, not a per-encoder frame counter: scene
+        // cuts and destination reconnects must not shift the rendition grid.
+        let forced_frame = if self
+            .keyframe_interval
+            .is_some_and(|interval| input.pts().is_some_and(|pts| pts.rem_euclid(interval) == 0))
+        {
+            let mut forced = crate::utils::ffmpeg::reference_video_frame(input)?;
+
+            forced.set_kind(ffmpeg::picture::Type::I);
+            Some(forced)
+        } else {
+            None
+        };
+        let input = forced_frame.as_ref().unwrap_or(input);
 
         if let Some(upload) = &mut self.vaapi_upload {
             self.encoder.send_frame(upload.upload(input)?)?;
@@ -309,6 +326,11 @@ pub(in crate::output) fn open_video_encoder(
         scaled_frame: None,
         vaapi_upload,
         cpu_format: cpu_input_format,
+        keyframe_interval: gop_size.filter(|_| closed_gop).map(|gop| {
+            i64::from(gop)
+                .rescale(Rational(1, cfg.fps as i32), cfg.video_time_base)
+                .max(1)
+        }),
     })
 }
 /// Encoders in this pipeline receive CPU-backed frames. QSV accepts NV12 and
@@ -555,6 +577,69 @@ pub(in crate::output) fn stream_gop_size(fps: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hls_renditions_keep_common_keyframes_across_different_scene_cuts() {
+        ffmpeg::init().unwrap();
+
+        for width in [160, 320] {
+            let mut config = OutputConfig::new(320, 180, 25, 48_000);
+            config
+                .video_options
+                .insert("preset".into(), "medium".into());
+            config.video_options.insert("tune".into(), "film".into());
+            let variant = HlsVariant {
+                name: format!("v{width}"),
+                width,
+                height: 90,
+                video_bitrate: 400_000,
+                audio_bitrate: 96_000,
+            };
+            let mut encoder =
+                open_video_encoder(0, &config, true, Some(&variant), (320, 180), Some(50), true)
+                    .unwrap();
+            let mut keys = Vec::new();
+
+            for index in 0..160_i64 {
+                let mut frame = frame::Video::new(Pixel::YUV420P, 320, 180);
+                frame.set_pts(Some(index));
+                frame.data_mut(0).fill(if index % (width as i64 / 8) < 10 {
+                    16
+                } else {
+                    235
+                });
+                frame.data_mut(1).fill(128);
+                frame.data_mut(2).fill(128);
+                encoder.submit(&frame).unwrap();
+                assert_eq!(frame.kind(), ffmpeg::picture::Type::None);
+                encoder
+                    .drain(|packet, _, _| {
+                        if packet.is_key() {
+                            keys.push(packet.pts().unwrap());
+                        }
+                        Ok(())
+                    })
+                    .unwrap();
+            }
+
+            encoder.encoder.send_eof().unwrap();
+            encoder
+                .drain(|packet, _, _| {
+                    if packet.is_key() {
+                        keys.push(packet.pts().unwrap());
+                    }
+                    Ok(())
+                })
+                .unwrap();
+
+            for required in [0, 50, 100, 150] {
+                assert!(
+                    keys.contains(&required),
+                    "missing shared keyframe {required}: {keys:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn encoder_accepts_target_size_composites_and_original_frames_during_logo_fades() {

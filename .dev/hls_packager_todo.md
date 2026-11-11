@@ -1,28 +1,52 @@
 # HLS packager backlog
 
 Proposed native orchestration of HLS segments, playlists, WebVTT and timed
-advertising events. This is an exploration, not an implementation commitment;
+advertising events. The initial opt-in implementation lives in `crates/hls`;
 see [Development Notes](README.md). Keep the existing FFmpeg HLS path available
 until a replacement passes compatibility and long-running tests.
 
+## Initial implementation status
+
+- [x] Add the FFmpeg-independent `ff-hls` crate and the engine's MPEG-TS adapter.
+- [x] Add per-output FFmpeg/native selection, defaulting to FFmpeg, using existing
+  persisted muxer options. A change recreates only that output.
+- [x] Prototype aligned H.264/AAC variants, WebVTT with X-TIMESTAMP-MAP, atomic
+  individual playlist publication and bounded packet storage.
+- [x] Test real encoders, resume, fresh starts on backend switches and sharing
+  existing encoders with the FFmpeg backend.
+- [x] Keep nominal cuts relative to session origin; test late/missing keyframes,
+  mismatched rendition boundaries, packet preservation and crossing captions.
+- [x] Repeat the 30-run FFmpeg/native comparison and run the 17 core tests on
+  Linux `/dev/shm`; complete short paced runs and a Safari native-HLS smoke test.
+  Full player qualification and a long real-time soak remain below.
+- [x] Protect short live windows with a three-target-duration minimum, preserve
+  TARGETDURATION across resume and reject incompatible increases without deleting
+  retained media. Allow `_vtt` rendition suffixes when subtitles are disabled.
+- [ ] Qualify production playback and long-running behavior before promotion.
+
+See [architecture decision](../docs/development/hls-packager.md). The remaining
+unchecked items below cover broader qualification and capabilities beyond the
+initial local MPEG-TS prototype.
+
 ## Scope and architecture
 
-- [ ] Write a short architecture decision before implementation: ffplayout owns
+- [x] Write a short architecture decision before implementation: ffplayout owns
   segment boundaries, timeline mapping, playlist publication and retention;
   FFmpeg initially retains MPEG-TS/fMP4 container muxing and existing encoding.
   A playlist serializer alone is not a complete live packager.
-- [ ] Separate timeline/segment state, container writing, manifest serialization,
-  subtitle segmentation and timed events behind small interfaces. Evaluate a
+- [ ] Finish separating subtitle segmentation and timed events into dedicated
+  interfaces; timeline/segment state, container writing and manifest serialization
+  already have independent modules. Evaluate a
   workspace crate for reusable HLS logic; keep engine integration and FFmpeg
   adapters separate from application configuration, database and HTTP handlers.
-- [ ] Reuse encoded packets and existing encoding groups. Preserve independent,
+- [x] Reuse encoded packets and existing encoding groups. Preserve independent,
   bounded output delivery, recording/desktop behavior and the current largest-
   rendition HLS composition/downscaling. Do not introduce duplicate encoders.
-- [ ] Audit packet interfaces for owned codec initialization, stream time bases,
+- [x] Audit packet interfaces for owned codec initialization, stream time bases,
   PTS/DTS/duration, keyframe information and output generations. The current
   `PacketSink`/`EncodedFrame` boundary must not be assumed sufficient without
   checking these requirements.
-- [ ] First prove MPEG-TS HLS with multiple variants and WebVTT. Treat fMP4/CMAF,
+- [x] First prove MPEG-TS HLS with multiple variants and WebVTT. Treat fMP4/CMAF,
   LL-HLS, encryption/DRM and ad-server integration as separate follow-ups; retain
   the existing backend for configurations the new path does not support.
 

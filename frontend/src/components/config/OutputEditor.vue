@@ -34,6 +34,19 @@ const newProtocolOptionName = ref('')
 const newProtocolOptionValue = ref('')
 const newMuxerOptionName = ref('')
 const newMuxerOptionValue = ref('')
+const hlsPackager = computed({
+    get: () => editedOutput.value.muxer_options.ffplayout_packager ?? 'ffmpeg',
+    set(value: string) {
+        const options = { ...editedOutput.value.muxer_options }
+        if (value === 'native') options.ffplayout_packager = value
+        else delete options.ffplayout_packager
+        editedOutput.value.muxer_options = options
+    },
+})
+const visibleMuxerOptions = computed(() =>
+    Object.entries(editedOutput.value.muxer_options).filter(([key]) => key !== 'ffplayout_packager'),
+)
+
 const newMetadataKey = ref('')
 const newMetadataValue = ref('')
 const newAudioOptionName = ref('')
@@ -270,6 +283,10 @@ function removeMetadata(key: string) {
 function eventValue(event: Event): string {
     return (event.target as HTMLInputElement).value
 }
+
+watch(output, (mode) => {
+    if (mode !== 'hls') hlsPackager.value = 'ffmpeg'
+})
 
 watch(
     () => [
@@ -544,7 +561,7 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
                     <legend class="fieldset-legend">{{ t('config.muxerOptions') }}</legend>
                     <p class="fieldset-label items-baseline mb-2">{{ t('config.muxerOptionsHelp') }}</p>
                     <div
-                        v-for="[key, value] in Object.entries(editedOutput.muxer_options)"
+                        v-for="[key, value] in visibleMuxerOptions"
                         :key="key"
                         class="flex flex-wrap items-center gap-2 mb-2"
                     >
@@ -704,6 +721,14 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
 
         <fieldset v-if="output === 'hls'" class="fieldset">
             <legend class="fieldset-legend">{{ t('config.hlsSettings') }}</legend>
+            <label class="fieldset">
+                <span class="fieldset-legend">{{ t('config.hlsPackager') }}</span>
+                <select v-model="hlsPackager" class="select select-sm w-full">
+                    <option value="ffmpeg">FFmpeg</option>
+                    <option value="native">{{ t('config.hlsPackagerNative') }}</option>
+                </select>
+                <span v-if="hlsPackager === 'native'" class="fieldset-label">{{ t('config.hlsPackagerHelp') }}</span>
+            </label>
             <div class="grid gap-3 sm:grid-cols-3">
                 <label class="fieldset">
                     <span class="fieldset-legend">{{ t('config.hlsPlaylistName') }}</span>

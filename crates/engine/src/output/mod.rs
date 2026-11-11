@@ -13,6 +13,7 @@ mod diagnostics;
 mod encoded;
 mod encoding;
 mod hls;
+mod hls_native;
 mod mux;
 pub(crate) mod parallel;
 mod recording;
