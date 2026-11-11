@@ -141,11 +141,14 @@ mod tests {
         collections::BTreeMap,
         env,
         net::{TcpListener, UdpSocket},
+        path::Path,
         process::Command,
         sync::mpsc,
         thread,
         time::{Duration, Instant},
     };
+
+    use ffmpeg_next::{Rescale, rescale};
 
     use super::{
         is_live_input, is_network_url, network_input_options, network_output_options,
@@ -185,31 +188,39 @@ mod tests {
         }
     }
 
-    // Run blocking FFmpeg calls in a child: a timeout regression must fail the
-    // test rather than leave the whole CI process waiting on a silent source.
-    fn check_silent_input_timeout(protocol: &str, test_name: &str) {
-        if env::var("FFPLAYOUT_TEST_SILENT_INPUT").as_deref() != Ok(protocol) {
-            let mut child = Command::new(env::current_exe().unwrap())
-                .args(["--exact", test_name, "--nocapture"])
-                .env("FFPLAYOUT_TEST_SILENT_INPUT", protocol)
-                .spawn()
-                .unwrap();
-            let deadline = Instant::now() + Duration::from_secs(25);
+    // Run blocking FFmpeg calls in a child so a regression cannot hang CI.
+    fn run_timeout_test_in_child(test_name: &str, limit: Duration) -> bool {
+        if env::var("FFPLAYOUT_TEST_TIMEOUT_CHILD").as_deref() == Ok(test_name) {
+            return false;
+        }
 
-            loop {
-                if let Some(status) = child.try_wait().unwrap() {
-                    assert!(status.success(), "silent {protocol} input test failed");
-                    return;
-                }
+        let mut child = Command::new(env::current_exe().unwrap())
+            .args(["--exact", test_name, "--nocapture"])
+            .env("FFPLAYOUT_TEST_TIMEOUT_CHILD", test_name)
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + limit;
 
-                if Instant::now() >= deadline {
-                    child.kill().unwrap();
-                    child.wait().unwrap();
-                    panic!("silent {protocol} input did not time out");
-                }
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert!(status.success(), "timeout test failed: {test_name}");
 
-                thread::sleep(Duration::from_millis(50));
+                return true;
             }
+
+            if Instant::now() >= deadline {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                panic!("timeout test exceeded its deadline: {test_name}");
+            }
+
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn check_silent_input_timeout(protocol: &str, test_name: &str) {
+        if run_timeout_test_in_child(test_name, Duration::from_secs(25)) {
+            return;
         }
 
         let (done, receiver) = mpsc::channel::<()>();
@@ -259,6 +270,103 @@ mod tests {
     #[test]
     fn silent_rtsp_input_times_out() {
         check_silent_input_timeout("rtsp", "utils::helper::tests::silent_rtsp_input_times_out");
+    }
+
+    #[test]
+    fn udp_input_times_out_after_the_sender_stops() {
+        if run_timeout_test_in_child(
+            "utils::helper::tests::udp_input_times_out_after_the_sender_stops",
+            Duration::from_secs(40),
+        ) {
+            return;
+        }
+
+        ffmpeg_next::init().unwrap();
+
+        let reservation = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let address = reservation.local_addr().unwrap();
+        let url = format!("udp://{address}");
+        let sender_url = url.clone();
+        let (stop, stopped) = mpsc::channel::<()>();
+
+        drop(reservation);
+
+        let sender = thread::spawn(move || {
+            let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests_assets/storage/media_mix/av_sync.mp4");
+            let mut input = ffmpeg_next::format::input(&source).unwrap();
+            let mut output =
+                super::open_network_output(&sender_url, Some("mpegts"), &BTreeMap::new()).unwrap();
+
+            for stream in input.streams() {
+                let mut target = output.add_stream(ffmpeg_next::codec::Id::None).unwrap();
+
+                target.set_parameters(stream.parameters());
+                target.set_time_base(stream.time_base());
+            }
+
+            output.write_header().unwrap();
+
+            let started = Instant::now();
+            let mut origin = None;
+
+            for (stream, mut packet) in input.packets() {
+                let timestamp = packet
+                    .dts()
+                    .or(packet.pts())
+                    .unwrap()
+                    .rescale(stream.time_base(), rescale::TIME_BASE);
+                let origin = *origin.get_or_insert(timestamp);
+                let due = Duration::from_micros(timestamp.saturating_sub(origin).max(0) as u64);
+
+                if stopped.recv_timeout(due.saturating_sub(started.elapsed()))
+                    != Err(mpsc::RecvTimeoutError::Timeout)
+                {
+                    break;
+                }
+
+                packet.rescale_ts(
+                    stream.time_base(),
+                    output.stream(stream.index()).unwrap().time_base(),
+                );
+                packet.set_position(-1);
+                packet.write_interleaved(&mut output).unwrap();
+            }
+
+            output.write_trailer().unwrap();
+        });
+        let mut input = open_media_input(&url).unwrap();
+
+        for _ in 0..25 {
+            let mut packet = ffmpeg_next::Packet::empty();
+
+            packet.read(&mut input).unwrap();
+            assert!(packet.size() > 0);
+        }
+
+        stop.send(()).unwrap();
+        sender.join().unwrap();
+
+        let started = Instant::now();
+        let error = loop {
+            let mut packet = ffmpeg_next::Packet::empty();
+
+            if let Err(error) = packet.read(&mut input) {
+                break error;
+            }
+        };
+        let elapsed = started.elapsed();
+
+        assert_ne!(error, ffmpeg_next::Error::Eof, "UDP silence is not an EOF");
+        assert!(
+            elapsed >= Duration::from_secs(8),
+            "read failed too early: {elapsed:?}: {error}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(20),
+            "read remained blocked: {elapsed:?}: {error}"
+        );
+        eprintln!("UDP input timed out after sender stopped: {elapsed:?}: {error}");
     }
 
     #[test]
