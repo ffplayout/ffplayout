@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "run-p type-check \"build-only {@}\" --",
+    "build": "npm run type-check && npm run build-only",
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
@@ -15,8 +15,9 @@
     "format": "prettier --write frontend/src/"
   },
   "dependencies": {
+    "@moq/net": "^0.4.7",
+    "@moq/signals": "^0.2.6",
     "@moq/watch": "^0.6.6",
-    "@tailwindcss/vite": "^4.3.5",
     "@unhead/vue": "^3.4.3",
     "@videojs/hlsjs-video": "10.3.0",
     "@videojs/html": "10.3.0",
@@ -24,33 +25,37 @@
     "@vuepic/vue-datepicker": "^14.0.0",
     "@vueuse/core": "^15.0.0",
     "bootstrap-icons": "^1.13.2",
+    "date-fns": "^4.4.0",
     "dayjs": "^1.11.23",
     "es-toolkit": "^1.53.2",
     "jwt-decode": "^4.0.0",
     "pinia": "^4.1.0",
     "splitpanes": "^4.1.2",
-    "tailwindcss": "^4.3.5",
     "vue": "^3.5.45",
     "vue-i18n": "^11.4.18",
-    "vue-router": "^5.4.0",
+    "vue-router": "^5.5.0",
     "vue-virtual-sortable": "^3.1.0"
   },
   "devDependencies": {
-    "@tsconfig/node22": "^22.0.6",
-    "@types/node": "^26.6.6",
+    "@tailwindcss/vite": "^4.3.5",
+    "@tsconfig/node24": "^24.0.6",
+    "@types/node": "^24.19.2",
     "@vitejs/plugin-vue": "^6.0.10",
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/tsconfig": "^0.9.1",
     "daisyui": "^5.7.50",
     "eslint": "^10.14.0",
-    "eslint-plugin-vue": "~10.12.0",
+    "eslint-plugin-vue": "~10.12.1",
     "jiti": "^2.7.0",
-    "npm-run-all2": "^9.0.4",
-    "prettier": "3.9.10",
+    "prettier": "3.10.1",
+    "tailwindcss": "^4.3.5",
     "typescript": "~6.0.3",
-    "vite": "^8.3.6",
+    "vite": "^8.3.8",
     "vite-plugin-vue-devtools": "^8.2.1",
     "vue-tsc": "^3.3.14"
+  },
+  "overrides": {
+    "minimatch@^10.0.0": "^11.0.8"
   }
 }
