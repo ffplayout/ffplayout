@@ -7,12 +7,12 @@ use crate::{
     HlsVariant, OutputConfig,
     utils::{
         config::{audio_encoder_context, engine_audio_sample_format},
-        ffmpeg::reference_audio_frame,
+        ffmpeg::{reference_audio_frame, reference_packet},
     },
 };
 
 pub(in crate::output) struct AudioOutputStream {
-    pub(in crate::output) stream_index: usize,
+    pub(in crate::output) stream_indices: Vec<usize>,
     pub(in crate::output) encoder: codec::encoder::audio::Encoder,
     pub(in crate::output) resampler: Option<resampling::Context>,
 }
@@ -38,7 +38,14 @@ impl AudioOutputStream {
         let mut packet = Packet::empty();
 
         while self.encoder.receive_packet(&mut packet).is_ok() {
-            emit(packet, self.stream_index, self.encoder.time_base())?;
+            if let Some((&last, others)) = self.stream_indices.split_last() {
+                for &stream in others {
+                    emit(reference_packet(&packet)?, stream, self.encoder.time_base())?;
+                }
+
+                emit(packet, last, self.encoder.time_base())?;
+            }
+
             packet = Packet::empty();
         }
 
@@ -112,7 +119,7 @@ pub(in crate::output) fn open_audio_encoder(
         .transpose()?;
 
     Ok(AudioOutputStream {
-        stream_index,
+        stream_indices: vec![stream_index],
         encoder: audio_encoder,
         resampler,
     })

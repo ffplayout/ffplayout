@@ -86,7 +86,9 @@ impl EncodingWorkers {
             },
             control.clone(),
         );
-        let remaining = Arc::new(AtomicUsize::new(2));
+        let remaining = Arc::new(AtomicUsize::new(
+            usize::from(!video_streams.is_empty()) + usize::from(!audio_streams.is_empty()),
+        ));
         let benchmark = benchmark::current();
         #[cfg(test)]
         let video_delay_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -105,6 +107,10 @@ impl EncodingWorkers {
         };
 
         for is_video in [true, false] {
+            if (is_video && video_streams.is_empty()) || (!is_video && audio_streams.is_empty()) {
+                continue;
+            }
+
             let frames = if is_video {
                 video.clone()
             } else {

@@ -739,7 +739,7 @@ mod tests {
                 audio_bitrate: config.audio_bitrate,
             };
             let (mut profile, video, audio) =
-                EncodingProfile::open_shared(&config, &encode, 5).unwrap();
+                EncodingProfile::open_shared(&config, &encode, 5, None).unwrap();
             let mut packets = Vec::new();
             for index in 0..10 {
                 let mut video = frame::Video::new(Pixel::YUV420P, 160, 90);

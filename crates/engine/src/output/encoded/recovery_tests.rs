@@ -47,6 +47,15 @@ impl Fixture {
     }
 
     fn try_open_packager(&self, name: &str, native: bool) -> Result<EncodedOutput> {
+        self.try_open_bitrates(name, native, [96_000; 3])
+    }
+
+    fn try_open_bitrates(
+        &self,
+        name: &str,
+        native: bool,
+        bitrates: [u64; 3],
+    ) -> Result<EncodedOutput> {
         let mut config = OutputConfig::new(320, 180, 25, 48_000);
         config
             .video_options
@@ -67,12 +76,13 @@ impl Fixture {
             EncodedFormat::Hls {
                 variants: [("high", 320, 180), ("mid", 240, 136), ("low", 160, 90)]
                     .into_iter()
-                    .map(|(name, width, height)| HlsVariant {
+                    .zip(bitrates)
+                    .map(|((name, width, height), audio_bitrate)| HlsVariant {
                         name: name.into(),
                         width,
                         height,
                         video_bitrate: 400_000,
-                        audio_bitrate: 96_000,
+                        audio_bitrate,
                     })
                     .collect(),
                 subtitle: Some(HlsSubtitle {
@@ -155,7 +165,13 @@ fn write_frames(output: &mut EncodedOutput, frames: std::ops::Range<i64>, audio_
             audio.set_rate(48_000);
             audio.set_pts(Some(*audio_pts));
             for channel in 0..2 {
-                audio.plane_mut::<f32>(channel).fill(0.0);
+                for (sample, value) in audio.plane_mut::<f32>(channel).iter_mut().enumerate() {
+                    let frequency = if channel == 0 { 440.0 } else { 880.0 };
+                    let phase =
+                        (*audio_pts + sample as i64) as f32 * frequency * std::f32::consts::TAU
+                            / 48_000.0;
+                    *value = 0.25 * phase.sin();
+                }
             }
             output.encode_audio(&audio).unwrap();
             *audio_pts += size as i64;
@@ -628,4 +644,81 @@ fn native_hls_preserves_all_b_frames_including_the_short_final_segment() {
         timestamps.into_iter().collect::<Vec<_>>(),
         (0..100).collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn hls_audio_encoders_are_shared_by_bitrate_in_direct_and_threaded_outputs() {
+    for native in [false, true] {
+        for threaded in [false, true] {
+            for bitrates in [[96_000; 3], [96_000, 64_000, 96_000]] {
+                let fixture = Fixture::new();
+                let mut output = fixture
+                    .try_open_bitrates("master.m3u8", native, bitrates)
+                    .unwrap();
+
+                assert_eq!(
+                    output.audio_streams.len(),
+                    if bitrates[0] == bitrates[1] { 1 } else { 2 }
+                );
+                assert_eq!(
+                    output.audio_streams[0].stream_indices,
+                    if bitrates[0] == bitrates[1] {
+                        vec![1, 3, 5]
+                    } else {
+                        vec![1, 5]
+                    }
+                );
+
+                if threaded {
+                    output = output.threaded().unwrap();
+                }
+
+                let mut samples = 0;
+                let frame_size = output.audio_frame_size() as i64;
+
+                write_frames(&mut output, 0..50, &mut samples);
+                output.finish().unwrap();
+
+                let audio = |variant: &str| {
+                    let playlist =
+                        fs::read_to_string(fixture.0.join(format!("{variant}.m3u8"))).unwrap();
+
+                    playlist
+                        .lines()
+                        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                        .flat_map(|name| {
+                            let mut input = open_ts(&fixture.0.join(name));
+
+                            input
+                                .packets()
+                                .filter(|(stream, _)| {
+                                    stream.parameters().medium() == ffmpeg::media::Type::Audio
+                                })
+                                .map(|(_, packet)| {
+                                    (packet.pts(), packet.dts(), packet.data().unwrap().to_vec())
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .collect::<Vec<_>>()
+                };
+                let high = audio("high");
+
+                // AAC emits a priming packet before time zero. Native HLS drops
+                // it at the first video boundary; FFmpeg HLS retains it.
+                // Count all remaining packets to detect a missing drain tail.
+                assert_eq!(high.len() as i64, samples / frame_size + i64::from(!native));
+                assert!(
+                    high.windows(2)
+                        .all(|pair| pair[1].0.unwrap() > pair[0].0.unwrap())
+                );
+                assert_eq!(high, audio("low"));
+
+                if bitrates[0] == bitrates[1] {
+                    assert_eq!(high, audio("mid"));
+                } else {
+                    assert!(!audio("mid").is_empty());
+                }
+            }
+        }
+    }
 }

@@ -316,7 +316,10 @@ pub(super) fn run(
     };
     let gop = gop_size(&destinations)?;
     let mut profiles = Vec::new();
-    let mut parameters = Vec::new();
+    let mut parameters: Vec<(codec::Parameters, codec::Parameters)> = Vec::new();
+    let mut audio_owners = Vec::new();
+    let mut audio_bitrates = Vec::new();
+
     for index in 0..variants.len().max(1) {
         let variant = variants.get(index);
         let mut video_options = config.video_options.clone();
@@ -332,7 +335,18 @@ pub(super) fn run(
             audio_options: config.audio_options.clone(),
             audio_bitrate: variant.map_or(config.audio_bitrate, |variant| variant.audio_bitrate),
         };
-        let (profile, video, audio) = EncodingProfile::open_shared(program, &encode, gop)?;
+        // Codec, options, sample rate and time base are common to this group.
+        // Only the per-rendition bitrate can require another audio encoder.
+        let owner = audio_bitrates
+            .iter()
+            .position(|bitrate| *bitrate == encode.audio_bitrate)
+            .map_or(index, |previous| audio_owners[previous]);
+        let shared_audio = (owner != index).then(|| parameters[owner].1.clone());
+        let (profile, video, audio) =
+            EncodingProfile::open_shared(program, &encode, gop, shared_audio)?;
+
+        audio_bitrates.push(encode.audio_bitrate);
+        audio_owners.push(owner);
         profiles.push(profile);
         parameters.push((video, audio));
     }
@@ -383,7 +397,7 @@ pub(super) fn run(
         &parameters,
         &context,
     )?;
-    let mut emit = |index: usize, packet: EncodedPacket| -> Result<()> {
+    let mut deliver = |index: usize, packet: EncodedPacket| -> Result<()> {
         let _stage = progress.map(|progress| progress.enter("packet_handoff", Some(index)));
         for (rendition, recording) in &mut copies {
             if *rendition != index {
@@ -439,6 +453,29 @@ pub(super) fn run(
         }
         Ok(())
     };
+    // Fan out compressed audio, including delayed packets drained by video
+    // submissions or shutdown. Each rendition keeps its existing stream layout.
+    let mut emit = |index: usize, packet: EncodedPacket| -> Result<()> {
+        if packet.stream == 0 {
+            return deliver(index, packet);
+        }
+
+        for (rendition, owner) in audio_owners.iter().enumerate() {
+            if *owner == index && rendition != index {
+                deliver(
+                    rendition,
+                    EncodedPacket {
+                        packet: reference_packet(&packet.packet)?,
+                        stream: packet.stream,
+                        time_base: packet.time_base,
+                    },
+                )?;
+            }
+        }
+
+        deliver(index, packet)
+    };
+
     loop {
         let message = {
             let _stage = progress.map(|progress| progress.enter("waiting_for_frame", None));

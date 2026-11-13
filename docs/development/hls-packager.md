@@ -105,3 +105,10 @@ See [FFmpeg/native comparison](hls-packager-comparison.md) for the measured CPU,
 process RSS, resume time, packet coverage and WebVTT differences, including raw
 samples and the reproducible opt-in benchmark. These accelerated tests do not
 replace real-time player or long-running qualification.
+
+HLS renditions with identical audio settings share one audio encoder. Within an
+output, codec, options, sample rate and time base are common; only differing
+rendition audio bitrates create additional encoders. Encoded packets are referenced
+into each rendition's existing audio stream, preserving multiplexed TS playlists,
+recording selection and outputs that reuse a rendition. Both packager backends and
+the direct/threaded encoding paths use this behavior.

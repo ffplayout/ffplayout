@@ -376,7 +376,8 @@ impl EncodedOutput {
 
         let stream_count = hls_variants.len().max(1);
         let mut video_streams = Vec::with_capacity(stream_count);
-        let mut audio_streams = Vec::with_capacity(stream_count);
+        let mut audio_streams: Vec<AudioOutputStream> = Vec::with_capacity(stream_count);
+        let mut audio_bitrates = Vec::new();
         let mut subtitle_streams = Vec::with_capacity(usize::from(vtt_subtitles));
 
         for index in 0..stream_count {
@@ -402,7 +403,20 @@ impl EncodedOutput {
                 global_header,
                 variant,
             )?);
-            audio_streams.push(open_audio_stream(&mut octx, cfg, global_header, variant)?);
+            let bitrate = variant.map_or(cfg.audio_bitrate, |variant| variant.audio_bitrate);
+
+            if let Some(owner) = audio_bitrates.iter().position(|value| *value == bitrate) {
+                let encoder = &mut audio_streams[owner];
+                let index = octx.nb_streams() as usize;
+                let mut stream = octx.add_stream(codec::Id::None)?;
+
+                stream.set_parameters(&encoder.encoder);
+                stream.set_time_base(cfg.audio_time_base);
+                encoder.stream_indices.push(index);
+            } else {
+                audio_streams.push(open_audio_stream(&mut octx, cfg, global_header, variant)?);
+                audio_bitrates.push(bitrate);
+            }
         }
 
         if vtt_subtitles {
@@ -524,7 +538,12 @@ impl EncodedOutput {
                     .get(recording_video_stream_index)
                     .context("recording video stream index is out of range")?;
                 let audio_stream = audio_streams
-                    .get(recording_video_stream_index)
+                    .iter()
+                    .find(|stream| {
+                        stream
+                            .stream_indices
+                            .contains(&(recording_video_stream_index * 2 + 1))
+                    })
                     .context("recording audio stream index is out of range")?;
 
                 RecordingMuxer::open(
@@ -578,14 +597,7 @@ impl EncodedOutput {
                     .map(|stream| stream.stream_index)
                     .collect()
             },
-            audio_stream_indices: if parameters.is_some() {
-                (0..stream_count).map(|index| index * 2 + 1).collect()
-            } else {
-                audio_streams
-                    .iter()
-                    .map(|stream| stream.stream_index)
-                    .collect()
-            },
+            audio_stream_indices: (0..stream_count).map(|index| index * 2 + 1).collect(),
             video_streams,
             audio_streams,
             subtitle_streams,
@@ -937,26 +949,20 @@ impl EncodedOutput {
     }
 
     fn write_audio_packets(&mut self, index: usize) -> Result<()> {
-        let mut packet = ffmpeg::Packet::empty();
+        let mut packets = Vec::new();
 
-        while self.audio_streams[index]
-            .encoder
-            .receive_packet(&mut packet)
-            .is_ok()
-        {
-            let stream_index = self.audio_streams[index].stream_index;
-            let time_base = self.audio_streams[index].encoder.time_base();
-            let recording_error = (index == self.recording_video_stream_index)
-                .then(|| {
-                    self.recording
-                        .as_mut()
-                        .and_then(|recording| recording.write_audio(&packet, time_base).err())
-                })
-                .flatten();
-            if let Some(error) = recording_error {
-                self.disable_copy_recording(error);
-            }
-            self.write_packet(&mut packet, stream_index, time_base)?;
+        self.audio_streams[index].drain(|packet, stream, time_base| {
+            packets.push(EncodedPacket {
+                packet,
+                stream,
+                time_base,
+            });
+
+            Ok(())
+        })?;
+
+        for packet in packets {
+            self.handle_encoded_packet(packet)?;
         }
 
         Ok(())

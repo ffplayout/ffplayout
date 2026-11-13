@@ -1936,6 +1936,13 @@ mod tests {
                 width: 160,
                 height: 120,
                 video_bitrate: 400_000,
+                audio_bitrate: 128_000,
+            },
+            HlsVariant {
+                name: "small".into(),
+                width: 80,
+                height: 60,
+                video_bitrate: 200_000,
                 audio_bitrate: 96_000,
             },
         ];
@@ -2038,7 +2045,13 @@ mod tests {
                 audio.set_rate(48_000);
                 audio.set_pts(Some((index * 2 + part) * 1024));
                 for channel in 0..2 {
-                    audio.plane_mut::<f32>(channel).fill(0.0);
+                    for (sample, value) in audio.plane_mut::<f32>(channel).iter_mut().enumerate() {
+                        let position = (index * 2 + part) * 1024 + sample as i64;
+                        let frequency = if channel == 0 { 440.0 } else { 880.0 };
+                        *value = 0.25
+                            * (position as f32 * frequency * std::f32::consts::TAU / 48_000.0)
+                                .sin();
+                    }
                 }
                 output.encode_audio(&audio).unwrap();
             }
@@ -2083,6 +2096,42 @@ mod tests {
         assert_eq!(source.len(), 30);
         assert_eq!(source, video_packets(&dir.path().join("low.ts")));
         assert_eq!(source, video_packets(&dir.path().join("derived/copy.m3u8")));
+        let audio_packets = |path: &std::path::Path| {
+            let mut input = ffmpeg_next::format::input(path).unwrap();
+
+            input
+                .packets()
+                .filter(|(stream, _)| {
+                    stream.parameters().medium() == ffmpeg_next::media::Type::Audio
+                })
+                .map(|(_, packet)| (packet.pts(), packet.dts(), packet.data().unwrap().to_vec()))
+                .collect::<Vec<_>>()
+        };
+        let audio = audio_packets(&dir.path().join("stream.m3u8"));
+
+        assert_eq!(
+            audio.len(),
+            60,
+            "all 60 input frames must survive drain after the startup keyframe gate"
+        );
+        assert_eq!(audio, audio_packets(&dir.path().join("low.m3u8")));
+        assert_eq!(audio, audio_packets(&dir.path().join("low.ts")));
+
+        // Matroska stores raw AAC while MPEG-TS carries ADTS headers. Compare
+        // access-unit payloads to include the final encoder-drain packet.
+        let payloads = |packets: Vec<(Option<i64>, Option<i64>, Vec<u8>)>| {
+            packets
+                .into_iter()
+                .map(|(_, _, bytes)| {
+                    if bytes.len() >= 7 && bytes[0] == 0xff && bytes[1] & 0xf6 == 0xf0 {
+                        bytes[if bytes[1] & 1 == 1 { 7 } else { 9 }..].to_vec()
+                    } else {
+                        bytes
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+
         let recording = std::fs::read_dir(dir.path().join("recording"))
             .unwrap()
             .filter_map(Result::ok)
@@ -2095,6 +2144,69 @@ mod tests {
             .unwrap()
             .path();
         assert_eq!(video_packets(&recording).len(), 30);
+        let recorded_audio = payloads(audio_packets(&recording));
+        let hls_audio = payloads(audio);
+
+        assert!(
+            recorded_audio.ends_with(&hls_audio),
+            "recording must include the complete HLS audio tail"
+        );
+        assert!((60..=61).contains(&recorded_audio.len()));
+
+        let mut input = ffmpeg_next::format::input(&recording).unwrap();
+        let parameters = input
+            .streams()
+            .best(ffmpeg_next::media::Type::Audio)
+            .unwrap()
+            .parameters();
+        let mut decoder = ffmpeg_next::codec::context::Context::from_parameters(parameters)
+            .unwrap()
+            .decoder()
+            .audio()
+            .unwrap();
+        let mut samples = 0;
+        let mut energy = [0.0_f64; 2];
+        let mut tail_energy = [0.0_f64; 2];
+        let mut drain = |decoder: &mut ffmpeg_next::decoder::Audio| {
+            let mut frame = frame::Audio::empty();
+
+            while decoder.receive_frame(&mut frame).is_ok() {
+                assert_eq!(frame.format(), Sample::F32(Type::Planar));
+                samples += frame.samples();
+
+                for channel in 0..2 {
+                    tail_energy[channel] = frame
+                        .plane::<f32>(channel)
+                        .iter()
+                        .map(|value| f64::from(*value).powi(2))
+                        .sum::<f64>()
+                        / frame.samples() as f64;
+                    energy[channel] += tail_energy[channel] * frame.samples() as f64;
+                }
+            }
+        };
+
+        for (stream, packet) in input.packets() {
+            if stream.parameters().medium() == ffmpeg_next::media::Type::Audio {
+                decoder.send_packet(&packet).unwrap();
+                drain(&mut decoder);
+            }
+        }
+
+        decoder.send_eof().unwrap();
+        drain(&mut decoder);
+        assert!(samples >= 60 * 1024);
+
+        for channel in 0..2 {
+            assert!(
+                energy[channel] / samples as f64 > 0.01,
+                "recorded channel must contain the test tone"
+            );
+            assert!(
+                tail_energy[channel] > 0.005,
+                "final decoded frame must contain the test tone"
+            );
+        }
         let dedicated = std::fs::read_dir(dir.path().join("dedicated"))
             .unwrap()
             .flatten()

@@ -15,7 +15,7 @@ use super::{
 
 pub(in crate::output) struct EncodingProfile {
     workers: EncodingWorkers,
-    audio_buffer: AudioFrameBuffer,
+    audio_buffer: Option<AudioFrameBuffer>,
     timing: Option<crate::output::diagnostics::PrimaryTiming>,
     video_time_base: ffmpeg_next::Rational,
 }
@@ -25,17 +25,10 @@ impl EncodingProfile {
         program: &OutputConfig,
         encode: &EncodingConfig,
         gop_size: u32,
+        shared_audio: Option<codec::Parameters>,
     ) -> Result<(Self, codec::Parameters, codec::Parameters)> {
-        Self::open_profile(program, encode, true, true, gop_size)
-    }
-
-    fn open_profile(
-        program: &OutputConfig,
-        encode: &EncodingConfig,
-        global_header: bool,
-        closed_gop: bool,
-        gop_size: u32,
-    ) -> Result<(Self, codec::Parameters, codec::Parameters)> {
+        let global_header = true;
+        let closed_gop = true;
         let mut cfg = program.clone();
         cfg.width = encode.width;
         cfg.height = encode.height;
@@ -53,10 +46,17 @@ impl EncodingProfile {
             Some(gop_size),
             closed_gop,
         )?;
-        let audio = open_audio_encoder(1, &cfg, global_header, None)?;
         let video_parameters = codec::Parameters::from(&video.encoder);
-        let audio_parameters = codec::Parameters::from(&audio.encoder);
-        let workers = EncodingWorkers::start(vec![video], vec![audio])?;
+        let (audio_parameters, audio_streams) = if let Some(parameters) = shared_audio {
+            (parameters, Vec::new())
+        } else {
+            let audio = open_audio_encoder(1, &cfg, global_header, None)?;
+            let parameters = codec::Parameters::from(&audio.encoder);
+
+            (parameters, vec![audio])
+        };
+        let has_audio = !audio_streams.is_empty();
+        let workers = EncodingWorkers::start(vec![video], audio_streams)?;
 
         Ok((
             Self {
@@ -67,7 +67,8 @@ impl EncodingProfile {
                         )
                     }),
                 video_time_base: program.video_time_base,
-                audio_buffer: AudioFrameBuffer::new(cfg.sample_rate, workers.audio_frame_size),
+                audio_buffer: has_audio
+                    .then(|| AudioFrameBuffer::new(cfg.sample_rate, workers.audio_frame_size)),
                 workers,
             },
             video_parameters,
@@ -113,7 +114,11 @@ impl EncodingProfile {
         frame: &frame::Audio,
         mut emit: impl FnMut(EncodedPacket) -> Result<()>,
     ) -> Result<()> {
-        for frame in self.audio_buffer.push(frame)? {
+        let Some(buffer) = &mut self.audio_buffer else {
+            return Ok(());
+        };
+
+        for frame in buffer.push(frame)? {
             self.workers
                 .submit(EncodingWorkers::audio_frame(&frame)?, &mut emit)?;
         }
@@ -125,10 +130,44 @@ impl EncodingProfile {
         mut self,
         mut emit: impl FnMut(EncodedPacket) -> Result<()>,
     ) -> Result<()> {
-        for frame in self.audio_buffer.finish()? {
-            self.workers
-                .submit(EncodingWorkers::audio_frame(&frame)?, &mut emit)?;
+        if let Some(buffer) = &mut self.audio_buffer {
+            for frame in buffer.finish()? {
+                self.workers
+                    .submit(EncodingWorkers::audio_frame(&frame)?, &mut emit)?;
+            }
         }
+
         self.workers.finish(emit)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn borrowed_audio_does_not_open_an_encoder_or_allocate_a_sample_buffer() {
+        ffmpeg_next::init().unwrap();
+
+        let program = OutputConfig::new(64, 64, 25, 48_000);
+        let audio = open_audio_encoder(1, &program, true, None).unwrap();
+        let parameters = codec::Parameters::from(&audio.encoder);
+        let encode = EncodingConfig {
+            width: 64,
+            height: 64,
+            video_codec: "libx264".into(),
+            video_options: [("preset".into(), "ultrafast".into())].into(),
+            // Opening this encoder would fail: the borrowed parameters must suffice.
+            audio_codec: "nonexistent-audio-encoder".into(),
+            audio_options: Default::default(),
+            audio_bitrate: program.audio_bitrate,
+        };
+        let (profile, _, returned) =
+            EncodingProfile::open_shared(&program, &encode, 25, Some(parameters)).unwrap();
+
+        assert!(profile.audio_buffer.is_none());
+        assert_eq!(profile.workers.audio_frame_size, 0);
+        assert_eq!(returned.id(), codec::Id::AAC);
+        profile.finish(|_| Ok(())).unwrap();
     }
 }
