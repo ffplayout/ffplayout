@@ -6,6 +6,10 @@ use axum::{
 };
 use log::{error, warn};
 
+// Embedded frontend assets are only compiled into release builds.
+#[cfg(all(debug_assertions, feature = "embed_frontend"))]
+use include_dir as _;
+
 pub mod api;
 pub mod db;
 pub mod file;

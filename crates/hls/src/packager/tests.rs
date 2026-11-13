@@ -173,6 +173,50 @@ fn publishes_aligned_variants_and_cross_segment_cues_only_after_media() {
 }
 
 #[test]
+fn date_time_mapping_is_shared_across_renditions_and_preserved_on_resume() {
+    for enabled in [false, true] {
+        let fixture = Fixture::new();
+        let mut previous_dates = Vec::new();
+
+        for session in 0..2 {
+            let mut config = fixture.config(2, 100);
+            config.program_date_time = enabled;
+
+            let mut packager = Packager::new(
+                config,
+                Writer {
+                    fail_rendition: None,
+                },
+            )
+            .unwrap();
+
+            feed(&mut packager, 2, 0, 100).unwrap();
+            packager.finish().unwrap();
+            drop(packager);
+
+            let playlists = ["v0.m3u8", "v1.m3u8", "v0_vtt.m3u8"].map(|name| {
+                let text = fs::read_to_string(fixture.0.join(name)).unwrap();
+
+                text.lines()
+                    .filter_map(|line| line.strip_prefix("#EXT-X-PROGRAM-DATE-TIME:"))
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            });
+
+            assert_eq!(playlists[0], playlists[1]);
+            assert_eq!(playlists[0], playlists[2]);
+            assert_eq!(
+                playlists[0].len(),
+                if enabled { (session + 1) * 4 } else { 0 }
+            );
+            assert!(playlists[0].starts_with(&previous_dates));
+
+            previous_dates = playlists[0].clone();
+        }
+    }
+}
+
+#[test]
 fn failed_segment_does_not_publish_a_partial_variant_set() {
     let fixture = Fixture::new();
     let mut packager = Packager::new(

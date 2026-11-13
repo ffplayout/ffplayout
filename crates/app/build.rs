@@ -8,6 +8,10 @@ use std::{
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use build_print::info;
 
+// Frontend build logging is compiled out in debug builds.
+#[cfg(all(debug_assertions, feature = "embed_frontend"))]
+use build_print as _;
+
 #[cfg(all(not(debug_assertions), feature = "embed_frontend", windows))]
 const NPM_COMMAND: &str = "npm.cmd";
 

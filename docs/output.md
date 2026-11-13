@@ -224,6 +224,18 @@ See [Experimental MoQ preview](moq.md) for configuration and transport.
 
 ### Experimental native packager
 
+For live subtitles with hls.js or Video.js 10 using hls.js, use the native
+packager with `hls_flags=program_date_time` to write matching
+`EXT-X-PROGRAM-DATE-TIME` timestamps in both video and subtitle playlists.
+FFmpeg currently omits these timestamps from the subtitle playlist, which can
+cause subtitles to disappear during continued playback. See
+[live subtitle compatibility](closed_captions.md#live-subtitle-compatibility).
+
+Selecting the native packager in the web interface adds
+`hls_flags=program_date_time` by default unless `hls_flags` is already configured.
+Existing native configurations remain unchanged. Remove this muxer option to
+disable the timestamps; API clients must set it explicitly.
+
 HLS settings offer **FFmpeg** (default) and **Native (experimental)**. The native
 backend supports local MPEG-TS with H.264/AAC, adaptive variants and WebVTT with
 `X-TIMESTAMP-MAP`. Selecting a different backend recreates only that output.

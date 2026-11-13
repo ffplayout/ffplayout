@@ -16,7 +16,7 @@ default = ["desktop", "embed_frontend"]
 desktop-base = []
 desktop = ["desktop-base", "ff-engine/desktop"]
 desktop-cpu = ["desktop-base", "ff-engine/desktop-cpu"]
-embed_frontend = []
+embed_frontend = ["dep:build-print", "dep:include_dir"]
 dev-metrics = ["dep:console-subscriber", "dep:tracing-subscriber", "tokio/tracing"]
 processing-bench = ["ff-engine/processing-bench"]
 ffmpeg-filter = ["ff-engine/ffmpeg-filter"]
@@ -64,7 +64,7 @@ derive_more = { version = "2", features = ["display"] }
 faccess = "0.2"
 flexi_logger = { version = "0.31", features = ["async", "colors", "kv"] }
 iana-time-zone = "0.1"
-include_dir = "0.7"
+include_dir = { version = "0.7", optional = true }
 inquire = "0.9"
 jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
 lazy-limit = "1"
@@ -129,7 +129,7 @@ serial_test = "4.0"
 tower = { version = "0.5", features = ["util"] }
 
 [build-dependencies]
-build-print = "1"
+build-print = { version = "1", optional = true }
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

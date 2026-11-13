@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
-    "test:player": "node --test frontend/src/composables/__tests__/livePlaylistSchedule.test.ts",
+    "test:player": "node --test frontend/src/composables/__tests__/livePlaylistSchedule.test.ts frontend/src/composables/__tests__/outputHls.test.ts",
     "test:graphics": "node --test frontend/src/composables/__tests__/playlistGraphics.test.ts frontend/src/composables/__tests__/graphicsLayout.test.ts frontend/src/composables/__tests__/manualGraphics.test.ts frontend/src/composables/__tests__/locales.test.ts",
     "lint": "eslint . --fix --config frontend/eslint.config.ts",
     "format": "prettier --write frontend/src/"

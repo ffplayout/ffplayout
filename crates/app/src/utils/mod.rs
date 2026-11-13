@@ -163,9 +163,5 @@ pub fn round_to_nearest_ten(num: i64) -> i64 {
 /// Returns `true` if running inside a container, otherwise `false`.
 pub fn is_running_in_container() -> bool {
     // Check for Docker or Podman specific files
-    if Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists() {
-        return true;
-    }
-
-    false
+    Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists()
 }

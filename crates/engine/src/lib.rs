@@ -11,6 +11,14 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 
+// GPU rendering takes precedence when both desktop backends are enabled.
+#[cfg(all(feature = "desktop-cpu", feature = "desktop-gpu"))]
+use softbuffer as _;
+
+// This feature's dependency is used by the live_transcription example.
+#[cfg(feature = "transcription-example")]
+use transcribe_rs as _;
+
 #[cfg(feature = "tokio")]
 use tokio::sync::oneshot;
 

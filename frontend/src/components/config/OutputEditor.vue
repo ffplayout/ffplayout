@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useOutputLabels } from '@/composables/useOutputLabels'
 import { useConfig } from '@/stores/config'
 import { encodingOwner, outputVariantNames } from '@/composables/outputEncoding'
+import { selectHlsPackager } from '@/composables/outputHls'
 const props = defineProps<{ item: PlayoutConfigExt['output'] }>()
 const editedOutput = computed(() => props.item)
 const output = computed(() => props.item.mode)
@@ -37,10 +38,7 @@ const newMuxerOptionValue = ref('')
 const hlsPackager = computed({
     get: () => editedOutput.value.muxer_options.ffplayout_packager ?? 'ffmpeg',
     set(value: string) {
-        const options = { ...editedOutput.value.muxer_options }
-        if (value === 'native') options.ffplayout_packager = value
-        else delete options.ffplayout_packager
-        editedOutput.value.muxer_options = options
+        editedOutput.value.muxer_options = selectHlsPackager(editedOutput.value.muxer_options, value)
     },
 })
 const visibleMuxerOptions = computed(() =>
