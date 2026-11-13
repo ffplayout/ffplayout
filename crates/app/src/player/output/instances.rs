@@ -245,6 +245,52 @@ mod tests {
     use super::*;
     use crate::utils::config::Output;
 
+    #[test]
+    fn saved_hls_packager_selection_changes_only_delivery_revision() {
+        let directory =
+            std::env::temp_dir().join(format!("packager-config-{}", uuid::Uuid::new_v4()));
+        let mut config = PlayoutConfig::default();
+        config.channel.public = directory.clone();
+        config.output.id = 1;
+        config.output.enabled = true;
+        config.output.mode = OutputMode::HLS;
+        let mut program = OutputConfig::new(160, 90, 25, 48_000);
+        let mut attachments = Vec::new();
+
+        configure_destinations(
+            &config,
+            &mut program,
+            &mut attachments,
+            1,
+            false,
+            Default::default(),
+        )
+        .unwrap();
+
+        let previous = program.destinations[0].config.clone();
+
+        config
+            .output
+            .muxer_options
+            .insert("ffplayout_packager".into(), "native".into());
+        configure_destinations(
+            &config,
+            &mut program,
+            &mut attachments,
+            1,
+            false,
+            Default::default(),
+        )
+        .unwrap();
+
+        let updated = &program.destinations[0].config;
+
+        assert_eq!(updated.muxer_options["ffplayout_packager"], "native");
+        assert_ne!(previous.destination_revision, updated.destination_revision);
+        assert_eq!(previous.encoding_revision, updated.encoding_revision);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
     #[tokio::test]
     async fn private_moq_sleeps_without_demand_but_public_moq_always_delivers() {
         let moq = Output {

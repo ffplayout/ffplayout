@@ -1292,6 +1292,129 @@ mod tests {
     }
 
     #[test]
+    fn live_hls_packager_switch_reopens_delivery_and_clears_old_media() {
+        ffmpeg_next::init().unwrap();
+
+        let directory = TestDirectory(
+            std::env::temp_dir().join(format!("live-hls-packager-{}", std::process::id())),
+        );
+
+        std::fs::create_dir_all(directory.path()).unwrap();
+
+        let mut config = OutputConfig::new(160, 90, 25, 48_000);
+        config
+            .video_options
+            .insert("preset".into(), "ultrafast".into());
+        config
+            .video_options
+            .insert("tune".into(), "zerolatency".into());
+        let mut destination = OutputDestination {
+            id: 1,
+            config: config.clone(),
+            target: OutputTarget::Hls {
+                playlist: directory
+                    .path()
+                    .join("stream.m3u8")
+                    .to_string_lossy()
+                    .into_owned(),
+                variants: Vec::new(),
+                subtitle: None,
+                segment_seconds: 1,
+                list_size: 3,
+            },
+        };
+        destination.config.encoding_revision = "unchanged".into();
+        destination.config.destination_revision = "ffmpeg".into();
+        config.destinations = vec![destination.clone()];
+        let output = ParallelOutput::new(&config).unwrap();
+        let encoder_thread = output.workers.lock().unwrap()[0]
+            .worker
+            .as_ref()
+            .unwrap()
+            .thread()
+            .id();
+        let playlist = directory.path().join("stream.m3u8");
+
+        for (phase, native) in [false, true, false].into_iter().enumerate() {
+            if phase > 0 {
+                std::fs::write(directory.path().join("stream_999.ts"), "old orphan").unwrap();
+                destination.config.destination_revision = format!("backend-{phase}");
+
+                if native {
+                    destination
+                        .config
+                        .muxer_options
+                        .insert("ffplayout_packager".into(), "native".into());
+                } else {
+                    destination
+                        .config
+                        .muxer_options
+                        .remove("ffplayout_packager");
+                }
+
+                config
+                    .output_status
+                    .update_outputs(vec![destination.clone()])
+                    .unwrap();
+            }
+
+            for index in phase as i64 * 100..(phase as i64 + 1) * 100 {
+                let mut video = frame::Video::new(Pixel::YUV420P, 160, 90);
+                video.set_pts(Some(index));
+
+                for plane in 0..video.planes() {
+                    video.data_mut(plane).fill(128);
+                }
+
+                output.encode_video(&video).unwrap();
+
+                let mut audio =
+                    frame::Audio::new(Sample::F32(Type::Planar), 1920, ChannelLayout::STEREO);
+                audio.set_rate(48_000);
+                audio.set_pts(Some(index * 1920));
+
+                for channel in 0..2 {
+                    audio.plane_mut::<f32>(channel).fill(0.0);
+                }
+
+                output.encode_audio(&audio).unwrap();
+            }
+
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+
+            loop {
+                let matches = std::fs::read_to_string(&playlist).is_ok_and(|text| {
+                    text.contains("#EXTINF:")
+                        && text.contains("# ffplayout-packager: native") == native
+                });
+
+                if matches && (phase == 0 || !directory.path().join("stream_999.ts").exists()) {
+                    break;
+                }
+
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "live switch to native={native} failed: {:?}",
+                    config.output_status.snapshot()
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+
+            assert_eq!(
+                output.workers.lock().unwrap()[0]
+                    .worker
+                    .as_ref()
+                    .unwrap()
+                    .thread()
+                    .id(),
+                encoder_thread
+            );
+        }
+
+        output.finish().unwrap();
+    }
+
+    #[test]
     fn an_idle_program_can_enable_its_first_encoding_group() {
         ffmpeg_next::init().unwrap();
         let mut config = OutputConfig::new(160, 90, 25, 48_000);
@@ -1779,10 +1902,20 @@ mod tests {
 
     #[test]
     fn hls_variants_feed_stream_and_hls_without_another_encoder() {
+        check_hls_variant_reuse(false);
+    }
+
+    #[test]
+    fn native_hls_reuses_ffmpeg_renditions_without_another_encoder() {
+        check_hls_variant_reuse(true);
+    }
+
+    fn check_hls_variant_reuse(native: bool) {
         ffmpeg_next::init().unwrap();
-        let dir = TestDirectory(
-            std::env::temp_dir().join(format!("explicit-variant-reuse-{}", std::process::id())),
-        );
+        let dir = TestDirectory(std::env::temp_dir().join(format!(
+            "explicit-variant-reuse-{}-{native}",
+            std::process::id()
+        )));
         std::fs::create_dir_all(dir.path().join("derived")).unwrap();
         let mut config = OutputConfig::new(320, 240, 25, 48_000);
         config.stream_type = crate::StreamType::Custom;
@@ -1854,6 +1987,13 @@ mod tests {
             },
         });
         borrowed.recording = None;
+
+        if native {
+            borrowed
+                .muxer_options
+                .insert("ffplayout_packager".into(), "native".into());
+        }
+
         config.destinations.push(OutputDestination {
             id: 3,
             config: borrowed,

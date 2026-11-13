@@ -2055,6 +2055,7 @@ dependencies = [
  "env_logger 0.11.11",
  "ff-audio",
  "ff-graphics",
+ "ff-hls",
  "ffmpeg-next",
  "glob",
  "libc",
@@ -2094,6 +2095,14 @@ dependencies = [
  "rten-simd",
  "tiny-skia 0.12.0",
  "yuv",
+]
+
+[[package]]
+name = "ff-hls"
+version = "2.8.1"
+dependencies = [
+ "anyhow",
+ "chrono",
 ]
 
 [[package]]

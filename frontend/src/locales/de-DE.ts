@@ -562,6 +562,10 @@ export default {
             'HLS-Wiedergabelisten und Segmente werden unter live/<name>.m3u8 gespeichert. Pro Kanal wird derzeit nur eine HLS-Ausgabe unterstützt.',
         streamUrl: 'Stream-Ziel-URL',
         hlsSettings: 'HLS-Einstellungen',
+        hlsPackager: 'HLS-Paketierer',
+        hlsPackagerNative: 'Nativ (experimentell)',
+        hlsPackagerHelp:
+            'Lokales MPEG-TS mit H.264/AAC. Unterstützt Varianten und WebVTT. Ein Wechsel startet diesen Output neu.',
         hlsPlaylistName: 'Playlist-Name',
         outputFormat: 'Ausgabeformat',
         hlsSegmentDuration: 'Segmentdauer (Sekunden)',
@@ -584,7 +588,7 @@ export default {
         protocolOptionValue: 'Wert',
         muxerOptions: 'Muxer-Optionen',
         muxerOptionsHelp:
-            'Zusätzliche FFmpeg-Muxer-Optionen für diese Ausgabe. Für HLS hls_flags mit program_date_time setzen, um EXT-X-PROGRAM-DATE-TIME auszugeben. Von ffplayout benötigte Optionen bleiben erzwungen.',
+            'Zusätzliche FFmpeg-Muxer-Optionen für diese Ausgabe. Für HLS hls_flags mit program_date_time setzen, um EXT-X-PROGRAM-DATE-TIME auszugeben. Von ffplayout benötigte Optionen bleiben erzwungen. Für beide HLS-Paketierer legt hls_delete_threshold fest, wie viele alte Segmente außerhalb der Playlist erhalten bleiben (Standard: 1).',
         addMuxerOption: 'Muxer-Option hinzufügen',
         muxerOptionName: 'Optionsname',
         muxerOptionValue: 'Wert',

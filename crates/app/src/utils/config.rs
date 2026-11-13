@@ -1034,7 +1034,7 @@ pub struct Output {
     /// FFmpeg AVIO/protocol options used while opening a network stream.
     #[serde(default)]
     pub protocol_options: BTreeMap<String, String>,
-    /// FFmpeg muxer options for this output, such as HLS `hls_flags`.
+    /// FFmpeg muxer options and the application-owned `ffplayout_packager` selector.
     #[serde(default)]
     pub muxer_options: BTreeMap<String, String>,
     /// Global container metadata. Availability depends on the output muxer.
@@ -1400,11 +1400,50 @@ impl Output {
                     return Err("HLS segment duration must be greater than zero".to_string());
                 }
                 self.validate_hls_audio_options()?;
+                self.validate_hls_packager()?;
             }
             OutputMode::Stream if self.stream_url.trim().is_empty() => {
                 return Err("stream output URL must not be empty".to_string());
             }
             _ => {}
+        }
+
+        Ok(())
+    }
+
+    fn validate_hls_packager(&self) -> Result<(), String> {
+        if !self
+            .muxer_options
+            .get("ffplayout_packager")
+            .is_some_and(|value| value == "native")
+        {
+            return Ok(());
+        }
+
+        if !(1..=60).contains(&self.hls_segment_duration)
+            || !(1..=10_000).contains(&self.hls_list_size)
+        {
+            return Err(
+                "native HLS requires 1–60 second segments and a playlist size of 1–10000".into(),
+            );
+        }
+
+        if !self.metadata_options.is_empty() {
+            return Err("native HLS does not yet support custom container metadata".into());
+        }
+
+        let capabilities = ff_engine::ffmpeg_capabilities();
+        let video_supported = capabilities
+            .video_codecs_for(ff_engine::FfmpegOutputTarget::Hls)
+            .iter()
+            .any(|codec| codec.name == self.video_codec && codec.codec_id == "h264");
+        let audio_supported = capabilities
+            .audio_codecs_for(ff_engine::FfmpegOutputTarget::Hls)
+            .iter()
+            .any(|codec| codec.name == self.audio_codec && codec.codec_id == "aac");
+
+        if !video_supported || !audio_supported {
+            return Err("native HLS currently requires H.264 video and AAC audio".into());
         }
 
         Ok(())
@@ -2450,6 +2489,37 @@ mod output_tests {
         output.audio_bitrate = 0;
 
         assert!(output.validate().is_ok());
+    }
+
+    #[test]
+    fn native_hls_selection_survives_serialization_and_rejects_unsupported_settings() {
+        let mut output = output(OutputMode::HLS);
+
+        output
+            .muxer_options
+            .insert("ffplayout_packager".into(), "native".into());
+        assert!(output.validate().is_ok());
+
+        let json = serde_json::to_string(&output).unwrap();
+        let restored: Output = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            restored.muxer_options.get("ffplayout_packager").unwrap(),
+            "native"
+        );
+
+        output.hls_list_size = 0;
+        assert!(output.validate().unwrap_err().contains("native HLS"));
+        output.hls_list_size = 3;
+        output
+            .muxer_options
+            .insert("hls_init_time".into(), "1".into());
+        assert!(output.validate().unwrap_err().contains("native HLS"));
+        output.muxer_options.remove("hls_init_time");
+        output
+            .metadata_options
+            .insert("title".into(), "Example".into());
+        assert!(output.validate().unwrap_err().contains("native HLS"));
     }
 
     #[test]

@@ -290,6 +290,7 @@ pub struct OutputConfig {
     pub video_options: VideoOptions,
     /// Validated AVIO/protocol options used only while opening network output.
     pub protocol_options: BTreeMap<String, String>,
+    /// Container options, including the application-owned `ffplayout_packager` selector.
     pub muxer_options: BTreeMap<String, String>,
     pub metadata_options: BTreeMap<String, String>,
     pub audio_codec: String,

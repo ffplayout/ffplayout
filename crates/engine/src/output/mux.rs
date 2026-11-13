@@ -14,6 +14,8 @@ use crate::{
     utils::pipeline_queue::PipelineActivity,
 };
 
+use super::hls_native::NativeHls;
+
 // Bound compressed packet storage without confusing encoder latency with backlog.
 const MAX_PACKETS: usize = 512;
 const MAX_BYTES: usize = 32 * 1024 * 1024;
@@ -22,11 +24,13 @@ const IDLE_DRAIN: Duration = Duration::from_millis(20);
 enum PacketWriter {
     Container(format::context::Output),
     Native(Box<dyn PacketSink>),
+    Hls(Box<NativeHls>),
 }
 
 impl PacketWriter {
     fn write(&mut self, packet: &Packet) -> Result<()> {
         match self {
+            Self::Hls(output) => output.write(packet),
             Self::Container(output) => packet.write_interleaved(output).map_err(Into::into),
             Self::Native(sink) => sink.write(EncodedFrame {
                 stream: packet.stream(),
@@ -42,6 +46,7 @@ impl PacketWriter {
 
     fn finish(&mut self) -> Result<()> {
         match self {
+            Self::Hls(output) => output.finish(),
             Self::Container(output) => output.write_trailer().map_err(Into::into),
             Self::Native(sink) => sink.finish(),
         }
@@ -82,6 +87,7 @@ struct Shared {
 /// file reading. Recording retains its direct, unpaced sink.
 pub(super) struct MuxOutput {
     direct: Option<format::context::Output>,
+    native_hls: Option<Box<NativeHls>>,
     direct_delivered: bool,
     time_bases: Vec<Rational>,
     #[cfg(test)]
@@ -108,6 +114,7 @@ impl MuxOutput {
             .collect();
         let mut mux = Self {
             direct: Some(output),
+            native_hls: None,
             direct_delivered: false,
             time_bases,
             #[cfg(test)]
@@ -156,6 +163,7 @@ impl MuxOutput {
     ) -> Result<Self> {
         let mut mux = Self {
             direct: None,
+            native_hls: None,
             direct_delivered: false,
             time_bases: vec![rescale::TIME_BASE; streams],
             #[cfg(test)]
@@ -172,6 +180,36 @@ impl MuxOutput {
             true,
             channel,
         )?;
+
+        Ok(mux)
+    }
+
+    pub(super) fn native_hls(
+        template: format::context::Output,
+        packager: NativeHls,
+        threaded: bool,
+        health: Option<HlsHealth>,
+        channel: Option<i32>,
+    ) -> Result<Self> {
+        let active_streams = template
+            .streams()
+            .filter(|stream| stream.parameters().medium() != ffmpeg_next::media::Type::Subtitle)
+            .map(|stream| stream.index())
+            .collect();
+        let mut mux = Self::new(template, false, health, channel)?;
+
+        mux.direct = None;
+
+        if threaded {
+            mux.start(
+                PacketWriter::Hls(Box::new(packager)),
+                active_streams,
+                false,
+                channel,
+            )?;
+        } else {
+            mux.native_hls = Some(Box::new(packager));
+        }
 
         Ok(mux)
     }
@@ -265,7 +303,11 @@ impl MuxOutput {
 
     pub(super) fn write(&mut self, packet: &mut Packet) -> Result<()> {
         let Some(shared) = &self.shared else {
-            packet.write_interleaved(self.direct.as_mut().context("mux context missing")?)?;
+            if let Some(packager) = &mut self.native_hls {
+                packager.write(packet)?;
+            } else {
+                packet.write_interleaved(self.direct.as_mut().context("mux context missing")?)?;
+            }
             self.direct_delivered = true;
             if let Some(health) = &self.health {
                 health.mark_muxed();
@@ -344,6 +386,10 @@ impl MuxOutput {
         }
         if let Some(output) = &mut self.direct {
             output.write_trailer()?;
+        }
+
+        if let Some(packager) = &mut self.native_hls {
+            packager.finish()?;
         }
 
         Ok(())

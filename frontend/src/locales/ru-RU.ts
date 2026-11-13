@@ -563,6 +563,10 @@ export default {
             'Плейлисты и сегменты HLS сохраняются в live/<name>.m3u8. Пока для канала поддерживается только один выход HLS.',
         streamUrl: 'URL назначения потока',
         hlsSettings: 'Настройки HLS',
+        hlsPackager: 'Упаковщик HLS',
+        hlsPackagerNative: 'Встроенный (экспериментальный)',
+        hlsPackagerHelp:
+            'Локальный MPEG-TS с H.264/AAC. Поддерживает варианты и WebVTT. Смена упаковщика перезапускает этот выход.',
         hlsPlaylistName: 'Название плейлиста',
         outputFormat: 'Формат вывода',
         hlsSegmentDuration: 'Длительность сегмента (секунды)',
@@ -585,7 +589,7 @@ export default {
         protocolOptionValue: 'Значение',
         muxerOptions: 'Параметры мультиплексора',
         muxerOptionsHelp:
-            'Дополнительные параметры мультиплексора FFmpeg для этого выхода. Для HLS задайте hls_flags равным program_date_time, чтобы добавить EXT-X-PROGRAM-DATE-TIME. Обязательные для ffplayout параметры остаются включёнными.',
+            'Дополнительные параметры мультиплексора FFmpeg для этого выхода. Для HLS задайте hls_flags равным program_date_time, чтобы добавить EXT-X-PROGRAM-DATE-TIME. Обязательные для ffplayout параметры остаются включёнными. Для обоих упаковщиков HLS параметр hls_delete_threshold задаёт число старых сегментов, сохраняемых вне плейлиста (по умолчанию: 1).',
         addMuxerOption: 'Добавить параметр мультиплексора',
         muxerOptionName: 'Имя параметра',
         muxerOptionValue: 'Значение',

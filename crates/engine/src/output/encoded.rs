@@ -10,6 +10,8 @@ use anyhow::{Context, Result, anyhow};
 use ffmpeg::{Packet, codec, format, frame, util::rational::Rational};
 use ffmpeg_next as ffmpeg;
 
+#[cfg(all(test, unix))]
+mod packager_bench;
 #[cfg(test)]
 mod recovery_tests;
 
@@ -227,6 +229,11 @@ impl EncodedOutput {
             | EncodedFormat::Stream { .. }
             | EncodedFormat::Recording { .. } => None,
         };
+        let native_hls = matches!(output_format, EncodedFormat::Hls { .. })
+            && cfg
+                .muxer_options
+                .get("ffplayout_packager")
+                .is_some_and(|value| value == "native");
         let vtt_subtitles = hls_subtitle.is_some();
         hls::validate_variants(hls_variants)?;
 
@@ -296,15 +303,21 @@ impl EncodedOutput {
             None
         };
 
+        let hls_start_number = hls_session
+            .as_ref()
+            .map(|session| {
+                if native_hls {
+                    session.prepare_native_resume()
+                } else {
+                    session.prepare_resume_start_number()
+                }
+            })
+            .transpose()?
+            .flatten();
         if hls_session.is_some() && !uses_var_stream_map {
             hls::remove_master_playlist(path)?;
         }
 
-        let hls_start_number = hls_session
-            .as_ref()
-            .map(hls::HlsSession::prepare_resume_start_number)
-            .transpose()?
-            .flatten();
         // Network outputs get a write timeout so a stalled TCP connection
         // surfaces as an error instead of blocking the playout worker forever.
         let mut octx = match output_format {
@@ -415,50 +428,77 @@ impl EncodedOutput {
                 list_size,
                 ..
             } => {
-                let default_hls_flags = if hls_start_number.is_some() {
-                    "append_list+delete_segments+omit_endlist+temp_file+discont_start"
-                } else {
-                    "delete_segments+omit_endlist+temp_file"
-                };
-                let mut options = muxer_options_excluding(
-                    &cfg.muxer_options,
-                    [
-                        "hls_time",
-                        "hls_list_size",
-                        "hls_flags",
-                        "hls_segment_filename",
-                        "start_number",
-                        "master_pl_name",
-                        "var_stream_map",
-                    ],
-                );
-                options.set("hls_time", &segment_seconds.to_string());
-                options.set("hls_list_size", &list_size.to_string());
-                options.set(
-                    "hls_flags",
-                    &merged_hls_flags(default_hls_flags, cfg.muxer_options.get("hls_flags")),
-                );
-                let segment_filename = if uses_var_stream_map {
-                    hls::segment_pattern(path)
-                } else {
-                    hls::standalone_segment_pattern(path)
-                };
-                options.set("hls_segment_filename", &segment_filename);
-
-                if let Some(start_number) = hls_start_number {
-                    options.set("start_number", &start_number.to_string());
-                }
-
-                if uses_var_stream_map {
-                    options.set("master_pl_name", "master.m3u8");
-                    options.set(
-                        "var_stream_map",
-                        &hls::var_stream_map(variants_for_naming, hls_subtitle),
+                if !native_hls {
+                    let default_hls_flags = if hls_start_number.is_some() {
+                        "append_list+delete_segments+omit_endlist+temp_file+discont_start"
+                    } else {
+                        "delete_segments+omit_endlist+temp_file"
+                    };
+                    let mut options = muxer_options_excluding(
+                        &cfg.muxer_options,
+                        [
+                            "ffplayout_packager",
+                            "hls_time",
+                            "hls_list_size",
+                            "hls_flags",
+                            "hls_segment_filename",
+                            "start_number",
+                            "master_pl_name",
+                            "var_stream_map",
+                        ],
                     );
+                    options.set("hls_time", &segment_seconds.to_string());
+                    options.set("hls_list_size", &list_size.to_string());
+                    options.set(
+                        "hls_flags",
+                        &merged_hls_flags(default_hls_flags, cfg.muxer_options.get("hls_flags")),
+                    );
+                    let segment_filename = if uses_var_stream_map {
+                        hls::segment_pattern(path)
+                    } else {
+                        hls::standalone_segment_pattern(path)
+                    };
+                    options.set("hls_segment_filename", &segment_filename);
+
+                    if let Some(start_number) = hls_start_number {
+                        options.set("start_number", &start_number.to_string());
+                    }
+
+                    if uses_var_stream_map {
+                        options.set("master_pl_name", "master.m3u8");
+                        options.set(
+                            "var_stream_map",
+                            &hls::var_stream_map(variants_for_naming, hls_subtitle),
+                        );
+                    }
+                    reject_unused_options(octx.write_header_with(options)?)?;
                 }
-                reject_unused_options(octx.write_header_with(options)?)?;
             }
         }
+
+        let mux = if native_hls {
+            let EncodedFormat::Hls {
+                segment_seconds,
+                list_size,
+                ..
+            } = &output_format
+            else {
+                unreachable!("native HLS selected for HLS output")
+            };
+            let packager = super::hls_native::NativeHls::new(
+                &octx,
+                path,
+                cfg,
+                hls_variants,
+                hls_subtitle,
+                *segment_seconds,
+                *list_size,
+            )?;
+
+            MuxOutput::native_hls(octx, packager, threaded_output, hls_health, cfg.channel_id)?
+        } else {
+            MuxOutput::new(octx, threaded_output, hls_health, cfg.channel_id)?
+        };
 
         let recording_video_stream_index = cfg
             .recording
@@ -528,7 +568,7 @@ impl EncodedOutput {
                     super::diagnostics::PrimaryTiming::new(cfg.channel_id.unwrap_or_default())
                 }),
             video_time_base: cfg.video_time_base,
-            mux: MuxOutput::new(octx, threaded_output, hls_health, cfg.channel_id)?,
+            mux,
             encoding_workers: None,
             video_stream_indices: if parameters.is_some() {
                 (0..stream_count).map(|index| index * 2).collect()

@@ -553,6 +553,10 @@ export default {
         streamFormat: 'FFmpeg output format',
         streamTarget: 'Output target',
         hlsSettings: 'HLS settings',
+        hlsPackager: 'HLS packager',
+        hlsPackagerNative: 'Native (experimental)',
+        hlsPackagerHelp:
+            'Local MPEG-TS with H.264/AAC. Supports variants and WebVTT. Changing the packager restarts this output.',
         hlsPlaylistName: 'Playlist name',
         outputFormat: 'Output format',
         hlsSegmentDuration: 'Segment duration (seconds)',
@@ -575,7 +579,7 @@ export default {
         protocolOptionValue: 'Value',
         muxerOptions: 'Muxer options',
         muxerOptionsHelp:
-            'Additional FFmpeg muxer options for this output. For HLS, set hls_flags to program_date_time to emit EXT-X-PROGRAM-DATE-TIME. Required ffplayout options remain enforced.',
+            'Additional FFmpeg muxer options for this output. For HLS, set hls_flags to program_date_time to emit EXT-X-PROGRAM-DATE-TIME. Required ffplayout options remain enforced. For either HLS packager, hls_delete_threshold sets how many old segments are kept outside the playlist (default: 1).',
         addMuxerOption: 'Add Muxer Option',
         muxerOptionName: 'Option name',
         muxerOptionValue: 'Value',

@@ -43,10 +43,24 @@ impl Fixture {
     }
 
     fn try_open(&self, name: &str) -> Result<EncodedOutput> {
+        self.try_open_packager(name, false)
+    }
+
+    fn try_open_packager(&self, name: &str, native: bool) -> Result<EncodedOutput> {
         let mut config = OutputConfig::new(320, 180, 25, 48_000);
         config
             .video_options
             .insert("preset".into(), "ultrafast".into());
+        if native {
+            config
+                .video_options
+                .insert("preset".into(), "medium".into());
+            config.video_options.insert("tune".into(), "film".into());
+            config
+                .muxer_options
+                .insert("ffplayout_packager".into(), "native".into());
+        }
+
         let mut output = EncodedOutput::open(
             self.0.join(name).to_str().unwrap(),
             &config,
@@ -347,4 +361,232 @@ fn subtitle_locks_only_reserve_the_configured_first_rendition() {
 
     assert!(hls::HlsSession::acquire(&[path("stream_vtt.m3u8")], None, false).is_err());
     hls::HlsSession::acquire(&[path("low_vtt.m3u8")], None, false).unwrap();
+}
+
+fn open_ts(path: &std::path::Path) -> format::context::Input {
+    // A one-frame tail is valid TS but too small for reliable format probing.
+    // HLS clients already know the segment format from the surrounding stream.
+    // SAFETY: av_find_input_format returns FFmpeg's static registered descriptor.
+    let input_format = unsafe {
+        let pointer = ffmpeg::ffi::av_find_input_format(c"mpegts".as_ptr());
+
+        assert!(!pointer.is_null());
+        format::format::Input::wrap(pointer.cast_mut())
+    };
+
+    format::open(path, &ffmpeg::Format::Input(input_format))
+        .unwrap()
+        .input()
+}
+
+#[test]
+fn native_hls_writes_three_real_variants_with_vtt_and_resumes() {
+    let fixture = Fixture::new();
+    let mut last_number = 0;
+
+    for restart in 0..3 {
+        let mut output = fixture.try_open_packager("master.m3u8", true).unwrap();
+
+        write_frames(&mut output, 0..100, &mut 0);
+        output.finish().unwrap();
+        assert!(fixture.check_references() >= 9);
+
+        let playlist = fs::read_to_string(fixture.0.join("high.m3u8")).unwrap();
+        let names: Vec<_> = playlist
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect();
+        let last = names.last().unwrap();
+        let number = last
+            .strip_prefix("high_")
+            .unwrap()
+            .strip_suffix(".ts")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+
+        assert!(number > last_number);
+        last_number = number;
+
+        if restart > 0 {
+            assert!(playlist.contains("#EXT-X-DISCONTINUITY"));
+        }
+
+        let subtitle = fs::read_to_string(fixture.0.join(format!("high{number}.vtt"))).unwrap();
+
+        assert!(subtitle.contains("X-TIMESTAMP-MAP=LOCAL:"));
+        let has_captions = names.iter().any(|name| {
+            let number = name
+                .strip_prefix("high_")
+                .unwrap()
+                .strip_suffix(".ts")
+                .unwrap();
+
+            fs::read_to_string(fixture.0.join(format!("high{number}.vtt")))
+                .unwrap()
+                .contains("Caption")
+        });
+
+        assert!(has_captions);
+
+        for variant in ["high", "mid", "low"] {
+            let playlist = fs::read_to_string(fixture.0.join(format!("{variant}.m3u8"))).unwrap();
+            let name = playlist
+                .lines()
+                .find(|line| !line.is_empty() && !line.starts_with('#'))
+                .unwrap();
+            let mut input = open_ts(&fixture.0.join(name));
+            let video = input
+                .streams()
+                .best(ffmpeg::media::Type::Video)
+                .unwrap()
+                .index();
+            let first = input
+                .packets()
+                .find(|(stream, _)| stream.index() == video)
+                .unwrap()
+                .1;
+
+            assert!(
+                first.is_key(),
+                "{variant}: segment must begin with a keyframe"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_hls_vtt_mapping_matches_actual_pes_presentation_time() {
+    let fixture = Fixture::new();
+    let mut output = fixture.try_open_packager("master.m3u8", true).unwrap();
+
+    write_frames(&mut output, 0..100, &mut 0);
+    output.finish().unwrap();
+
+    let playlist = fs::read_to_string(fixture.0.join("high.m3u8")).unwrap();
+
+    for name in playlist
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+    {
+        let number = name
+            .strip_prefix("high_")
+            .unwrap()
+            .strip_suffix(".ts")
+            .unwrap();
+        let vtt = fs::read_to_string(fixture.0.join(format!("high{number}.vtt"))).unwrap();
+        let mapping = vtt
+            .lines()
+            .find(|line| line.starts_with("X-TIMESTAMP-MAP="))
+            .unwrap();
+        let mpegts = mapping
+            .split("MPEGTS:")
+            .nth(1)
+            .unwrap()
+            .parse::<i64>()
+            .unwrap();
+        let mut input = open_ts(&fixture.0.join(name));
+        let video = input
+            .streams()
+            .best(ffmpeg::media::Type::Video)
+            .unwrap()
+            .index();
+        let (stream, first) = input
+            .packets()
+            .find(|(stream, _)| stream.index() == video)
+            .unwrap();
+        let pts = ffmpeg::Rescale::rescale(
+            &first.pts().unwrap(),
+            stream.time_base(),
+            Rational(1, 90_000),
+        );
+
+        assert_eq!(pts.rem_euclid(1_i64 << 33), mpegts);
+    }
+}
+
+#[test]
+fn native_and_ffmpeg_packager_switches_clear_owned_media_in_both_directions() {
+    let fixture = Fixture::new();
+
+    for native in [false, true, false] {
+        let mut output = fixture.try_open_packager("master.m3u8", native).unwrap();
+
+        // Switching backends starts fresh, including retained/orphaned resources.
+        assert!(!fixture.0.join("high_999.ts").exists());
+        assert!(!fixture.0.join("high999.vtt").exists());
+        write_frames(&mut output, 0..100, &mut 0);
+        output.finish().unwrap();
+        assert!(fixture.check_references() >= 9);
+
+        fs::write(fixture.0.join("high_999.ts"), "old orphan").unwrap();
+        fs::write(fixture.0.join("high999.vtt"), "old orphan").unwrap();
+        fs::write(fixture.0.join("unrelated_999.ts"), "other output").unwrap();
+    }
+
+    assert!(fixture.0.join("unrelated_999.ts").exists());
+}
+
+#[test]
+fn native_hls_restart_preserves_existing_playlists_and_segments() {
+    let fixture = Fixture::new();
+    let mut output = fixture.try_open_packager("master.m3u8", true).unwrap();
+
+    write_frames(&mut output, 0..100, &mut 0);
+    output.finish().unwrap();
+
+    let playlist = fs::read(fixture.0.join("high.m3u8")).unwrap();
+    let segment = fixture
+        .segments()
+        .into_iter()
+        .find(|path| path.extension().is_some_and(|extension| extension == "ts"))
+        .unwrap();
+    let contents = fs::read(&segment).unwrap();
+    let _output = fixture.try_open_packager("master.m3u8", true).unwrap();
+
+    assert_eq!(fs::read(fixture.0.join("high.m3u8")).unwrap(), playlist);
+    assert_eq!(fs::read(segment).unwrap(), contents);
+}
+
+#[test]
+fn native_hls_preserves_all_b_frames_including_the_short_final_segment() {
+    let fixture = Fixture::new();
+    let mut output = fixture.try_open_packager("master.m3u8", true).unwrap();
+
+    write_frames(&mut output, 0..100, &mut 0);
+    output.finish().unwrap();
+
+    let mut timestamps = std::collections::BTreeSet::new();
+
+    for path in fixture.segments().into_iter().filter(|path| {
+        path.file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("high_")
+    }) {
+        let mut input = open_ts(&path);
+        let video = input
+            .streams()
+            .best(ffmpeg::media::Type::Video)
+            .unwrap()
+            .index();
+
+        for (stream, packet) in input
+            .packets()
+            .filter(|(stream, _)| stream.index() == video)
+        {
+            let pts = ffmpeg::Rescale::rescale(
+                &packet.pts().unwrap(),
+                stream.time_base(),
+                Rational(1, 25),
+            );
+
+            assert!(timestamps.insert(pts), "duplicate video frame {pts}");
+        }
+    }
+
+    assert_eq!(
+        timestamps.into_iter().collect::<Vec<_>>(),
+        (0..100).collect::<Vec<_>>()
+    );
 }
