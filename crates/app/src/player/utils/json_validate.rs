@@ -27,6 +27,19 @@ use crate::{
 
 const MAX_AV_DURATION_DIFFERENCE_SECONDS: f64 = 4.0;
 
+/// Format a validator start position relative to the playlist's calendar date.
+fn format_validation_position(position: f64) -> String {
+    let seconds = (position * 1000.0).round() / 1000.0;
+
+    if !seconds.is_finite() || seconds < 86_400.0 {
+        return sec_to_time(position);
+    }
+
+    let days = (seconds / 86_400.0).floor() as u64;
+
+    format!("{} (+{days}d)", sec_to_time(seconds % 86_400.0))
+}
+
 /// Validate a single media file.
 ///
 /// - Check if file exists
@@ -93,7 +106,7 @@ async fn check_media(
             Err(error) => {
                 error!(channel = id;
                     "<span class=\"log-gray\">[Validation]</span> Silence detection failed on position <span class=\"log-number\">{pos}</span> - {}: <span class=\"log-addr\">{}</span>: {error}",
-                    sec_to_time(begin),
+                    format_validation_position(begin),
                     node.source
                 );
             }
@@ -103,7 +116,7 @@ async fn check_media(
     if !error_list.is_empty() {
         error!(channel = id;
             "<span class=\"log-gray\">[Validator]</span> Engine probe error on position <span class=\"log-number\">{pos}</span> - {}: <span class=\"log-addr\">{}</span>: {}",
-            sec_to_time(begin),
+            format_validation_position(begin),
             node.source,
             error_list.join("\n    ")
         );
@@ -297,13 +310,13 @@ pub async fn validate_playlist(
                 if let Err(e) = item.add_probe(false).await {
                     error!(channel = id;
                         "<span class=\"log-gray\">[Validation]</span> Error on position <span class=\"log-number\">{pos:0>3}</span> - <span class=\"log-number\">{}</span>: {e}",
-                        sec_to_time(begin)
+                        format_validation_position(begin)
                     );
                 }
             } else if let Err(e) = item.add_probe(true).await {
                 error!(channel = id;
                     "<span class=\"log-gray\">[Validation]</span> Error on position <span class=\"log-number\">{pos:0>3}</span> - <span class=\"log-number\">{}</span>: {e}",
-                    sec_to_time(begin)
+                    format_validation_position(begin)
                 );
             }
         }
@@ -318,7 +331,7 @@ pub async fn validate_playlist(
                         debug!(
                             channel = id;
                             "<span class=\"log-gray\">[Validation]</span> Source at <span class=\"log-number\">{}</span>, seems fine: <span class=\"log-addr\">{}</span>",
-                            sec_to_time(begin),
+                            format_validation_position(begin),
                             item.source
                         );
                     } else if let Ok(mut list) = current_list.try_lock() {
@@ -335,7 +348,7 @@ pub async fn validate_playlist(
 
                                     channel = id;
                                     "<span class=\"log-gray\">[Validation]</span> File duration (at: <span class=\"log-number\">{}</span>) differs from playlist value. File duration: <span class=\"log-number\">{}</span>, playlist value: <span class=\"log-number\">{}</span>, source <span class=\"log-addr\">{}</span>",
-                                    sec_to_time(o.begin.unwrap_or_default()),
+                                    format_validation_position(o.begin.unwrap_or_default()),
                                     sec_to_time(probe_duration),
                                     sec_to_time(o.duration),
                                     o.source
@@ -387,7 +400,25 @@ pub async fn validate_playlist(
 mod tests {
     use ff_engine::{EngineAudioStream, EngineMediaProbe, EngineVideoStream, ProbeFormat};
 
-    use super::{Media, av_duration_error};
+    use super::{Media, av_duration_error, format_validation_position, sec_to_time};
+
+    #[test]
+    fn validation_start_positions_show_calendar_day_offsets() {
+        for (position, expected) in [
+            (0.0, "00:00:00.000"),
+            (64_792.450, "17:59:52.450"),
+            (86_399.999, "23:59:59.999"),
+            (86_400.0, "00:00:00.000 (+1d)"),
+            (93_584.474, "01:59:44.474 (+1d)"),
+            (172_800.0, "00:00:00.000 (+2d)"),
+            (86_399.9996, "00:00:00.000 (+1d)"),
+        ] {
+            assert_eq!(format_validation_position(position), expected);
+        }
+
+        // Durations retain the shared formatter's original representation.
+        assert_eq!(sec_to_time(93_584.474), "25:59:44.474");
+    }
 
     fn probe(video_duration: Option<f64>, audio_duration: Option<f64>) -> EngineMediaProbe {
         EngineMediaProbe {
