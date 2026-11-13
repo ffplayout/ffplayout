@@ -10,7 +10,7 @@ use std::{
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, SecondsFormat, Utc};
 
-use crate::manifest::{Playlist, Segment, atomic_write, safe_name};
+use crate::manifest::{Playlist, Segment, atomic_write, load_codecs, safe_name};
 
 use super::{Config, Cue, MediaPacket, RenditionConfig, SegmentWriter, Subtitle};
 
@@ -25,6 +25,8 @@ struct Rendition {
     keyframes: VecDeque<(i64, i64)>,
     latest_audio: Option<i64>,
     codecs: String,
+    resumed_codecs: Option<String>,
+    resumed_last_sequence: Option<u64>,
     width: u32,
     height: u32,
     bandwidth: u64,
@@ -79,6 +81,11 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         );
 
         let parent = &config.directory;
+        let previous_codecs = config
+            .master_playlist
+            .as_ref()
+            .map(|name| load_codecs(&parent.join(name)))
+            .unwrap_or_default();
         let mut renditions = Vec::new();
         let mut names = HashSet::new();
 
@@ -99,8 +106,14 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                 "invalid HLS codec declaration"
             );
 
+            let uri = format!("{name}.m3u8");
+            let playlist = Playlist::load(parent.join(&uri))?;
+            let resumed_last_sequence = playlist.segments.back().map(|segment| segment.sequence);
+
             renditions.push(Rendition {
-                playlist: Playlist::load(parent.join(format!("{name}.m3u8")))?,
+                resumed_codecs: previous_codecs.get(&uri).cloned(),
+                resumed_last_sequence,
+                playlist,
                 name,
                 first_key: None,
                 keyframes: VecDeque::new(),
@@ -277,6 +290,22 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             program_date_time: config.program_date_time,
             finished: false,
         })
+    }
+
+    /// Supply codec declarations discovered before the next playlist publication.
+    pub fn set_codecs(&mut self, rendition: usize, codecs: String) -> Result<()> {
+        ensure!(
+            !codecs.contains(['"', '\r', '\n']),
+            "invalid HLS codec declaration"
+        );
+
+        let rendition = self
+            .renditions
+            .get_mut(rendition)
+            .context("HLS rendition missing")?;
+        rendition.codecs = codecs;
+
+        Ok(())
     }
 
     pub fn write_cue(&mut self, cue: Cue) -> Result<()> {
@@ -611,7 +640,20 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                 rendition.bandwidth, rendition.width, rendition.height
             )?;
 
-            if !rendition.codecs.is_empty() {
+            // A discontinuity preserves old media, which may require a different
+            // codec. Advertise the new declaration only once it describes the
+            // entire window, including after delayed header discovery.
+            let retained_history = rendition.resumed_last_sequence.is_some_and(|last| {
+                rendition
+                    .playlist
+                    .segments
+                    .front()
+                    .is_some_and(|segment| segment.sequence <= last)
+            });
+            let compatible_history =
+                rendition.resumed_codecs.as_deref() == Some(rendition.codecs.as_str());
+
+            if !rendition.codecs.is_empty() && (!retained_history || compatible_history) {
                 write!(text, ",CODECS=\"{}\"", rendition.codecs)?;
             }
 

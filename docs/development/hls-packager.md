@@ -79,6 +79,21 @@ The minimal playlist serializer handles the initial scope only. General HLS tag
 libraries remain to be evaluated before extending serialization to timed events,
 advertising, fMP4/CMAF, encryption and LL-HLS.
 
+The engine derives per-rendition RFC 6381 CODECS declarations from H.264 SPS data
+(AVC configuration records or Annex B) and AAC AudioSpecificConfig, including
+explicit/implicit SBR and PS for AAC-LC, HE-AAC and HE-AAC v2. Encoder profile hints
+are not substituted for actual headers. If SPS data arrives with the first key
+packet, the declaration is supplied before the next master publication. Missing,
+conflicting or unsupported initialization leaves CODECS omitted for that rendition;
+the packager does not advertise a partial audio/video declaration. This discovery
+runs at initialization, not as continuous frame analysis. Dynamic codec changes
+within a running destination remain outside the initial scope.
+On resume, declarations are compared with the previous master per rendition.
+Changed or unknown declarations are omitted while historical segments remain in
+that rendition's live window, then restored automatically. Matching declarations
+remain available immediately. This does not clear retained segments; normal
+retention still applies, including across repeated restarts.
+
 Real encoder tests verify TS timestamps against `X-TIMESTAMP-MAP`, aligned
 renditions, restart/resume, switching backends and sharing encoders. Browser/player
 qualification, long-running resource measurements, clock-correction behavior and

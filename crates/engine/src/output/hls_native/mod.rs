@@ -3,6 +3,7 @@ use anyhow::{Context, Result, ensure};
 use ff_hls::{Config, Cue, MediaPacket, Packager, RenditionConfig, Subtitle};
 use ffmpeg_next::{Packet, Rational, Rescale, codec, format, rescale};
 
+mod codecs;
 mod container;
 
 use crate::utils::{
@@ -10,12 +11,14 @@ use crate::utils::{
     ffmpeg::reference_packet,
 };
 
+use codecs::Codecs;
 use container::{Track, TsWriter};
 
 pub(super) struct NativeHls {
     packager: Packager<Packet, TsWriter>,
     time_bases: Vec<Rational>,
     renditions: usize,
+    codecs: Vec<Codecs>,
 }
 
 impl NativeHls {
@@ -49,6 +52,7 @@ impl NativeHls {
             .context("HLS output name missing")?;
         let mut renditions = Vec::new();
         let mut tracks = Vec::new();
+        let mut codecs = Vec::new();
 
         for index in 0..variants.len().max(1) {
             let video = template
@@ -87,6 +91,8 @@ impl NativeHls {
                 variant.audio_bitrate
             });
 
+            let declaration = Codecs::new(&video_parameters, &audio_parameters);
+
             renditions.push(RenditionConfig {
                 name: variant
                     .map_or(stem, |variant| variant.name.as_str())
@@ -94,10 +100,9 @@ impl NativeHls {
                 width,
                 height,
                 bandwidth: bandwidth.max(128_000) * 12 / 10,
-                // Omit CODECS until the actual AVC profile and AAC object type
-                // can be declared together, including Annex B encoder headers.
-                codecs: String::new(),
+                codecs: declaration.value().unwrap_or_default(),
             });
+            codecs.push(declaration);
             tracks.push([
                 Track {
                     parameters: video_parameters.clone(),
@@ -146,6 +151,7 @@ impl NativeHls {
                 .map(|stream| stream.time_base())
                 .collect(),
             renditions: count,
+            codecs,
         })
     }
 
@@ -166,6 +172,10 @@ impl NativeHls {
                 text: std::str::from_utf8(packet.data().context("subtitle payload missing")?)?
                     .to_owned(),
             });
+        }
+
+        if let Some(codecs) = self.codecs[stream / 2].observe(packet) {
+            self.packager.set_codecs(stream / 2, codecs)?;
         }
 
         self.packager.write(MediaPacket {

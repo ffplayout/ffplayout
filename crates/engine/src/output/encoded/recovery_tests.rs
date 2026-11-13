@@ -429,13 +429,37 @@ fn native_hls_writes_three_real_variants_with_vtt_and_resumes() {
 
         assert!(has_captions);
 
-        for variant in ["high", "mid", "low"] {
+        let master = fs::read_to_string(fixture.0.join("master.m3u8")).unwrap();
+        let declarations: Vec<_> = master
+            .lines()
+            .filter(|line| line.starts_with("#EXT-X-STREAM-INF:"))
+            .collect();
+
+        assert_eq!(declarations.len(), 3);
+
+        for (index, variant) in ["high", "mid", "low"].into_iter().enumerate() {
             let playlist = fs::read_to_string(fixture.0.join(format!("{variant}.m3u8"))).unwrap();
             let name = playlist
                 .lines()
                 .find(|line| !line.is_empty() && !line.starts_with('#'))
                 .unwrap();
             let mut input = open_ts(&fixture.0.join(name));
+            let audio_parameters = input
+                .streams()
+                .best(ffmpeg::media::Type::Audio)
+                .unwrap()
+                .parameters();
+            let audio_decoder = codec::context::Context::from_parameters(audio_parameters)
+                .unwrap()
+                .decoder()
+                .audio()
+                .unwrap();
+
+            assert_eq!(
+                audio_decoder.profile(),
+                codec::Profile::AAC(codec::profile::AAC::Low)
+            );
+
             let video = input
                 .streams()
                 .best(ffmpeg::media::Type::Video)
@@ -451,6 +475,21 @@ fn native_hls_writes_three_real_variants_with_vtt_and_resumes() {
                 first.is_key(),
                 "{variant}: segment must begin with a keyframe"
             );
+
+            // Independently read the RFC 6381 bytes from the emitted TS packet,
+            // rather than using the declaration parser to verify its own result.
+            let sps = first
+                .data()
+                .unwrap()
+                .windows(7)
+                .find(|bytes| bytes[..3] == [0, 0, 1] && bytes[3] & 0x1f == 7)
+                .unwrap();
+            let expected = format!(
+                "CODECS=\"avc1.{:02x}{:02x}{:02x},mp4a.40.2\"",
+                sps[4], sps[5], sps[6]
+            );
+
+            assert!(declarations[index].contains(&expected), "{master}");
         }
     }
 }

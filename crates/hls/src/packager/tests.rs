@@ -217,6 +217,39 @@ fn date_time_mapping_is_shared_across_renditions_and_preserved_on_resume() {
 }
 
 #[test]
+fn discovered_codecs_are_published_per_variant_without_accepting_manifest_injection() {
+    let fixture = Fixture::new();
+    let mut packager = Packager::new(
+        fixture.config(2, 3),
+        Writer {
+            fail_rendition: None,
+        },
+    )
+    .unwrap();
+
+    packager
+        .set_codecs(0, "avc1.64001f,mp4a.40.2".into())
+        .unwrap();
+    assert!(
+        packager
+            .set_codecs(0, "avc1.64001f\"\ninvalid".into())
+            .is_err()
+    );
+    assert!(packager.set_codecs(2, "avc1.64001f".into()).is_err());
+    feed(&mut packager, 2, 0, 25).unwrap();
+    packager.finish().unwrap();
+
+    let master = fs::read_to_string(fixture.0.join("master.m3u8")).unwrap();
+    let declarations: Vec<_> = master
+        .lines()
+        .filter(|line| line.starts_with("#EXT-X-STREAM-INF:"))
+        .collect();
+
+    assert!(declarations[0].contains("CODECS=\"avc1.64001f,mp4a.40.2\""));
+    assert!(!declarations[1].contains("CODECS="));
+}
+
+#[test]
 fn failed_segment_does_not_publish_a_partial_variant_set() {
     let fixture = Fixture::new();
     let mut packager = Packager::new(
@@ -976,4 +1009,116 @@ fn rendition_suffix_only_collides_when_subtitles_are_enabled() {
     assert!(fixture.0.join("v0.m3u8").exists());
     assert!(fixture.0.join("v0_vtt.m3u8").exists());
     assert!(fixture.0.join("v0_vtt_0.ts").exists());
+}
+
+#[test]
+fn resumed_codec_declarations_cover_retained_media_until_it_expires() {
+    const CURRENT: &str = "avc1.64001f,mp4a.40.2";
+
+    for previous in [
+        CURRENT,
+        "avc1.42001e,mp4a.40.2",
+        "avc1.64001f,mp4a.40.5",
+        "",
+    ] {
+        for delayed in [false, true] {
+            let fixture = Fixture::new();
+            let mut config = fixture.config(2, 3);
+            config.renditions[0].codecs = previous.into();
+            config.renditions[1].codecs = CURRENT.into();
+            let mut packager = Packager::new(
+                config,
+                Writer {
+                    fail_rendition: None,
+                },
+            )
+            .unwrap();
+
+            feed(&mut packager, 2, 0, 100).unwrap();
+            packager.finish().unwrap();
+
+            let old_playlist = fs::read_to_string(fixture.0.join("v0.m3u8")).unwrap();
+            let old_segments: Vec<_> = old_playlist
+                .lines()
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .map(str::to_owned)
+                .collect();
+            let mut config = fixture.config(2, 3);
+            config.renditions[0].codecs = if delayed {
+                String::new()
+            } else {
+                CURRENT.into()
+            };
+            config.renditions[1].codecs = CURRENT.into();
+            let mut resumed = Packager::new(
+                config,
+                Writer {
+                    fail_rendition: None,
+                },
+            )
+            .unwrap();
+
+            if delayed {
+                resumed.set_codecs(0, CURRENT.into()).unwrap();
+            }
+
+            feed(&mut resumed, 2, 0, 50).unwrap();
+
+            let playlist = fs::read_to_string(fixture.0.join("v0.m3u8")).unwrap();
+            let master = fs::read_to_string(fixture.0.join("master.m3u8")).unwrap();
+            let declarations: Vec<_> = master
+                .lines()
+                .filter(|line| line.starts_with("#EXT-X-STREAM-INF:"))
+                .collect();
+
+            assert!(
+                old_segments
+                    .iter()
+                    .any(|uri| playlist.lines().any(|line| line == uri))
+            );
+            assert!(old_segments.iter().all(|uri| fixture.0.join(uri).exists()));
+            assert_eq!(
+                declarations[0].contains("CODECS="),
+                previous == CURRENT,
+                "previous={previous}, delayed={delayed}: {master}"
+            );
+            assert!(declarations[1].contains(CURRENT));
+            resumed.finish().unwrap();
+
+            // A second restart must not turn an omitted declaration into a
+            // claim about the still-retained mixed window.
+            let mut config = fixture.config(2, 3);
+            config.renditions[0].codecs = CURRENT.into();
+            config.renditions[1].codecs = CURRENT.into();
+            let mut resumed = Packager::new(
+                config,
+                Writer {
+                    fail_rendition: None,
+                },
+            )
+            .unwrap();
+
+            feed(&mut resumed, 2, 0, 50).unwrap();
+
+            let master = fs::read_to_string(fixture.0.join("master.m3u8")).unwrap();
+            let first = master
+                .lines()
+                .find(|line| line.starts_with("#EXT-X-STREAM-INF:"))
+                .unwrap();
+
+            assert_eq!(first.contains("CODECS="), previous == CURRENT);
+            feed(&mut resumed, 2, 2_000_000, 250).unwrap();
+            resumed.finish().unwrap();
+
+            let playlist = fs::read_to_string(fixture.0.join("v0.m3u8")).unwrap();
+            let master = fs::read_to_string(fixture.0.join("master.m3u8")).unwrap();
+
+            assert!(
+                !old_segments
+                    .iter()
+                    .any(|uri| playlist.lines().any(|line| line == uri))
+            );
+            assert_eq!(master.matches(CURRENT).count(), 2);
+        }
+    }
 }

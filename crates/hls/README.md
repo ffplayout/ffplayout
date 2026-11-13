@@ -29,6 +29,11 @@ The initial implementation:
   New tracks join the next sequence without requiring historical segments.
 - Emits cues in every segment they overlap and maps milliseconds to the common
   90 kHz clock modulo 2^33. Empty subtitle segments are also written.
+- Publishes per-rendition CODECS declarations supplied by the caller, including
+  initialization discovered before the first segment is published. The engine
+  derives H.264/AAC declarations from actual headers and omits uncertain values.
+  On resume, changed or unknown declarations stay omitted until historical media
+  leaves the live window; retained segments are not cleared.
 - Keeps at least three target durations in a rolling live window before evicting
   entries, even when the requested entry count is smaller. The configured
   unreferenced-segment reserve applies after this playable window.
