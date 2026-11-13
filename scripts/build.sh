@@ -237,7 +237,7 @@ elif [[ $target == "debian-static" || $target == "alpine-static" ]]; then
 
     build_step "Prepare $static_description builder image (cache check/build)" "$container_cli" build \
         --platform linux/amd64 \
-        --build-arg FFMPEG_VERSION="${FFMPEG_VERSION:-release/9.0}" \
+        --build-arg FFMPEG_VERSION="${FFMPEG_VERSION:-release/9.1}" \
         --build-arg FFMPEG_VAAPI="${FFMPEG_VAAPI:-0}" \
         ${ffmpeg_component_args[@]+"${ffmpeg_component_args[@]}"} \
         --build-arg CARGO_FEATURES="$static_cargo_features" \

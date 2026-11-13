@@ -114,7 +114,7 @@ RUN git clone --depth 1 "https://code.videolan.org/videolan/dav1d.git" && cd dav
     ninja && \
     ninja install
 
-ARG FFMPEG_VERSION=release/9.0
+ARG FFMPEG_VERSION=release/9.1
 ARG FFMPEG_AVDEVICE=0
 ARG FFMPEG_AVFILTER=0
 

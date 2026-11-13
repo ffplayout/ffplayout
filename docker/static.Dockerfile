@@ -136,7 +136,7 @@ RUN git clone https://github.com/intel/libvpl.git && \
     sed -i '/^Libs.private:/ s/$/ -lstdc++/' "$LOCALDESTDIR/lib/pkgconfig/vpl.pc" && \
     pkg-config --modversion vpl
 
-ARG FFMPEG_VERSION=release/9.0
+ARG FFMPEG_VERSION=release/9.1
 ARG FFMPEG_AVDEVICE=0
 ARG FFMPEG_AVFILTER=0
 
