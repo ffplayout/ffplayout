@@ -1,7 +1,8 @@
 **ffplayout**
 ================
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Validate](https://github.com/ffplayout/ffplayout/actions/workflows/validate.yml/badge.svg)](https://github.com/ffplayout/ffplayout/actions/workflows/validate.yml)  [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+![GitHub Release](https://img.shields.io/github/v/release/ffplayout/ffplayout) 
 
 ![player](/docs/images/player.png)
 
