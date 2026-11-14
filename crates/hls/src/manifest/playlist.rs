@@ -118,7 +118,7 @@ impl Playlist {
         family: &str,
         extension: &str,
     ) -> Result<()> {
-        let requested_target = u64::from(segment_seconds) + 2;
+        let requested_target = u64::from(segment_seconds);
 
         if self.segments.is_empty() {
             self.target_duration = requested_target;
@@ -176,7 +176,7 @@ impl Playlist {
         ensure!(
             duration.is_finite()
                 && duration > 0.0
-                && duration.ceil() as u64 <= self.target_duration,
+                && duration.round() as u64 <= self.target_duration,
             "native HLS segment exceeds its fixed target duration"
         );
         Ok(())

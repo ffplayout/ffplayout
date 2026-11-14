@@ -7,7 +7,7 @@ until a replacement passes compatibility and long-running tests.
 
 Status reconciled with `main` and the open changes on 2026-11-13. Checked items
 describe implemented behavior with code/test evidence, not production qualification.
-The current core suite has 23 tests; the documented Linux comparison ran the
+The current core suite has 25 tests; the documented Linux comparison ran the
 earlier 17-test suite. Engine/browser results recorded in the comparison document
 are historical and were not rerun as part of this reconciliation.
 
@@ -20,11 +20,17 @@ are historical and were not rerun as part of this reconciliation.
   individual playlist publication and bounded packet storage.
 - [x] Test real encoders, resume, fresh starts on backend switches and sharing
   existing encoders with the FFmpeg backend.
-- [x] Keep nominal cuts relative to session origin; test late/missing keyframes,
+- [x] Keep nominal cuts on the shared program timestamp grid; test late/missing keyframes,
   mismatched rendition boundaries, packet preservation and crossing captions.
 - [x] Repeat the 30-run FFmpeg/native comparison and run the 17 core tests on
   Linux `/dev/shm`; complete short paced runs and a Safari native-HLS smoke test.
   Full player qualification and a long real-time soak remain below.
+- [x] Use configured segment length as fresh TARGETDURATION, with nearest-integer
+  rounding tolerance and a shorter first segment when joining the program grid.
+  Reject real overruns before media publication; keep existing targets on resume.
+  Tests cover real H.264/AAC entry at off-grid timestamps at 25/30/50 fps,
+  independent segment decoding, native live takeover/pause/return through three
+  encoders, and a later overrun preserving published history through recovery.
 - [x] Protect short live windows with a three-target-duration minimum, preserve
   TARGETDURATION across resume and reject incompatible increases without deleting
   retained media. Allow `_vtt` rendition suffixes when subtitles are disabled.

@@ -722,3 +722,159 @@ fn hls_audio_encoders_are_shared_by_bitrate_in_direct_and_threaded_outputs() {
         }
     }
 }
+
+#[test]
+fn native_hls_real_encoders_join_six_second_grid_at_arbitrary_pts_and_frame_rates() {
+    for fps in [25, 30, 50] {
+        for start in [1, i64::from(fps) * 2 - 1, i64::from(fps) * 6 - 1] {
+            let fixture = Fixture::new();
+            let mut config = OutputConfig::new(64, 48, fps, 48_000);
+            config
+                .video_options
+                .insert("preset".into(), "medium".into());
+            config.video_options.insert("tune".into(), "film".into());
+            config
+                .muxer_options
+                .insert("ffplayout_packager".into(), "native".into());
+            let variants = [("high", 64, 48), ("low", 32, 24)]
+                .into_iter()
+                .map(|(name, width, height)| HlsVariant {
+                    name: name.into(),
+                    width,
+                    height,
+                    video_bitrate: 200_000,
+                    audio_bitrate: 96_000,
+                })
+                .collect();
+            let mut output = EncodedOutput::open(
+                fixture.0.join("master.m3u8").to_str().unwrap(),
+                &config,
+                EncodedFormat::Hls {
+                    variants,
+                    subtitle: Some(HlsSubtitle {
+                        name: "Captions".into(),
+                        language: "en".into(),
+                        default: false,
+                    }),
+                    segment_seconds: 6,
+                    list_size: 10,
+                },
+            )
+            .unwrap();
+            let mut audio_pts = start * 48_000 / i64::from(fps);
+            let frame_count = i64::from(fps) * 13;
+
+            output
+                .write_vtt_subtitles(
+                    fixture.0.join("source.mp4").to_str().unwrap(),
+                    0,
+                    0,
+                    Some(30_000),
+                )
+                .unwrap();
+
+            for pts in start..start + frame_count {
+                let mut video = frame::Video::new(Pixel::YUV420P, 64, 48);
+                video.set_pts(Some(pts));
+                video.data_mut(0).fill(if pts % 37 < 10 { 16 } else { 235 });
+                video.data_mut(1).fill(128);
+                video.data_mut(2).fill(128);
+                output.encode_video(&video).unwrap();
+
+                while audio_pts < (pts + 1) * 48_000 / i64::from(fps) {
+                    let size = output.audio_frame_size();
+                    let mut audio =
+                        frame::Audio::new(Sample::F32(Type::Planar), size, ChannelLayout::STEREO);
+                    audio.set_rate(48_000);
+                    audio.set_pts(Some(audio_pts));
+                    audio.plane_mut::<f32>(0).fill(0.1);
+                    audio.plane_mut::<f32>(1).fill(-0.1);
+                    output.encode_audio(&audio).unwrap();
+                    audio_pts += size as i64;
+                }
+            }
+
+            output.finish().unwrap();
+
+            let mut reference = None;
+
+            for name in ["high", "low", "high_vtt"] {
+                let text = fs::read_to_string(fixture.0.join(format!("{name}.m3u8"))).unwrap();
+                let durations: Vec<f64> = text
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("#EXTINF:"))
+                    .map(|value| value.trim_end_matches(',').parse().unwrap())
+                    .collect();
+
+                assert!(text.contains("#EXT-X-TARGETDURATION:6\n"));
+                assert!(
+                    (durations[0] - (6.0 - start as f64 / f64::from(fps))).abs() < 0.000002,
+                    "fps={fps}, start={start}: {durations:?}"
+                );
+                assert!(
+                    durations[1..durations.len() - 1]
+                        .iter()
+                        .all(|duration| (*duration - 6.0).abs() < 0.000002)
+                );
+                assert!(durations.iter().all(|duration| duration.round() <= 6.0));
+
+                if let Some(reference) = &reference {
+                    assert_eq!(&durations, reference);
+                } else {
+                    reference = Some(durations);
+                }
+
+                if name == "high_vtt" {
+                    continue;
+                }
+
+                let mut decoded = 0;
+
+                for uri in text
+                    .lines()
+                    .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                {
+                    let mut input = open_ts(&fixture.0.join(uri));
+                    let stream = input.streams().best(ffmpeg::media::Type::Video).unwrap();
+                    let index = stream.index();
+                    let mut decoder = codec::context::Context::from_parameters(stream.parameters())
+                        .unwrap()
+                        .decoder()
+                        .video()
+                        .unwrap();
+                    let mut first = true;
+                    let mut drain = |decoder: &mut ffmpeg::decoder::Video| {
+                        let mut frame = frame::Video::empty();
+
+                        while decoder.receive_frame(&mut frame).is_ok() {
+                            decoded += 1;
+                        }
+                    };
+
+                    for (stream, packet) in input.packets() {
+                        if stream.index() != index {
+                            continue;
+                        }
+
+                        if first {
+                            assert!(packet.is_key(), "segment {uri} must decode independently");
+                            first = false;
+                        }
+
+                        decoder.send_packet(&packet).unwrap();
+                        drain(&mut decoder);
+                    }
+
+                    decoder.send_eof().unwrap();
+                    drain(&mut decoder);
+                    assert!(!first);
+                }
+
+                assert_eq!(
+                    decoded, frame_count,
+                    "lost frames: fps={fps}, start={start}, variant={name}"
+                );
+            }
+        }
+    }
+}

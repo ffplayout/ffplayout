@@ -1265,6 +1265,15 @@ fn startup_audio_after_the_first_video_preserves_its_source_offset() {
 
 #[test]
 fn live_reception_pauses_resume_through_three_real_hls_encoders() {
+    check_live_reception_hls(false);
+}
+
+#[test]
+fn live_reception_keeps_native_six_second_segments_across_takeover_and_return() {
+    check_live_reception_hls(true);
+}
+
+fn check_live_reception_hls(native: bool) {
     use crate::{
         HlsVariant, OutputConfig,
         output::{
@@ -1324,6 +1333,12 @@ fn live_reception_pauses_resume_through_three_real_hls_encoders() {
         .video_options
         .insert("preset".into(), "ultrafast".into());
     config.video_options.insert("quality".into(), "23".into());
+    if native {
+        config
+            .muxer_options
+            .insert("ffplayout_packager".into(), "native".into());
+    }
+
     config.destinations.push(OutputDestination {
         id: 5,
         config: config.clone(),
@@ -1341,7 +1356,7 @@ fn live_reception_pauses_resume_through_three_real_hls_encoders() {
                 })
                 .collect(),
             subtitle: None,
-            segment_seconds: 1,
+            segment_seconds: if native { 6 } else { 1 },
             list_size: 30,
         },
     });
@@ -1349,16 +1364,31 @@ fn live_reception_pauses_resume_through_three_real_hls_encoders() {
     let mut output = RealtimeOutput(Output::open_parallel(&config).unwrap());
     let (tx, rx) = mpsc::channel();
     let mut live = test_live_receiver(rx);
-    live.active = true;
+    live.active = !native;
     live.source_has_audio = true;
     let control = crate::PlaybackControl::default();
     let mut wrapper = LiveOverrideOutput::new(&mut output, &mut live, &control);
-    wrapper.start_live_session(0.0);
     let mut video = frame::Video::new(ffmpeg_next::format::Pixel::YUV420P, 320, 180);
     for plane in 0..video.planes() {
         video.data_mut(plane).fill(128);
     }
     let mut pts = 0;
+
+    // Enter live between segment/keyframe boundaries on the existing encoder.
+    if native {
+        for _ in 0..37 {
+            video.set_pts(Some(pts));
+            wrapper.encode_video(&video).unwrap();
+            wrapper
+                .encode_audio(&audio_frame(pts * 1920, 1920))
+                .unwrap();
+            pts += 1;
+        }
+    }
+
+    wrapper.live.active = true;
+    wrapper.start_live_session(pts as f64 / 25.0);
+
     for (cycle, (pause_ms, gap)) in [(2200, true), (2200, false), (4000, true)]
         .into_iter()
         .enumerate()
@@ -1423,6 +1453,25 @@ fn live_reception_pauses_resume_through_three_real_hls_encoders() {
         let path = directory.join(format!("v{index}.m3u8"));
         let playlist = std::fs::read_to_string(&path).unwrap();
         assert!(playlist.contains("#EXTINF"));
+
+        if native {
+            assert!(playlist.contains("#EXT-X-TARGETDURATION:6\n"));
+
+            let durations: Vec<f64> = playlist
+                .lines()
+                .filter_map(|line| line.strip_prefix("#EXTINF:"))
+                .map(|value| value.trim_end_matches(',').parse().unwrap())
+                .collect();
+
+            assert!(durations.len() >= 2);
+            assert!(durations.iter().all(|duration| duration.round() <= 6.0));
+            assert!(
+                durations[..durations.len() - 1]
+                    .iter()
+                    .all(|duration| (*duration - 6.0).abs() < 0.000001)
+            );
+        }
+
         // Production leaves a live playlist resumable. Mark this completed
         // snapshot finite so the verification reader reaches EOF.
         std::fs::write(&path, format!("{playlist}\n#EXT-X-ENDLIST\n")).unwrap();

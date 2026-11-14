@@ -391,7 +391,9 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                 self.start = Some(start);
                 self.next_target = Some(
                     start
-                        .checked_add(self.segment_us)
+                        .div_euclid(self.segment_us)
+                        .checked_add(1)
+                        .and_then(|slot| slot.checked_mul(self.segment_us))
                         .context("HLS target timestamp overflow")?,
                 );
                 self.wall_anchor = Some((start, Utc::now()));
@@ -431,8 +433,8 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         let target = self.next_target?;
 
         for &(pts, _) in &self.renditions[0].keyframes {
-            // Keep targets relative to the session origin, as FFmpeg does.
-            // A late cut must not move every following target further out.
+            // Keep cuts on the shared program grid. A late cut must not
+            // move every following target further out.
             if pts < target || pts <= start {
                 continue;
             }

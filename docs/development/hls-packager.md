@@ -12,12 +12,14 @@ writes PAT/PMT and marks initial transport continuity counters for each fresh
 TS muxer. It closes and renames temporary segment files before the packager
 publishes playlists. Segment boundaries use common keyframes across all
 renditions and matching audio progress, rather than wall-clock file events.
-Nominal targets are the initial common keyframe plus successive multiples of the
-configured segment length. Late cuts do not move subsequent targets: an 8-second
-segment can be followed by 4 seconds for a 6-second setting. EXTINF describes
-the actual presentation interval. The fixed TARGETDURATION includes two seconds
-of reserve; an interval exceeding it is rejected before writing media or draining
-packets. Missing boundaries also remain subject to the buffer and wait limits.
+Nominal targets are multiples of the configured segment length on the shared
+program timestamp grid. Joining between grid points produces a shorter first
+segment; late cuts do not shift subsequent targets. EXTINF describes the actual
+presentation interval. Fresh playlists use the configured segment length as the
+fixed TARGETDURATION, with HLS nearest-integer rounding tolerance: for a six-second
+target, 6.48 seconds is allowed but 6.5 seconds is rejected before writing media
+or draining packets. No extra buffering stage is introduced. Missing boundaries
+also remain subject to the existing buffer and wait limits.
 Closed-GOP encoders receive forced I-frames on the common program-PTS grid,
 so scene cuts cannot shift each rendition onto a different schedule. Frame
 references share pixel buffers; forcing picture metadata does not copy pixels.
@@ -56,8 +58,8 @@ Local MPEG-TS with H.264 video, AAC audio, adaptive renditions and optional WebV
 Segments are 1–60 seconds, with a configured playlist size of 1–10000 entries.
 Short live windows retain additional entries as needed to keep at least three
 TARGETDURATIONs of media when removing an entry. TARGETDURATION remains fixed
-across resume. Reducing the segment duration retains the existing target;
-increasing it beyond the existing target's two-second reserve is rejected without
+across resume, including an existing target of eight seconds from older builds. Reducing the segment duration retains the existing target;
+increasing it beyond the existing target is rejected without
 removing media and requires an explicitly fresh HLS history. The native
 backend accepts `hls_flags=program_date_time` and `hls_delete_threshold`
 (default 1, minimum 1). The latter keeps that many extra TS/WebVTT segments per

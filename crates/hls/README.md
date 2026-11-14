@@ -20,10 +20,12 @@ The initial implementation:
 - Writes media first and atomically replaces each playlist. Multiple playlists
   are not a filesystem transaction; a crash between replacements can leave
   inconsistent windows, which resume rejects without overwriting them.
-- Anchors nominal cuts at the first common keyframe plus multiples of the
-  configured segment duration. A delayed cut can be followed by a shorter segment
+- Anchors nominal cuts on the shared program grid at multiples of the
+  configured segment duration, with a shorter first segment when joining between grid points. A delayed cut can be followed by a shorter segment
   to catch up, while EXTINF always describes the actual interval.
-- Uses a fixed target duration, with two seconds of keyframe tolerance.
+- Uses the configured segment length as the fixed target duration for fresh
+  playlists, with nearest-integer rounding tolerance (6.48 s fits a 6 s target;
+  6.5 s does not). No additional buffering stage is required.
   An overlong interval fails before writing media or consuming buffered packets.
   The caller must supply a shared keyframe grid at least every two seconds.
   New tracks join the next sequence without requiring historical segments.

@@ -363,12 +363,12 @@ fn live_window_keeps_only_the_default_extra_segment() {
 
     let playlist = fs::read_to_string(fixture.0.join("v0.m3u8")).unwrap();
 
-    assert!(playlist.contains("#EXT-X-MEDIA-SEQUENCE:2"));
+    assert!(playlist.contains("#EXT-X-MEDIA-SEQUENCE:8"));
     assert!(!playlist.contains("v0_0.ts"));
     assert!(!fixture.0.join("v0_0.ts").exists());
     assert!(!fixture.0.join("v00.vtt").exists());
-    assert!(fixture.0.join("v0_1.ts").exists());
-    assert!(fixture.0.join("v01.vtt").exists());
+    assert!(fixture.0.join("v0_7.ts").exists());
+    assert!(fixture.0.join("v07.vtt").exists());
 }
 
 #[test]
@@ -500,7 +500,7 @@ fn new_tracks_join_existing_window_and_resume_again() {
 }
 
 #[test]
-fn segment_target_allows_a_two_second_keyframe_grid_offset() {
+fn segment_target_allows_rounding_tolerance_without_a_reserve() {
     let fixture = Fixture::new();
     let mut config = fixture.config(1, 5);
     config.segment_seconds = 2;
@@ -512,17 +512,17 @@ fn segment_target_allows_a_two_second_keyframe_grid_offset() {
     )
     .unwrap();
 
-    for frame in 0..=90 {
+    for frame in 0..=60 {
         packager
-            .write(packet(0, frame * 40_000, matches!(frame, 0 | 40 | 90)))
+            .write(packet(0, frame * 40_000, matches!(frame, 0 | 40 | 60)))
             .unwrap();
         packager.write(packet(1, frame * 40_000, false)).unwrap();
     }
 
     let playlist = fs::read_to_string(fixture.0.join("v0.m3u8")).unwrap();
 
-    assert!(playlist.contains("#EXTINF:3.600000,"));
-    assert!(playlist.contains("#EXT-X-TARGETDURATION:4"));
+    assert!(playlist.contains("#EXTINF:2.400000,"));
+    assert!(playlist.contains("#EXT-X-TARGETDURATION:2"));
 }
 
 #[test]
@@ -745,16 +745,17 @@ fn late_common_keyframes_catch_up_without_losing_media_or_captions() {
 
     packager
         .write_cue(Cue {
-            start_ms: 7500,
-            end_ms: 8500,
+            start_ms: 6200,
+            end_ms: 6600,
             text: "Across delayed boundary".into(),
         })
         .unwrap();
 
     for frame in 0..750 {
         for rendition in 0..2 {
-            // Only the second rendition misses the nominal cuts at 6 and 18 s.
-            let keyframe = frame % 50 == 0 && !(rendition == 1 && matches!(frame, 150 | 450));
+            // One rendition is late by 400 ms; common cuts must still agree.
+            let keyframe = (frame % 50 == 0 && !(rendition == 1 && matches!(frame, 150 | 450)))
+                || matches!(frame, 160 | 460);
 
             packager
                 .write(packet(rendition * 2, frame * 40_000, keyframe))
@@ -775,8 +776,8 @@ fn late_common_keyframes_catch_up_without_losing_media_or_captions() {
             .map(|value| value.trim_end_matches(',').parse().unwrap())
             .collect();
 
-        assert_eq!(durations, [8.0, 4.0, 8.0, 4.0, 6.0]);
-        assert!(playlist.contains("#EXT-X-TARGETDURATION:8"));
+        assert_eq!(durations, [6.4, 5.6, 6.4, 5.6, 6.0]);
+        assert!(playlist.contains("#EXT-X-TARGETDURATION:6"));
     }
 
     let recorded = recorded.lock().unwrap();
@@ -803,7 +804,7 @@ fn late_common_keyframes_catch_up_without_losing_media_or_captions() {
 }
 
 #[test]
-fn nonzero_session_origin_keeps_relative_targets_after_a_delayed_first_cut() {
+fn nonzero_session_origin_joins_the_program_grid_with_a_short_first_segment() {
     let fixture = Fixture::new();
     let mut config = fixture.config(1, 100);
     config.segment_seconds = 6;
@@ -831,7 +832,7 @@ fn nonzero_session_origin_keeps_relative_targets_after_a_delayed_first_cut() {
         .map(|value| value.trim_end_matches(',').parse().unwrap())
         .collect();
 
-    assert_eq!(durations, [6.4, 6.0, 6.0, 6.0]);
+    assert_eq!(durations, [4.4, 6.0, 6.0, 6.0, 2.0]);
     assert!(
         fs::read_to_string(fixture.0.join("v00.vtt"))
             .unwrap()
@@ -893,7 +894,7 @@ fn short_live_windows_keep_three_target_durations_for_video_and_subtitles() {
 
         for frame in 0..=1800 {
             let pts = frame * 40_000;
-            let key = frame % 50 == 0 && ![6_000_000, 18_000_000].contains(&pts);
+            let key = frame % 50 == 0;
 
             packager.write(packet(0, pts, key)).unwrap();
             packager.write(packet(1, pts, false)).unwrap();
@@ -907,11 +908,11 @@ fn short_live_windows_keep_three_target_durations_for_video_and_subtitles() {
                 .map(|value| value.trim_end_matches(',').parse().unwrap())
                 .collect();
 
-            assert!(text.contains("#EXT-X-TARGETDURATION:8\n"));
+            assert!(text.contains("#EXT-X-TARGETDURATION:6\n"));
             assert!(!text.contains("#EXT-X-MEDIA-SEQUENCE:0\n"));
-            assert!(durations.len() > limit as usize);
-            assert!(durations.iter().sum::<f64>() >= 24.0);
-            assert!(durations.iter().skip(1).sum::<f64>() < 24.0);
+            assert!(durations.len() >= limit as usize);
+            assert!(durations.iter().sum::<f64>() >= 18.0);
+            assert!(durations.iter().skip(1).sum::<f64>() < 18.0);
         }
     }
 }
@@ -971,9 +972,40 @@ fn resume_preserves_target_duration_and_rejects_an_increase_without_deleting_med
 
     let text = fs::read_to_string(&playlist).unwrap();
 
-    assert!(text.contains("#EXT-X-TARGETDURATION:8\n"));
+    assert!(text.contains("#EXT-X-TARGETDURATION:6\n"));
     assert!(text.contains("v0_0.ts"));
     assert!(text.contains("#EXTINF:4.000000,"));
+
+    // An existing playlist from the previous implementation retains its
+    // published target, even though fresh six-second outputs now use six.
+    for name in ["v0.m3u8", "v0_vtt.m3u8"] {
+        let path = fixture.0.join(name);
+        let text = fs::read_to_string(&path).unwrap();
+
+        fs::write(
+            path,
+            text.replace("#EXT-X-TARGETDURATION:6", "#EXT-X-TARGETDURATION:8"),
+        )
+        .unwrap();
+    }
+
+    let mut config = fixture.config(1, 5);
+    config.segment_seconds = 6;
+    let mut resumed = Packager::new(
+        config,
+        Writer {
+            fail_rendition: None,
+        },
+    )
+    .unwrap();
+
+    feed(&mut resumed, 1, 0, 150).unwrap();
+    resumed.finish().unwrap();
+
+    let text = fs::read_to_string(&playlist).unwrap();
+
+    assert!(text.contains("#EXT-X-TARGETDURATION:8\n"));
+    assert!(text.contains("v0_0.ts"));
 }
 
 #[test]
@@ -1121,4 +1153,129 @@ fn resumed_codec_declarations_cover_retained_media_until_it_expires() {
             assert_eq!(master.matches(CURRENT).count(), 2);
         }
     }
+}
+
+#[test]
+fn fixed_target_accepts_rounded_durations_but_rejects_half_second_overruns() {
+    for duration in [6_480_000, 6_499_999, 6_500_000, 6_520_000] {
+        let fixture = Fixture::new();
+        let mut config = fixture.config(2, 10);
+        config.segment_seconds = 6;
+        let mut packager = Packager::new(
+            config,
+            Writer {
+                fail_rendition: None,
+            },
+        )
+        .unwrap();
+
+        for rendition in 0..2 {
+            packager.write(packet(rendition * 2, 0, true)).unwrap();
+            packager.write(packet(rendition * 2 + 1, 0, false)).unwrap();
+            packager
+                .write(packet(rendition * 2, duration, true))
+                .unwrap();
+        }
+
+        packager.write(packet(1, duration, false)).unwrap();
+
+        let result = packager.write(packet(3, duration, false));
+
+        if duration < 6_500_000 {
+            result.unwrap();
+
+            let video = fs::read_to_string(fixture.0.join("v0.m3u8")).unwrap();
+            let subtitles = fs::read_to_string(fixture.0.join("v0_vtt.m3u8")).unwrap();
+
+            assert!(video.contains("#EXT-X-TARGETDURATION:6\n"));
+            assert!(subtitles.contains("#EXT-X-TARGETDURATION:6\n"));
+            assert!(video.contains(&format!("#EXTINF:{:.6},", duration as f64 / 1_000_000.0)));
+        } else {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("fixed target duration")
+            );
+            assert!(!fixture.0.join("v0_0.ts").exists());
+            assert!(!fixture.0.join("master.m3u8").exists());
+        }
+    }
+}
+
+#[test]
+fn late_overrun_preserves_published_history_and_can_resume() {
+    let fixture = Fixture::new();
+    let mut config = fixture.config(2, 10);
+    config.segment_seconds = 6;
+    let mut packager = Packager::new(
+        config,
+        Writer {
+            fail_rendition: None,
+        },
+    )
+    .unwrap();
+
+    feed(&mut packager, 2, 0, 151).unwrap();
+
+    let paths = [
+        "master.m3u8",
+        "v0.m3u8",
+        "v1.m3u8",
+        "v0_vtt.m3u8",
+        "v0_0.ts",
+        "v1_0.ts",
+        "v00.vtt",
+    ];
+    let before: Vec<_> = paths
+        .iter()
+        .map(|name| fs::read(fixture.0.join(name)).unwrap())
+        .collect();
+
+    for stream in 0..4 {
+        let result = packager.write(packet(stream, 12_500_000, stream % 2 == 0));
+
+        if stream == 3 {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("fixed target duration")
+            );
+        } else {
+            result.unwrap();
+        }
+    }
+
+    for (name, bytes) in paths.iter().zip(&before) {
+        assert_eq!(fs::read(fixture.0.join(name)).unwrap(), *bytes);
+    }
+
+    assert!(!fixture.0.join("v0_1.ts").exists());
+    assert!(!fixture.0.join("v1_1.ts").exists());
+    assert!(!fixture.0.join("v01.vtt").exists());
+    drop(packager);
+
+    let mut config = fixture.config(2, 10);
+    config.segment_seconds = 6;
+    let mut resumed = Packager::new(
+        config,
+        Writer {
+            fail_rendition: None,
+        },
+    )
+    .unwrap();
+
+    feed(&mut resumed, 2, 0, 151).unwrap();
+    resumed.finish().unwrap();
+
+    for name in ["v0.m3u8", "v1.m3u8", "v0_vtt.m3u8"] {
+        let text = fs::read_to_string(fixture.0.join(name)).unwrap();
+
+        assert!(text.contains("#EXT-X-TARGETDURATION:6\n"));
+        assert!(text.contains("#EXT-X-DISCONTINUITY\n"));
+    }
+
+    assert_eq!(fs::read(fixture.0.join("v0_0.ts")).unwrap(), before[4]);
+    assert!(fixture.0.join("v0_1.ts").exists());
 }
