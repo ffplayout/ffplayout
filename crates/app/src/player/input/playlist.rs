@@ -25,6 +25,7 @@ use crate::{
 const NEXT_START_THRESHOLD: f64 = 1.5;
 const IS_CLOSE_THRESHOLD: f64 = 2.0;
 const CLIP_DURATION_ADJUSTMENT_THRESHOLD: f64 = 0.5;
+const LAST_CLIP_EXTENSION_LIMIT: f64 = 5.0;
 
 #[derive(Debug, PartialEq)]
 enum LastClipEnd {
@@ -56,11 +57,17 @@ fn last_clip_end(node: &Media, total_delta: f64) -> LastClipEnd {
         available_duration >= total_delta || scheduled_duration >= total_delta;
     let differs_significantly =
         (scheduled_duration - total_delta).abs() > CLIP_DURATION_ADJUSTMENT_THRESHOLD;
+    let missing_duration = total_delta - scheduled_duration;
+    let can_extend = missing_duration > 0.0
+        && missing_duration <= LAST_CLIP_EXTENSION_LIMIT
+        && available_duration >= total_delta;
 
-    if total_delta > 1.0
-        && extends_past_playlist_end
-        && can_fill_remaining_time
-        && differs_significantly
+    if can_extend
+        || (total_delta > 1.0
+            && extends_past_playlist_end
+            && can_fill_remaining_time
+            && differs_significantly
+            && scheduled_duration > total_delta)
     {
         return LastClipEnd::Adjust {
             scheduled_duration,
@@ -468,8 +475,8 @@ impl CurrentProgram {
         self.gen_source(node, last_index).await;
     }
 
-    /// Finish the playlist by trimming its last clip to the remaining time,
-    /// or report when the clip cannot fill it.
+    /// Trim the last clip or extend it by at most five seconds using available
+    /// source material, avoiding a separate filler for a small day-end gap.
     async fn handle_list_end(&mut self, mut node: Media, total_delta: f64, last_index: usize) {
         debug!(channel = self.channel_id; "Handle last clip from day");
 
@@ -1023,15 +1030,41 @@ mod tests {
 
     #[test]
     fn last_clip_can_use_its_available_duration_to_fill_the_remaining_time() {
-        let node = media(0.0, 80.0, 120.0);
+        let node = media(0.0, 95.0, 120.0);
 
         assert_eq!(
             last_clip_end(&node, 100.0),
             LastClipEnd::Adjust {
-                scheduled_duration: 80.0,
+                scheduled_duration: 95.0,
                 out: 100.0,
             }
         );
+    }
+
+    #[test]
+    fn last_clip_fills_subsecond_gaps_even_with_a_seek_offset() {
+        let node = media(10.0, 26.907, 30.0);
+        let remaining = 17.017;
+
+        assert_eq!(
+            last_clip_end(&node, remaining),
+            LastClipEnd::Adjust {
+                scheduled_duration: node.out - node.seek,
+                out: node.seek + remaining,
+            }
+        );
+    }
+
+    #[test]
+    fn last_clip_does_not_extend_beyond_five_seconds_or_the_source_end() {
+        for node in [media(0.0, 94.999, 120.0), media(10.0, 105.0, 109.99)] {
+            assert_eq!(
+                last_clip_end(&node, 100.0),
+                LastClipEnd::TooShort {
+                    missing_duration: 100.0 - (node.out - node.seek),
+                }
+            );
+        }
     }
 
     #[test]
