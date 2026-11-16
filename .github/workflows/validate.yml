@@ -108,7 +108,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           # Run the real-time HLS tests separately to avoid competing test load.
-          cargo test --no-default-features -- --skip input::tests::live_reception_
+          cargo test --workspace --exclude ff-engine --no-default-features
+          cargo test -p ff-engine --no-default-features -- --skip input::tests::live_reception_
           cargo test -p ff-engine --no-default-features --lib input::tests::live_reception_ -- --test-threads=1
           cargo clippy --no-default-features --all-targets -- --deny warnings
           cargo fmt --all -- --check
