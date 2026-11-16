@@ -442,7 +442,8 @@ mod tests {
         }
         let source = directory.join("source.ts");
         let mut writer = Output::open_stream(source.to_str().unwrap(), &config).unwrap();
-        for index in 0..5 {
+        // Allow asynchronous logo preparation during real-time playback.
+        for index in 0..75 {
             let mut video = frame::Video::new(Pixel::YUV420P, 320, 180);
             for plane in 0..video.planes() {
                 video.data_mut(plane).fill(128);
@@ -579,6 +580,18 @@ mod tests {
                 scaler.run(&expected, &mut scaled).unwrap();
                 expected = scaled;
             }
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "m3u8")
+            {
+                // Production playlists remain live; this completed fixture must
+                // reach EOF instead of waiting for additional segments.
+                let mut playlist = std::fs::read_to_string(&path).unwrap();
+
+                playlist.push_str("\n#EXT-X-ENDLIST\n");
+                std::fs::write(&path, playlist).unwrap();
+            }
+
             let mut input = ffmpeg_next::format::input(&path).unwrap();
             let stream = input.streams().best(media::Type::Video).unwrap();
             let stream_index = stream.index();
@@ -590,9 +603,23 @@ mod tests {
             let mut checked = 0;
             let mut verify = |decoded: &frame::Video| {
                 assert_eq!((decoded.width(), decoded.height()), (width, height));
-                // MPEG-TS may prepend black frames for the initial stream timestamp.
+                // Ignore black timestamp-padding frames, as before.
                 if decoded.data(0)[0] == 16 {
                     return;
+                }
+
+                if checked == 0 {
+                    // Gray source frames can precede asynchronous logo readiness.
+                    let is_background = (0..height as usize).all(|row| {
+                        decoded.data(0)
+                            [row * decoded.stride(0)..row * decoded.stride(0) + width as usize]
+                            .iter()
+                            .all(|pixel| *pixel == 128)
+                    });
+
+                    if is_background {
+                        return;
+                    }
                 }
 
                 for row in 0..height as usize {
@@ -620,7 +647,10 @@ mod tests {
             while decoder.receive_frame(&mut decoded).is_ok() {
                 verify(&decoded);
             }
-            assert!(checked >= 5, "missing output frames");
+            assert!(
+                checked >= 5,
+                "expected at least five logo frames at {width}x{height}, got {checked} ({path:?})"
+            );
         }
         std::fs::remove_dir_all(directory).unwrap();
     }
