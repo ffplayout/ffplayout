@@ -14,7 +14,9 @@ use crate::{
     player::utils::JsonPlaylist,
     utils::{
         errors::ServiceError,
-        playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
+        playlist::{
+            delete_playlist, generate_playlist, playlist_path, read_playlist, write_playlist,
+        },
     },
 };
 
@@ -123,6 +125,8 @@ pub async fn gen_playlist(
         guard.get(id)
     }
     .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
+
+    playlist_path(&*manager.config.read().await, &date)?;
 
     let shuffle = obj.template.is_none().then_some(obj.shuffle);
 

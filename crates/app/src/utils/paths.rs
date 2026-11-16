@@ -190,6 +190,14 @@ fn validate_resolved_path(name: &str, path: &Path) -> Result<(), String> {
 }
 
 pub(crate) fn resolve_existing_ancestor(path: &Path) -> std::io::Result<PathBuf> {
+    resolve_ancestor_with_links(path, 40)
+}
+
+fn resolve_ancestor_with_links(path: &Path, remaining_links: usize) -> io::Result<PathBuf> {
+    if remaining_links == 0 {
+        return Err(io::Error::other("Too many symbolic links"));
+    }
+
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -212,7 +220,14 @@ pub(crate) fn resolve_existing_ancestor(path: &Path) -> std::io::Result<PathBuf>
         }
     }
 
-    let mut resolved = fs::canonicalize(existing)?;
+    let mut resolved = if fs::symlink_metadata(existing)?.is_symlink() {
+        let target = fs::read_link(existing)?;
+        let target = existing.parent().unwrap_or(Path::new("/")).join(target);
+
+        resolve_ancestor_with_links(&target, remaining_links - 1)?
+    } else {
+        fs::canonicalize(existing)?
+    };
 
     for component in missing.iter().rev() {
         resolved.push(component);

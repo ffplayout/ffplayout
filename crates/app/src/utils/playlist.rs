@@ -5,7 +5,7 @@ use log::*;
 use tokio::fs;
 
 use crate::{
-    file::norm_abs_path,
+    file::{ensure_path_within_root, norm_abs_path},
     player::{
         controller::ChannelManager,
         utils::{JsonPlaylist, json_reader, json_writer},
@@ -13,7 +13,7 @@ use crate::{
     utils::{config::PlayoutConfig, errors::ServiceError, generator::playlist_generator},
 };
 
-fn playlist_path(config: &PlayoutConfig, date: &str) -> Result<PathBuf, ServiceError> {
+pub(crate) fn playlist_path(config: &PlayoutConfig, date: &str) -> Result<PathBuf, ServiceError> {
     let invalid_date =
         || ServiceError::BadRequest("Invalid playlist date; expected YYYY-MM-DD".into());
     let parsed = NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| invalid_date())?;
@@ -23,13 +23,29 @@ fn playlist_path(config: &PlayoutConfig, date: &str) -> Result<PathBuf, ServiceE
         return Err(invalid_date());
     }
 
-    Ok(config
-        .channel
-        .playlists
+    let root = &config.channel.playlists;
+
+    // A configured single-file playlist is an explicit trusted target.
+    if root
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+    {
+        return Ok(root.clone());
+    }
+
+    let path = root
         .join(parsed.format("%Y").to_string())
         .join(parsed.format("%m").to_string())
         .join(normalized)
-        .with_extension("json"))
+        .with_extension("json");
+
+    // Resolve existing ancestors too, so new files through directory links
+    // cannot escape the root. Keep the lexical path: deletion must unlink a
+    // day alias, rather than delete its shared source file. This preflight
+    // check assumes links are not concurrently swapped by filesystem writers.
+    ensure_path_within_root(root, &path)?;
+
+    Ok(path)
 }
 
 pub async fn read_playlist(
@@ -53,17 +69,7 @@ pub async fn write_playlist(
     json_data: JsonPlaylist,
 ) -> Result<String, ServiceError> {
     let date = json_data.date.clone();
-    let dated_path = playlist_path(config, &date)?;
-    let playlist_path = if config
-        .channel
-        .playlists
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-    {
-        config.channel.playlists.clone()
-    } else {
-        dated_path
-    };
+    let playlist_path = playlist_path(config, &date)?;
 
     let mut file_exists = false;
 
@@ -140,7 +146,7 @@ pub async fn generate_playlist(
         }
         Err(e) => {
             error!("{e}");
-            Err(ServiceError::InternalServerError)
+            Err(e)
         }
     }
 }
@@ -148,7 +154,13 @@ pub async fn generate_playlist(
 pub async fn delete_playlist(config: &PlayoutConfig, date: &str) -> Result<String, ServiceError> {
     let playlist_path = playlist_path(config, date)?;
 
-    if playlist_path.is_file() {
+    if playlist_path == config.channel.playlists {
+        return Err(ServiceError::BadRequest(
+            "A fixed playlist file cannot be deleted by date".into(),
+        ));
+    }
+
+    if playlist_path.is_file() || playlist_path.is_symlink() {
         match fs::remove_file(playlist_path).await {
             Ok(..) => Ok(format!("Delete playlist from {date} success!")),
             Err(e) => {

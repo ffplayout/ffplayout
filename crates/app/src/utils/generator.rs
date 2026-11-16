@@ -4,8 +4,6 @@
 ///
 /// The generator takes the files from storage, which are set in config.
 /// It also respect the shuffle/sort mode.
-use std::io::Error;
-
 use async_walkdir::WalkDir;
 use chrono::Timelike;
 use lexical_sort::{StringSort, natural_lexical_cmp};
@@ -25,7 +23,9 @@ use crate::{
     },
     utils::{
         config::{PlayoutConfig, Template},
+        errors::ServiceError,
         logging::Target,
+        playlist::playlist_path,
         time_to_sec,
     },
 };
@@ -200,7 +200,7 @@ pub async fn generate_from_template(
 pub async fn playlist_generator(
     manager: &ChannelManager,
     shuffle_override: Option<bool>,
-) -> Result<Vec<JsonPlaylist>, Error> {
+) -> Result<Vec<JsonPlaylist>, ServiceError> {
     let mut config = manager.config.read().await.clone();
     if let Some(shuffle) = shuffle_override {
         config.storage.shuffle = shuffle;
@@ -239,6 +239,11 @@ pub async fn playlist_generator(
         date_range = get_date_range(id, &date_range);
     }
 
+    let targets = date_range
+        .into_iter()
+        .map(|date| playlist_path(&config, &date).map(|path| (date, path)))
+        .collect::<Result<Vec<_>, _>>()?;
+
     // gives an iterator with infinit length
     let mut folder_iter = if let Some(template) = &config.general.template {
         from_template = true;
@@ -250,16 +255,11 @@ pub async fn playlist_generator(
 
     let list_length = manager.current_list.lock().await.len();
 
-    for date in date_range {
-        let d: Vec<&str> = date.split('-').collect();
-        let year = d[0];
-        let month = d[1];
-        let playlist_path = playlist_root.join(year).join(month);
-        let playlist_file = &playlist_path.join(format!("{date}.json"));
+    for (date, playlist_file) in targets {
         let mut length = 0.0;
         let mut round = 0;
 
-        fs::create_dir_all(playlist_path).await?;
+        fs::create_dir_all(playlist_file.parent().unwrap_or(playlist_root)).await?;
 
         if playlist_file.is_file() {
             warn!(
@@ -316,7 +316,7 @@ pub async fn playlist_generator(
         }
 
         let json: String = serde_json::to_string_pretty(&playlist)?;
-        fs::write(playlist_file, json).await?;
+        fs::write(&playlist_file, json).await?;
 
         playlists.push(playlist);
     }
