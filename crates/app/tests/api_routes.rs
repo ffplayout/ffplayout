@@ -22,6 +22,8 @@ mod configuration;
 mod files;
 #[path = "api/graphics.rs"]
 mod graphics;
+#[path = "api/playlist.rs"]
+mod playlist;
 #[path = "api/users.rs"]
 mod users;
 

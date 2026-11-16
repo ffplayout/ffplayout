@@ -13,22 +13,30 @@ use crate::{
     utils::{config::PlayoutConfig, errors::ServiceError, generator::playlist_generator},
 };
 
+fn playlist_path(config: &PlayoutConfig, date: &str) -> Result<PathBuf, ServiceError> {
+    let invalid_date =
+        || ServiceError::BadRequest("Invalid playlist date; expected YYYY-MM-DD".into());
+    let parsed = NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| invalid_date())?;
+    let normalized = parsed.format("%Y-%m-%d").to_string();
+
+    if date.len() != 10 || date != normalized {
+        return Err(invalid_date());
+    }
+
+    Ok(config
+        .channel
+        .playlists
+        .join(parsed.format("%Y").to_string())
+        .join(parsed.format("%m").to_string())
+        .join(normalized)
+        .with_extension("json"))
+}
+
 pub async fn read_playlist(
     config: &PlayoutConfig,
     date: String,
 ) -> Result<JsonPlaylist, ServiceError> {
-    let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")?;
-    let year = parsed_date.format("%Y").to_string();
-    let month = parsed_date.format("%m").to_string();
-    let date = parsed_date.format("%Y-%m-%d").to_string();
-
-    let playlist_path = config
-        .channel
-        .playlists
-        .join(year)
-        .join(month)
-        .join(date)
-        .with_extension("json");
+    let playlist_path = playlist_path(config, &date)?;
 
     if !fs::try_exists(&playlist_path).await? {
         return Err(ServiceError::NoContent());
@@ -45,21 +53,17 @@ pub async fn write_playlist(
     json_data: JsonPlaylist,
 ) -> Result<String, ServiceError> {
     let date = json_data.date.clone();
-    let d: Vec<&str> = date.split('-').collect();
-    let mut playlist_path = config.channel.playlists.clone();
-
-    if !playlist_path
+    let dated_path = playlist_path(config, &date)?;
+    let playlist_path = if config
+        .channel
+        .playlists
         .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("json"))
-        .unwrap_or(false)
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
     {
-        playlist_path = playlist_path
-            .join(d[0])
-            .join(d[1])
-            .join(date.clone())
-            .with_extension("json");
-    }
+        config.channel.playlists.clone()
+    } else {
+        dated_path
+    };
 
     let mut file_exists = false;
 
@@ -142,14 +146,7 @@ pub async fn generate_playlist(
 }
 
 pub async fn delete_playlist(config: &PlayoutConfig, date: &str) -> Result<String, ServiceError> {
-    let d: Vec<&str> = date.split('-').collect();
-    let mut playlist_path = PathBuf::from(&config.channel.playlists);
-
-    playlist_path = playlist_path
-        .join(d[0])
-        .join(d[1])
-        .join(date)
-        .with_extension("json");
+    let playlist_path = playlist_path(config, date)?;
 
     if playlist_path.is_file() {
         match fs::remove_file(playlist_path).await {
