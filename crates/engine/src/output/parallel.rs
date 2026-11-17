@@ -29,6 +29,9 @@ use super::{
     encoded::EncodedFormat,
 };
 
+#[cfg(test)]
+mod storage_tests;
+
 const ENCODING_QUEUE_LIMITS: QueueLimits = QueueLimits {
     items: 128,
     bytes: 64 * 1024 * 1024,

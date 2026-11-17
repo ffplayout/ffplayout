@@ -153,7 +153,7 @@ fn jwt_secret() -> Result<&'static str, ServiceError> {
 
 /// Create a json web token (JWT)
 pub async fn encode_jwt(claims: Claims) -> Result<String, ServiceError> {
-    let encoding_key = EncodingKey::from_secret(jwt_secret()?.as_bytes());
+    let encoding_key = EncodingKey::from_secret(jwt_secret()?.as_bytes())?;
 
     Ok(jsonwebtoken::encode(
         &Header::default(),
@@ -163,7 +163,7 @@ pub async fn encode_jwt(claims: Claims) -> Result<String, ServiceError> {
 }
 
 fn decode_jwt_with_type(token: &str, expected: TokenType) -> Result<Claims, ServiceError> {
-    let decoding_key = DecodingKey::from_secret(jwt_secret()?.as_bytes());
+    let decoding_key = DecodingKey::from_secret(jwt_secret()?.as_bytes())?;
     let claims = jsonwebtoken::decode::<Claims>(token, &decoding_key, &Validation::default())
         .map(|data| data.claims)
         .map_err(|e| ServiceError::Unauthorized(e.to_string()))?;
@@ -662,12 +662,12 @@ mod tests {
         let token = jsonwebtoken::encode(
             &Header::default(),
             &claims,
-            &EncodingKey::from_secret(secret),
+            &EncodingKey::from_secret(secret).unwrap(),
         )
         .unwrap();
         let decoded = jsonwebtoken::decode::<Claims>(
             &token,
-            &DecodingKey::from_secret(secret),
+            &DecodingKey::from_secret(secret).unwrap(),
             &Validation::default(),
         )
         .unwrap();
@@ -675,7 +675,7 @@ mod tests {
         assert!(
             jsonwebtoken::decode::<Claims>(
                 &token,
-                &DecodingKey::from_secret(b"wrong-key"),
+                &DecodingKey::from_secret(b"wrong-key").unwrap(),
                 &Validation::default()
             )
             .is_err()

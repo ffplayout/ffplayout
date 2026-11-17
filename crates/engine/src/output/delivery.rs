@@ -1160,6 +1160,133 @@ mod tests {
         std::fs::remove_dir_all(directory).unwrap();
     }
 
+    #[test]
+    fn blocked_destination_write_does_not_block_another_output_worker() {
+        use std::sync::{Arc, Mutex, mpsc};
+
+        #[derive(Debug)]
+        struct Endpoint(Mutex<Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>>);
+        struct SlowSink(Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>);
+
+        impl crate::PacketSink for SlowSink {
+            fn write(&mut self, _: crate::EncodedFrame<'_>) -> Result<()> {
+                if let Some((entered, release)) = self.0.take() {
+                    entered.send(())?;
+                    release.recv_timeout(Duration::from_secs(3))?;
+                }
+
+                Ok(())
+            }
+
+            fn finish(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        impl crate::OutputEndpoint for Endpoint {
+            fn connect_packets(
+                &self,
+                _: &[crate::EncodedStream],
+            ) -> Result<Box<dyn crate::PacketSink>> {
+                Ok(Box::new(SlowSink(self.0.lock().unwrap().take())))
+            }
+        }
+
+        let (entered, writing) = mpsc::channel();
+        let (release, blocked) = mpsc::channel();
+        let endpoint = Arc::new(Endpoint(Mutex::new(Some((entered, blocked)))));
+        let path = std::env::temp_dir().join(format!("healthy-during-slow-{}.ts", uuid_for_test()));
+        let slow = Fixture::configured(
+            String::new(),
+            Duration::from_millis(30),
+            Duration::from_millis(150),
+            |destination| destination.config.stream_endpoint = Some(endpoint),
+        );
+
+        slow.wait_connected();
+        slow.send_media();
+        writing.recv_timeout(Duration::from_secs(3)).unwrap();
+
+        let healthy = Fixture::new(
+            path.to_string_lossy().into_owned(),
+            Duration::from_millis(30),
+            Duration::from_millis(150),
+        );
+
+        healthy.wait_connected();
+        healthy.send_media();
+        healthy.wait("running");
+        healthy.finish();
+        assert!(std::fs::metadata(&path).unwrap().len() > 188);
+        release.send(()).unwrap();
+        slow.finish();
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn unavailable_native_hls_storage_exhausts_retries_while_stream_output_delivers() {
+        let directory = std::env::temp_dir().join(format!("native-storage-{}", uuid_for_test()));
+        let blocked = directory.join("blocked");
+        let healthy_path = directory.join("healthy.ts");
+
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(&blocked, "not a directory").unwrap();
+
+        let failing = Fixture::configured(
+            String::new(),
+            Duration::from_millis(30),
+            Duration::from_millis(150),
+            |destination| {
+                destination
+                    .config
+                    .muxer_options
+                    .insert("ffplayout_packager".into(), "native".into());
+                destination.target = super::super::parallel::OutputTarget::Hls {
+                    playlist: blocked.join("master.m3u8").to_string_lossy().into_owned(),
+                    variants: vec![],
+                    subtitle: None,
+                    segment_seconds: 1,
+                    list_size: 6,
+                };
+            },
+        );
+        let healthy = Fixture::new(
+            healthy_path.to_string_lossy().into_owned(),
+            Duration::from_millis(30),
+            Duration::from_millis(150),
+        );
+
+        healthy.wait_connected();
+        healthy.send_media();
+        healthy.wait("running");
+        failing.wait("failed");
+
+        let failure = failing.status.snapshot()[&1].error.clone();
+
+        assert!(
+            failure
+                .as_ref()
+                .is_some_and(|error| error.contains("failed to create HLS directory")),
+            "unexpected failure: {failure:?}"
+        );
+        std::thread::sleep(Duration::from_millis(90));
+        assert_eq!(healthy.status.snapshot()[&1].phase, "running");
+        assert_eq!(failing.status.snapshot()[&1].phase, "failed");
+        assert_eq!(failing.status.snapshot()[&1].error, failure);
+        healthy.finish();
+        failing.finish();
+
+        let mut input = ffmpeg_next::format::input(&healthy_path).unwrap();
+        let video_packets = input
+            .packets()
+            .filter(|(stream, _)| stream.parameters().medium() == ffmpeg_next::media::Type::Video)
+            .count();
+
+        assert_eq!(video_packets, 10, "healthy output lost encoded frames");
+        drop(input);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
     fn uuid_for_test() -> u128 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

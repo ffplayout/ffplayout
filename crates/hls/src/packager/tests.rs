@@ -96,8 +96,8 @@ fn packet(stream: usize, pts_us: i64, keyframe: bool) -> MediaPacket<()> {
     }
 }
 
-fn feed(
-    packager: &mut Packager<(), Writer>,
+fn feed<W: SegmentWriter<()>>(
+    packager: &mut Packager<(), W>,
     renditions: usize,
     base: i64,
     frames: i64,
@@ -1278,4 +1278,235 @@ fn late_overrun_preserves_published_history_and_can_resume() {
 
     assert_eq!(fs::read(fixture.0.join("v0_0.ts")).unwrap(), before[4]);
     assert!(fixture.0.join("v0_1.ts").exists());
+}
+
+// Fail through the existing container-writer boundary after a playable history
+// exists. Filesystem obstructions exercise the real atomic publication code.
+struct PublicationFault {
+    temporary_playlist: Option<&'static str>,
+    disk_full: bool,
+}
+
+impl SegmentWriter<()> for PublicationFault {
+    fn write_segment(
+        &mut self,
+        path: &Path,
+        packets: &[MediaPacket<()>],
+        rendition: usize,
+    ) -> Result<()> {
+        if path.file_name().unwrap() == format!("v{rendition}_1.ts").as_str() {
+            if self.disk_full {
+                return Err(std::io::Error::from(std::io::ErrorKind::StorageFull).into());
+            }
+
+            if rendition == 1
+                && let Some(name) = self.temporary_playlist
+            {
+                fs::create_dir(path.parent().unwrap().join(name))?;
+            }
+        }
+
+        Writer {
+            fail_rendition: None,
+        }
+        .write_segment(path, packets, rendition)
+    }
+}
+
+#[test]
+fn storage_full_preserves_playable_history_and_resume_skips_orphans() {
+    let fixture = Fixture::new();
+    let config = fixture.config(2, 3);
+    let mut packager = Packager::new(
+        fixture.config(2, 3),
+        PublicationFault {
+            temporary_playlist: None,
+            disk_full: true,
+        },
+    )
+    .unwrap();
+
+    feed(&mut packager, 2, 0, 26).unwrap();
+
+    let previous = fs::read(fixture.0.join("v0.m3u8")).unwrap();
+    let error = feed(&mut packager, 2, 1_040_000, 26).unwrap_err();
+
+    assert!(error.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::StorageFull)
+    }));
+    assert_eq!(fs::read(fixture.0.join("v0.m3u8")).unwrap(), previous);
+    drop(packager);
+
+    let mut resumed = Packager::new(
+        config,
+        Writer {
+            fail_rendition: None,
+        },
+    )
+    .unwrap();
+
+    feed(&mut resumed, 2, 3_000_000, 26).unwrap();
+    assert!(
+        fs::read_to_string(fixture.0.join("v0.m3u8"))
+            .unwrap()
+            .contains("#EXT-X-DISCONTINUITY\n")
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.0.join("v0_0.ts")).unwrap(),
+        "0:25"
+    );
+}
+
+#[test]
+fn publication_failure_after_media_preserves_history_and_never_reuses_orphans() {
+    let fixture = Fixture::new();
+    let config = fixture.config(2, 3);
+    let blocked = ".v0_vtt.m3u8.native.tmp";
+    let mut packager = Packager::new(
+        fixture.config(2, 3),
+        PublicationFault {
+            temporary_playlist: Some(blocked),
+            disk_full: false,
+        },
+    )
+    .unwrap();
+
+    feed(&mut packager, 2, 0, 26).unwrap();
+
+    let previous = fs::read(fixture.0.join("v0.m3u8")).unwrap();
+
+    assert!(feed(&mut packager, 2, 1_040_000, 26).is_err());
+    drop(packager);
+    assert_eq!(fs::read(fixture.0.join("v0.m3u8")).unwrap(), previous);
+    assert!(fixture.0.join("v0_1.ts").is_file());
+    assert!(fixture.0.join("v1_1.ts").is_file());
+
+    let orphan = fs::read(fixture.0.join("v0_1.ts")).unwrap();
+
+    fs::remove_dir(fixture.0.join(blocked)).unwrap();
+
+    let mut resumed = Packager::new(
+        config,
+        Writer {
+            fail_rendition: None,
+        },
+    )
+    .unwrap();
+
+    feed(&mut resumed, 2, 3_000_000, 26).unwrap();
+    assert!(fixture.0.join("v0_2.ts").is_file());
+    assert_eq!(fs::read(fixture.0.join("v0_1.ts")).unwrap(), orphan);
+}
+
+#[test]
+fn interrupted_variant_publication_rejects_inconsistent_resume_without_mutation() {
+    let fixture = Fixture::new();
+    let config = fixture.config(2, 3);
+    let blocked = ".v1.m3u8.native.tmp";
+    let mut packager = Packager::new(
+        fixture.config(2, 3),
+        PublicationFault {
+            temporary_playlist: Some(blocked),
+            disk_full: false,
+        },
+    )
+    .unwrap();
+
+    feed(&mut packager, 2, 0, 26).unwrap();
+    assert!(feed(&mut packager, 2, 1_040_000, 26).is_err());
+    drop(packager);
+    fs::remove_dir(fixture.0.join(blocked)).unwrap();
+
+    let snapshot: Vec<_> = fs::read_dir(&fixture.0)
+        .unwrap()
+        .map(|entry| {
+            let path = entry.unwrap().path();
+            let contents = fs::read(&path).unwrap();
+
+            (path, contents)
+        })
+        .collect();
+    let result = Packager::new(
+        config,
+        Writer {
+            fail_rendition: None,
+        },
+    );
+
+    assert!(
+        result
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("inconsistent sequences")
+    );
+
+    for (path, contents) in snapshot {
+        assert_eq!(fs::read(path).unwrap(), contents);
+    }
+}
+
+#[test]
+fn abrupt_process_exit_after_media_resumes_without_overwriting_history() {
+    const CHILD_DIRECTORY: &str = "FF_HLS_ABORT_FIXTURE";
+
+    if let Some(directory) = std::env::var_os(CHILD_DIRECTORY) {
+        struct ExitAfterMedia;
+
+        impl SegmentWriter<()> for ExitAfterMedia {
+            fn write_segment(
+                &mut self,
+                path: &Path,
+                packets: &[MediaPacket<()>],
+                rendition: usize,
+            ) -> Result<()> {
+                Writer {
+                    fail_rendition: None,
+                }
+                .write_segment(path, packets, rendition)?;
+
+                if path.file_name().unwrap() == "v1_1.ts" {
+                    // Exit without running destructors or publishing the new manifests.
+                    std::process::exit(73);
+                }
+
+                Ok(())
+            }
+        }
+
+        let fixture = Fixture(PathBuf::from(directory));
+        let mut packager = Packager::new(fixture.config(2, 3), ExitAfterMedia).unwrap();
+
+        feed(&mut packager, 2, 0, 51).unwrap();
+        panic!("child did not exit at the publication boundary");
+    }
+
+    let fixture = Fixture::new();
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "packager::tests::abrupt_process_exit_after_media_resumes_without_overwriting_history",
+        ])
+        .env(CHILD_DIRECTORY, &fixture.0)
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(73), "{output:?}");
+
+    let history = fs::read(fixture.0.join("v0_0.ts")).unwrap();
+    let orphan = fs::read(fixture.0.join("v0_1.ts")).unwrap();
+    let mut resumed = Packager::new(
+        fixture.config(2, 3),
+        Writer {
+            fail_rendition: None,
+        },
+    )
+    .unwrap();
+
+    feed(&mut resumed, 2, 3_000_000, 26).unwrap();
+    assert_eq!(fs::read(fixture.0.join("v0_0.ts")).unwrap(), history);
+    assert_eq!(fs::read(fixture.0.join("v0_1.ts")).unwrap(), orphan);
+    assert!(fixture.0.join("v0_2.ts").is_file());
 }
