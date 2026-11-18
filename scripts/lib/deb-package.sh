@@ -12,6 +12,13 @@ deb_distribution_suffix() (
     esac
 )
 
+has_jemalloc_feature() {
+    case ",$(printf '%s' "$1" | tr '[:space:]' ',')," in
+        *,jemalloc,* | *,ffplayout/jemalloc,*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 deb_package_version() {
     deb_upstream_version=$(printf '%s' "${1#v}" | tr '-' '~')
     deb_distribution=${2:?Missing build distribution suffix}
@@ -21,6 +28,10 @@ deb_package_version() {
         static) deb_distribution="$deb_distribution.static" ;;
         *) echo "Unsupported FFmpeg linkage mode: $3" >&2; return 1 ;;
     esac
+
+    if has_jemalloc_feature "${4:-}"; then
+        deb_distribution="$deb_distribution.jemalloc"
+    fi
 
     printf '%s-1+%s\n' "$deb_upstream_version" "$deb_distribution"
 }

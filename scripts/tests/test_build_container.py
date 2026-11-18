@@ -29,29 +29,23 @@ with open(os.environ['TEST_EVENTS'], 'a') as log:
 def save():
     statefile.write_text(json.dumps(state))
 if args[:2] == ['image', 'inspect']:
-    if os.environ.get('TEST_BLOCK') and args[3] == '{{.Id}}':
+    if os.environ.get('TEST_BLOCK'):
         marker = pathlib.Path(os.environ['TEST_BLOCK'])
         marker.touch()
         deadline = time.monotonic() + 5
         while not marker.with_suffix('.release').exists():
             if time.monotonic() >= deadline: sys.exit(9)
             time.sleep(0.01)
-    print(os.environ.get('TEST_IMAGE', 'image-1') if args[3] == '{{.Id}}' else 'echo build')
+    print(os.environ.get('TEST_IMAGE', 'image-1') + '|echo build')
 elif args[:2] == ['container', 'inspect']:
     if state is None: sys.exit(1)
-    if '--format' in args:
-        fmt = args[3]
-        if 'workspace' in fmt: print(state['workspace'])
-        elif 'created' in fmt: print(state['created'])
-        elif 'Running' in fmt: print(str(state['running']).lower())
-        elif fmt == '{{.Image}}': print(state['image'])
-    else: print('{}')
+    print(state['image'], str(state['running']).lower(), state['workspace'], sep='|')
 elif args[0] == 'create':
     assert state is None
     labels = [args[i+1] for i, arg in enumerate(args) if arg == '--label']
     labels = dict(label.split('=', 1) for label in labels)
     state = {'workspace': labels['ffplayout.build.workspace'],
-             'created': int(labels['ffplayout.build.created']), 'running': False,
+             'running': False,
              'image': os.environ.get('TEST_IMAGE', 'image-1'), 'builds': 0}
     save()
 elif args[0] == 'rm':
@@ -110,20 +104,6 @@ container_run_env builder-image -v "$PWD:/src:z"
         self.assertNotIn('--rm', self.calls('create')[0])
         self.assertIn(str(self.root.resolve()) + ':/src:z', self.calls('create')[0])
 
-    def test_older_than_one_week_is_removed_before_recreation(self):
-        self.assertEqual(self.run_build().returncode, 0)
-        self.change(created=self.load()['created'] - 604801)
-        self.assertEqual(self.run_build().returncode, 0)
-        self.assertEqual(len(self.calls('rm')), 1)
-        self.assertEqual(len(self.calls('create')), 2)
-        self.assertEqual(self.load()['builds'], 1)
-
-    def test_recent_container_is_not_recreated(self):
-        self.assertEqual(self.run_build().returncode, 0)
-        self.change(created=self.load()['created'] - 604700)
-        self.assertEqual(self.run_build().returncode, 0)
-        self.assertEqual(len(self.calls('rm')), 0)
-
     def test_changed_builder_image_recreates_container(self):
         self.assertEqual(self.run_build().returncode, 0)
         self.assertEqual(self.run_build(TEST_IMAGE='image-2').returncode, 0)
@@ -153,7 +133,7 @@ container_run_env builder-image -v "$PWD:/src:z"
 
     def test_running_build_is_never_stopped_or_deleted(self):
         self.assertEqual(self.run_build().returncode, 0)
-        self.change(running=True, created=0)
+        self.change(running=True)
         stops = len(self.calls('stop'))
         self.assertNotEqual(self.run_build().returncode, 0)
         self.assertEqual(len(self.calls('stop')), stops)

@@ -21,6 +21,7 @@ dev-metrics = ["dep:console-subscriber", "dep:tracing-subscriber", "tokio/tracin
 processing-bench = ["ff-engine/processing-bench"]
 ffmpeg-filter = ["ff-engine/ffmpeg-filter"]
 ffmpeg-device = ["ff-engine/ffmpeg-device"]
+jemalloc = ["dep:tikv-jemallocator"]
 
 [dependencies]
 ff-graphics = { path = "../graphics", features = ["ffmpeg"] }
@@ -122,6 +123,9 @@ tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 ts-rs = { version = "12", features = ["chrono-impl", "no-serde-warnings"] }
 uuid = { version = "1.18", features = ["v4"] }
+
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+tikv-jemallocator = { version = "0.7", optional = true, features = ["override_allocator_on_supported_platforms"] }
 
 [dev-dependencies]
 serial_test = "4.0"

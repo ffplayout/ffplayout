@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import pty
 import shutil
 import subprocess
 import tarfile
@@ -22,13 +23,18 @@ elif args[:2] == ['container', 'inspect']:
     sys.exit(1)
 elif args[0] == 'create':
     mounts = [args[i+1] for i, arg in enumerate(args) if arg == '-v']
-    output = next(m.split(':/artifacts:')[0] for m in mounts if ':/artifacts:' in m)
+    output = next((m.split(':/artifacts:')[0] for m in mounts if ':/artifacts:' in m), 'target/release')
     pathlib.Path('artifact-path').write_text(output)
 elif args[0] == 'exec':
     output = pathlib.Path(pathlib.Path('artifact-path').read_text())
-    (output / 'ffplayout').write_text('static test binary')
-    if output.name == 'debian-static':
-        (output / 'ffplayout_1.2.3-1_amd64.deb').write_text('test package')
+    output.mkdir(parents=True, exist_ok=True)
+    features = next(arg.split('=', 1)[1] for arg in args if arg.startswith('CARGO_FEATURES='))
+    suffix = '.jemalloc' if 'jemalloc' in features.split(',') else ''
+    (output / 'ffplayout').write_text(f'{output.name} test binary{suffix}' if output.name == 'release' else 'static test binary')
+    if output.name.startswith('debian-static'):
+        (output / f'ffplayout_1.2.3-1+deb13.static{suffix}_amd64.deb').write_text('test package')
+    elif output.name == 'release':
+        pathlib.Path(f'ffplayout_1.2.3-1+deb13{suffix}_amd64.deb').write_text('test package')
 '''
 
 
@@ -38,11 +44,12 @@ class BuildTargetTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         (self.root / 'scripts/lib').mkdir(parents=True)
-        for name in ('build.sh', 'lib/build-container.sh'):
+        for name in ('build.sh', 'lib/build-container.sh', 'lib/deb-package.sh'):
             shutil.copyfile(ROOT / 'scripts' / name, self.root / 'scripts' / name)
-        manual = self.root / 'scripts/man_create.sh'
-        manual.write_text('#!/bin/sh\nexit 0\n')
-        manual.chmod(0o755)
+        for name in ('man_create.sh', 'test-deb-install.sh'):
+            script = self.root / 'scripts' / name
+            script.write_text('#!/bin/sh\nexit 0\n')
+            script.chmod(0o755)
         self.cli = self.root / 'container-cli'
         self.cli.write_text(MOCK)
         self.cli.chmod(0o755)
@@ -52,12 +59,22 @@ class BuildTargetTests(unittest.TestCase):
         for name in ('LICENSE', 'README.md', 'assets/config.db', 'assets/config.db-wal'):
             (self.root / name).write_text('test')
 
-    def run_build(self, target, features='embed_frontend', *options, **settings):
+    def run_build(self, target, features='embed_frontend', *options, choices=None, **settings):
         env = {key: value for key, value in os.environ.items()
                if not key.startswith(('CARGO_', 'FFMPEG_', 'CONTAINER_'))}
         env.update(CONTAINER_CLI=str(self.cli), CARGO_FEATURES=features, **settings)
-        return subprocess.run(['/bin/bash', 'scripts/build.sh', target, *options],
-                              cwd=self.root, env=env, capture_output=True, text=True)
+        command = ['/bin/bash', 'scripts/build.sh', target, *options]
+        if choices is None:
+            return subprocess.run(command, cwd=self.root, env=env, capture_output=True, text=True)
+
+        master, terminal = pty.openpty()
+        try:
+            os.write(master, choices.encode())
+            return subprocess.run(command, cwd=self.root, env=env, stdin=terminal,
+                                  capture_output=True, text=True, timeout=10)
+        finally:
+            os.close(terminal)
+            os.close(master)
 
     def calls(self):
         path = self.root / 'calls.jsonl'
@@ -89,7 +106,58 @@ class BuildTargetTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         build = next(args for args in self.calls() if args[0] == 'build')
         self.assertIn('./docker/static.Dockerfile', build)
-        self.assertTrue((self.root / 'ffplayout_1.2.3-1_amd64.deb').is_file())
+        self.assertTrue((self.root / 'ffplayout_1.2.3-1+deb13.static_amd64.deb').is_file())
+
+    def test_interactive_debian_allocator_selection(self):
+        for choice, expected in (('', 'embed_frontend'), ('2', 'embed_frontend,jemalloc')):
+            with self.subTest(choice=choice):
+                (self.root / 'calls.jsonl').unlink(missing_ok=True)
+                result = self.run_build('debian-static', '', choices=f'{choice}\n2\n')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertLess(result.stdout.index('Select memory allocator:'),
+                                result.stdout.index('Select Cargo features:'))
+                for action in ('build', 'exec'):
+                    call = next(args for args in self.calls() if args[0] == action)
+                    self.assertIn(f'CARGO_FEATURES={expected}', call)
+
+    def test_explicit_jemalloc_feature_skips_interactive_selection(self):
+        result = self.run_build('debian-static', 'embed_frontend,jemalloc')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        execute = next(args for args in self.calls() if args[0] == 'exec')
+        self.assertIn('CARGO_FEATURES=embed_frontend,jemalloc', execute)
+        self.assertNotIn('Select memory allocator:', result.stdout)
+
+    def test_interactive_allocator_can_override_env_features(self):
+        (self.root / '.env').write_text('CARGO_FEATURES=embed_frontend,ffplayout/jemalloc\n')
+        result = self.run_build('debian-static', choices='1\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        execute = next(args for args in self.calls() if args[0] == 'exec')
+        self.assertIn('CARGO_FEATURES=embed_frontend', execute)
+
+    def test_debian_static_allocators_keep_separate_artifacts(self):
+        for features in ('embed_frontend,jemalloc', 'embed_frontend'):
+            result = self.run_build('debian-static', features)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        for suffix, version_suffix in (('', ''), ('-jemalloc', '.jemalloc')):
+            self.assertTrue((self.root / f'target/debian-static{suffix}/ffplayout').is_file())
+            self.assertTrue((self.root / f'ffplayout_1.2.3-1+deb13.static{version_suffix}_amd64.deb').is_file())
+
+    def test_debian_shared_allocators_keep_separate_artifacts(self):
+        for features in ('embed_frontend,jemalloc', 'embed_frontend'):
+            result = self.run_build('debian-shared', features)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        for suffix, version_suffix in (('', ''), ('-jemalloc', '.jemalloc')):
+            binary = f'release test binary{version_suffix}'
+            self.assertEqual((self.root / f'target/debian-shared{suffix}/ffplayout').read_text(), binary)
+            self.assertTrue((self.root / f'ffplayout_1.2.3-1+deb13{version_suffix}_amd64.deb').is_file())
+            with tarfile.open(self.root / f'ffplayout-v1.2.3_debian{suffix}.tar.gz') as archive:
+                self.assertEqual(archive.extractfile('ffplayout').read(), binary.encode())
+
+    def test_musl_rejects_jemalloc(self):
+        result = self.run_build('alpine-static', 'embed_frontend,jemalloc')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('jemalloc feature requires a Debian build with glibc', result.stderr)
+        self.assertEqual(self.calls(), [])
 
     def test_unsupported_musl_features_fail_before_building(self):
         for feature in ('desktop', 'desktop-cpu', 'desktop-base', 'ff-engine/desktop', 'ff-engine/desktop-gpu'):

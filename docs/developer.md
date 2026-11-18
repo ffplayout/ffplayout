@@ -80,6 +80,25 @@ CARGO_FEATURES=embed_frontend ./scripts/build.sh debian-shared --profiling
 # Or: ./scripts/build.sh debian-static --profiling
 ```
 
+On Linux with glibc, the optional `jemalloc` Cargo feature links jemalloc into
+ffplayout and replaces the C allocator used by FFmpeg as well as the Rust
+global allocator. The resulting binary uses jemalloc automatically at startup.
+The interactive Debian build asks for the allocator first, including when Cargo
+features are already configured. Enter keeps the allocator implied by that list.
+For a non-interactive build, include `jemalloc` in `CARGO_FEATURES`:
+
+```bash
+CARGO_FEATURES=embed_frontend,jemalloc ./scripts/build.sh debian-static
+```
+
+If `.env` defines `CARGO_FEATURES`, append `jemalloc` to that list instead.
+Jemalloc builds use a separate artifact directory such as
+`target/debian-static-jemalloc/` and a `.jemalloc` suffix in the Debian package
+version. The shared build also adds `-jemalloc` to its archive name.
+
+Compare process RSS and PSS when testing this build. The `glibc_*` diagnostic
+counters do not include allocations made by jemalloc.
+
 ### Alpine / musl static build
 
 `docker/musl.Dockerfile` provides a separate, experimental Alpine 3.23 builder

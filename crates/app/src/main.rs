@@ -50,6 +50,10 @@ use ffplayout::{
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use ffplayout::serve::routes::admin_ui_routes;
 
+#[cfg(all(feature = "jemalloc", target_os = "linux", target_env = "gnu"))]
+#[global_allocator]
+static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 fn env_parse_or<T>(key: &str, default: T) -> T
 where
     T: std::str::FromStr,

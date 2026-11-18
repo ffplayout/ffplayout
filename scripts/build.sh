@@ -53,6 +53,7 @@ for name in CARGO_PROFILE_RELEASE_DEBUG CARGO_PROFILE_RELEASE_STRIP; do
 done
 
 source ./scripts/lib/build-container.sh
+source ./scripts/lib/deb-package.sh
 trap cleanup_build_container EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -114,6 +115,50 @@ select_cargo_features() {
     fi
 }
 
+select_allocator() {
+    local choice default=1
+    if has_jemalloc_feature "${CARGO_FEATURES:-}"; then
+        default=2
+    fi
+
+    echo "Select memory allocator:"
+    echo "1) System allocator (glibc)"
+    echo "2) jemalloc"
+    while read -r -p "Selection [1-2, default $default]: " choice; do
+        choice=${choice:-$default}
+        case $choice in
+            1 | 2)
+                allocator_choice=$choice
+                return 0
+                ;;
+            *) echo "Please select 1 or 2." ;;
+        esac
+    done
+
+    echo "Allocator selection cancelled." >&2
+    return 1
+}
+
+apply_allocator_selection() {
+    local feature
+    local -a features
+
+    if [[ $allocator_choice == 2 ]]; then
+        if ! has_jemalloc_feature "$CARGO_FEATURES"; then
+            CARGO_FEATURES="$CARGO_FEATURES,jemalloc"
+        fi
+    elif has_jemalloc_feature "$CARGO_FEATURES"; then
+        IFS=$', \t' read -r -a features <<< "$CARGO_FEATURES"
+        CARGO_FEATURES=""
+        for feature in "${features[@]}"; do
+            case $feature in
+                "" | jemalloc | ffplayout/jemalloc) continue ;;
+            esac
+            CARGO_FEATURES="${CARGO_FEATURES:+$CARGO_FEATURES,}$feature"
+        done
+    fi
+}
+
 if [[ -z $target ]]; then
     usage >&2
     exit 1
@@ -145,6 +190,11 @@ fi
 
 echo "Using container CLI: $container_cli"
 
+allocator_choice=""
+if [[ $target != alpine-static && -t 0 ]]; then
+    select_allocator
+fi
+
 if [[ -z ${CARGO_FEATURES:-} ]]; then
     if [[ $target == alpine-static ]]; then
         CARGO_FEATURES=embed_frontend
@@ -154,6 +204,10 @@ if [[ -z ${CARGO_FEATURES:-} ]]; then
 fi
 
 if [[ $target == alpine-static ]]; then
+    if has_jemalloc_feature "$CARGO_FEATURES"; then
+        echo "The jemalloc feature requires a Debian build with glibc." >&2
+        exit 1
+    fi
     if printf '%s' "$CARGO_FEATURES" | grep -Eq '(^|[,[:space:]])([^,[:space:]]*/)?desktop(-[[:alnum:]_-]+)?([,[:space:]]|$)'; then
         echo "alpine-static supports server outputs only; remove desktop features." >&2
         exit 1
@@ -162,6 +216,8 @@ if [[ $target == alpine-static ]]; then
         echo "alpine-static does not support VAAPI or Intel VPL." >&2
         exit 1
     fi
+elif [[ -n $allocator_choice ]]; then
+    apply_allocator_selection
 fi
 
 build_step "Generate manual" ./scripts/man_create.sh
@@ -179,7 +235,6 @@ if [[ -z $version ]]; then
     exit 1
 fi
 
-source scripts/lib/deb-package.sh
 # Both Debian builder images use Trixie, independently of the host OS.
 deb_linkage=dynamic
 
@@ -187,7 +242,12 @@ if [[ $target == debian-static ]]; then
     deb_linkage=static
 fi
 
-deb_version=$(deb_package_version "$version" deb13 "$deb_linkage")
+deb_version=$(deb_package_version "$version" deb13 "$deb_linkage" "$CARGO_FEATURES")
+allocator_suffix=""
+if has_jemalloc_feature "$CARGO_FEATURES"; then
+    allocator_suffix="-jemalloc"
+fi
+artifact_directory="target/$target$allocator_suffix"
 
 echo "Compile ffplayout \"$version\""
 echo ""
@@ -204,7 +264,8 @@ fi
 
 if [[ $target == "debian-shared" ]]; then
     rm -f "ffplayout_${deb_version}_amd64.deb"
-    rm -f "ffplayout-v${version}_debian.tar.gz"
+    archive="ffplayout-v${version}_debian$allocator_suffix.tar.gz"
+    rm -f "$archive"
 
     build_step "Prepare Debian shared builder image (cache check/build)" \
         "$container_cli" build --platform linux/amd64 --build-arg CARGO_FEATURES="$CARGO_FEATURES" \
@@ -214,8 +275,10 @@ if [[ $target == "debian-shared" ]]; then
     shared_docker_args=(-v "$(pwd)":/src:z)
     container_run_env rust-debian "${shared_docker_args[@]}"
 
-    tar -czvf "ffplayout-v${version}_debian.tar.gz" --exclude='*.db' --exclude='*.db-shm' \
-        --exclude='*.db-wal' assets docker docs LICENSE README.md -C ./target/release ffplayout
+    mkdir -p "$artifact_directory"
+    cp ./target/release/ffplayout "$artifact_directory/ffplayout"
+    tar -czvf "$archive" --exclude='*.db' --exclude='*.db-shm' \
+        --exclude='*.db-wal' assets docker docs LICENSE README.md -C "$artifact_directory" ffplayout
 elif [[ $target == "debian-static" || $target == "alpine-static" ]]; then
     static_dockerfile=./docker/static.Dockerfile
     static_image=localhost/ffplayout-static-builder:latest
@@ -227,11 +290,11 @@ elif [[ $target == "debian-static" || $target == "alpine-static" ]]; then
         rm -f "ffplayout-v${version}_linux-musl-x86_64.tar.gz"
     else
         rm -f "ffplayout_${deb_version}_amd64.deb"
-        rm -f "./target/$target/ffplayout_${deb_version}_amd64.deb"
+        rm -f "$artifact_directory/ffplayout_${deb_version}_amd64.deb"
         rm -f ./target/release/ffplayout
     fi
-    rm -f "./target/$target/ffplayout"
-    mkdir -p "./target/$target"
+    rm -f "$artifact_directory/ffplayout"
+    mkdir -p "$artifact_directory"
 
     static_cargo_features=$CARGO_FEATURES
 
@@ -247,14 +310,14 @@ elif [[ $target == "debian-static" || $target == "alpine-static" ]]; then
 
     container_run_env "$static_image" \
         -v "$(pwd)":/src:z \
-        -v "$(pwd)/target/$target":/artifacts:z
+        -v "$(pwd)/$artifact_directory":/artifacts:z
 
     if [[ $target == alpine-static ]]; then
         build_step "Package static musl binary" tar -czf "ffplayout-v${version}_linux-musl-x86_64.tar.gz" \
             --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' \
             assets docker docs migrations LICENSE README.md -C ./target/alpine-static ffplayout
     else
-        mv "./target/debian-static/ffplayout_${deb_version}_amd64.deb" .
+        mv "$artifact_directory/ffplayout_${deb_version}_amd64.deb" .
     fi
 fi
 
