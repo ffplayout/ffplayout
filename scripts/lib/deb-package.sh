@@ -12,12 +12,22 @@ deb_distribution_suffix() (
     esac
 )
 
-has_jemalloc_feature() {
-    case ",$(printf '%s' "$1" | tr '[:space:]' ',')," in
-        *,jemalloc,* | *,ffplayout/jemalloc,*) return 0 ;;
-        *) return 1 ;;
-    esac
-}
+allocator_from_features() (
+    selected=system
+    feature_list=$(printf '%s' "$1" | tr '[:space:]' ',')
+    for candidate in jemalloc mimalloc; do
+        case ",$feature_list," in
+            *,"$candidate",* | *,ffplayout/"$candidate",*)
+                if [ "$selected" != system ]; then
+                    echo "Choose either jemalloc or mimalloc, not both." >&2
+                    exit 1
+                fi
+                selected=$candidate
+                ;;
+        esac
+    done
+    printf '%s\n' "$selected"
+)
 
 deb_package_version() {
     deb_upstream_version=$(printf '%s' "${1#v}" | tr '-' '~')
@@ -29,8 +39,9 @@ deb_package_version() {
         *) echo "Unsupported FFmpeg linkage mode: $3" >&2; return 1 ;;
     esac
 
-    if has_jemalloc_feature "${4:-}"; then
-        deb_distribution="$deb_distribution.jemalloc"
+    deb_allocator=$(allocator_from_features "${4:-}") || return 1
+    if [ "$deb_allocator" != system ]; then
+        deb_distribution="$deb_distribution.$deb_allocator"
     fi
 
     printf '%s-1+%s\n' "$deb_upstream_version" "$deb_distribution"

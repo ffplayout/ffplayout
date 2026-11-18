@@ -59,7 +59,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 select_cargo_features() {
-    local selection
+    local selection custom_allocator
 
     if [[ ! -t 0 ]]; then
         echo "Set CARGO_FEATURES for a non-interactive build." >&2
@@ -99,6 +99,11 @@ select_cargo_features() {
             6)
                 read -r -p "Cargo features (comma-separated): " CARGO_FEATURES
                 if [[ -n $CARGO_FEATURES ]]; then
+                    custom_allocator=$(allocator_from_features "$CARGO_FEATURES") || return 1
+                    if [[ -n $allocator_choice && $custom_allocator != system && $custom_allocator != "$allocator_choice" ]]; then
+                        echo "Custom Cargo features select $custom_allocator, but the allocator menu selected $allocator_choice." >&2
+                        return 1
+                    fi
                     break
                 fi
                 echo "Please provide at least one feature."
@@ -117,21 +122,22 @@ select_cargo_features() {
 
 select_allocator() {
     local choice default=1
-    if has_jemalloc_feature "${CARGO_FEATURES:-}"; then
-        default=2
-    fi
+    case $allocator in
+        jemalloc) default=2 ;;
+        mimalloc) default=3 ;;
+    esac
 
     echo "Select memory allocator:"
     echo "1) System allocator (glibc)"
     echo "2) jemalloc"
-    while read -r -p "Selection [1-2, default $default]: " choice; do
-        choice=${choice:-$default}
+    echo "3) mimalloc v3"
+    while read -r -p "Selection [1-3, default $default]: " choice; do
         case $choice in
-            1 | 2)
-                allocator_choice=$choice
-                return 0
-                ;;
-            *) echo "Please select 1 or 2." ;;
+            "") return 0 ;;
+            1) allocator_choice=system; return 0 ;;
+            2) allocator_choice=jemalloc; return 0 ;;
+            3) allocator_choice=mimalloc; return 0 ;;
+            *) echo "Please select a number from 1 to 3." ;;
         esac
     done
 
@@ -143,19 +149,16 @@ apply_allocator_selection() {
     local feature
     local -a features
 
-    if [[ $allocator_choice == 2 ]]; then
-        if ! has_jemalloc_feature "$CARGO_FEATURES"; then
-            CARGO_FEATURES="$CARGO_FEATURES,jemalloc"
-        fi
-    elif has_jemalloc_feature "$CARGO_FEATURES"; then
-        IFS=$', \t' read -r -a features <<< "$CARGO_FEATURES"
-        CARGO_FEATURES=""
-        for feature in "${features[@]}"; do
-            case $feature in
-                "" | jemalloc | ffplayout/jemalloc) continue ;;
-            esac
-            CARGO_FEATURES="${CARGO_FEATURES:+$CARGO_FEATURES,}$feature"
-        done
+    read -r -a features <<< "$(printf '%s' "$CARGO_FEATURES" | tr '[:space:],' ' ')"
+    CARGO_FEATURES=""
+    for feature in "${features[@]}"; do
+        case $feature in
+            jemalloc | ffplayout/jemalloc | mimalloc | ffplayout/mimalloc) continue ;;
+        esac
+        CARGO_FEATURES="${CARGO_FEATURES:+$CARGO_FEATURES,}$feature"
+    done
+    if [[ $allocator_choice != system ]]; then
+        CARGO_FEATURES="${CARGO_FEATURES:+$CARGO_FEATURES,}$allocator_choice"
     fi
 }
 
@@ -192,6 +195,7 @@ echo "Using container CLI: $container_cli"
 
 allocator_choice=""
 if [[ $target != alpine-static && -t 0 ]]; then
+    allocator=$(allocator_from_features "${CARGO_FEATURES:-}")
     select_allocator
 fi
 
@@ -203,9 +207,14 @@ if [[ -z ${CARGO_FEATURES:-} ]]; then
     fi
 fi
 
+if [[ -n $allocator_choice ]]; then
+    apply_allocator_selection
+fi
+allocator=$(allocator_from_features "$CARGO_FEATURES")
+
 if [[ $target == alpine-static ]]; then
-    if has_jemalloc_feature "$CARGO_FEATURES"; then
-        echo "The jemalloc feature requires a Debian build with glibc." >&2
+    if [[ $allocator != system ]]; then
+        echo "The $allocator feature requires a Debian build with glibc." >&2
         exit 1
     fi
     if printf '%s' "$CARGO_FEATURES" | grep -Eq '(^|[,[:space:]])([^,[:space:]]*/)?desktop(-[[:alnum:]_-]+)?([,[:space:]]|$)'; then
@@ -216,8 +225,6 @@ if [[ $target == alpine-static ]]; then
         echo "alpine-static does not support VAAPI or Intel VPL." >&2
         exit 1
     fi
-elif [[ -n $allocator_choice ]]; then
-    apply_allocator_selection
 fi
 
 build_step "Generate manual" ./scripts/man_create.sh
@@ -244,8 +251,8 @@ fi
 
 deb_version=$(deb_package_version "$version" deb13 "$deb_linkage" "$CARGO_FEATURES")
 allocator_suffix=""
-if has_jemalloc_feature "$CARGO_FEATURES"; then
-    allocator_suffix="-jemalloc"
+if [[ $allocator != system ]]; then
+    allocator_suffix="-$allocator"
 fi
 artifact_directory="target/$target$allocator_suffix"
 

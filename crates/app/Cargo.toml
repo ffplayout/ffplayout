@@ -22,6 +22,7 @@ processing-bench = ["ff-engine/processing-bench"]
 ffmpeg-filter = ["ff-engine/ffmpeg-filter"]
 ffmpeg-device = ["ff-engine/ffmpeg-device"]
 jemalloc = ["dep:tikv-jemallocator"]
+mimalloc = ["dep:mimalloc"]
 
 [dependencies]
 ff-graphics = { path = "../graphics", features = ["ffmpeg"] }
@@ -125,6 +126,7 @@ ts-rs = { version = "12", features = ["chrono-impl", "no-serde-warnings"] }
 uuid = { version = "1.18", features = ["v4"] }
 
 [target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+mimalloc = { version = "0.1.52", optional = true, features = ["override"] }
 tikv-jemallocator = { version = "0.7", optional = true, features = ["override_allocator_on_supported_platforms"] }
 
 [dev-dependencies]

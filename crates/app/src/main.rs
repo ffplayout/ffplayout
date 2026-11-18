@@ -50,9 +50,19 @@ use ffplayout::{
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use ffplayout::serve::routes::admin_ui_routes;
 
-#[cfg(all(feature = "jemalloc", target_os = "linux", target_env = "gnu"))]
+// Cargo features are additive. Reference only one allocator even in --all-features builds.
+#[cfg(all(
+    feature = "jemalloc",
+    not(feature = "mimalloc"),
+    target_os = "linux",
+    target_env = "gnu"
+))]
 #[global_allocator]
 static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+#[cfg(all(feature = "mimalloc", target_os = "linux", target_env = "gnu"))]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn env_parse_or<T>(key: &str, default: T) -> T
 where

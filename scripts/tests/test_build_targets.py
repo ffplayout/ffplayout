@@ -29,7 +29,8 @@ elif args[0] == 'exec':
     output = pathlib.Path(pathlib.Path('artifact-path').read_text())
     output.mkdir(parents=True, exist_ok=True)
     features = next(arg.split('=', 1)[1] for arg in args if arg.startswith('CARGO_FEATURES='))
-    suffix = '.jemalloc' if 'jemalloc' in features.split(',') else ''
+    feature_names = {feature.removeprefix('ffplayout/') for feature in features.replace(',', ' ').split()}
+    suffix = next((f'.{name}' for name in ('jemalloc', 'mimalloc') if name in feature_names), '')
     (output / 'ffplayout').write_text(f'{output.name} test binary{suffix}' if output.name == 'release' else 'static test binary')
     if output.name.startswith('debian-static'):
         (output / f'ffplayout_1.2.3-1+deb13.static{suffix}_amd64.deb').write_text('test package')
@@ -109,7 +110,8 @@ class BuildTargetTests(unittest.TestCase):
         self.assertTrue((self.root / 'ffplayout_1.2.3-1+deb13.static_amd64.deb').is_file())
 
     def test_interactive_debian_allocator_selection(self):
-        for choice, expected in (('', 'embed_frontend'), ('2', 'embed_frontend,jemalloc')):
+        for choice, expected in (('', 'embed_frontend'), ('2', 'embed_frontend,jemalloc'),
+                                 ('3', 'embed_frontend,mimalloc')):
             with self.subTest(choice=choice):
                 (self.root / 'calls.jsonl').unlink(missing_ok=True)
                 result = self.run_build('debian-static', '', choices=f'{choice}\n2\n')
@@ -129,35 +131,62 @@ class BuildTargetTests(unittest.TestCase):
 
     def test_interactive_allocator_can_override_env_features(self):
         (self.root / '.env').write_text('CARGO_FEATURES=embed_frontend,ffplayout/jemalloc\n')
-        result = self.run_build('debian-static', choices='1\n')
+        for choice, expected in (('', 'embed_frontend,ffplayout/jemalloc'),
+                                 ('1', 'embed_frontend'), ('3', 'embed_frontend,mimalloc')):
+            with self.subTest(choice=choice):
+                (self.root / 'calls.jsonl').unlink(missing_ok=True)
+                result = self.run_build('debian-static', choices=f'{choice}\n')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                execute = next(args for args in self.calls() if args[0] == 'exec')
+                self.assertIn(f'CARGO_FEATURES={expected}', execute)
+
+    def test_interactive_custom_features_keep_their_allocator(self):
+        result = self.run_build('debian-static', '', choices='\n6\nembed_frontend,mimalloc\n')
         self.assertEqual(result.returncode, 0, result.stderr)
-        execute = next(args for args in self.calls() if args[0] == 'exec')
-        self.assertIn('CARGO_FEATURES=embed_frontend', execute)
+        for action in ('build', 'exec'):
+            call = next(args for args in self.calls() if args[0] == action)
+            self.assertIn('CARGO_FEATURES=embed_frontend,mimalloc', call)
+
+    def test_interactive_custom_features_reject_conflicting_allocator(self):
+        for choice, selected in (('1', 'system'), ('2', 'jemalloc')):
+            with self.subTest(choice=choice):
+                result = self.run_build('debian-static', '', choices=f'{choice}\n6\nembed_frontend,mimalloc\n')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f'Custom Cargo features select mimalloc, but the allocator menu selected {selected}.',
+                              result.stderr)
+                self.assertEqual(self.calls(), [])
 
     def test_debian_static_allocators_keep_separate_artifacts(self):
-        for features in ('embed_frontend,jemalloc', 'embed_frontend'):
+        for features in ('embed_frontend,jemalloc', 'embed_frontend,mimalloc', 'embed_frontend'):
             result = self.run_build('debian-static', features)
             self.assertEqual(result.returncode, 0, result.stderr)
-        for suffix, version_suffix in (('', ''), ('-jemalloc', '.jemalloc')):
+        for suffix, version_suffix in (('', ''), ('-jemalloc', '.jemalloc'), ('-mimalloc', '.mimalloc')):
             self.assertTrue((self.root / f'target/debian-static{suffix}/ffplayout').is_file())
             self.assertTrue((self.root / f'ffplayout_1.2.3-1+deb13.static{version_suffix}_amd64.deb').is_file())
 
     def test_debian_shared_allocators_keep_separate_artifacts(self):
-        for features in ('embed_frontend,jemalloc', 'embed_frontend'):
+        for features in ('embed_frontend,jemalloc', 'embed_frontend,mimalloc', 'embed_frontend'):
             result = self.run_build('debian-shared', features)
             self.assertEqual(result.returncode, 0, result.stderr)
-        for suffix, version_suffix in (('', ''), ('-jemalloc', '.jemalloc')):
+        for suffix, version_suffix in (('', ''), ('-jemalloc', '.jemalloc'), ('-mimalloc', '.mimalloc')):
             binary = f'release test binary{version_suffix}'
             self.assertEqual((self.root / f'target/debian-shared{suffix}/ffplayout').read_text(), binary)
             self.assertTrue((self.root / f'ffplayout_1.2.3-1+deb13{version_suffix}_amd64.deb').is_file())
             with tarfile.open(self.root / f'ffplayout-v1.2.3_debian{suffix}.tar.gz') as archive:
                 self.assertEqual(archive.extractfile('ffplayout').read(), binary.encode())
 
-    def test_musl_rejects_jemalloc(self):
-        result = self.run_build('alpine-static', 'embed_frontend,jemalloc')
+    def test_rejects_multiple_allocators(self):
+        result = self.run_build('debian-static', 'embed_frontend,jemalloc,ffplayout/mimalloc')
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('jemalloc feature requires a Debian build with glibc', result.stderr)
+        self.assertIn('Choose either jemalloc or mimalloc', result.stderr)
         self.assertEqual(self.calls(), [])
+
+    def test_musl_rejects_replacement_allocators(self):
+        for allocator in ('jemalloc', 'mimalloc'):
+            result = self.run_build('alpine-static', f'embed_frontend,{allocator}')
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(f'{allocator} feature requires a Debian build with glibc', result.stderr)
+            self.assertEqual(self.calls(), [])
 
     def test_unsupported_musl_features_fail_before_building(self):
         for feature in ('desktop', 'desktop-cpu', 'desktop-base', 'ff-engine/desktop', 'ff-engine/desktop-gpu'):

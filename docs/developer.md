@@ -80,24 +80,27 @@ CARGO_FEATURES=embed_frontend ./scripts/build.sh debian-shared --profiling
 # Or: ./scripts/build.sh debian-static --profiling
 ```
 
-On Linux with glibc, the optional `jemalloc` Cargo feature links jemalloc into
-ffplayout and replaces the C allocator used by FFmpeg as well as the Rust
-global allocator. The resulting binary uses jemalloc automatically at startup.
-The interactive Debian build asks for the allocator first, including when Cargo
-features are already configured. Enter keeps the allocator implied by that list.
-For a non-interactive build, include `jemalloc` in `CARGO_FEATURES`:
+On Linux with glibc, the optional `jemalloc` and `mimalloc` Cargo features select
+jemalloc or mimalloc v3 for both FFmpeg and Rust. The resulting binary uses its
+allocator automatically at startup.
+The interactive Debian build asks for the allocator first. Press Enter to use
+the allocator specified in the configured or custom Cargo features. A numbered
+choice must agree with any allocator entered under Custom.
+For a non-interactive build, add one allocator feature to `CARGO_FEATURES`:
 
 ```bash
 CARGO_FEATURES=embed_frontend,jemalloc ./scripts/build.sh debian-static
+CARGO_FEATURES=embed_frontend,mimalloc ./scripts/build.sh debian-static
 ```
 
-If `.env` defines `CARGO_FEATURES`, append `jemalloc` to that list instead.
-Jemalloc builds use a separate artifact directory such as
-`target/debian-static-jemalloc/` and a `.jemalloc` suffix in the Debian package
-version. The shared build also adds `-jemalloc` to its archive name.
+If `.env` defines `CARGO_FEATURES`, add the feature to that list instead.
+The build script rejects configurations with both features. Direct Cargo
+`--all-features` builds use mimalloc on Linux with glibc.
+The allocator name distinguishes the artifact directory, Debian package
+version, and shared archive, for example `target/debian-static-mimalloc/`.
 
 Compare process RSS and PSS when testing this build. The `glibc_*` diagnostic
-counters do not include allocations made by jemalloc.
+counters do not include allocations made by the alternative allocator.
 
 ### Alpine / musl static build
 
