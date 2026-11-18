@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, HashSet},
     fmt,
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
 };
 
@@ -206,6 +206,21 @@ pub struct ProgramFormat {
     pub width: u32,
     pub height: u32,
     pub fps: f64,
+}
+
+impl ProgramFormat {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.width == 0
+            || self.height == 0
+            || !self.fps.is_finite()
+            || self.fps < 1.0
+            || self.fps > f64::from(u32::MAX)
+        {
+            return Err("invalid program format".into());
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, TS, PartialEq, Eq)]
@@ -1586,15 +1601,10 @@ impl PlayoutConfig {
         if self.outputs.len() >= 8 {
             return Err("at most eight outputs are supported".into());
         }
-        if let Some(program) = &self.program
-            && (program.width == 0
-                || program.height == 0
-                || !program.fps.is_finite()
-                || program.fps < 1.0
-                || program.fps > f64::from(u32::MAX))
-        {
-            return Err("invalid program format".into());
+        if let Some(program) = &self.program {
+            program.validate()?;
         }
+
         let mut ids = HashSet::new();
         let mut hls_outputs = 0;
         let mut desktops = 0;
@@ -1732,31 +1742,6 @@ impl PlayoutConfig {
             outputs: additional_outputs,
             program,
         })
-    }
-
-    pub async fn dump(pool: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
-        let config = Self::new(pool, id, None).await?;
-
-        let toml_string = toml_edit::ser::to_string_pretty(&config)?;
-        tokio::fs::write(&format!("ffplayout_{id}.toml"), toml_string).await?;
-
-        Ok(())
-    }
-
-    pub async fn import(pool: &Pool<Sqlite>, id: i32, path: &Path) -> Result<(), ServiceError> {
-        if path.is_file() {
-            let mut file = tokio::fs::File::open(path).await?;
-            let mut contents = String::new();
-            file.read_to_string(&mut contents).await?;
-
-            let config: PlayoutConfig = toml_edit::de::from_str(&contents).unwrap();
-
-            handles::update_configuration(pool, id, config).await?;
-        } else {
-            return Err(ServiceError::BadRequest("Path not exists!".to_string()));
-        }
-
-        Ok(())
     }
 }
 

@@ -120,7 +120,6 @@ tokio = { version = "1.44", features = [
 ] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
-toml_edit = { version = "0.25", features = ["serde"] }
 ts-rs = { version = "12", features = ["chrono-impl", "no-serde-warnings"] }
 uuid = { version = "1.18", features = ["v4"] }
 

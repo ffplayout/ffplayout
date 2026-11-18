@@ -70,6 +70,9 @@ Check [install](docs/install.md) for details about how to install ffplayout.
 
 ### Quick Start
 
+See [export and restore settings](docs/install.md#export-and-restore-settings)
+for complete JSON configuration exports using `--dump-config` and `--import-config`.
+
 1. Install a package from the [latest release](https://github.com/ffplayout/ffplayout/releases/latest).
 2. Start the ffplayout service as described in the [installation guide](docs/install.md).
 3. Open `http://<server-address>:8787` and complete the first-time setup. It creates the global settings and the first global admin.

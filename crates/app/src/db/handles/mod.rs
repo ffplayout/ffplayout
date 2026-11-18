@@ -1,6 +1,7 @@
 mod migration_backup;
 
 pub mod channel;
+pub mod config_dump;
 pub mod configuration;
 pub mod global;
 pub mod graphics;

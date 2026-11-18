@@ -107,7 +107,7 @@ async fn async_main() -> Result<(), ProcessError> {
 
     let init = init_args(&pool).await?;
 
-    if ARGS.init {
+    if ARGS.init || ARGS.dump_config || ARGS.import_config.is_some() {
         return Ok(());
     }
 

@@ -24,6 +24,56 @@ The web setup accepts directory paths only during the first initialization.
 To change log, playlist, public, or storage paths later, run `ffplayout -i`
 locally as the service user.
 
+### Export and restore settings
+
+`--dump-config` exports all persisted settings to `ffplayout.json` in the current
+directory. It includes global settings, channels, outputs and encoding links,
+recording settings, live inputs, source options, text presets, saved graphics
+layers, users with password hashes, and channel permissions.
+
+```bash
+ffplayout --db /path/to/ffplayout.db --dump-config
+```
+
+**Keep exports private:** they contain credentials, including SMTP passwords,
+notification tokens, stream URLs where configured, and user password hashes.
+On Unix, export files are written atomically with permissions `0600`; an existing export at the same filename is replaced.
+
+Restore into a **new database file**:
+
+```bash
+ffplayout --db ./restored.db --import-config ./ffplayout.json
+ffplayout --db ./restored.db
+```
+
+The first command initializes the schema, validates the JSON format/version and
+relationships, then imports all settings in one transaction. It exits without
+starting playout or the web server. The dump format version controls compatibility
+independently of database migration numbering.
+`ffplayout_version` records the application version that created the export; it
+does not restrict imports. `schema_version` only records the source migration
+revision; renumbering migrations does not invalidate a structurally compatible
+dump. Changes to settings structures still require explicit support in the importer.
+Already configured databases are rejected,
+even if they contain no users. No settings are merged with an existing installation.
+Internal IDs are reassigned and their database references updated; channel IDs
+and URLs containing those IDs may therefore change.
+
+The new installation retains its new authentication signing key. Sessions and
+refresh tokens are excluded, so users must log in again. A complete export of an
+initialized installation restores its setup status, so initial setup is not
+required again.
+
+Exports contain settings and paths, **not files**: copy playlists, media, logos,
+fonts and external scripts separately, and check paths and permissions on the
+target machine. Runtime playlist position and time shift are not restored.
+
+The JSON format replaces the former TOML channel dumps. `--import-config` accepts
+only the versioned JSON format, with a maximum file size of 32 MiB. Old TOML
+dumps are no longer supported; keep a database backup when upgrading from a
+version that uses them. This format is independent of SQL statements, but
+PostgreSQL and MariaDB backends are not implemented yet.
+
 ### macOS
 
 The macOS desktop release does not include FFmpeg shared libraries. Install

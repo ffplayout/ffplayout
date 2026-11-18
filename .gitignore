@@ -54,3 +54,4 @@ Videos/
 *.tar*
 home
 home/
+ffplayout*.json

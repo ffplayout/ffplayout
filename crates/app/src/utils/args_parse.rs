@@ -19,10 +19,7 @@ use crate::{
         handles,
         models::{Channel, User},
     },
-    utils::{
-        config::{OutputMode, PlayoutConfig},
-        errors::ProcessError,
-    },
+    utils::{config::OutputMode, config_dump, errors::ProcessError},
 };
 
 const DEFAULT_LISTEN_ADDRESS: &str = "127.0.0.1:8787";
@@ -126,10 +123,10 @@ pub struct Args {
     )]
     pub drop_db: bool,
 
-    #[clap(long, help_heading = Some("General"), help = "Dump channel configuration to ffplayout_{channel}.toml")]
+    #[clap(long, conflicts_with_all = ["import_config", "init", "drop_db", "user_set", "channel"], help_heading = Some("General"), help = "Export all installation settings as versioned JSON")]
     pub dump_config: bool,
 
-    #[clap(long, help_heading = Some("General"), help = "Import channel configuration from file")]
+    #[clap(long, conflicts_with_all = ["channel", "init", "drop_db", "user_set"], help_heading = Some("General"), help = "Restore JSON settings into a fresh database")]
     pub import_config: Option<PathBuf>,
 
     #[clap(long, help_heading = Some("General"), help = "List available channel ids")]
@@ -329,6 +326,24 @@ pub async fn init_args(pool: &Pool<Sqlite>) -> Result<bool, ProcessError> {
         init = handles::db_migrate(pool).await?;
     }
 
+    if args.dump_config {
+        let path = config_dump::dump(pool).await?;
+
+        println!(
+            "Exported settings to {} (contains secrets; keep private)",
+            path.display()
+        );
+
+        return Ok(false);
+    }
+
+    if let Some(path) = &args.import_config {
+        config_dump::import(pool, path).await?;
+        println!("Settings restored. Start ffplayout normally to use the imported configuration.");
+
+        return Ok(false);
+    }
+
     let channels = handles::select_related_channels(pool, None)
         .await
         .unwrap_or(vec![Channel::default()]);
@@ -505,36 +520,6 @@ pub async fn init_args(pool: &Pool<Sqlite>) -> Result<bool, ProcessError> {
                 .collect::<Vec<String>>()
                 .join("\n")
         );
-    }
-
-    if ARGS.dump_config {
-        if let Some(channel) = &ARGS.channel {
-            for id in channel {
-                match PlayoutConfig::dump(pool, *id).await {
-                    Ok(_) => println!("Dump config to: ffplayout_{id}.toml"),
-                    Err(e) => return Err(ProcessError::Custom(format!("Dump config: {e}"))),
-                };
-            }
-        } else {
-            return Err(ProcessError::Custom(
-                "Channel ID(s) needed! Use `--channel 1 ...`".to_string(),
-            ));
-        }
-    }
-
-    if let Some(path) = &ARGS.import_config {
-        if let Some(channel) = &ARGS.channel {
-            for id in channel {
-                match PlayoutConfig::import(pool, *id, path).await {
-                    Ok(_) => println!("Import config done..."),
-                    Err(e) => return Err(ProcessError::Custom(format!("{e}"))),
-                };
-            }
-        } else {
-            return Err(ProcessError::Custom(
-                "Channel ID(s) needed! Use `--channel 1 ...`".to_string(),
-            ));
-        }
     }
 
     Ok(init)

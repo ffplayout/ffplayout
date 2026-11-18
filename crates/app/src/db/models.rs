@@ -6,10 +6,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{FromRow, Pool, Row, Sqlite, sqlite::SqliteRow, types::Json};
 
+mod config_dump;
+
 use crate::{
     db::handles,
     utils::config::{OutputMode, PlayoutConfig},
 };
+
+pub use config_dump::{ConfigDump, SettingsRow};
 
 /// Desired manual graphics state; playback clocks and prepared pixels stay in the engine.
 #[derive(Clone, Debug, Serialize, Deserialize, FromRow)]

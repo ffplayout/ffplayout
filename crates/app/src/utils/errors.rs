@@ -124,18 +124,6 @@ impl From<tokio::task::JoinError> for ServiceError {
     }
 }
 
-impl From<toml_edit::ser::Error> for ServiceError {
-    fn from(err: toml_edit::ser::Error) -> Self {
-        Self::BadRequest(err.to_string())
-    }
-}
-
-impl From<toml_edit::TomlError> for ServiceError {
-    fn from(err: toml_edit::TomlError) -> Self {
-        Self::BadRequest(err.to_string())
-    }
-}
-
 impl From<uuid::Error> for ServiceError {
     fn from(err: uuid::Error) -> Self {
         Self::BadRequest(err.to_string())

@@ -14,6 +14,7 @@ use serde::{Deserialize, Deserializer, de};
 pub mod args_parse;
 pub mod channels;
 pub mod config;
+pub mod config_dump;
 pub mod control;
 pub mod errors;
 pub mod generator;
