@@ -77,6 +77,14 @@ pub(super) async fn validate(
                 if !valid {
                     return Err(invalid(format!("Invalid value type in {table}.{name}")));
                 }
+
+                if name == "id"
+                    && value
+                        .as_i64()
+                        .is_some_and(|id| !(1..=i64::from(i32::MAX)).contains(&id))
+                {
+                    return Err(invalid(format!("Invalid settings record ID in {table}")));
+                }
             }
         }
     }

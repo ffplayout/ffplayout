@@ -56,8 +56,8 @@ revision; renumbering migrations does not invalidate a structurally compatible
 dump. Changes to settings structures still require explicit support in the importer.
 Already configured databases are rejected,
 even if they contain no users. No settings are merged with an existing installation.
-Internal IDs are reassigned and their database references updated; channel IDs
-and URLs containing those IDs may therefore change.
+Record IDs and their references are preserved, including channel IDs used in API
+URLs.
 
 The new installation retains its new authentication signing key. Sessions and
 refresh tokens are excluded, so users must log in again. A complete export of an

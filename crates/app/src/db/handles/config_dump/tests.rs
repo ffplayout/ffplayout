@@ -62,32 +62,38 @@ async fn restores_every_persistent_table_with_sparse_ids_and_relationships() {
     .await
     .unwrap();
 
+    // Keep gaps and non-default IDs in every relationship, including encoder links
+    // that are not represented by a database foreign key.
+    let mut transaction = source.begin().await.unwrap();
+
+    sqlx::raw_sql(
+        "PRAGMA defer_foreign_keys = ON;
+         UPDATE channels SET id=id+1000;
+         UPDATE config_graphics SET channel_id=channel_id+1000;
+         UPDATE config_graphics_state SET channel_id=channel_id+1000;
+         UPDATE config SET id=id+1000;
+         UPDATE auth_user SET id=id+1000;
+         UPDATE config_text_presets SET id=id+1000;
+         UPDATE config_output SET id=id+1000;
+         UPDATE config_output SET encoding_source_id=encoding_source_id+1000
+            WHERE encoding_source_id IS NOT NULL;",
+    )
+    .execute(&mut *transaction)
+    .await
+    .unwrap();
+    transaction.commit().await.unwrap();
+
     let target = pool().await;
     let target_secret: String = sqlx::query_scalar("SELECT secret FROM config_global")
         .fetch_one(&target)
         .await
         .unwrap();
-    let mut dump = export(&source).await.unwrap();
-
-    // Simulate database IDs that do not exist in the new installation.
-    for (table, rows) in &mut dump.tables {
-        for row in rows {
-            for (column, value) in row {
-                if ((column == "id" && tables::identity(table))
-                    || tables::reference(column).is_some())
-                    && let Some(id) = value.as_i64()
-                {
-                    *value = Value::from(id + 1000);
-                }
-            }
-        }
-    }
+    let dump = export(&source).await.unwrap();
 
     let serialized = serde_json::to_vec(&dump).unwrap();
     let imported = serde_json::from_slice(&serialized).unwrap();
 
     restore(&target, imported).await.unwrap();
-    remap(&mut dump).unwrap();
     assert_eq!(export(&target).await.unwrap(), dump);
     assert!(
         super::super::select_global(&target)
@@ -123,7 +129,7 @@ async fn rejects_invalid_dumps_and_rolls_back_all_tables() {
     let source = populated().await;
     let valid = export(&source).await.unwrap();
 
-    for kind in 0..11 {
+    for kind in 0..14 {
         let target = pool().await;
         let before = export(&target).await.unwrap();
         let mut dump = valid.clone();
@@ -165,9 +171,22 @@ async fn rejects_invalid_dumps_and_rolls_back_all_tables() {
                 dump.tables.get_mut("config_general").unwrap()[0]
                     .insert("unknown\";DELETE FROM channels;--".into(), Value::from(1));
             }
-            _ => {
+            10 => {
                 dump.tables.get_mut("config_recording").unwrap()[0]
                     .insert("config_id".into(), Value::Null);
+            }
+            11 => {
+                dump.tables.get_mut("auth_user").unwrap()[0].insert("id".into(), Value::from(-1));
+            }
+            12 => {
+                dump.tables.get_mut("auth_user_channels").unwrap()[0]
+                    .insert("user_id".into(), Value::from(999999));
+            }
+            _ => {
+                let id = Value::from(i64::from(i32::MAX) + 1);
+
+                dump.tables.get_mut("auth_user").unwrap()[0].insert("id".into(), id.clone());
+                dump.tables.get_mut("auth_user_channels").unwrap()[0].insert("user_id".into(), id);
             }
         }
 
@@ -325,7 +344,6 @@ async fn import_compatibility_is_independent_of_migration_numbering() {
     let restored = export(&target).await.unwrap();
 
     assert_eq!(restored.schema_version, 1);
-    remap(&mut dump).unwrap();
     assert_eq!(restored.tables, dump.tables);
 
     // Neither an incompatible format nor incompatible fields may bypass validation.
@@ -422,7 +440,6 @@ async fn validates_program_dimensions_and_frame_rate_before_import() {
             Value::from(serde_json::to_string(&program).unwrap()),
         );
         restore(&target, dump.clone()).await.unwrap();
-        remap(&mut dump).unwrap();
         assert_eq!(export(&target).await.unwrap(), dump);
     }
 

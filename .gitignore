@@ -25,9 +25,10 @@ ffplayout.1.gz
 /dist/
 data/
 tmp/
-models/
+/models/
 assets/playlist_template.json
 ffplayout*.toml
+ffplayout*.json
 template.json
 *.out.*
 *.zst
@@ -54,4 +55,3 @@ Videos/
 *.tar*
 home
 home/
-ffplayout*.json

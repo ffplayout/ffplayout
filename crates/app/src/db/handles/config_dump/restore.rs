@@ -6,7 +6,7 @@ use crate::{
     utils::errors::ProcessError,
 };
 
-use super::{export, invalid, remap, snapshot, tables, validation::validate};
+use super::{export, invalid, snapshot, tables, validation::validate};
 
 async fn insert_rows(
     connection: &mut SqliteConnection,
@@ -64,7 +64,6 @@ pub async fn restore(pool: &SqlitePool, mut dump: ConfigDump) -> Result<(), Proc
         return Err(invalid("Unsupported authorization roles in settings dump"));
     }
 
-    remap(&mut dump)?;
     sqlx::query("PRAGMA defer_foreign_keys = ON")
         .execute(&mut *transaction)
         .await?;
