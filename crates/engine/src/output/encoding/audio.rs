@@ -134,6 +134,25 @@ pub(in crate::output) struct AudioFrameBuffer {
     size: usize,
 }
 
+pub(in crate::output) enum AudioFrames {
+    Single(frame::Audio),
+    Buffered(Vec<frame::Audio>),
+}
+
+impl IntoIterator for AudioFrames {
+    type Item = frame::Audio;
+    type IntoIter =
+        std::iter::Chain<std::option::IntoIter<frame::Audio>, std::vec::IntoIter<frame::Audio>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let (single, multiple) = match self {
+            Self::Single(frame) => (Some(frame), Vec::new()),
+            Self::Buffered(frames) => (None, frames),
+        };
+        single.into_iter().chain(multiple)
+    }
+}
+
 impl AudioFrameBuffer {
     pub(in crate::output) fn new(rate: u32, size: usize) -> Self {
         Self {
@@ -144,7 +163,7 @@ impl AudioFrameBuffer {
         }
     }
 
-    pub(in crate::output) fn push(&mut self, frame: &frame::Audio) -> Result<Vec<frame::Audio>> {
+    pub(in crate::output) fn push(&mut self, frame: &frame::Audio) -> Result<AudioFrames> {
         let mut frames = Vec::new();
 
         if !self.samples[0].is_empty()
@@ -153,7 +172,7 @@ impl AudioFrameBuffer {
                 .zip(self.pts)
                 .is_some_and(|(pts, start)| pts != start + self.samples[0].len() as i64)
         {
-            frames.extend(self.finish()?);
+            self.finish_into(&mut frames)?;
         }
 
         if self.samples[0].is_empty() {
@@ -173,10 +192,15 @@ impl AudioFrameBuffer {
                     .all(|sample| sample.is_finite())
             })
         {
-            frames.push(reference_audio_frame(frame)?);
+            let referenced = reference_audio_frame(frame)?;
             self.pts = frame.pts().map(|pts| pts + self.size as i64);
 
-            return Ok(frames);
+            return if frames.is_empty() {
+                Ok(AudioFrames::Single(referenced))
+            } else {
+                frames.push(referenced);
+                Ok(AudioFrames::Buffered(frames))
+            };
         }
 
         for (channel, samples) in self.samples.iter_mut().enumerate() {
@@ -187,14 +211,22 @@ impl AudioFrameBuffer {
                     .map(|sample| if sample.is_finite() { *sample } else { 0.0 }),
             );
         }
-        frames.extend(self.drain()?);
+        self.drain_into(&mut frames)?;
+
+        Ok(AudioFrames::Buffered(frames))
+    }
+
+    pub(in crate::output) fn finish(&mut self) -> Result<Vec<frame::Audio>> {
+        let mut frames = Vec::new();
+
+        self.finish_into(&mut frames)?;
 
         Ok(frames)
     }
 
-    pub(in crate::output) fn finish(&mut self) -> Result<Vec<frame::Audio>> {
+    fn finish_into(&mut self, frames: &mut Vec<frame::Audio>) -> Result<()> {
         if self.samples[0].is_empty() {
-            return Ok(Vec::new());
+            return Ok(());
         }
 
         if self.size == 0 {
@@ -206,17 +238,15 @@ impl AudioFrameBuffer {
         for samples in &mut self.samples {
             samples.resize(self.size, 0.0);
         }
-        self.drain()
+        self.drain_into(frames)
     }
 
-    fn drain(&mut self) -> Result<Vec<frame::Audio>> {
+    fn drain_into(&mut self, frames: &mut Vec<frame::Audio>) -> Result<()> {
         if self.size == 0 {
             return Err(anyhow::anyhow!(
                 "audio encoder reported a frame size of zero"
             ));
         }
-
-        let mut frames = Vec::new();
 
         while self
             .samples
@@ -243,7 +273,7 @@ impl AudioFrameBuffer {
             frames.push(frame);
         }
 
-        Ok(frames)
+        Ok(())
     }
 }
 
@@ -271,6 +301,8 @@ mod tests {
         let input = audio(&[0.1, 0.2, 0.3, 0.4], 123);
         let mut buffer = AudioFrameBuffer::new(48_000, 4);
         let output = buffer.push(&input).unwrap();
+        assert!(matches!(output, AudioFrames::Single(_)));
+        let output: Vec<_> = output.into_iter().collect();
         assert_eq!(output.len(), 1);
         assert_eq!(output[0].pts(), input.pts());
         for channel in 0..2 {
@@ -290,10 +322,20 @@ mod tests {
             buffer
                 .push(&audio(&[0.0, 1.0, 2.0], 100))
                 .unwrap()
-                .is_empty()
+                .into_iter()
+                .next()
+                .is_none()
         );
-        let first = buffer.push(&audio(&[3.0, 4.0, 5.0], 103)).unwrap();
-        let second = buffer.push(&audio(&[6.0, 7.0, 8.0], 106)).unwrap();
+        let first: Vec<_> = buffer
+            .push(&audio(&[3.0, 4.0, 5.0], 103))
+            .unwrap()
+            .into_iter()
+            .collect();
+        let second: Vec<_> = buffer
+            .push(&audio(&[6.0, 7.0, 8.0], 106))
+            .unwrap()
+            .into_iter()
+            .collect();
         let tail = buffer.finish().unwrap();
         for (output, expected, pts) in [
             (&first[0], [0.0, 1.0, 2.0, 3.0], 100),
@@ -310,14 +352,60 @@ mod tests {
     #[test]
     fn matching_frames_still_sanitize_nonfinite_samples_and_flush_discontinuities() {
         let mut buffer = AudioFrameBuffer::new(48_000, 4);
-        assert!(buffer.push(&audio(&[1.0, 2.0], 10)).unwrap().is_empty());
-        let output = buffer
+        assert!(
+            buffer
+                .push(&audio(&[1.0, 2.0], 10))
+                .unwrap()
+                .into_iter()
+                .next()
+                .is_none()
+        );
+        let output: Vec<_> = buffer
             .push(&audio(&[3.0, f32::NAN, f32::INFINITY, 4.0], 100))
-            .unwrap();
+            .unwrap()
+            .into_iter()
+            .collect();
         assert_eq!(output.len(), 2);
         assert_eq!(output[0].pts(), Some(10));
         assert_eq!(output[0].plane::<f32>(0), [1.0, 2.0, 0.0, 0.0]);
         assert_eq!(output[1].pts(), Some(100));
         assert_eq!(output[1].plane::<f32>(0), [3.0, 0.0, 0.0, 4.0]);
+    }
+
+    #[test]
+    fn discontinuity_flushes_before_matching_frame_and_large_frames_are_split() {
+        let mut buffer = AudioFrameBuffer::new(48_000, 4);
+        assert!(
+            buffer
+                .push(&audio(&[1.0, 2.0], 10))
+                .unwrap()
+                .into_iter()
+                .next()
+                .is_none()
+        );
+        let matching = audio(&[3.0, 4.0, 5.0, 6.0], 100);
+        let output: Vec<_> = buffer.push(&matching).unwrap().into_iter().collect();
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[0].pts(), Some(10));
+        assert_eq!(output[0].plane::<f32>(0), [1.0, 2.0, 0.0, 0.0]);
+        assert_eq!(output[1].pts(), Some(100));
+        assert_eq!(output[1].data(0).as_ptr(), matching.data(0).as_ptr());
+
+        let output: Vec<_> = buffer
+            .push(&audio(
+                &[7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
+                104,
+            ))
+            .unwrap()
+            .into_iter()
+            .collect();
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[0].pts(), Some(104));
+        assert_eq!(output[0].plane::<f32>(0), [7.0, 8.0, 9.0, 10.0]);
+        assert_eq!(output[1].pts(), Some(108));
+        assert_eq!(output[1].plane::<f32>(0), [11.0, 12.0, 13.0, 14.0]);
+        let tail = buffer.finish().unwrap();
+        assert_eq!(tail[0].pts(), Some(112));
+        assert_eq!(tail[0].plane::<f32>(0), [15.0, 0.0, 0.0, 0.0]);
     }
 }

@@ -2017,6 +2017,7 @@ dependencies = [
  "pollster",
  "rayon",
  "regex",
+ "smallvec",
  "softbuffer",
  "sysinfo 0.40.4",
  "tokio",

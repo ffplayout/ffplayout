@@ -20,6 +20,7 @@ pub(super) struct LiveDelay {
     sample_rate: u32,
     audio_lookahead: bool,
     events: VecDeque<(Instant, LiveEvent)>,
+    preview: Vec<[f32; 2]>,
 }
 
 impl LiveDelay {
@@ -28,7 +29,14 @@ impl LiveDelay {
     }
 
     pub(super) fn future_audio(&self, session_id: u64) -> impl Iterator<Item = &frame::Audio> {
-        self.events
+        Self::session_audio(&self.events, session_id)
+    }
+
+    fn session_audio(
+        events: &VecDeque<(Instant, LiveEvent)>,
+        session_id: u64,
+    ) -> impl Iterator<Item = &frame::Audio> {
+        events
             .iter()
             .take_while(move |(_, event)| {
                 !matches!(
@@ -53,6 +61,7 @@ impl LiveDelay {
             audio_lookahead: false,
             max_events: latency_events.saturating_add(DELAY_EVENT_HEADROOM),
             events: VecDeque::new(),
+            preview: Vec::new(),
         }
     }
 
@@ -105,8 +114,9 @@ impl LiveDelay {
                     < self.latency + Duration::from_secs_f64(super::live::LIVE_AUDIO_GRACE_SECONDS)
             {
                 let needed = lookahead_samples(self.sample_rate) + TRUE_PEAK_FUTURE_SAMPLES;
-                let preview = collect_audio_preview(
-                    self.future_audio(*session_id).skip(1),
+                collect_audio_preview(
+                    &mut self.preview,
+                    Self::session_audio(&self.events, *session_id).skip(1),
                     audio.pts().unwrap_or(0) + audio.samples() as i64,
                     self.sample_rate,
                     needed,
@@ -116,7 +126,7 @@ impl LiveDelay {
                         || matches!(event, LiveEvent::Selection(_) | LiveEvent::Started { .. })
                 });
 
-                if preview.len() < needed && !session_ended {
+                if self.preview.len() < needed && !session_ended {
                     // Release the available audio before due video, even if
                     // preview is incomplete. Holding it while video advances
                     // would deliver stale audio later. Retaining FIFO order also
@@ -156,15 +166,16 @@ impl LiveDelay {
 }
 
 pub(super) fn collect_audio_preview<'a>(
+    samples: &mut Vec<[f32; 2]>,
     frames: impl Iterator<Item = &'a frame::Audio>,
     expected_pts: i64,
     sample_rate: u32,
     limit: usize,
-) -> Vec<[f32; 2]> {
+) {
     let jitter =
         (f64::from(sample_rate) * super::live::LIVE_AUDIO_PTS_JITTER_SECONDS).ceil() as u64;
 
-    crate::audio_mixer::collect_audio_preview(frames, expected_pts, limit, jitter)
+    crate::audio_mixer::collect_audio_preview(samples, frames, expected_pts, limit, jitter);
 }
 
 #[cfg(test)]
@@ -363,7 +374,9 @@ mod tests {
         assert!(
             matches!(delay.next_event(&rx, ready), Ok(LiveEvent::Audio(1, frame)) if frame.pts() == Some(0))
         );
-        let preview = collect_audio_preview(delay.future_audio(1), 1_024, 48_000, 486);
+        let mut preview = Vec::new();
+
+        collect_audio_preview(&mut preview, delay.future_audio(1), 1_024, 48_000, 486);
         assert_eq!(preview, vec![[0.25; 2]; 486]);
         let next = ready + Duration::from_millis(10);
 

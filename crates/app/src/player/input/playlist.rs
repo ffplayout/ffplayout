@@ -402,7 +402,7 @@ impl CurrentProgram {
             if self
                 .current_node
                 .source
-                .contains(&self.config.channel.storage.to_string_lossy().to_string())
+                .contains(self.config.channel.storage.to_string_lossy().as_ref())
             {
                 is_filler = true;
             }

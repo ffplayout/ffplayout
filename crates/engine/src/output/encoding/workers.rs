@@ -12,7 +12,7 @@ use ffmpeg_next::{Packet, Rational, Rescale, frame, rescale};
 use crate::{
     benchmark,
     utils::{
-        ffmpeg::{reference_audio_frame, reference_video_frame},
+        ffmpeg::reference_video_frame,
         pipeline_queue::{
             PipelineActivity, PipelineControl, PipelineQueue, QueueLimits, run_worker,
         },
@@ -258,10 +258,6 @@ impl EncodingWorkers {
         Ok(EncodeFrame::Video(reference_video_frame(frame)?))
     }
 
-    pub(in crate::output) fn audio_frame(frame: &frame::Audio) -> Result<EncodeFrame> {
-        Ok(EncodeFrame::Audio(reference_audio_frame(frame)?))
-    }
-
     pub(in crate::output) fn finish(
         &mut self,
         mut emit: impl FnMut(EncodedPacket) -> Result<()>,
@@ -362,7 +358,7 @@ mod tests {
             audio.plane_mut::<f32>(0).fill(0.0);
             audio.plane_mut::<f32>(1).fill(0.0);
             workers
-                .submit(EncodingWorkers::audio_frame(&audio).unwrap(), |packet| {
+                .submit(EncodeFrame::Audio(audio), |packet| {
                     packets.push(packet);
 
                     Ok(())

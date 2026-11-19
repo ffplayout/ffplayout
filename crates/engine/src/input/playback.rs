@@ -37,6 +37,7 @@ pub(crate) struct LiveOverrideOutput<'a, O: FrameOutput> {
     file_texts: crate::graphics::text_adapter::TextOverlays,
     playback_control: PlaybackControl,
     allow_live_activation: bool,
+    preview: Vec<[f32; 2]>,
 }
 
 impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
@@ -51,6 +52,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             file_texts: Default::default(),
             playback_control: playback_control.clone(),
             allow_live_activation: true,
+            preview: Vec::new(),
         }
     }
 
@@ -670,7 +672,8 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
         if !self.output.handles_loudness()
             && let Some(loudness) = &mut self.live.loudness
         {
-            let future = collect_audio_preview(
+            collect_audio_preview(
+                &mut self.preview,
                 self.live
                     .pending_audio
                     .iter()
@@ -680,7 +683,7 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
                 lookahead_samples(self.live.sample_rate) + TRUE_PEAK_FUTURE_SAMPLES,
             );
             make_audio_frame_writable(&mut frame)?;
-            loudness.process_with_lookahead(&mut frame, &future)?;
+            loudness.process_with_lookahead(&mut frame, &self.preview)?;
             self.live.loudness_control.set_metrics(loudness.metrics());
         }
         self.output.encode_live_audio(&frame)?;

@@ -24,7 +24,7 @@ use crate::{
 use crate::graphics::logo_adapter::LogoOverlay;
 
 use super::{
-    composition::{ProgramVideo, VideoCompositor},
+    composition::{ProgramVideo, VideoCompositor, VideoConsumers},
     diagnostics::EncodingProgress,
     encoded::EncodedFormat,
 };
@@ -700,18 +700,20 @@ impl ParallelOutput {
         self.dispatch_video(&workers, prepared)
     }
 
-    fn video_consumers(
-        workers: &[DestinationWorker],
-        has_graphics: bool,
-    ) -> BTreeMap<(u32, u32), usize> {
-        let mut consumers = BTreeMap::new();
+    fn video_consumers(workers: &[DestinationWorker], has_graphics: bool) -> VideoConsumers {
+        let mut consumers = VideoConsumers::new();
         if has_graphics {
             for resolution in workers
                 .iter()
                 .filter(|worker| !worker.control.cancelled())
                 .flat_map(|worker| &worker.video_resolutions)
             {
-                *consumers.entry(*resolution).or_insert(0) += 1;
+                if let Some((_, count)) = consumers.iter_mut().find(|(size, _)| size == resolution)
+                {
+                    *count += 1;
+                } else {
+                    consumers.push((*resolution, 1));
+                }
             }
         }
 
@@ -737,7 +739,12 @@ impl ParallelOutput {
         let mut consumers = Self::video_consumers(&workers, !graphics.is_empty());
         // A cache slot is useful only if an encoder also consumes this size.
         // The desktop passes the same prepared pixels directly to recording.
-        if let Some(count) = consumers.get_mut(&(frame.width(), frame.height())) {
+        let size = (frame.width(), frame.height());
+
+        if let Some((_, count)) = consumers
+            .iter_mut()
+            .find(|(resolution, _)| *resolution == size)
+        {
             *count += 1;
         }
 
@@ -2306,7 +2313,7 @@ mod tests {
                     output.compositor.clone(),
                     None,
                     0.0,
-                    BTreeMap::new(),
+                    VideoConsumers::new(),
                 )
                 .unwrap();
                 worker.send(Message::Video(prepared), bytes, Some(index * 40_000));

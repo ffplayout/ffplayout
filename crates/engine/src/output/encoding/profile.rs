@@ -8,7 +8,7 @@ use ffmpeg_next::{codec, frame};
 use crate::{EncodingConfig, OutputConfig};
 
 use super::{
-    EncodedPacket, EncodingWorkers,
+    EncodeFrame, EncodedPacket, EncodingWorkers,
     audio::{AudioFrameBuffer, open_audio_encoder},
     video::open_video_encoder,
 };
@@ -119,8 +119,7 @@ impl EncodingProfile {
         };
 
         for frame in buffer.push(frame)? {
-            self.workers
-                .submit(EncodingWorkers::audio_frame(&frame)?, &mut emit)?;
+            self.workers.submit(EncodeFrame::Audio(frame), &mut emit)?;
         }
 
         Ok(())
@@ -132,8 +131,7 @@ impl EncodingProfile {
     ) -> Result<()> {
         if let Some(buffer) = &mut self.audio_buffer {
             for frame in buffer.finish()? {
-                self.workers
-                    .submit(EncodingWorkers::audio_frame(&frame)?, &mut emit)?;
+                self.workers.submit(EncodeFrame::Audio(frame), &mut emit)?;
             }
         }
 

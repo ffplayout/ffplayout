@@ -32,6 +32,7 @@ pub(crate) struct LoudnessPreview<'a, O> {
     video_time_base: Rational,
     sample_rate: u32,
     latest_video_sample: i64,
+    preview: Vec<[f32; 2]>,
 }
 
 impl<'a, O: FrameOutput> LoudnessPreview<'a, O> {
@@ -57,6 +58,7 @@ impl<'a, O: FrameOutput> LoudnessPreview<'a, O> {
             video_time_base,
             sample_rate,
             latest_video_sample: 0,
+            preview: Vec::new(),
         }
     }
 
@@ -122,7 +124,8 @@ impl<'a, O: FrameOutput> LoudnessPreview<'a, O> {
                         PendingFrame::Audio(audio, _) => Some(audio),
                         PendingFrame::Video(_) => None,
                     });
-                    let future = collect_audio_preview(
+                    collect_audio_preview(
+                        &mut self.preview,
                         frames,
                         audio.pts().unwrap_or_default() + audio.samples() as i64,
                         limit,
@@ -134,12 +137,13 @@ impl<'a, O: FrameOutput> LoudnessPreview<'a, O> {
                     }
 
                     if let Some(dynamics) = self.dynamics.as_mut() {
-                        dynamics.process(&mut audio, &future)?;
+                        dynamics.process(&mut audio, &self.preview)?;
                     } else if let Some(analysis) = analysis {
                         self.processor
-                            .apply_buffered_gain(&mut audio, &analysis, &future)?;
+                            .apply_buffered_gain(&mut audio, &analysis, &self.preview)?;
                     } else {
-                        self.processor.process_with_lookahead(&mut audio, &future)?;
+                        self.processor
+                            .process_with_lookahead(&mut audio, &self.preview)?;
                     }
 
                     let metrics = self.metrics();

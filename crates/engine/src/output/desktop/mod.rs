@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, VecDeque},
+    collections::VecDeque,
+    fmt::Display,
     mem,
     sync::{
         Arc, Mutex, PoisonError,
@@ -49,7 +50,7 @@ use crate::{
     graphics::frame::GraphicsFrame,
     utils::{
         config::{DesktopControlCallback, DesktopControlCommand, OutputConfig},
-        ffmpeg::reference_video_frame,
+        ffmpeg::{reference_audio_frame, reference_video_frame},
     },
 };
 
@@ -715,7 +716,7 @@ impl DesktopFrameSender {
             frame,
             self.compositor.clone(),
             self.deferred_graphics.clone(),
-            BTreeMap::new(),
+            Default::default(),
         )
     }
 
@@ -776,30 +777,34 @@ impl DesktopFrameSender {
             return Ok(());
         }
 
-        let (samples, samples_per_channel, recording_frame) =
-            benchmark::measure(Stage::AudioProcess, || {
-                let mut frame = frame.clone();
-                if apply_effects {
-                    self.audio_effects
-                        .lock()
-                        .map_err(|_| anyhow!("audio effect chain lock poisoned"))?
-                        .process(&mut frame)?;
-                }
+        let mut processed = None;
+        let (samples, samples_per_channel) = benchmark::measure(Stage::AudioProcess, || {
+            let frame = if apply_effects {
+                let frame = processed.insert(frame.clone());
 
-                self.audio_level_meter.process_frame(&frame);
-                self.loudness_meter.process_frame(&frame);
-                let left = frame.plane::<f32>(0);
-                let right = frame.plane::<f32>(1);
-                let mut interleaved =
-                    take_audio_buffer(&self.audio_buffer_pool, frame.samples() * AUDIO_CHANNELS);
-                for (left, right) in left.iter().zip(right) {
-                    interleaved.push(if left.is_finite() { *left } else { 0.0 });
-                    interleaved.push(if right.is_finite() { *right } else { 0.0 });
-                }
+                self.audio_effects
+                    .lock()
+                    .map_err(|_| anyhow!("audio effect chain lock poisoned"))?
+                    .process(frame)?;
+                frame
+            } else {
+                frame
+            };
 
-                let samples = frame.samples();
-                Ok::<_, anyhow::Error>((interleaved, samples, frame))
-            })?;
+            self.audio_level_meter.process_frame(frame);
+            self.loudness_meter.process_frame(frame);
+            let left = frame.plane::<f32>(0);
+            let right = frame.plane::<f32>(1);
+            let mut interleaved =
+                take_audio_buffer(&self.audio_buffer_pool, frame.samples() * AUDIO_CHANNELS);
+            for (left, right) in left.iter().zip(right) {
+                interleaved.push(if left.is_finite() { *left } else { 0.0 });
+                interleaved.push(if right.is_finite() { *right } else { 0.0 });
+            }
+
+            let samples = frame.samples();
+            Ok::<_, anyhow::Error>((interleaved, samples))
+        })?;
 
         benchmark::measure(Stage::DesktopSend, || {
             self.audio_sender
@@ -812,11 +817,19 @@ impl DesktopFrameSender {
         self.next_audio_pts = frame.pts().unwrap_or(self.next_audio_pts) + frame.samples() as i64;
 
         if let Some(output) = &self.parallel_output {
-            output.encode_audio(&recording_frame)?;
+            output.encode_audio(processed.as_ref().unwrap_or(frame))?;
         }
 
         if self.reserve_recording_slot() {
-            self.send_reserved_recording(DesktopRecordingMessage::Audio(recording_frame));
+            let recording_frame = match processed {
+                Some(frame) => Ok(frame),
+                None => reference_audio_frame(frame),
+            };
+
+            match recording_frame {
+                Ok(frame) => self.send_reserved_recording(DesktopRecordingMessage::Audio(frame)),
+                Err(error) => self.fail_reserved_recording(error),
+            }
         }
 
         Ok(())
@@ -874,17 +887,26 @@ impl DesktopFrameSender {
                 self.report_recording_overload();
             }
             Err(TrySendError::Disconnected(_)) => {
-                self.release_recording_slot();
-                self.recording_sender = None;
-
-                if self
-                    .recording_active
-                    .as_ref()
-                    .is_some_and(|active| active.swap(false, Ordering::AcqRel))
-                {
-                    log::error!(channel = self.channel_id; "Recording disabled: desktop recording worker stopped unexpectedly");
-                }
+                self.fail_reserved_recording("desktop recording worker stopped unexpectedly");
             }
+        }
+    }
+
+    fn fail_reserved_recording(&mut self, error: impl Display) {
+        self.release_recording_slot();
+
+        if self
+            .recording_active
+            .as_ref()
+            .is_some_and(|active| active.swap(false, Ordering::AcqRel))
+        {
+            log::error!(channel = self.channel_id; "Recording disabled: {error}");
+        }
+
+        if let Some(sender) = self.recording_sender.take() {
+            // Wake an idle worker so it can write the trailer. A busy worker
+            // also observes the inactive flag after processing its message.
+            let _ = sender.try_send(DesktopRecordingMessage::Finish);
         }
     }
 
@@ -2357,6 +2379,43 @@ mod tests {
             desktop,
             recording,
         }
+    }
+
+    #[test]
+    fn recording_frame_failure_releases_slot_and_keeps_desktop_audio_running() {
+        let mut harness = video_harness(1);
+        let (sender, audio) = sync_channel(1);
+        let frame = recording_silence(0, 32, 48_000).next().unwrap();
+
+        harness.sender.audio_sender = sender;
+        assert!(harness.sender.reserve_recording_slot());
+
+        harness
+            .sender
+            .fail_reserved_recording("test audio frame reference failure");
+        assert_eq!(
+            harness
+                .sender
+                .recording_queue_depth
+                .as_ref()
+                .unwrap()
+                .load(Ordering::Acquire),
+            0,
+        );
+        assert!(matches!(
+            harness.recording.try_recv(),
+            Ok(DesktopRecordingMessage::Finish)
+        ));
+        assert!(!harness.sender.reserve_recording_slot());
+
+        harness.sender.encode_processed_audio(&frame).unwrap();
+        assert!(matches!(
+            audio.try_recv(),
+            Ok(DesktopAudioMessage::Samples {
+                samples_per_channel: 32,
+                ..
+            })
+        ));
     }
 
     #[test]

@@ -749,24 +749,29 @@ impl EncodedOutput {
             return Ok(());
         }
 
-        let mut frame = frame.clone();
+        let mut processed = apply_effects.then(|| frame.clone());
         let frames = benchmark::measure(Stage::AudioProcess, || {
-            if apply_effects {
-                self.audio_effects.process(&mut frame)?;
-            }
-            self.audio_level_meter.process_frame(&frame);
-            self.loudness_meter.process_frame(&frame);
-            self.audio_buffer.push(&frame)
+            let frame = if let Some(frame) = processed.as_mut() {
+                self.audio_effects.process(frame)?;
+                frame
+            } else {
+                frame
+            };
+
+            self.audio_level_meter.process_frame(frame);
+            self.loudness_meter.process_frame(frame);
+            self.audio_buffer.push(frame)
         })?;
+
         for frame in frames {
-            self.send_audio_frame(&frame)?;
+            self.send_audio_frame(frame)?;
         }
 
-        if let Some(error) = self
-            .transcoded_recording
-            .as_mut()
-            .and_then(|recording| recording.encode_audio(&frame).err())
-        {
+        if let Some(error) = self.transcoded_recording.as_mut().and_then(|recording| {
+            recording
+                .encode_audio(processed.as_ref().unwrap_or(frame))
+                .err()
+        }) {
             self.disable_transcoded_recording(error);
         }
 
@@ -817,13 +822,13 @@ impl EncodedOutput {
         Ok(())
     }
 
-    fn send_audio_frame(&mut self, frame: &frame::Audio) -> Result<()> {
+    fn send_audio_frame(&mut self, frame: frame::Audio) -> Result<()> {
         benchmark::measure(Stage::AudioEncode, || {
             if self.encoding_workers.is_some() {
-                return self.submit_encoding(EncodingWorkers::audio_frame(frame)?);
+                return self.submit_encoding(EncodeFrame::Audio(frame));
             }
             for index in 0..self.audio_streams.len() {
-                self.audio_streams[index].submit(frame)?;
+                self.audio_streams[index].submit(&frame)?;
                 self.write_audio_packets(index)?;
             }
             Ok::<_, anyhow::Error>(())
@@ -832,7 +837,7 @@ impl EncodedOutput {
 
     fn pad_audio_buffer(&mut self) -> Result<()> {
         for frame in self.audio_buffer.finish()? {
-            self.send_audio_frame(&frame)?;
+            self.send_audio_frame(frame)?;
         }
         Ok(())
     }

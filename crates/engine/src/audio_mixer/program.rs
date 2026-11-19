@@ -23,6 +23,7 @@ use super::{
 pub(crate) struct ProgramAudioState {
     processor: Option<LiveDynamicsProcessor>,
     volume: Option<GainEffect>,
+    preview: Vec<[f32; 2]>,
 }
 
 enum PendingFrame {
@@ -191,7 +192,8 @@ impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
                             })
                             .take_while(|(_, live)| self.scope != LoudnessScope::Live || *live)
                             .map(|(frame, _)| frame);
-                        let future = collect_audio_preview(
+                        collect_audio_preview(
+                            &mut self.state.preview,
                             frames,
                             frame.pts().unwrap_or_default() + frame.samples() as i64,
                             preview,
@@ -207,7 +209,7 @@ impl<'a, O: FrameOutput> ProgramAudioOutput<'a, O> {
                             benchmark::measure(Stage::AudioProcess, || {
                                 processor.process_with_output_gain(
                                     &mut frame,
-                                    &future,
+                                    &self.state.preview,
                                     hold_gain,
                                     self.state.volume.as_mut(),
                                 )

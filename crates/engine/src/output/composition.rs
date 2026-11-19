@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::Result;
 use ffmpeg_next::{format::Pixel, frame, software::scaling};
+use smallvec::SmallVec;
 
 use crate::{
     graphics::frame::{GraphicsCache, GraphicsFrame},
@@ -16,6 +17,7 @@ use crate::{
 use crate::graphics::logo_adapter::LogoOverlay;
 
 type Resolution = (u32, u32);
+pub(super) type VideoConsumers = SmallVec<[(Resolution, usize); 8]>;
 
 #[derive(Default)]
 pub(super) struct VideoCompositor {
@@ -115,7 +117,7 @@ pub(super) struct ProgramVideo {
     pub(super) source: frame::Video,
     compositor: Arc<Mutex<VideoCompositor>>,
     graphics: GraphicsFrame,
-    prepared: BTreeMap<Resolution, Mutex<PreparedFrame>>,
+    prepared: Vec<(Resolution, Mutex<PreparedFrame>)>,
 }
 
 struct PreparedFrame {
@@ -134,7 +136,7 @@ impl ProgramVideo {
         compositor: Arc<Mutex<VideoCompositor>>,
         logo: Option<Arc<LogoOverlay>>,
         opacity: f64,
-        consumers: BTreeMap<Resolution, usize>,
+        consumers: VideoConsumers,
     ) -> Result<Arc<Self>> {
         Self::with_graphics(
             source,
@@ -154,7 +156,7 @@ impl ProgramVideo {
         source: &frame::Video,
         compositor: Arc<Mutex<VideoCompositor>>,
         graphics: GraphicsFrame,
-        consumers: BTreeMap<Resolution, usize>,
+        consumers: VideoConsumers,
     ) -> Result<Arc<Self>> {
         Ok(Arc::new(Self {
             source: reference_video_frame(source)?,
@@ -182,7 +184,11 @@ impl ProgramVideo {
             return reference_video_frame(&self.source);
         }
         let key = (width, height);
-        let Some(slot) = self.prepared.get(&key) else {
+        let Some((_, slot)) = self
+            .prepared
+            .iter()
+            .find(|(resolution, _)| *resolution == key)
+        else {
             return self.prepare(key);
         };
         let mut slot = slot.lock().unwrap_or_else(PoisonError::into_inner);
@@ -255,7 +261,7 @@ mod tests {
             compositor.clone(),
             Some(logo),
             1.0,
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         drop(queued.frame(320, 180).unwrap());
@@ -264,7 +270,7 @@ mod tests {
             &source,
             compositor.clone(),
             GraphicsFrame::default(),
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         // Model the encoded-output fast path, which does not request a frame.
@@ -310,7 +316,7 @@ mod tests {
             &source,
             compositor.clone(),
             GraphicsFrame::new((320, 180), None, 0.0, [text.snapshot(0, 0), None], None),
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         drop(text);
@@ -320,7 +326,7 @@ mod tests {
             &source,
             compositor.clone(),
             GraphicsFrame::default(),
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         drop(cleared.frame(160, 90).unwrap());
@@ -373,7 +379,7 @@ mod tests {
                 [overlay.snapshot(500, 500), None],
                 None,
             ),
-            BTreeMap::from([((1280, 720), 2)]),
+            VideoConsumers::from_slice(&[((1280, 720), 2)]),
         )
         .unwrap();
         let first = program.frame(1280, 720).unwrap();
@@ -408,7 +414,7 @@ mod tests {
                 Default::default(),
                 Some(scene.clone()),
             ),
-            BTreeMap::from([((320, 180), 2)]),
+            VideoConsumers::from_slice(&[((320, 180), 2)]),
         )
         .unwrap();
         let first = program.frame(320, 180).unwrap();
@@ -444,7 +450,7 @@ mod tests {
                 Default::default(),
                 None,
             ),
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         assert!(!without_scene.has_visible_graphics());
@@ -484,7 +490,7 @@ mod tests {
                                 compositor.clone(),
                                 Some(logo.clone()),
                                 1.0,
-                                BTreeMap::from([((1280, 720), groups)]),
+                                VideoConsumers::from_slice(&[((1280, 720), groups)]),
                             )
                             .unwrap();
                             for _ in 0..groups {
@@ -580,7 +586,7 @@ mod tests {
                 texts.clone(),
                 None,
             ),
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         assert!(program.has_visible_graphics());
@@ -634,7 +640,7 @@ mod tests {
                 Default::default(),
                 None,
             ),
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         assert!(!hidden.has_visible_graphics());
@@ -643,7 +649,7 @@ mod tests {
             &source,
             compositor,
             GraphicsFrame::new((source.width(), source.height()), None, 0.0, texts, None),
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         assert!(text_only.has_visible_graphics());
@@ -663,7 +669,7 @@ mod tests {
                 compositor.clone(),
                 Some(logo.clone()),
                 0.5,
-                BTreeMap::new(),
+                VideoConsumers::new(),
             )
             .unwrap();
             for (width, height) in [(1280, 720), (854, 480), (480, 270)] {
@@ -698,7 +704,7 @@ mod tests {
             compositor.clone(),
             Some(logo),
             1.0,
-            BTreeMap::from([((320, 180), 2), ((160, 90), 1)]),
+            VideoConsumers::from_slice(&[((320, 180), 2), ((160, 90), 1)]),
         )
         .unwrap();
         let large = program.frame(320, 180).unwrap();
@@ -725,8 +731,8 @@ mod tests {
         assert!(
             program
                 .prepared
-                .values()
-                .all(|slot| slot.lock().unwrap().frame.is_none())
+                .iter()
+                .all(|(_, slot)| slot.lock().unwrap().frame.is_none())
         );
     }
 
@@ -738,7 +744,7 @@ mod tests {
             compositor.clone(),
             Some(logo.clone()),
             1.0,
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         let retained = first.frame(160, 90).unwrap();
@@ -748,7 +754,7 @@ mod tests {
             compositor.clone(),
             Some(logo.clone()),
             0.5,
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         let faded = faded.frame(160, 90).unwrap();
@@ -759,7 +765,7 @@ mod tests {
             compositor.clone(),
             Some(logo),
             0.0,
-            BTreeMap::new(),
+            VideoConsumers::new(),
         )
         .unwrap();
         let hidden_frame = hidden.frame(160, 90).unwrap();
@@ -778,7 +784,7 @@ mod tests {
             compositor,
             Some(logo),
             1.0,
-            BTreeMap::from([((160, 90), 4)]),
+            VideoConsumers::from_slice(&[((160, 90), 4)]),
         )
         .unwrap();
         let barrier = Arc::new(std::sync::Barrier::new(4));
@@ -811,7 +817,7 @@ mod tests {
             compositor.clone(),
             Some(logo),
             1.0,
-            BTreeMap::from([((320, 180), 1), ((160, 90), 1)]),
+            VideoConsumers::from_slice(&[((320, 180), 1), ((160, 90), 1)]),
         )
         .unwrap();
         let large = compositor.lock().unwrap().resolution((320, 180));
