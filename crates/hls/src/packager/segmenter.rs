@@ -3,7 +3,7 @@
 use std::{
     collections::{HashSet, VecDeque},
     fmt::Write,
-    fs,
+    fs, mem,
     path::PathBuf,
 };
 
@@ -38,6 +38,7 @@ pub struct Packager<T, W> {
     subtitles: Option<(Subtitle, Playlist)>,
     master: Option<PathBuf>,
     packets: Vec<MediaPacket<T>>,
+    completed: Vec<MediaPacket<T>>,
     bytes: usize,
     cues: VecDeque<Cue>,
     cue_bytes: usize,
@@ -276,6 +277,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             subtitles,
             master: config.master_playlist.map(|name| parent.join(name)),
             packets: Vec::new(),
+            completed: Vec::new(),
             bytes: 0,
             cues: VecDeque::new(),
             cue_bytes: 0,
@@ -483,33 +485,26 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             playlist.validate_duration(duration)?;
         }
 
-        let mut completed = Vec::new();
-        let mut pending = Vec::new();
-
-        for packet in self.packets.drain(..) {
-            let stream = packet.stream;
-            let pts = packet.pts_us;
-            let dts = packet.dts_us;
+        // Keep the completed segment in its existing storage. Move only
+        // the packets beyond the cut into the buffer for the next segment.
+        mem::swap(&mut self.packets, &mut self.completed);
+        let pending = self.completed.extract_if(.., |packet| {
             let before_cut = cuts.is_none_or(|cuts| {
-                if stream.is_multiple_of(2) {
-                    dts < cuts[stream / 2]
+                if packet.stream.is_multiple_of(2) {
+                    packet.dts_us < cuts[packet.stream / 2]
                 } else {
-                    pts < end
+                    packet.pts_us < end
                 }
             });
 
-            if before_cut {
-                if stream.is_multiple_of(2) || pts >= start {
-                    completed.push(packet);
-                }
-            } else {
-                pending.push(packet);
-            }
-        }
+            !before_cut || (!packet.stream.is_multiple_of(2) && packet.pts_us < start)
+        });
 
-        completed.sort_by_key(|packet| packet.dts_us);
-        self.bytes = pending.iter().map(|packet| packet.bytes).sum();
-        self.packets = pending;
+        self.packets.extend(
+            pending.filter(|packet| packet.stream.is_multiple_of(2) || packet.pts_us >= end),
+        );
+        self.completed.sort_by_key(|packet| packet.dts_us);
+        self.bytes = self.packets.iter().map(|packet| packet.bytes).sum();
 
         let date = self.program_date_time.then(|| {
             let (anchor, date) = self.wall_anchor.expect("initialized with first keyframe");
@@ -519,15 +514,22 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         });
 
         // All media resources are complete before any playlist can expose them.
-        for (index, rendition) in self.renditions.iter().enumerate() {
-            let uri = format!("{}_{}.ts", rendition.name, self.file_number);
+        let media_result = self
+            .renditions
+            .iter()
+            .enumerate()
+            .try_for_each(|(index, rendition)| {
+                let uri = format!("{}_{}.ts", rendition.name, self.file_number);
 
-            self.writer.write_segment(
-                &rendition.playlist.parent().join(&uri),
-                &completed,
-                index,
-            )?;
-        }
+                self.writer.write_segment(
+                    &rendition.playlist.parent().join(&uri),
+                    &self.completed,
+                    index,
+                )
+            });
+
+        self.completed.clear();
+        media_result?;
 
         if let Some((_, playlist)) = &self.subtitles {
             let uri = format!("{}{}.vtt", self.renditions[0].name, self.file_number);

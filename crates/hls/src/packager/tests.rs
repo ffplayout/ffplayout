@@ -722,6 +722,8 @@ fn late_common_keyframes_catch_up_without_losing_media_or_captions() {
             packets: &[MediaPacket<()>],
             rendition: usize,
         ) -> Result<()> {
+            assert!(packets.is_sorted_by_key(|packet| (packet.dts_us, packet.stream)));
+
             let mut recorded = self.0.lock().unwrap();
 
             for packet in packets
