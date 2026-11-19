@@ -83,18 +83,20 @@ fn video_format(codec: &str, initialization: &[u8]) -> Result<import::VideoForma
 }
 
 impl Publisher {
-    fn publish(&mut self, frame: ff_engine::EncodedFrame<'_>) -> Result<()> {
+    fn publish(&mut self, frame: ff_engine::OwnedEncodedFrame) -> Result<()> {
+        let stream = frame.stream;
+        let pts_us = frame.pts_us;
         let track = self
             .tracks
-            .get_mut(frame.stream)
+            .get_mut(stream)
             .context("invalid MoQ stream index")?;
         // A common bias accommodates negative encoder priming DTS without
         // changing track spacing. Anchor decode time, so reordered video PTS
         // cannot anchor audio before the beginning of the broadcast clock.
         let timestamp = translate(
             &mut self.anchor,
-            &mut self.lanes[frame.stream],
-            frame.pts_us,
+            &mut self.lanes[stream],
+            pts_us,
             frame.dts_us,
         )?;
         let end = if frame.duration_us > 0 {
@@ -107,12 +109,12 @@ impl Publisher {
             None
         };
         let reorder_us = frame.pts_us.saturating_sub(frame.dts_us).max(0) as u64;
-        let update_reorder = frame.stream == 0 && reorder_us > self.reorder_us;
+        let update_reorder = stream == 0 && reorder_us > self.reorder_us;
         // Publish initial decoder configuration and reorder requirements together.
         let reserved = update_reorder.then(|| self.catalog.reserve());
         track
-            .decode(frame.data.to_vec(), Some(timestamp))
-            .with_context(|| format!("publishing MoQ stream {} frame", frame.stream))?;
+            .decode(frame.into_data(), Some(timestamp))
+            .with_context(|| format!("publishing MoQ stream {stream} frame"))?;
         if update_reorder {
             let reorder = std::time::Duration::from_micros(reorder_us);
             let mut update = self.catalog.modify()?;
@@ -123,13 +125,13 @@ impl Publisher {
             self.reorder_us = reorder_us;
         }
         drop(reserved);
-        if frame.stream == 1 {
+        if stream == 1 {
             // Audio has no keyframes: bound each group explicitly so live joins
             // and retention never depend on an indefinitely open audio group.
             track.cut(end).context("closing MoQ audio frame group")?;
             let mapped = i64::try_from(timestamp.as_micros())?;
             *self.offset.lock().unwrap_or_else(PoisonError::into_inner) =
-                mapped.checked_sub(frame.pts_us);
+                mapped.checked_sub(pts_us);
         }
         if let Some(end) = end {
             self.anchor.extend(end);
@@ -161,6 +163,10 @@ fn translate(
 
 impl ff_engine::PacketSink for Publisher {
     fn write(&mut self, frame: ff_engine::EncodedFrame<'_>) -> Result<()> {
+        self.write_owned(frame.into())
+    }
+
+    fn write_owned(&mut self, frame: ff_engine::OwnedEncodedFrame) -> Result<()> {
         let result = self.publish(frame);
         if let Err(error) = &result {
             *self.status.lock().unwrap_or_else(PoisonError::into_inner) = PublicationStatus {

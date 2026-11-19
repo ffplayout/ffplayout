@@ -26,6 +26,7 @@ transcription-example = ["dep:transcribe-rs", "dep:ort"]
 [dependencies]
 ff-graphics = { path = "../graphics", features = ["ffmpeg"] }
 anyhow = "1"
+bytes = "1"
 bytemuck = { version = "1", optional = true }
 chrono = { version = "0.4", default-features = false, features = [
     "clock",

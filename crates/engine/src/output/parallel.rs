@@ -6,8 +6,9 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Result, ensure};
-use ffmpeg_next::{frame, rescale};
+use anyhow::{Context, Result, ensure};
+use bytes::Bytes;
+use ffmpeg_next::{Packet, frame, rescale};
 
 use crate::{
     HlsSubtitle, HlsVariant, OutputConfig,
@@ -234,7 +235,7 @@ pub struct EncodedStream {
     pub initialization: Vec<u8>,
 }
 
-/// One complete encoded access unit, borrowed only for the duration of the write.
+/// One complete encoded access unit, borrowed for the duration of the write.
 pub struct EncodedFrame<'a> {
     pub stream: usize,
     pub data: &'a [u8],
@@ -243,9 +244,90 @@ pub struct EncodedFrame<'a> {
     pub duration_us: i64,
 }
 
+/// One complete encoded access unit with owned payload storage.
+pub struct OwnedEncodedFrame {
+    pub stream: usize,
+    pub pts_us: i64,
+    pub dts_us: i64,
+    pub duration_us: i64,
+    payload: EncodedPayload,
+}
+
+enum EncodedPayload {
+    Packet(PacketPayload),
+    Bytes(Bytes),
+}
+
+struct PacketPayload(Packet);
+
+impl AsRef<[u8]> for PacketPayload {
+    fn as_ref(&self) -> &[u8] {
+        self.0.data().expect("validated encoded packet payload")
+    }
+}
+
+impl OwnedEncodedFrame {
+    pub(super) fn from_packet(packet: Packet) -> Result<Self> {
+        packet.data().context("encoded packet has no payload")?;
+
+        let pts_us = packet
+            .pts()
+            .context("encoded packet has no presentation timestamp")?;
+
+        Ok(Self {
+            stream: packet.stream(),
+            pts_us,
+            dts_us: packet.dts().unwrap_or(pts_us),
+            duration_us: packet.duration(),
+            payload: EncodedPayload::Packet(PacketPayload(packet)),
+        })
+    }
+
+    pub fn as_borrowed(&self) -> EncodedFrame<'_> {
+        let data = match &self.payload {
+            EncodedPayload::Packet(packet) => packet.as_ref(),
+            EncodedPayload::Bytes(bytes) => bytes.as_ref(),
+        };
+
+        EncodedFrame {
+            stream: self.stream,
+            data,
+            pts_us: self.pts_us,
+            dts_us: self.dts_us,
+            duration_us: self.duration_us,
+        }
+    }
+
+    /// Share the payload without copying its bytes.
+    pub fn into_data(self) -> Bytes {
+        match self.payload {
+            EncodedPayload::Packet(packet) => Bytes::from_owner(packet),
+            EncodedPayload::Bytes(bytes) => bytes,
+        }
+    }
+}
+
+impl From<EncodedFrame<'_>> for OwnedEncodedFrame {
+    fn from(frame: EncodedFrame<'_>) -> Self {
+        Self {
+            stream: frame.stream,
+            pts_us: frame.pts_us,
+            dts_us: frame.dts_us,
+            duration_us: frame.duration_us,
+            payload: EncodedPayload::Bytes(Bytes::copy_from_slice(frame.data)),
+        }
+    }
+}
+
 /// Application-owned transport; the existing bounded worker owns ordering/pacing.
 pub trait PacketSink: Send {
     fn write(&mut self, frame: EncodedFrame<'_>) -> Result<()>;
+
+    /// Override to retain the encoded payload beyond this call.
+    fn write_owned(&mut self, frame: OwnedEncodedFrame) -> Result<()> {
+        self.write(frame.as_borrowed())
+    }
+
     fn finish(&mut self) -> Result<()>;
 }
 

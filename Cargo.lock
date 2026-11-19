@@ -1997,6 +1997,7 @@ dependencies = [
  "anyhow",
  "block2 0.6.2",
  "bytemuck",
+ "bytes",
  "chrono",
  "clap",
  "cpal",

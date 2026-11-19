@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use ffmpeg_next::{Packet, Rational, Rescale, format, rescale};
 
 use crate::{
-    EncodedFrame, HlsHealth, PacketSink,
+    HlsHealth, OwnedEncodedFrame, PacketSink,
     clock::{PlayoutClock, SharedPlayoutClock},
     utils::ffmpeg::reference_packet,
     utils::pipeline_queue::PipelineActivity,
@@ -28,19 +28,11 @@ enum PacketWriter {
 }
 
 impl PacketWriter {
-    fn write(&mut self, packet: &Packet) -> Result<()> {
+    fn write(&mut self, packet: Packet) -> Result<()> {
         match self {
-            Self::Hls(output) => output.write(packet),
+            Self::Hls(output) => output.write(&packet),
             Self::Container(output) => packet.write_interleaved(output).map_err(Into::into),
-            Self::Native(sink) => sink.write(EncodedFrame {
-                stream: packet.stream(),
-                data: packet.data().context("encoded packet has no payload")?,
-                pts_us: packet
-                    .pts()
-                    .context("encoded packet has no presentation timestamp")?,
-                dts_us: packet.dts().or_else(|| packet.pts()).unwrap_or(0),
-                duration_us: packet.duration(),
-            }),
+            Self::Native(sink) => sink.write_owned(OwnedEncodedFrame::from_packet(packet)?),
         }
     }
 
@@ -499,7 +491,7 @@ fn run(
         }
         let started = timing.as_ref().map(|_| Instant::now());
         output
-            .write(&packet)
+            .write(packet)
             .context("muxing queued output packet")?;
         if let (Some(timing), Some(started)) = (&mut timing, started) {
             timing.record(
@@ -597,7 +589,48 @@ impl MuxTiming {
 mod tests {
     use ffmpeg_next::codec;
 
+    use bytes::Bytes;
+
+    use crate::EncodedFrame;
+
     use super::*;
+
+    #[test]
+    fn native_sink_can_keep_the_original_payload_after_mux_shutdown() {
+        struct Sink(Arc<Mutex<Option<Bytes>>>);
+
+        impl PacketSink for Sink {
+            fn write(&mut self, _: EncodedFrame<'_>) -> Result<()> {
+                anyhow::bail!("expected owned delivery");
+            }
+
+            fn write_owned(&mut self, frame: OwnedEncodedFrame) -> Result<()> {
+                *self.0.lock().unwrap() = Some(frame.into_data());
+
+                Ok(())
+            }
+
+            fn finish(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        let received = Arc::new(Mutex::new(None));
+        let mut mux = MuxOutput::packets(Box::new(Sink(received.clone())), 1, None).unwrap();
+        let mut packet = Packet::copy(&[1, 2, 3, 4]);
+        let address = packet.data().unwrap().as_ptr();
+
+        packet.set_pts(Some(0));
+        packet.set_dts(Some(0));
+        mux.write(&mut packet).unwrap();
+        drop(packet);
+        mux.finish().unwrap();
+
+        let data = received.lock().unwrap().take().unwrap();
+
+        assert_eq!(data.as_ptr(), address);
+        assert_eq!(data.as_ref(), &[1, 2, 3, 4]);
+    }
 
     #[test]
     fn native_packets_retain_dts_order_pacing_and_drain_without_a_container() {
