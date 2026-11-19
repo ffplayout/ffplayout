@@ -1988,6 +1988,7 @@ version = "2.9.0"
 dependencies = [
  "anyhow",
  "ebur128-stream",
+ "smallvec",
 ]
 
 [[package]]

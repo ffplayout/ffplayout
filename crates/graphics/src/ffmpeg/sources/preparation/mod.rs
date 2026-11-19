@@ -31,6 +31,9 @@ pub struct SourcePreparation {
     mask: Scaler,
     resize: Scaler,
     optimized: RgbaResizer,
+    rgb_buffer: Option<frame::Video>,
+    mask_buffer: Option<frame::Video>,
+    resize_buffer: Option<frame::Video>,
 }
 
 /// Explicit reference mode is for regression tests and performance comparisons.
@@ -46,6 +49,13 @@ pub enum PreparationExecution<'a> {
 }
 
 impl SourcePreparation {
+    pub(super) fn release_workspace(&mut self) {
+        self.rgb_buffer = None;
+        self.mask_buffer = None;
+        self.resize_buffer = None;
+        self.optimized = RgbaResizer::default();
+    }
+
     pub fn prepare(
         &mut self,
         source: &frame::Video,
@@ -133,11 +143,17 @@ impl SourcePreparation {
         if alpha == Alpha::Straight
             && (!resize || !has_alpha || matches!(execution, PreparationExecution::Standard))
         {
+            self.rgb_buffer = None;
+            self.resize_buffer = None;
             let mut output = self.direct.run(source, Pixel::YUVA420P, size, None)?;
 
             if let Some(mask) = auxiliary {
-                let mask = self.mask.run(mask, Pixel::GRAY8, size, None)?;
-                rgba::attach_alpha8(&mask, &mut output);
+                let buffer = self.mask_buffer.get_or_insert_with(frame::Video::empty);
+
+                self.mask.run_into(mask, Pixel::GRAY8, size, None, buffer)?;
+                rgba::attach_alpha8(buffer, &mut output);
+            } else {
+                self.mask_buffer = None;
             }
 
             mark_straight(&mut output);
@@ -164,33 +180,34 @@ impl SourcePreparation {
             "alpha preparation workspace exceeds 256 MiB; reduce source size"
         );
         let conversion = ColorConversion::from_frame(source)?;
-        // An already-associated RGB16 decoder result is read-only here. Borrow
-        // its pixels rather than copying a full frame through a no-op scaler.
-        let mut rgb = if !reference
+
+        if auxiliary.is_none() {
+            self.mask_buffer = None;
+        }
+
+        // Already-associated RGB16 only needs a read-only view of decoder pixels.
+        if !reference
             && source.format() == Pixel::RGBA64LE
             && alpha == Alpha::PremultipliedEncoded
             && auxiliary.is_none()
         {
-            crate::ffmpeg::reference_video_frame(source)?
-        } else if !reference && let Some(rgb) = rgb::convert(source) {
-            rgb
+            self.rgb_buffer = None;
         } else {
-            self.rgb.run(
-                source,
-                Pixel::RGBA64LE,
-                (source.width(), source.height()),
-                Some(conversion),
-            )?
-        };
+            let rgb = self.rgb_buffer.get_or_insert_with(frame::Video::empty);
+            let source_size = (source.width(), source.height());
 
-        if let Some(mask) = auxiliary {
-            let mask = self.mask.run(
-                mask,
-                Pixel::GRAY16LE,
-                (source.width(), source.height()),
-                None,
-            )?;
-            attach_alpha(&mask, &mut rgb);
+            if reference || !rgb::convert(source, rgb) {
+                self.rgb
+                    .run_into(source, Pixel::RGBA64LE, source_size, Some(conversion), rgb)?;
+            }
+
+            if let Some(mask) = auxiliary {
+                let buffer = self.mask_buffer.get_or_insert_with(frame::Video::empty);
+
+                self.mask
+                    .run_into(mask, Pixel::GRAY16LE, source_size, None, buffer)?;
+                attach_alpha(buffer, rgb);
+            }
         }
 
         let permit = if matches!(execution, PreparationExecution::Adaptive)
@@ -206,30 +223,49 @@ impl SourcePreparation {
             _ => None,
         };
 
-        if resize {
-            if alpha == Alpha::Straight {
+        let rgb = if let Some(rgb) = self.rgb_buffer.as_mut() {
+            if resize && alpha == Alpha::Straight {
                 if reference {
-                    associate(&mut rgb);
+                    associate(rgb);
                 } else {
-                    self.optimized.associate(&mut rgb, pool)?;
+                    self.optimized.associate(rgb, pool)?;
                 }
             }
 
-            rgb = if reference {
-                self.resize.run(&rgb, Pixel::RGBA64LE, size, None)?
+            &*rgb
+        } else {
+            source
+        };
+        let rgb = if resize {
+            let scaled = self.resize_buffer.get_or_insert_with(frame::Video::empty);
+
+            if reference {
+                self.resize
+                    .run_into(rgb, Pixel::RGBA64LE, size, None, scaled)?;
             } else {
-                self.optimized.run(&rgb, size, pool)?
-            };
-        }
+                self.optimized.run(rgb, size, pool, scaled)?;
+            }
+
+            scaled
+        } else {
+            self.resize_buffer = None;
+            rgb
+        };
 
         let mut output = if reference {
-            rgba::to_yuva_reference(&rgb, source, conversion)?
+            rgba::to_yuva_reference(rgb, source, conversion)?
         } else {
-            to_yuva(&rgb, source, conversion, pool)?
+            to_yuva(rgb, source, conversion, pool)?
         };
         mark_straight(&mut output);
 
         Ok(output)
+    }
+}
+
+fn ensure_rgba_storage(frame: &mut frame::Video, size: (u32, u32)) {
+    if (frame.width(), frame.height()) != size || frame.format() != Pixel::RGBA64LE {
+        *frame = frame::Video::new(Pixel::RGBA64LE, size.0, size.1);
     }
 }
 

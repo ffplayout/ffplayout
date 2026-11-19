@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, hash_map::Entry},
     convert::Infallible,
     sync::{Arc, atomic::Ordering},
     time::Duration,
@@ -81,6 +82,8 @@ const SSE_INTERVAL: Duration = Duration::from_millis(250);
 // broadcast four times per second.
 const SYSTEM_UPDATE_INTERVAL_TICKS: u64 = 4;
 
+type PlayoutMessages = HashMap<(i32, usize), String>;
+
 impl Broadcaster {
     /// Constructs new broadcaster and spawns ping loop.
     pub fn create(system: SystemStat) -> Arc<Self> {
@@ -100,13 +103,17 @@ impl Broadcaster {
             let mut interval = interval(SSE_INTERVAL);
             interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
             let mut tick = 0_u64;
+            let mut playout_messages = PlayoutMessages::new();
 
             loop {
                 interval.tick().await;
                 tick = tick.wrapping_add(1);
 
-                this.broadcast(tick.is_multiple_of(SYSTEM_UPDATE_INTERVAL_TICKS))
-                    .await;
+                this.broadcast(
+                    tick.is_multiple_of(SYSTEM_UPDATE_INTERVAL_TICKS),
+                    &mut playout_messages,
+                )
+                .await;
             }
         }));
     }
@@ -133,23 +140,31 @@ impl Broadcaster {
         Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::default())
     }
 
-    pub async fn broadcast(&self, include_system: bool) {
+    async fn broadcast(&self, include_system: bool, playout_messages: &mut PlayoutMessages) {
         let clients = {
             let inner = self.inner.lock().await;
             inner.clients.clone()
         };
         let mut failed_clients = Vec::new();
 
-        // every client needs its own stats
+        // Viewers of the same channel share one status snapshot per tick.
         for client in &clients {
             match client.endpoint {
                 Endpoint::Playout => {
-                    let media_map = get_data_map(&client.manager).await;
+                    // Distinguish an old subscription from a replacement manager
+                    // that happens to have the same channel ID.
+                    let message = match playout_messages.entry((
+                        client.manager.id,
+                        Arc::as_ptr(&client.manager.is_alive) as usize,
+                    )) {
+                        Entry::Occupied(entry) => entry.into_mut(),
+                        Entry::Vacant(entry) => {
+                            let media = get_data_map(&client.manager).await;
+                            let running = client.manager.is_alive.load(Ordering::SeqCst);
 
-                    let message = playout_status_message(
-                        media_map,
-                        client.manager.is_alive.load(Ordering::SeqCst),
-                    );
+                            entry.insert(playout_status_message(media, running))
+                        }
+                    };
 
                     if !try_send_event(&client.sender, Event::default().data(message)) {
                         failed_clients.push(client.sender.clone());
@@ -166,6 +181,8 @@ impl Broadcaster {
                 Endpoint::System => {}
             }
         }
+
+        playout_messages.clear();
 
         if failed_clients.is_empty() {
             return;
@@ -186,7 +203,51 @@ impl Broadcaster {
 
 #[cfg(test)]
 mod tests {
+    use futures_util::StreamExt;
+
+    use crate::test_support::channel_manager;
+
     use super::*;
+
+    #[tokio::test]
+    async fn playout_tick_shares_status_for_viewers_of_the_same_manager() {
+        let (manager, _) = channel_manager().await;
+        let (replacement, _) = channel_manager().await;
+        let broadcaster = Broadcaster {
+            inner: Arc::new(Mutex::new(BroadcasterInner::default())),
+            system: SystemStat::new(),
+        };
+
+        manager.is_alive.store(true, Ordering::SeqCst);
+
+        let mut streams = Vec::new();
+        for viewer in [manager.clone(), manager, replacement] {
+            let response = broadcaster
+                .new_client(viewer, Endpoint::Playout, false)
+                .await;
+            let mut stream = response.into_response().into_body().into_data_stream();
+
+            assert_eq!(stream.next().await.unwrap().unwrap(), "data: connected\n\n");
+            streams.push(stream);
+        }
+
+        let mut messages = PlayoutMessages::new();
+
+        broadcaster.broadcast(false, &mut messages).await;
+
+        let first = streams[0].next().await.unwrap().unwrap();
+        let second = streams[1].next().await.unwrap().unwrap();
+        let replaced = streams[2].next().await.unwrap().unwrap();
+
+        assert_eq!(first, second);
+        assert!(std::str::from_utf8(&first).unwrap().contains("\"elapsed\""));
+        assert!(
+            std::str::from_utf8(&replaced)
+                .unwrap()
+                .contains("\"running\":false")
+        );
+        assert!(messages.is_empty());
+    }
 
     #[test]
     fn stopped_playout_still_reports_input_labels_without_a_live_signal() {

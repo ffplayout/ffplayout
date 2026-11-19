@@ -244,6 +244,76 @@ fn auxiliary_masks_must_be_monochrome_and_match_source_dimensions() {
     );
 }
 
+#[test]
+fn preparation_reuses_scratch_without_sharing_published_pixels() {
+    let input = source(12, 4, false);
+    let mut mask = frame::Video::new(Pixel::GRAY8, 12, 4);
+    let mut preparation = SourcePreparation::default();
+
+    mask.data_mut(0).fill(64);
+
+    let first = preparation
+        .prepare(&input, Some(&mask), Alpha::Straight, (6, 2))
+        .unwrap();
+    let workspace = |preparation: &SourcePreparation| {
+        [
+            &preparation.rgb_buffer,
+            &preparation.mask_buffer,
+            &preparation.resize_buffer,
+        ]
+        .map(|frame| frame.as_ref().unwrap().data(0).as_ptr())
+    };
+    let pointers = workspace(&preparation);
+    let first_alpha = first.data(3)[0];
+
+    mask.data_mut(0).fill(192);
+
+    let second = preparation
+        .prepare(&input, Some(&mask), Alpha::Straight, (6, 2))
+        .unwrap();
+    let fresh = SourcePreparation::default()
+        .prepare(&input, Some(&mask), Alpha::Straight, (6, 2))
+        .unwrap();
+
+    assert_eq!(workspace(&preparation), pointers);
+    assert_eq!(first.data(3)[0], first_alpha);
+    assert_ne!(second.data(3)[0], first_alpha);
+
+    for plane in 0..4 {
+        for row in 0..second.plane_height(plane) as usize {
+            let start = row * second.stride(plane);
+            let end = start + second.plane_width(plane) as usize;
+
+            assert_eq!(
+                second.data(plane)[start..end],
+                fresh.data(plane)[start..end]
+            );
+        }
+    }
+
+    preparation.release_workspace();
+
+    assert!(preparation.rgb_buffer.is_none());
+    assert!(preparation.mask_buffer.is_none());
+    assert!(preparation.resize_buffer.is_none());
+    assert_eq!(preparation.optimized.storage_bytes(), 0);
+    assert_eq!(first.data(3)[0], first_alpha);
+
+    let resumed = preparation
+        .prepare(&input, Some(&mask), Alpha::Straight, (6, 2))
+        .unwrap();
+
+    assert_eq!(resumed.data(3)[0], second.data(3)[0]);
+    assert!(preparation.mask_buffer.is_some());
+
+    let resized = preparation
+        .prepare(&input, None, Alpha::Straight, (8, 2))
+        .unwrap();
+
+    assert_eq!(resized.width(), 8);
+    assert!(preparation.mask_buffer.is_none());
+}
+
 #[cfg(ff_graphics_av_alpha_mode)]
 #[test]
 fn decoder_alpha_metadata_is_read_and_prepared_frames_are_straight() {
@@ -580,7 +650,9 @@ fn rgb_depth_expansion_is_exact_for_all_bytes_and_planar_channels() {
             }
         }
 
-        let output = rgb::convert(&input).unwrap();
+        let mut output = frame::Video::empty();
+
+        assert!(rgb::convert(&input, &mut output));
 
         for row in 0..2 {
             for index in 0..width as usize * 4 {
@@ -598,7 +670,9 @@ fn rgb_depth_expansion_is_exact_for_all_bytes_and_planar_channels() {
     planar.data_mut(0).fill(70);
     planar.data_mut(1).fill(210);
     planar.data_mut(2).fill(15);
-    let output = rgb::convert(&planar).unwrap();
+    let mut output = frame::Video::empty();
+
+    assert!(rgb::convert(&planar, &mut output));
     assert_eq!(&output.data(0)[..8], &[15, 15, 70, 70, 210, 210, 255, 255]);
 }
 

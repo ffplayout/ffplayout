@@ -7,7 +7,7 @@ use fast_image_resize::{
     images::{TypedCroppedImage, TypedCroppedImageMut, TypedImage, TypedImageRef},
     pixels::U16x4,
 };
-use ffmpeg_next::{frame, util::format::pixel::Pixel};
+use ffmpeg_next::frame;
 use rayon::{ThreadPool, prelude::*};
 
 #[derive(Default)]
@@ -59,14 +59,15 @@ impl RgbaResizer {
         source: &frame::Video,
         size: (u32, u32),
         pool: Option<&ThreadPool>,
-    ) -> Result<frame::Video> {
+        output: &mut frame::Video,
+    ) -> Result<()> {
         let image = TypedImageRef::<U16x4>::from_buffer(
             source.stride(0) as u32 / 8,
             source.height(),
             source.data(0),
         )?;
         let visible = TypedCroppedImage::from_ref(&image, 0, 0, source.width(), source.height())?;
-        let mut output = frame::Video::new(Pixel::RGBA64LE, size.0, size.1);
+        super::ensure_rgba_storage(output, size);
         let mut image = TypedImage::<U16x4>::from_buffer(
             output.stride(0) as u32 / 8,
             size.1,
@@ -116,7 +117,7 @@ impl RgbaResizer {
                 .resize_typed(&visible, &mut destination, &options)?;
         }
 
-        Ok(output)
+        Ok(())
     }
 
     #[cfg(test)]

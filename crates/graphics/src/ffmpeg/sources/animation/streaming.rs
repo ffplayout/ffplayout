@@ -336,6 +336,7 @@ fn run(
                 request.ready_elapsed.store(-1, Ordering::Release);
             }
             cache.clear();
+            decoder.release_preparation_workspace();
             #[cfg(test)]
             shared.cached_bytes.store(0, Ordering::Release);
             processed.clear();

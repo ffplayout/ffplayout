@@ -7,13 +7,13 @@ use rten_simd::{
 
 use crate::ffmpeg::compositor::metadata::copy_color_properties;
 
-pub(super) fn convert(source: &frame::Video) -> Option<frame::Video> {
+pub(super) fn convert(source: &frame::Video, output: &mut frame::Video) -> bool {
     if !matches!(source.format(), Pixel::RGBA | Pixel::RGBA64LE | Pixel::GBRP) {
-        return None;
+        return false;
     }
 
-    let mut output = frame::Video::new(Pixel::RGBA64LE, source.width(), source.height());
-    copy_color_properties(source, &mut output);
+    super::ensure_rgba_storage(output, (source.width(), source.height()));
+    copy_color_properties(source, output);
     let stride = output.stride(0);
     let width = source.width() as usize;
 
@@ -42,7 +42,7 @@ pub(super) fn convert(source: &frame::Video) -> Option<frame::Video> {
         }
     }
 
-    Some(output)
+    true
 }
 
 struct Expand<'a> {

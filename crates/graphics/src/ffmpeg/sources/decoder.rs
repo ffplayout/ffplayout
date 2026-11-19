@@ -124,6 +124,10 @@ impl LogoDecoder {
         })
     }
 
+    pub(super) fn release_preparation_workspace(&mut self) {
+        self.preparation.release_workspace();
+    }
+
     pub fn set_high_quality(&mut self, high_quality: bool) {
         self.high_quality = high_quality;
     }

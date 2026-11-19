@@ -17,6 +17,21 @@ impl Scaler {
         size: (u32, u32),
         conversion: Option<ColorConversion>,
     ) -> Result<frame::Video> {
+        let mut output = frame::Video::empty();
+
+        self.run_into(source, format, size, conversion, &mut output)?;
+
+        Ok(output)
+    }
+
+    pub fn run_into(
+        &mut self,
+        source: &frame::Video,
+        format: Pixel,
+        size: (u32, u32),
+        conversion: Option<ColorConversion>,
+        output: &mut frame::Video,
+    ) -> Result<()> {
         let changed = self.conversion != conversion
             || self.context.as_ref().is_none_or(|context| {
                 let input = context.input();
@@ -71,12 +86,17 @@ impl Scaler {
             self.conversion = conversion;
         }
 
-        let mut output = frame::Video::empty();
+        if output.width() != 0
+            && (output.format() != format || (output.width(), output.height()) != size)
+        {
+            *output = frame::Video::empty();
+        }
+
         self.context
             .as_mut()
             .context("graphics scaler unavailable")?
-            .run(source, &mut output)?;
+            .run(source, output)?;
 
-        Ok(output)
+        Ok(())
     }
 }

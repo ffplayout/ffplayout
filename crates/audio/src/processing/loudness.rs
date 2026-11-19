@@ -6,6 +6,8 @@
 
 use std::sync::{Arc, PoisonError, RwLock};
 
+use smallvec::SmallVec;
+
 use crate::{analysis::loudness::LoudnessAnalyzer, buffer::StereoBuffer};
 
 use super::lookahead::LookaheadLimiter;
@@ -148,10 +150,12 @@ pub struct LiveLoudnessMetrics {
     pub limiter_gain_reduction_db: f64,
 }
 
+type BufferedMeasurements = SmallVec<[(usize, LiveLoudnessMetrics); 1]>;
+
 /// Source measurements associated with positions in one buffered audio frame.
 /// Gain and limiter state remain on the playback timeline, not the decode timeline.
 pub struct BufferedLoudnessAnalysis {
-    measurements: Vec<(usize, LiveLoudnessMetrics)>,
+    measurements: BufferedMeasurements,
 }
 
 /// Measurement window used by the gain rider.
@@ -311,7 +315,7 @@ impl LiveLoudnessProcessor {
 
     /// Analyze ahead of playback, retaining the exact 100 ms control boundaries.
     pub fn analyze_buffered(&mut self, frame: &mut impl StereoBuffer) -> BufferedLoudnessAnalysis {
-        let mut measurements = vec![(0, self.analysis_control_metrics)];
+        let mut measurements = BufferedMeasurements::from_buf([(0, self.analysis_control_metrics)]);
         self.analyze_frame(frame, false, false, Some(&mut measurements));
 
         BufferedLoudnessAnalysis { measurements }
@@ -355,7 +359,7 @@ impl LiveLoudnessProcessor {
         frame: &mut impl StereoBuffer,
         apply_gain: bool,
         sample_ceiling: bool,
-        mut measurements: Option<&mut Vec<(usize, LiveLoudnessMetrics)>>,
+        mut measurements: Option<&mut BufferedMeasurements>,
     ) {
         if frame.planes() != 2 || frame.samples() == 0 {
             return;
@@ -592,6 +596,26 @@ mod tests {
                     * amplitude
             })
             .collect()
+    }
+
+    #[test]
+    fn buffered_measurements_keep_one_inline_and_preserve_later_boundaries() {
+        let mut processor = LiveLoudnessProcessor::new(SAMPLE_RATE, Default::default()).unwrap();
+        let samples = [0.1; 1024];
+        let short = processor.analyze_buffered(&mut stereo_frame(&samples, &samples));
+
+        assert!(!short.measurements.spilled());
+        assert_eq!(short.measurements.len(), 1);
+
+        let samples = [0.1; 9600];
+        let long = processor.analyze_buffered(&mut stereo_frame(&samples, &samples));
+        let offsets: Vec<_> = long
+            .measurements
+            .iter()
+            .map(|&(offset, _)| offset)
+            .collect();
+
+        assert_eq!(offsets, [0, 3776, 8576]);
     }
 
     #[test]
