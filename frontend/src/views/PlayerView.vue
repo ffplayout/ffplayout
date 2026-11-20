@@ -11,7 +11,7 @@ import 'dayjs/locale/pt-br'
 import 'dayjs/locale/ru'
 
 import { VueDatePicker } from '@vuepic/vue-datepicker'
-import { de, enUS, ptBR, ru } from 'date-fns/locale'
+import { de, enUS, ptBR, ru, zhCN } from 'date-fns/locale'
 import '@vuepic/vue-datepicker/dist/main.css'
 
 // @ts-ignore
@@ -181,6 +181,9 @@ switch (locale.value) {
         break
     case 'ru':
         lang.value = ru
+        break
+    case 'zh':
+        lang.value = zhCN
         break
     default:
         lang.value = enUS
