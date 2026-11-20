@@ -1,8 +1,9 @@
 ## Translations
 
-The frontend loads translations from `de-DE.ts`, `en-US.ts`, `pt-BR.ts` and
-`ru-RU.ts`. English is the fallback language. Language registration and the
-language selector are defined in [i18n.ts](../i18n.ts).
+The frontend loads translations from `de-DE.ts`, `en-US.ts`, `pt-BR.ts`,
+`ru-RU.ts` and `zh-CN.ts`. English is the fallback language. Language
+registration and the language selector are defined in
+[i18n.ts](../i18n.ts).
 
 To add a language, copy `en-US.ts`, translate the values and register the new
 locale in `i18n.ts`. Keep all keys and named placeholders such as `{id}` and
