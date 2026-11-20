@@ -57,7 +57,10 @@ pub use user::*;
 
 use crate::{
     db::models::Role,
-    utils::{config::Template, errors::ServiceError, mail::MailQueue},
+    utils::{
+        config::Template, errors::ServiceError, mail::MailQueue,
+        time_machine::deserialize_iana_timezone,
+    },
 };
 
 use super::auth::decode_jwt;
@@ -297,7 +300,11 @@ pub struct FileObj {
 pub struct LogReq {
     #[serde(default)]
     date: String,
-    #[serde(default = "utc_timezone", with = "jiff::fmt::serde::tz::required")]
+    #[serde(
+        default = "utc_timezone",
+        deserialize_with = "deserialize_iana_timezone",
+        serialize_with = "jiff::fmt::serde::tz::required::serialize"
+    )]
     timezone: TimeZone,
     #[serde(default)]
     download: bool,
@@ -320,6 +327,14 @@ mod tests {
     use axum::body::to_bytes;
 
     use super::*;
+
+    #[test]
+    fn log_request_accepts_iana_aliases() {
+        let request: LogReq =
+            serde_json::from_value(serde_json::json!({ "timezone": "US/Eastern" })).unwrap();
+
+        assert_eq!(request.timezone.iana_name(), Some("US/Eastern"));
+    }
 
     #[test]
     fn parses_closed_open_and_suffix_ranges_and_ignores_unsupported_headers() {

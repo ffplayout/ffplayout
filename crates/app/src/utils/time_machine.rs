@@ -8,7 +8,10 @@ use std::cell::Cell;
 #[cfg(not(test))]
 use std::sync::{Arc, LazyLock, RwLock};
 
-use jiff::{SignedDuration, Timestamp, ZonedDateTime, tz::TimeZone};
+use jiff::{
+    SignedDuration, Timestamp, ZonedDateTime,
+    tz::{TimeZone, TimeZoneDatabase},
+};
 use serde::{Deserialize, Deserializer, de};
 
 // Application-wide offset used by --fake-time.
@@ -49,9 +52,24 @@ pub fn set_mock_time(fake_time: &Option<String>) -> Result<(), io::Error> {
 }
 
 pub(crate) fn parse_channel_timezone(name: &str) -> Option<TimeZone> {
+    // A system zoneinfo installation can omit IANA compatibility aliases.
     TimeZone::get(name)
+        .or_else(|_| TimeZoneDatabase::bundled().get(name))
         .ok()
         .filter(|tz| tz.iana_name().is_some())
+}
+
+fn require_iana_timezone<E: de::Error>(name: &str) -> Result<TimeZone, E> {
+    parse_channel_timezone(name).ok_or_else(|| E::custom(format!("Invalid IANA time zone: {name}")))
+}
+
+pub(crate) fn deserialize_iana_timezone<'de, D>(deserializer: D) -> Result<TimeZone, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let name = String::deserialize(deserializer)?;
+
+    require_iana_timezone(&name)
 }
 
 pub(crate) fn deserialize_channel_timezone<'de, D>(
@@ -62,11 +80,7 @@ where
 {
     let name = Option::<String>::deserialize(deserializer)?;
 
-    name.map(|name| {
-        parse_channel_timezone(&name)
-            .ok_or_else(|| de::Error::custom(format!("Invalid IANA time zone: {name}")))
-    })
-    .transpose()
+    name.as_deref().map(require_iana_timezone).transpose()
 }
 
 pub(crate) fn default_channel_timezone() -> TimeZone {
