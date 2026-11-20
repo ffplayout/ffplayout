@@ -5,9 +5,8 @@ use std::{
     str::FromStr,
 };
 
-use chrono::NaiveTime;
-use chrono_tz::Tz;
 use flexi_logger::Level;
+use jiff::{civil::Time, tz::TimeZone};
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::{fs, io::AsyncReadExt};
@@ -17,7 +16,10 @@ use crate::{
     ARGS,
     db::{handles, models},
     file::norm_abs_path,
-    utils::{errors::ServiceError, paths::validate_directory_path, time_to_sec},
+    utils::{
+        errors::ServiceError, paths::validate_directory_path,
+        time_machine::deserialize_channel_timezone, time_to_sec,
+    },
 };
 
 pub const DUMMY_LEN: f64 = 60.0;
@@ -162,9 +164,9 @@ pub struct Template {
 #[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
 pub struct Source {
     #[ts(type = "string")]
-    pub start: NaiveTime,
+    pub start: Time,
     #[ts(type = "string")]
-    pub duration: NaiveTime,
+    pub duration: Time,
     pub shuffle: bool,
     pub paths: Vec<PathBuf>,
 }
@@ -341,7 +343,12 @@ pub struct Channel {
     pub storage: PathBuf,
     pub shared: bool,
     #[ts(type = "string")]
-    pub timezone: Option<Tz>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_channel_timezone",
+        serialize_with = "jiff::fmt::serde::tz::optional::serialize"
+    )]
+    pub timezone: Option<TimeZone>,
 }
 
 impl Channel {

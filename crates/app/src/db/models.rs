@@ -1,6 +1,6 @@
 use std::{error::Error, fmt, str::FromStr};
 
-use chrono_tz::Tz;
+use jiff::tz::TimeZone;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -10,7 +10,12 @@ mod config_dump;
 
 use crate::{
     db::handles,
-    utils::config::{OutputMode, PlayoutConfig},
+    utils::{
+        config::{OutputMode, PlayoutConfig},
+        time_machine::{
+            default_channel_timezone, deserialize_channel_timezone, parse_channel_timezone,
+        },
+    },
 };
 
 pub use config_dump::{ConfigDump, SettingsRow};
@@ -84,26 +89,21 @@ pub struct Channel {
     pub storage: String,
     pub last_date: Option<String>,
     pub time_shift: f64,
-    #[serde(default)]
-    pub timezone: Option<Tz>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_channel_timezone",
+        serialize_with = "jiff::fmt::serde::tz::optional::serialize"
+    )]
+    pub timezone: Option<TimeZone>,
 }
 
 impl FromRow<'_, SqliteRow> for Channel {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
-        let mut timezone = None;
-
-        if let Some(tz) = row
+        let timezone = row
             .try_get::<String, _>("timezone")
             .ok()
-            .and_then(|t: String| Tz::from_str(&t).ok())
-        {
-            timezone = Some(tz);
-        } else if let Some(tz) = iana_time_zone::get_timezone()
-            .ok()
-            .and_then(|t: String| Tz::from_str(&t).ok())
-        {
-            timezone = Some(tz);
-        }
+            .and_then(|name| parse_channel_timezone(&name))
+            .unwrap_or_else(default_channel_timezone);
 
         Ok(Self {
             id: row.try_get("id").unwrap_or_default(),
@@ -116,8 +116,71 @@ impl FromRow<'_, SqliteRow> for Channel {
             storage: row.try_get("storage").unwrap_or_default(),
             last_date: row.try_get("last_date").unwrap_or_default(),
             time_shift: row.try_get("time_shift").unwrap_or_default(),
-            timezone,
+            timezone: Some(timezone),
         })
+    }
+}
+
+#[cfg(test)]
+mod channel_timezone_tests {
+    use serde_json::{Value, json};
+    use sqlx::SqlitePool;
+
+    use crate::utils::time_machine::time_now;
+
+    use super::{Channel, TimeZone};
+
+    #[test]
+    fn channel_json_accepts_iana_names_and_rejects_non_iana_zones() {
+        let mut json = serde_json::to_value(Channel::default()).unwrap();
+
+        for name in ["Europe/Berlin", "US/Eastern", "UTC"] {
+            json["timezone"] = json!(name);
+            let channel = serde_json::from_value::<Channel>(json.clone()).unwrap();
+
+            assert_eq!(serde_json::to_value(channel).unwrap()["timezone"], name);
+        }
+
+        for name in ["Etc/Unknown", "+02:00", "EST5EDT,M3.2.0,M11.1.0"] {
+            json["timezone"] = json!(name);
+
+            assert!(serde_json::from_value::<Channel>(json.clone()).is_err());
+        }
+
+        json["timezone"] = Value::Null;
+
+        assert!(
+            serde_json::from_value::<Channel>(json)
+                .unwrap()
+                .timezone
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn channel_timezone_fallback_matches_the_playout_clock() {
+        let system_zone = TimeZone::system();
+        let expected = if system_zone.iana_name().is_some() {
+            system_zone
+        } else {
+            TimeZone::UTC
+        };
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+
+        for stored in [None, Some("+02:00"), Some("Etc/Unknown")] {
+            let channel = sqlx::query_as::<_, Channel>("SELECT ? AS timezone")
+                .bind(stored)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+            assert_eq!(channel.timezone.as_ref(), Some(&expected));
+            assert_eq!(time_now(&None).time_zone(), &expected);
+            assert_eq!(
+                serde_json::to_value(channel).unwrap()["timezone"],
+                expected.iana_name().unwrap()
+            );
+        }
     }
 }
 

@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::{Local, NaiveDate};
+use jiff::{ZonedDateTime, civil::Date};
 use sqlx::{SqlitePool, migrate::Migrator};
 use uuid::Uuid;
 
@@ -52,7 +52,7 @@ pub(super) async fn before_migrations(
         return Ok(());
     };
     let database = Path::new(&filename);
-    let date = Local::now().date_naive();
+    let date = ZonedDateTime::now().date();
     let backup = backup_path(database, applied.keys().copied().max().unwrap_or(0), date)?;
     create_backup(pool, &backup).await.map_err(|error| {
         ProcessError::DB(format!(
@@ -67,7 +67,7 @@ pub(super) async fn before_migrations(
     Ok(())
 }
 
-fn backup_path(database: &Path, version: i64, date: NaiveDate) -> Result<PathBuf, ProcessError> {
+fn backup_path(database: &Path, version: i64, date: Date) -> Result<PathBuf, ProcessError> {
     let name = database
         .file_name()
         .ok_or_else(|| ProcessError::IO("Database filename unavailable".into()))?;
@@ -138,7 +138,7 @@ fn prune_backups(database: &Path, newest: &Path) -> Result<(), ProcessError> {
         };
         if release.is_empty()
             || !release.bytes().all(|byte| byte.is_ascii_digit())
-            || NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err()
+            || Date::strptime("%Y-%m-%d", date).is_err()
         {
             continue;
         }
@@ -185,7 +185,7 @@ mod tests {
         }
 
         fn backup(&self) -> PathBuf {
-            backup_path(&self.0.join("ffplayout.db"), 6, Local::now().date_naive()).unwrap()
+            backup_path(&self.0.join("ffplayout.db"), 6, ZonedDateTime::now().date()).unwrap()
         }
     }
 
@@ -316,7 +316,7 @@ mod tests {
     fn retention_keeps_five_backups_and_leaves_unrelated_files_alone() {
         let directory = TestDirectory::new();
         let database = directory.0.join("ffplayout.db");
-        let date = NaiveDate::from_ymd_opt(2026, 10, 18).unwrap();
+        let date = Date::new(2026, 10, 18).unwrap();
         let newest = backup_path(&database, 8, date).unwrap();
         assert_eq!(
             newest.file_name().unwrap(),

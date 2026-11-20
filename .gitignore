@@ -39,6 +39,7 @@ node_modules
 .nitro
 .cache
 .output
+__pycache__/
 .env
 dist
 .eslintcache

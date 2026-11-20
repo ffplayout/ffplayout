@@ -94,8 +94,8 @@ impl From<std::io::Error> for ServiceError {
         Self::Conflict(err.to_string())
     }
 }
-impl From<chrono::ParseError> for ServiceError {
-    fn from(err: chrono::ParseError) -> Self {
+impl From<jiff::Error> for ServiceError {
+    fn from(err: jiff::Error) -> Self {
         Self::Conflict(err.to_string())
     }
 }

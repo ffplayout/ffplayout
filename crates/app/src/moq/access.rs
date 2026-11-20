@@ -182,7 +182,7 @@ mod tests {
             secret: Some("moq-access-test-only".into()),
             ..GlobalSettings::default()
         });
-        let now = chrono::Utc::now().timestamp();
+        let now = jiff::Timestamp::now().as_second();
         let claims: Claims = serde_json::from_value(serde_json::json!({
             "id": 1, "channels": channels, "username": "viewer", "role": "user",
             "token_type": "access", "iat": now, "exp": now + 60

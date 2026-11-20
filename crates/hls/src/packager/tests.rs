@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Result, bail};
+use jiff::{SignedDuration, Timestamp};
 
 use super::*;
 
@@ -210,6 +211,21 @@ fn date_time_mapping_is_shared_across_renditions_and_preserved_on_resume() {
                 if enabled { (session + 1) * 4 } else { 0 }
             );
             assert!(playlists[0].starts_with(&previous_dates));
+
+            let dates = &playlists[0][previous_dates.len()..];
+
+            for date in dates {
+                assert_eq!(date.len(), "2026-01-01T00:00:00.000Z".len());
+                assert_eq!(&date[19..20], ".");
+                assert!(date.ends_with('Z'));
+            }
+
+            for pair in dates.windows(2) {
+                let previous = pair[0].parse::<Timestamp>().unwrap();
+                let next = pair[1].parse::<Timestamp>().unwrap();
+
+                assert_eq!(next.duration_since(previous), SignedDuration::from_secs(1));
+            }
 
             previous_dates = playlists[0].clone();
         }

@@ -913,7 +913,7 @@ mod tests {
         ] {
             runtime.block_on(async {
                 let mut config = manager.config.write().await;
-                config.channel.timezone = Some(chrono_tz::UTC);
+                config.channel.timezone = Some(jiff::tz::TimeZone::UTC);
                 config.playlist.start_sec = Some(start);
                 config.playlist.length_sec = Some(86_400.0);
                 config.playlist.infinit = false;

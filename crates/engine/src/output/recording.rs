@@ -8,9 +8,9 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use chrono::{Local, NaiveDate, NaiveDateTime, TimeZone};
 use ffmpeg::{codec, format, util::rational::Rational};
 use ffmpeg_next as ffmpeg;
+use jiff::{civil::DateTime, tz::TimeZone};
 use sysinfo::{Disk, Disks};
 
 use crate::{RecordingConfig, utils::ffmpeg::reference_packet};
@@ -277,6 +277,7 @@ fn remove_expired_segments(directory: &Path, retention_days: u32, channel_id: i3
         .checked_sub(Duration::from_secs(u64::from(retention_days) * 86_400))
         .unwrap_or(UNIX_EPOCH);
     let channel_prefix = format!("recording-ch{channel_id}-");
+    let timezone = TimeZone::system();
 
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
@@ -295,7 +296,7 @@ fn remove_expired_segments(directory: &Path, retention_days: u32, channel_id: i3
         // can rewrite mtime without changing when the segment was actually
         // recorded, which would otherwise make retention unreliable. Legacy
         // segments (no embedded date) still fall back to mtime.
-        let recorded_at = match segment_recorded_at(&path) {
+        let recorded_at = match segment_recorded_at(&path, &timezone) {
             Some(recorded_at) => recorded_at,
             None => entry.metadata()?.modified()?,
         };
@@ -316,7 +317,7 @@ fn remove_expired_segments(directory: &Path, retention_days: u32, channel_id: i3
 /// it is interpreted as local time here too. Returns `None` for legacy
 /// filenames or ambiguous/non-existent local times (e.g. a DST transition),
 /// in which case the caller falls back to the file's mtime.
-fn segment_recorded_at(path: &Path) -> Option<SystemTime> {
+fn segment_recorded_at(path: &Path, timezone: &TimeZone) -> Option<SystemTime> {
     let name = path.file_name()?.to_str()?;
     let stem = name
         .strip_prefix("recording-ch")
@@ -324,10 +325,12 @@ fn segment_recorded_at(path: &Path) -> Option<SystemTime> {
     let (_channel, started_at, _process_id, _sequence) = split_current_format(stem)?;
     let naive = parse_recording_timestamp(started_at)?;
 
-    match Local.from_local_datetime(&naive) {
-        chrono::LocalResult::Single(datetime) => Some(datetime.into()),
-        chrono::LocalResult::Ambiguous(..) | chrono::LocalResult::None => None,
-    }
+    timezone
+        .to_ambiguous_timestamp(naive)
+        .unambiguous()
+        .ok()?
+        .try_into()
+        .ok()
 }
 
 fn is_managed_segment(path: &Path) -> bool {
@@ -369,7 +372,7 @@ fn split_current_format(stem: &str) -> Option<(&str, &str, &str, &str)> {
     Some((channel, started_at, process_id, sequence))
 }
 
-fn parse_recording_timestamp(value: &str) -> Option<NaiveDateTime> {
+fn parse_recording_timestamp(value: &str) -> Option<DateTime> {
     let (date, time) = value.split_once('_')?;
     let date = date
         .split('-')
@@ -384,12 +387,20 @@ fn parse_recording_timestamp(value: &str) -> Option<NaiveDateTime> {
     let [year, month, day] = <[u32; 3]>::try_from(date).ok()?;
     let [hour, minute, second] = <[u32; 3]>::try_from(time).ok()?;
 
-    if year < 1970 || hour >= 24 || minute >= 60 || second >= 60 {
+    if year < 1970 {
         return None;
     }
 
-    NaiveDate::from_ymd_opt(i32::try_from(year).ok()?, month, day)?
-        .and_hms_opt(hour, minute, second)
+    DateTime::new(
+        year.try_into().ok()?,
+        month.try_into().ok()?,
+        day.try_into().ok()?,
+        hour.try_into().ok()?,
+        minute.try_into().ok()?,
+        second.try_into().ok()?,
+        0,
+    )
+    .ok()
 }
 
 fn is_legacy_managed_segment(stem: &str) -> bool {
@@ -424,10 +435,13 @@ fn reject_unused_options(options: ffmpeg::Dictionary<'_>) -> Result<()> {
 mod tests {
     use std::{env, fs, path::Path, process, time::SystemTime};
 
+    use jiff::tz::TimeZone;
+
     use crate::RecordingConfig;
 
     use super::{
         ensure_minimum_free_space, is_managed_segment, prepare_recording, remove_expired_segments,
+        segment_recorded_at,
     };
 
     #[test]
@@ -452,6 +466,22 @@ mod tests {
         assert!(!is_managed_segment(Path::new(
             "recording-ch2-2026-08-13_15-42-09-42-x.mkv"
         )));
+    }
+
+    #[test]
+    fn recording_timestamp_falls_back_to_mtime_during_dst_transitions() {
+        let timezone = TimeZone::get("Europe/Berlin").unwrap();
+        let spring_gap = Path::new("recording-ch1-2026-03-29_02-30-00-1-0.mkv");
+        let autumn_fold = Path::new("recording-ch1-2026-10-25_02-30-00-1-0.mkv");
+        let summer_date = Path::new("recording-ch1-2026-08-13_15-42-09-1-0.mkv");
+        let expected = "2026-08-13T13:42:09Z".parse::<jiff::Timestamp>().unwrap();
+
+        assert_eq!(segment_recorded_at(spring_gap, &timezone), None);
+        assert_eq!(segment_recorded_at(autumn_fold, &timezone), None);
+        assert_eq!(
+            segment_recorded_at(summer_date, &timezone),
+            Some(expected.try_into().unwrap())
+        );
     }
 
     #[test]

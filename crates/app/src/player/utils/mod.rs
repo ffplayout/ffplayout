@@ -8,8 +8,12 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{TimeDelta, prelude::*};
-use chrono_tz::Tz;
+use jiff::{
+    SignedDuration, Timestamp, ToSpan,
+    civil::{Date, Time},
+    fmt::rfc2822::DateTimeParser,
+    tz::TimeZone,
+};
 use log::*;
 use regex::Regex;
 use reqwest::header;
@@ -537,45 +541,38 @@ pub async fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error
 }
 
 /// Get current time in seconds.
-pub fn time_in_seconds(timezone: &Option<Tz>) -> f64 {
-    let local: DateTime<Tz> = time_now(timezone);
+pub fn time_in_seconds(timezone: &Option<TimeZone>) -> f64 {
+    seconds_since_midnight(time_now(timezone).time())
+}
 
-    (local.hour() * 3600 + local.minute() * 60 + local.second()) as f64
-        + (local.nanosecond() as f64 / 1000000000.0)
+pub(super) fn seconds_since_midnight(time: Time) -> f64 {
+    time.duration_since(Time::MIN).as_secs_f64()
 }
 
 /// Get current date for playlist, but check time with conditions:
 ///
 /// - When time is before playlist start, get date from yesterday.
 /// - When given next_start is over target length (normally a full day), get date from tomorrow.
-pub fn get_date(seek: bool, start: f64, get_next: bool, timezone: &Option<Tz>) -> String {
-    let local: DateTime<Tz> = time_now(timezone);
+pub fn get_date(seek: bool, start: f64, get_next: bool, timezone: &Option<TimeZone>) -> String {
+    let local = time_now(timezone);
+    let seconds = seconds_since_midnight(local.time());
+    let day = SignedDuration::from_secs(86_400);
 
-    if seek && start > time_in_seconds(timezone) {
-        return (local - TimeDelta::try_days(1).unwrap())
-            .format("%Y-%m-%d")
-            .to_string();
+    if seek && start > seconds {
+        return local.saturating_sub(day).date().to_string();
     }
 
-    if start == 0.0 && get_next && time_in_seconds(timezone) > 86397.9 {
-        return (local + TimeDelta::try_days(1).unwrap())
-            .format("%Y-%m-%d")
-            .to_string();
+    if start == 0.0 && get_next && seconds > 86397.9 {
+        return local.saturating_add(day).date().to_string();
     }
 
-    local.format("%Y-%m-%d").to_string()
+    local.date().to_string()
 }
 
-pub fn time_from_header(headers: &header::HeaderMap) -> Option<DateTime<Local>> {
-    if let Some(time) = headers.get(header::LAST_MODIFIED)
-        && let Ok(t) = time.to_str()
-    {
-        let time = DateTime::parse_from_rfc2822(t);
-        let date_time: DateTime<Local> = time.unwrap().into();
-        return Some(date_time);
-    };
+pub fn time_from_header(headers: &header::HeaderMap) -> Option<Timestamp> {
+    let time = headers.get(header::LAST_MODIFIED)?;
 
-    None
+    DateTimeParser::new().parse_timestamp(time.as_bytes()).ok()
 }
 
 /// Get file modification time.
@@ -597,15 +594,14 @@ pub async fn modified_time(path: &str) -> Option<String> {
         .await
         .and_then(|metadata| metadata.modified())
     {
-        let date_time: DateTime<Local> = time.into();
-        return Some(date_time.to_string());
+        return Timestamp::try_from(time).ok().map(|time| time.to_string());
     }
 
     None
 }
 
 /// Convert a formatted time string to seconds.
-pub fn time_to_sec(time_str: &str, timezone: &Option<Tz>) -> f64 {
+pub fn time_to_sec(time_str: &str, timezone: &Option<TimeZone>) -> f64 {
     if matches!(time_str, "now" | "" | "none") || !time_str.contains(':') {
         return time_in_seconds(timezone);
     }
@@ -719,9 +715,7 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
 
 /// Generate a vector with dates, from given range.
 pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
-    let mut range = vec![];
-
-    let start = match NaiveDate::parse_from_str(&date_range[0], "%Y-%m-%d") {
+    let start = match Date::strptime("%Y-%m-%d", &date_range[0]) {
         Ok(s) => s,
         Err(_) => {
             error!(channel = id; "date format error in: <span class=\"log-number\">{:?}</span>", date_range[0]);
@@ -729,7 +723,7 @@ pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
         }
     };
 
-    let end = match NaiveDate::parse_from_str(&date_range[2], "%Y-%m-%d") {
+    let end = match Date::strptime("%Y-%m-%d", &date_range[2]) {
         Ok(e) => e,
         Err(_) => {
             error!(channel = id; "date format error in: <span class=\"log-number\">{:?}</span>", date_range[2]);
@@ -737,18 +731,11 @@ pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
         }
     };
 
-    let duration = end.signed_duration_since(start);
-    let days = duration.num_days() + 1;
-
-    for day in 0..days {
-        range.push(
-            (start + TimeDelta::try_days(day).unwrap())
-                .format("%Y-%m-%d")
-                .to_string(),
-        );
-    }
-
-    range
+    start
+        .series(1.day())
+        .take_while(|date| *date <= end)
+        .map(|date| date.to_string())
+        .collect()
 }
 
 pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
@@ -827,7 +814,7 @@ pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
 mod tests {
     use std::path::PathBuf;
 
-    use chrono_tz::Tz;
+    use jiff::tz::TimeZone;
     use serde_json::json;
 
     use crate::utils::time_machine::with_mock_time;
@@ -875,7 +862,12 @@ mod tests {
     fn get_date_yesterday_before_the_playlist_start() {
         with_mock_time("2022-05-20T05:59:24+02:00", || {
             assert_eq!(
-                get_date(true, 21600.0, false, &Some(Tz::Europe__Berlin)),
+                get_date(
+                    true,
+                    21600.0,
+                    false,
+                    &Some(TimeZone::get("Europe/Berlin").unwrap())
+                ),
                 "2022-05-19"
             );
         });
@@ -885,7 +877,12 @@ mod tests {
     fn get_date_tomorrow_near_midnight() {
         with_mock_time("2022-05-20T23:59:58+02:00", || {
             assert_eq!(
-                get_date(false, 0.0, true, &Some(Tz::Europe__Berlin)),
+                get_date(
+                    false,
+                    0.0,
+                    true,
+                    &Some(TimeZone::get("Europe/Berlin").unwrap())
+                ),
                 "2022-05-21"
             );
         });
@@ -894,7 +891,7 @@ mod tests {
     #[test]
     fn delta_tracks_a_clip_across_midnight() {
         let mut config = PlayoutConfig::default();
-        config.channel.timezone = Some(Tz::Europe__Berlin);
+        config.channel.timezone = Some(TimeZone::get("Europe/Berlin").unwrap());
         config.playlist.start_sec = Some(0.0);
         config.playlist.length_sec = Some(86400.0);
         with_mock_time("2022-05-09T23:59:59+02:00", || {

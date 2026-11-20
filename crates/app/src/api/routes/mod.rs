@@ -15,7 +15,7 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
-use chrono_tz::Tz;
+use jiff::tz::TimeZone;
 use protect_axum::authorities::{AuthDetails, AuthoritiesCheck};
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -297,10 +297,14 @@ pub struct FileObj {
 pub struct LogReq {
     #[serde(default)]
     date: String,
-    #[serde(default)]
-    timezone: Tz,
+    #[serde(default = "utc_timezone", with = "jiff::fmt::serde::tz::required")]
+    timezone: TimeZone,
     #[serde(default)]
     download: bool,
+}
+
+fn utc_timezone() -> TimeZone {
+    TimeZone::UTC
 }
 
 #[derive(Debug, Deserialize, Serialize)]

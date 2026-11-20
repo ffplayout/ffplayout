@@ -62,7 +62,7 @@ static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[cfg(all(feature = "mimalloc", target_os = "linux", target_env = "gnu"))]
 #[global_allocator]
-static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+static ALLOCATOR: rustfs_mimalloc::MiMalloc = rustfs_mimalloc::MiMalloc;
 
 fn env_parse_or<T>(key: &str, default: T) -> T
 where

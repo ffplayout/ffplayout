@@ -342,7 +342,7 @@ async fn store_verification(state: &AppState, id: i32, age_seconds: i64) -> Stri
                 code: "123456".to_string(),
                 user,
                 role,
-                created_at: chrono::Utc::now() - chrono::TimeDelta::seconds(age_seconds),
+                created_at: jiff::Timestamp::now() - jiff::SignedDuration::from_secs(age_seconds),
             },
         );
 

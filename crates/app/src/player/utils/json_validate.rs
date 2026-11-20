@@ -7,8 +7,7 @@ use std::{
     time::Instant,
 };
 
-use chrono::{NaiveDate, Timelike};
-use chrono_tz::Tz;
+use jiff::{civil::Date, tz::TimeZone};
 use log::*;
 use tokio::{
     fs::File,
@@ -232,22 +231,18 @@ async fn check_vtt(source: &str, duration: f64, channel_id: i32) -> Result<(), P
 // including positions after midnight. A playlist loaded before its start must
 // not be mistaken for yesterday's broadcast. Invalid dates disable skipping so
 // validation still inspects the entries.
-fn validation_time(date: &str, timezone: &Option<Tz>, validate_all: bool) -> Option<f64> {
+fn validation_time(date: &str, timezone: &Option<TimeZone>, validate_all: bool) -> Option<f64> {
     // Explicit CLI validation must inspect the entire playlist, even when its
     // broadcast date or individual entries are already in the past.
     if validate_all {
         return None;
     }
 
-    let date = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
+    let date = Date::strptime("%Y-%m-%d", date).ok()?;
     let now = time_now(timezone);
-    let days = now.date_naive().signed_duration_since(date).num_days();
+    let elapsed_days = now.date().duration_since(date);
 
-    Some(
-        days as f64 * 86_400.0
-            + f64::from(now.num_seconds_from_midnight())
-            + f64::from(now.nanosecond()) / 1_000_000_000.0,
-    )
+    Some(elapsed_days.as_secs_f64() + super::seconds_since_midnight(now.time()))
 }
 
 /// Validate a given playlist, to check if:
@@ -466,19 +461,23 @@ mod tests {
             ("2026-10-25T05:59:23+01:00", "2026-10-24", 107_963.0),
         ] {
             crate::utils::time_machine::with_mock_time(now, || {
-                let position =
-                    super::validation_time(date, &Some(chrono_tz::Europe::Berlin), false).unwrap();
+                let position = super::validation_time(
+                    date,
+                    &Some(jiff::tz::TimeZone::get("Europe/Berlin").unwrap()),
+                    false,
+                )
+                .unwrap();
                 assert!((position - expected).abs() < 0.1, "{now}: {position}");
             });
         }
 
-        assert!(super::validation_time("invalid", &Some(chrono_tz::UTC), false).is_none());
+        assert!(super::validation_time("invalid", &Some(jiff::tz::TimeZone::UTC), false).is_none());
     }
 
     #[test]
     fn explicit_validation_has_no_time_cutoff() {
         crate::utils::time_machine::with_mock_time("2026-10-27T12:00:00+01:00", || {
-            let timezone = Some(chrono_tz::Europe::Berlin);
+            let timezone = Some(jiff::tz::TimeZone::get("Europe/Berlin").unwrap());
 
             for date in ["2026-10-20", "2026-10-27", "2026-10-28"] {
                 assert!(super::validation_time(date, &timezone, true).is_none());
@@ -508,7 +507,8 @@ mod tests {
                     let current_list =
                         std::sync::Arc::new(tokio::sync::Mutex::new(vec![item.clone()]));
                     let mut config = super::PlayoutConfig::default();
-                    config.channel.timezone = Some(chrono_tz::Europe::Berlin);
+                    config.channel.timezone =
+                        Some(jiff::tz::TimeZone::get("Europe/Berlin").unwrap());
                     config.playlist.start_sec = Some(21_600.0);
                     config.playlist.length_sec = Some(10.0);
                     config.logging.detect_silence = false;
@@ -555,7 +555,7 @@ mod tests {
                     old.probe = Some(probe(Some(999.0), Some(999.0)));
                     let current_list = std::sync::Arc::new(tokio::sync::Mutex::new(vec![old]));
                     let mut config = super::PlayoutConfig::default();
-                    config.channel.timezone = Some(chrono_tz::UTC);
+                    config.channel.timezone = Some(jiff::tz::TimeZone::UTC);
                     config.playlist.start_sec = Some(0.0);
                     config.playlist.length_sec = Some(30.0);
                     config.logging.detect_silence = false;

@@ -1,5 +1,8 @@
-use chrono::{DateTime, NaiveDateTime, NaiveTime, TimeDelta, TimeZone};
-use chrono_tz::Tz;
+use jiff::{
+    SignedDuration, ToSpan, ZonedDateTime,
+    civil::{DateTime, Time},
+    tz::{AmbiguousOffset, TimeZone},
+};
 use log::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -16,9 +19,9 @@ use crate::{
 #[derive(Debug, Deserialize, Clone)]
 pub struct ProgramObj {
     #[serde(default, deserialize_with = "optional_naive_date_time_from_str")]
-    start_after: Option<NaiveDateTime>,
+    start_after: Option<DateTime>,
     #[serde(default, deserialize_with = "optional_naive_date_time_from_str")]
-    start_before: Option<NaiveDateTime>,
+    start_before: Option<DateTime>,
 }
 
 #[derive(Debug, Serialize)]
@@ -43,24 +46,23 @@ pub async fn build_program(
     let mut days = 0;
     let mut program = vec![];
     let now = time_now(&config.channel.timezone);
-    let timezone = now.timezone();
-    let today = now.date_naive();
+    let timezone = now.time_zone();
+    let today = now.date();
     let after = obj
         .start_after
-        .unwrap_or_else(|| today.and_time(NaiveTime::MIN));
-    let end_of_day = NaiveTime::from_hms_opt(23, 59, 59)
-        .ok_or_else(|| ServiceError::Conflict("Invalid end-of-day time".to_string()))?;
+        .unwrap_or_else(|| today.to_datetime(Time::MIN));
+    let end_of_day = Time::constant(23, 59, 59, 0);
     let mut before = obj
         .start_before
-        .unwrap_or_else(|| today.and_time(end_of_day));
+        .unwrap_or_else(|| today.to_datetime(end_of_day));
 
     if after > before {
-        before = after.date().and_time(end_of_day);
+        before = after.date().to_datetime(end_of_day);
     }
 
     if start_sec
         > time_to_sec(
-            &after.format("%H:%M:%S").to_string(),
+            &after.strftime("%H:%M:%S").to_string(),
             &config.channel.timezone,
         )
     {
@@ -70,9 +72,9 @@ pub async fn build_program(
     let date_range = get_date_range(
         id,
         &vec_strings![
-            (after - TimeDelta::try_days(days).unwrap_or_default()).format("%Y-%m-%d"),
+            after.date().checked_sub(days.days())?,
             "-",
-            before.format("%Y-%m-%d")
+            before.strftime("%Y-%m-%d")
         ],
     );
     let filename_regex = config
@@ -83,9 +85,9 @@ pub async fn build_program(
         .and_then(|preset| Regex::new(&preset.filename_regex).ok());
 
     for date in date_range {
-        let mut naive = NaiveDateTime::parse_from_str(
-            &format!("{date} {}", sec_to_time(start_sec)),
+        let mut naive = DateTime::strptime(
             "%Y-%m-%d %H:%M:%S%.3f",
+            format!("{date} {}", sec_to_time(start_sec)),
         )?;
 
         let playlist = match read_playlist(config, date.clone()).await {
@@ -109,7 +111,7 @@ pub async fn build_program(
 
             let p_item = ProgramItem {
                 source,
-                start: start.format("%Y-%m-%d %H:%M:%S%.3f%:z").to_string(),
+                start: start.strftime("%Y-%m-%d %H:%M:%S%.3f%:z").to_string(),
                 title: item.title,
                 r#in: item.seek,
                 out: item.out,
@@ -121,23 +123,26 @@ pub async fn build_program(
                 program.push(p_item);
             }
 
-            naive += TimeDelta::try_milliseconds(((item.out - item.seek) * 1000.0) as i64)
-                .unwrap_or_default();
+            naive = naive.checked_add(SignedDuration::from_millis(
+                ((item.out - item.seek) * 1000.0) as i64,
+            ))?;
         }
     }
 
     Ok(program)
 }
 
-fn channel_datetime(timezone: Tz, naive: NaiveDateTime) -> Result<DateTime<Tz>, ServiceError> {
-    timezone
-        .from_local_datetime(&naive)
-        .earliest()
-        .ok_or_else(|| {
-            ServiceError::Conflict(format!(
-                "Local time {naive} does not exist in timezone {timezone}"
-            ))
-        })
+fn channel_datetime(timezone: &TimeZone, naive: DateTime) -> Result<ZonedDateTime, ServiceError> {
+    let local = timezone.to_ambiguous_zoned_datetime(naive);
+
+    if matches!(local.offset(), AmbiguousOffset::Gap { .. }) {
+        return Err(ServiceError::Conflict(format!(
+            "Local time {naive} does not exist in timezone {}",
+            timezone.iana_name().unwrap_or("local")
+        )));
+    }
+
+    Ok(local.earlier()?)
 }
 
 #[cfg(test)]
@@ -161,15 +166,11 @@ mod tests {
             .unwrap();
         let mut config = PlayoutConfig::default();
         config.channel.playlists = root.clone();
-        config.channel.timezone = Some(Tz::America__New_York);
+        config.channel.timezone = Some(TimeZone::get("America/New_York").unwrap());
         config.playlist.start_sec = Some(43_200.0);
         let query = ProgramObj {
-            start_after: Some(
-                NaiveDateTime::parse_from_str("2026-07-19 12:00:00", "%F %T").unwrap(),
-            ),
-            start_before: Some(
-                NaiveDateTime::parse_from_str("2026-07-19 12:00:30", "%F %T").unwrap(),
-            ),
+            start_after: Some(DateTime::strptime("%F %T", "2026-07-19 12:00:00").unwrap()),
+            start_before: Some(DateTime::strptime("%F %T", "2026-07-19 12:00:30").unwrap()),
         };
         let program = build_program(&config, query).await.unwrap();
         tokio::fs::remove_dir_all(root).await.unwrap();
@@ -198,17 +199,62 @@ mod tests {
 
     #[test]
     fn channel_datetime_uses_channel_timezone() {
-        let naive = NaiveDateTime::parse_from_str("2026-07-19 12:00:00", "%F %T").unwrap();
+        let naive = DateTime::strptime("%F %T", "2026-07-19 12:00:00").unwrap();
 
-        let date_time = channel_datetime(Tz::America__New_York, naive).unwrap();
+        let date_time =
+            channel_datetime(&TimeZone::get("America/New_York").unwrap(), naive).unwrap();
 
-        assert_eq!(date_time.format("%:z").to_string(), "-04:00");
+        assert_eq!(date_time.strftime("%:z").to_string(), "-04:00");
+    }
+
+    #[test]
+    fn program_bounds_keep_the_wall_time_from_offset_inputs() {
+        let expected = DateTime::strptime("%F %T", "2026-07-19 12:00:00").unwrap();
+
+        for input in [
+            "2026-07-19T12:00:00",
+            "2026-07-19T12:00:00+02:00",
+            "2026-07-19T12:00:00+0200",
+            "2026-07-19T12:00:00+02",
+            "2026-07-19T12:00:00Z",
+        ] {
+            let query: ProgramObj =
+                serde_json::from_value(serde_json::json!({ "start_after": input })).unwrap();
+
+            assert_eq!(query.start_after, Some(expected), "{input}");
+        }
+
+        let query: ProgramObj =
+            serde_json::from_value(serde_json::json!({ "start_after": "2026-07-19" })).unwrap();
+
+        assert_eq!(
+            query.start_after,
+            Some(expected.date().to_datetime(Time::MIN))
+        );
+        assert!(
+            serde_json::from_value::<ProgramObj>(
+                serde_json::json!({ "start_after": "2026-02-30T12:00:00" })
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn channel_datetime_rejects_nonexistent_dst_time() {
-        let naive = NaiveDateTime::parse_from_str("2026-03-29 02:30:00", "%F %T").unwrap();
+        let naive = DateTime::strptime("%F %T", "2026-03-29 02:30:00").unwrap();
 
-        assert!(channel_datetime(Tz::Europe__Berlin, naive).is_err());
+        assert!(channel_datetime(&TimeZone::get("Europe/Berlin").unwrap(), naive).is_err());
+    }
+
+    #[test]
+    fn channel_datetime_uses_the_earlier_occurrence_during_a_dst_fold() {
+        let timezone = TimeZone::get("Europe/Berlin").unwrap();
+        let naive = DateTime::strptime("%F %T", "2026-10-25 02:30:00").unwrap();
+        let zoned = channel_datetime(&timezone, naive).unwrap();
+
+        assert_eq!(
+            zoned.strftime("%FT%T%:z").to_string(),
+            "2026-10-25T02:30:00+02:00"
+        );
     }
 }

@@ -15,14 +15,13 @@ use axum::{
     },
     middleware::Next,
 };
-use chrono::{DateTime, FixedOffset};
-use chrono_tz::Tz;
 use flexi_logger::{
     Age, Cleanup, Criterion, DeferredNow, FileSpec, Level, LogSpecification, Logger, Naming,
     WriteMode,
     filter::{LogLineFilter, LogLineWriter},
     writers::{FileLogWriter, LogWriter},
 };
+use jiff::{Timestamp, tz::TimeZone};
 use log::{kv::Value, *};
 use real::RealIp;
 use regex::{Captures, Regex};
@@ -321,7 +320,7 @@ impl LogWriter for LogMailer {
         let message = record.args().to_string();
         let level = record.level();
         let mail_queues = self.mail_queues.clone();
-        let now = now.now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = now.format("%Y-%m-%d %H:%M:%S").to_string();
         let msg = strip_tags(&message);
 
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
@@ -513,16 +512,16 @@ pub fn remove_html(input: &str) -> String {
     cleaned.to_string()
 }
 
-pub fn timestamps_to_timezone(input: &str, target_tz: Tz) -> String {
+pub fn timestamps_to_timezone(input: &str, target_tz: TimeZone) -> String {
     let re = Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2}:\d{2}").unwrap();
 
     re.replace_all(input, |caps: &Captures| {
         let ts_str = &caps[0];
-        match ts_str.parse::<DateTime<FixedOffset>>() {
+        match ts_str.parse::<Timestamp>() {
             Ok(original_dt) => {
-                let converted = original_dt.with_timezone(&target_tz);
+                let converted = original_dt.to_zoned_datetime(target_tz.clone());
 
-                converted.format("%Y-%m-%d %H:%M:%S%.6f").to_string()
+                converted.strftime("%Y-%m-%d %H:%M:%S%.6f").to_string()
             }
             Err(_) => ts_str.to_string(),
         }
@@ -535,9 +534,9 @@ fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) 
 
     if ARGS.log_timestamp {
         let time = if ARGS.fake_time.is_some() {
-            time_now(&None).format(TIME_FORMAT)
+            time_now(&None).strftime(TIME_FORMAT).to_string()
         } else {
-            now.now().format(TIME_FORMAT)
+            now.format(TIME_FORMAT).to_string()
         };
 
         write!(
@@ -558,7 +557,7 @@ fn file_formatter(
 ) -> std::io::Result<()> {
     let time = format!(
         "<span class=\"log-gray\">[{}]</span>",
-        now.now().format(TIME_FORMAT)
+        now.format(TIME_FORMAT)
     );
     let log_line = format_level(record);
 
@@ -776,14 +775,32 @@ mod tests {
         DeferredNow,
         filter::{LogLineFilter, LogLineWriter},
     };
+    use jiff::{Timestamp, tz::TimeZone};
     use log::{Level, LevelFilter, Record};
 
     use super::{
         LogConsole, MoqWebSocketLogFilter, cpu_bench_line_count, explicitly_targets_console,
-        format_level, html_to_ansi, record_channel,
+        file_formatter, format_level, html_to_ansi, record_channel, timestamps_to_timezone,
     };
 
     type CapturedLog = (Level, String, String, Option<i32>);
+
+    #[test]
+    fn file_timestamp_keeps_microseconds_and_an_offset_for_timezone_conversion() {
+        let mut output = Vec::new();
+        let record = Record::builder().args(format_args!("message")).build();
+
+        file_formatter(&mut output, &mut DeferredNow::new(), &record).unwrap();
+
+        let output = String::from_utf8(output).unwrap();
+        let timestamp = output.split_once('[').unwrap().1.split_once(']').unwrap().0;
+        let parsed = timestamp.parse::<Timestamp>().unwrap();
+        let expected = parsed.to_zoned_datetime(TimeZone::UTC);
+        let converted = timestamps_to_timezone(&output, TimeZone::UTC);
+
+        assert_eq!(timestamp.len(), "2026-01-01 00:00:00.000000+00:00".len());
+        assert!(converted.contains(&format!("[{}]", expected.strftime("%Y-%m-%d %H:%M:%S%.6f"))));
+    }
 
     #[derive(Default)]
     struct CapturedLogs(RefCell<Vec<CapturedLog>>);

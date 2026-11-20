@@ -3,8 +3,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::{format::ParseErrorKind, prelude::*};
-use chrono_tz::Tz;
+use jiff::{
+    civil::{Date, DateTime},
+    fmt::temporal::DateTimeParser,
+    tz::TimeZone,
+};
 use log::*;
 use path_clean::PathClean;
 use tokio::fs;
@@ -69,7 +72,7 @@ pub fn public_path() -> PathBuf {
 pub async fn read_log_file(
     channel_id: &i32,
     date: &str,
-    timezone: Tz,
+    timezone: TimeZone,
     download: bool,
 ) -> Result<String, ServiceError> {
     let date_str = if date.is_empty() {
@@ -117,7 +120,7 @@ pub fn sizeof_fmt(mut num: f64) -> String {
     format!("{num:.1}Yi{suffix}")
 }
 
-pub fn naive_date_time_from_str<'de, D>(deserializer: D) -> Result<NaiveDateTime, D::Error>
+pub fn naive_date_time_from_str<'de, D>(deserializer: D) -> Result<DateTime, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -128,7 +131,7 @@ where
 
 pub fn optional_naive_date_time_from_str<'de, D>(
     deserializer: D,
-) -> Result<Option<NaiveDateTime>, D::Error>
+) -> Result<Option<DateTime>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -139,17 +142,11 @@ where
         .map_err(de::Error::custom)
 }
 
-fn parse_naive_date_time(s: &str) -> Result<NaiveDateTime, chrono::ParseError> {
-    match NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
-        Ok(date_time) => Ok(date_time),
-        Err(e) => {
-            if e.kind() == ParseErrorKind::TooShort {
-                NaiveDateTime::parse_from_str(&format!("{s}T00:00:00"), "%Y-%m-%dT%H:%M:%S")
-            } else {
-                NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%#z")
-            }
-        }
-    }
+fn parse_naive_date_time(s: &str) -> Result<DateTime, jiff::Error> {
+    DateTime::strptime("%Y-%m-%dT%H:%M:%S", s)
+        .or_else(|_| Date::strptime("%Y-%m-%d", s).map(|date| date.at(0, 0, 0, 0)))
+        .or_else(|_| DateTimeParser::new().parse_datetime(s))
+        .or_else(|_| DateTime::strptime("%Y-%m-%dT%H:%M:%SZ", s))
 }
 
 pub fn round_to_nearest_ten(num: i64) -> i64 {

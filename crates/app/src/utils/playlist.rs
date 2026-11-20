@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use log::*;
 use tokio::fs;
 
@@ -16,8 +16,8 @@ use crate::{
 pub(crate) fn playlist_path(config: &PlayoutConfig, date: &str) -> Result<PathBuf, ServiceError> {
     let invalid_date =
         || ServiceError::BadRequest("Invalid playlist date; expected YYYY-MM-DD".into());
-    let parsed = NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| invalid_date())?;
-    let normalized = parsed.format("%Y-%m-%d").to_string();
+    let parsed = Date::strptime("%Y-%m-%d", date).map_err(|_| invalid_date())?;
+    let normalized = parsed.strftime("%Y-%m-%d").to_string();
 
     if date.len() != 10 || date != normalized {
         return Err(invalid_date());
@@ -34,8 +34,8 @@ pub(crate) fn playlist_path(config: &PlayoutConfig, date: &str) -> Result<PathBu
     }
 
     let path = root
-        .join(parsed.format("%Y").to_string())
-        .join(parsed.format("%m").to_string())
+        .join(parsed.strftime("%Y").to_string())
+        .join(parsed.strftime("%m").to_string())
         .join(normalized)
         .with_extension("json");
 

@@ -5,7 +5,7 @@ use std::{
 
 use argon2::{Argon2, PasswordHasher, PasswordVerifier, password_hash::phc::PasswordHash};
 use axum::{Json as AxumJson, extract::State, http::StatusCode, response::IntoResponse};
-use chrono::{DateTime, TimeDelta, Utc};
+use jiff::{SignedDuration, Timestamp};
 use jsonwebtoken::{self, DecodingKey, EncodingKey, Header, Validation};
 use log::*;
 use rand::RngExt;
@@ -26,6 +26,7 @@ use crate::{
 const ACCESS_LIFETIME_MINUTES: i64 = 45;
 const REFRESH_LIFETIME_DAYS: i64 = 14;
 const ACCESS_LIFETIME_SECONDS: i64 = ACCESS_LIFETIME_MINUTES * 60;
+const REFRESH_LIFETIME_SECONDS: i64 = REFRESH_LIFETIME_DAYS * 86_400;
 
 // Global storage for verification codes
 pub static VERIFICATION_CODES: LazyLock<Arc<Mutex<HashMap<String, VerificationCode>>>> =
@@ -45,14 +46,14 @@ pub struct VerificationCode {
     pub code: String,
     pub user: User,
     pub role: Role,
-    pub created_at: DateTime<Utc>,
+    pub created_at: Timestamp,
 }
 
 impl VerificationCode {
-    fn is_valid_at(&self, now: DateTime<Utc>) -> bool {
-        let age = now.signed_duration_since(self.created_at);
+    fn is_valid_at(&self, now: Timestamp) -> bool {
+        let age = now.duration_since(self.created_at);
 
-        age >= TimeDelta::zero() && age < TimeDelta::minutes(5)
+        age >= SignedDuration::ZERO && age < SignedDuration::from_secs(300)
     }
 }
 
@@ -85,7 +86,7 @@ pub enum TokenType {
 
 impl Claims {
     fn access(user: User, role: Role) -> Self {
-        let now = Utc::now();
+        let now = Timestamp::now().as_second();
         Self {
             id: user.id,
             channels: user.channel_ids.unwrap_or_default(),
@@ -93,13 +94,13 @@ impl Claims {
             role,
             token_type: TokenType::Access,
             jti: None,
-            iat: now.timestamp(),
-            exp: (now + TimeDelta::minutes(ACCESS_LIFETIME_MINUTES)).timestamp(),
+            iat: now,
+            exp: now + ACCESS_LIFETIME_SECONDS,
         }
     }
 
     fn refresh(user: User, role: Role, jti: String) -> Self {
-        let now = Utc::now();
+        let now = Timestamp::now().as_second();
         Self {
             id: user.id,
             channels: user.channel_ids.unwrap_or_default(),
@@ -107,8 +108,8 @@ impl Claims {
             role,
             token_type: TokenType::Refresh,
             jti: Some(jti),
-            iat: now.timestamp(),
-            exp: (now + TimeDelta::days(REFRESH_LIFETIME_DAYS)).timestamp(),
+            iat: now,
+            exp: now + REFRESH_LIFETIME_SECONDS,
         }
     }
 }
@@ -218,7 +219,7 @@ async fn issue_token_pair(
         &jti,
         user_id,
         expires_at,
-        Utc::now().timestamp(),
+        Timestamp::now().as_second(),
     )
     .await?;
 
@@ -245,7 +246,7 @@ async fn rotate_token_pair(
         &new_jti,
         old_claims.id,
         expires_at,
-        Utc::now().timestamp(),
+        Timestamp::now().as_second(),
     )
     .await?;
 
@@ -349,7 +350,7 @@ pub async fn login(
                         code: verification_code.clone(),
                         user,
                         role,
-                        created_at: Utc::now(),
+                        created_at: Timestamp::now(),
                     };
 
                     {
@@ -358,7 +359,7 @@ pub async fn login(
                         // spawning a per-login timer task; that avoids
                         // accumulating sleeping tasks under login floods and the
                         // race where a stale timer removes a freshly issued code.
-                        let now = Utc::now();
+                        let now = Timestamp::now();
                         codes.retain(|_, entry| entry.is_valid_at(now));
                         codes.insert(username.clone(), verification_entry);
                     }
@@ -456,7 +457,7 @@ pub async fn verify(
 
         if let Some(verification) = codes.get(&username) {
             // Check if code is still valid (max 5 minutes)
-            if !verification.is_valid_at(Utc::now()) {
+            if !verification.is_valid_at(Timestamp::now()) {
                 codes.remove(&username);
                 return Ok((
                     StatusCode::BAD_REQUEST,
@@ -628,7 +629,7 @@ pub async fn logout(
     if let Ok(claims) = decode_refresh_jwt(&data.refresh).await
         && let Some(jti) = claims.jti
     {
-        handles::revoke_refresh_family(&state.pool, &jti, claims.id, Utc::now().timestamp())
+        handles::revoke_refresh_family(&state.pool, &jti, claims.id, Timestamp::now().as_second())
             .await?;
     }
 
@@ -684,7 +685,7 @@ mod tests {
 
     #[test]
     fn verification_expiration_uses_the_exact_five_minute_boundary() {
-        let now = Utc::now();
+        let now = Timestamp::now();
         let verification = VerificationCode {
             code: "123456".to_string(),
             user: user(),
@@ -693,10 +694,10 @@ mod tests {
         };
 
         assert!(verification.is_valid_at(now));
-        assert!(verification.is_valid_at(now + TimeDelta::seconds(299)));
-        assert!(!verification.is_valid_at(now + TimeDelta::minutes(5)));
-        assert!(!verification.is_valid_at(now + TimeDelta::seconds(301)));
-        assert!(!verification.is_valid_at(now - TimeDelta::seconds(1)));
+        assert!(verification.is_valid_at(now + SignedDuration::from_secs(299)));
+        assert!(!verification.is_valid_at(now + SignedDuration::from_secs(300)));
+        assert!(!verification.is_valid_at(now + SignedDuration::from_secs(301)));
+        assert!(!verification.is_valid_at(now - SignedDuration::from_secs(1)));
     }
 
     #[test]
@@ -706,10 +707,7 @@ mod tests {
         assert!(access.jti.is_none());
 
         let refresh = Claims::refresh(user(), Role::GlobalAdmin, "token-id".into());
-        assert_eq!(
-            refresh.exp - refresh.iat,
-            TimeDelta::days(REFRESH_LIFETIME_DAYS).num_seconds()
-        );
+        assert_eq!(refresh.exp - refresh.iat, REFRESH_LIFETIME_DAYS * 86_400);
         assert_eq!(refresh.jti.as_deref(), Some("token-id"));
     }
 }

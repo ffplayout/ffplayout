@@ -56,6 +56,13 @@ pub async fn update_channel(
 ) -> Result<SqliteQueryResult, ProcessError> {
     const QUERY: &str = "UPDATE channels SET name = $2, preview_url = $3, extra_extensions = $4, public = $5, playlists = $6, storage = $7, timezone = $8 WHERE id = $1";
 
+    let timezone = channel
+        .timezone
+        .as_ref()
+        .map(|tz| tz.iana_name().ok_or("Expected an IANA channel time zone"))
+        .transpose()
+        .map_err(|err| ProcessError::Input(err.into()))?;
+
     let result = sqlx::query(QUERY)
         .bind(id)
         .bind(channel.name)
@@ -64,7 +71,7 @@ pub async fn update_channel(
         .bind(channel.public)
         .bind(channel.playlists)
         .bind(channel.storage)
-        .bind(channel.timezone.map(|tz| tz.to_string()))
+        .bind(timezone)
         .execute(pool)
         .await?;
 

@@ -22,7 +22,7 @@ processing-bench = ["ff-engine/processing-bench"]
 ffmpeg-filter = ["ff-engine/ffmpeg-filter"]
 ffmpeg-device = ["ff-engine/ffmpeg-device"]
 jemalloc = ["dep:tikv-jemallocator"]
-mimalloc = ["dep:mimalloc"]
+mimalloc = ["dep:rustfs-mimalloc"]
 
 [dependencies]
 ff-graphics = { path = "../graphics", features = ["ffmpeg"] }
@@ -53,21 +53,15 @@ axum = { version = "0.8", default-features = false, features = [
 ] }
 argon2 = "0.6"
 async-walkdir = "2"
-chrono = { version = "0.4", default-features = false, features = [
-    "clock",
-    "std",
-    "serde",
-] }
-chrono-tz = { version = "0.10", features = ["serde"] }
 clap = { version = "4.3", features = ["derive", "env"] }
 console-subscriber = { version = "0.5", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 derive_more = { version = "2", features = ["display"] }
 faccess = "0.2"
-flexi_logger = { version = "0.31", features = ["async", "colors", "kv"] }
-iana-time-zone = "0.1"
+flexi_logger = { version = "0.32", features = ["async", "colors", "kv"] }
 include_dir = { version = "0.7", optional = true }
 inquire = "0.9"
+jiff = { version = "1", features = ["serde", "tzdb-bundle-always"] }
 jsonwebtoken = { version = "12", default-features = false, features = ["rust_crypto"] }
 lazy-limit = "1"
 lettre = { version = "0.11", features = [
@@ -122,11 +116,11 @@ tokio = { version = "1.44", features = [
 ] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
-ts-rs = { version = "12", features = ["chrono-impl", "no-serde-warnings"] }
+ts-rs = { version = "12", features = ["no-serde-warnings"] }
 uuid = { version = "1.18", features = ["v4"] }
 
 [target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
-mimalloc = { version = "0.1.52", optional = true, features = ["override"] }
+rustfs-mimalloc = { version = "0.7.4", optional = true, features = ["override"] }
 tikv-jemallocator = { version = "0.7", optional = true, features = ["override_allocator_on_supported_platforms"] }
 
 [dev-dependencies]

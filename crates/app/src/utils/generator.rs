@@ -5,7 +5,6 @@
 /// The generator takes the files from storage, which are set in config.
 /// It also respect the shuffle/sort mode.
 use async_walkdir::WalkDir;
-use chrono::Timelike;
 use lexical_sort::{StringSort, natural_lexical_cmp};
 use log::*;
 use rand::{RngExt, rng, seq::SliceRandom};

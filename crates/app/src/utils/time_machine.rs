@@ -1,35 +1,34 @@
 /// These functions are made for testing purposes.
 /// It allows, with a hidden command line argument, to override the time in this program.
 /// It is like a time machine where you can fake the time and make the hole program think it is running in the future or past.
-use std::{io, str::FromStr};
+use std::io;
 
 #[cfg(test)]
 use std::cell::Cell;
 #[cfg(not(test))]
 use std::sync::{Arc, LazyLock, RwLock};
 
-use chrono::{TimeDelta, prelude::*};
-use chrono_tz::Tz;
+use jiff::{SignedDuration, Timestamp, ZonedDateTime, tz::TimeZone};
+use serde::{Deserialize, Deserializer, de};
 
 // Application-wide offset used by --fake-time.
 #[cfg(not(test))]
-static DATE_TIME_DIFF: LazyLock<Arc<RwLock<Option<TimeDelta>>>> =
+static DATE_TIME_DIFF: LazyLock<Arc<RwLock<Option<SignedDuration>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(None)));
 
 // Unit tests use synchronous, scoped clocks so parallel tests cannot interfere.
 #[cfg(test)]
 thread_local! {
-    static DATE_TIME_DIFF: Cell<Option<TimeDelta>> = const { Cell::new(None) };
+    static DATE_TIME_DIFF: Cell<Option<SignedDuration>> = const { Cell::new(None) };
 }
 
 // Set the mock time offset if `--fake-time` argument is provided
 pub fn set_mock_time(fake_time: &Option<String>) -> Result<(), io::Error> {
     if let Some(time) = fake_time {
-        match DateTime::parse_from_rfc3339(time) {
+        match time.parse::<Timestamp>() {
             Ok(mock_time) => {
-                let mock_time: DateTime<Utc> = mock_time.into();
                 // Calculate the offset from the real current time
-                let offset = Some(Utc::now() - mock_time);
+                let offset = Some(Timestamp::now().duration_since(mock_time));
                 #[cfg(not(test))]
                 {
                     *DATE_TIME_DIFF.write().unwrap() = offset;
@@ -49,35 +48,56 @@ pub fn set_mock_time(fake_time: &Option<String>) -> Result<(), io::Error> {
     Ok(())
 }
 
-// Function to get the current time, using either real or mock time based on `--fake-time`
-pub fn time_now(timezone: &Option<Tz>) -> DateTime<Tz> {
-    let utc_now: DateTime<Utc> = Utc::now();
+pub(crate) fn parse_channel_timezone(name: &str) -> Option<TimeZone> {
+    TimeZone::get(name)
+        .ok()
+        .filter(|tz| tz.iana_name().is_some())
+}
 
-    let tz = match timezone {
-        Some(tz) => *tz,
-        None => match iana_time_zone::get_timezone()
-            .ok()
-            .and_then(|t: String| Tz::from_str(&t).ok())
-        {
-            Some(tz) => tz,
-            None => Tz::UTC,
-        },
-    };
+pub(crate) fn deserialize_channel_timezone<'de, D>(
+    deserializer: D,
+) -> Result<Option<TimeZone>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let name = Option::<String>::deserialize(deserializer)?;
+
+    name.map(|name| {
+        parse_channel_timezone(&name)
+            .ok_or_else(|| de::Error::custom(format!("Invalid IANA time zone: {name}")))
+    })
+    .transpose()
+}
+
+pub(crate) fn default_channel_timezone() -> TimeZone {
+    TimeZone::try_system()
+        .ok()
+        .filter(|tz| tz.iana_name().is_some())
+        .unwrap_or(TimeZone::UTC)
+}
+
+// Function to get the current time, using either real or mock time based on `--fake-time`
+pub fn time_now(timezone: &Option<TimeZone>) -> ZonedDateTime {
+    let utc_now = Timestamp::now();
+
+    let tz = timezone.clone().unwrap_or_else(default_channel_timezone);
 
     #[cfg(not(test))]
     let offset = DATE_TIME_DIFF.read().ok().and_then(|d| *d);
     #[cfg(test)]
     let offset = DATE_TIME_DIFF.get();
 
+    let local = utc_now.to_zoned_datetime(tz);
+
     match offset {
-        Some(d) => utc_now.with_timezone(&tz) - d,
-        None => utc_now.with_timezone(&tz),
+        Some(d) => local.saturating_sub(d),
+        None => local,
     }
 }
 
 #[cfg(test)]
 pub(crate) fn with_mock_time<T>(time: &str, test: impl FnOnce() -> T) -> T {
-    struct ResetClock(Option<TimeDelta>);
+    struct ResetClock(Option<SignedDuration>);
 
     impl Drop for ResetClock {
         fn drop(&mut self) {
@@ -100,8 +120,8 @@ mod tests {
         let before = DATE_TIME_DIFF.get();
         with_mock_time("2022-05-20T06:00:00+02:00", || {
             assert_eq!(
-                time_now(&Some(Tz::Europe__Berlin))
-                    .format("%FT%T%:z")
+                time_now(&Some(TimeZone::get("Europe/Berlin").unwrap()))
+                    .strftime("%FT%T%:z")
                     .to_string(),
                 "2022-05-20T06:00:00+02:00"
             );

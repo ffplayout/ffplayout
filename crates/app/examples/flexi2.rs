@@ -37,7 +37,7 @@ fn file_formatter(
     write!(
         w,
         "[{}] [{:>5}] {}",
-        now.now().format("%Y-%m-%d %H:%M:%S%.6f"),
+        now.format("%Y-%m-%d %H:%M:%S%.6f"),
         record.level(),
         record.args()
     )

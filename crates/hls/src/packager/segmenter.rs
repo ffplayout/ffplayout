@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, ensure};
-use chrono::{DateTime, SecondsFormat, Utc};
+use jiff::{SignedDuration, Timestamp};
 
 use crate::manifest::{Playlist, Segment, atomic_write, load_codecs, safe_name};
 
@@ -49,7 +49,7 @@ pub struct Packager<T, W> {
     sequence: u64,
     file_number: u64,
     discontinuity: bool,
-    wall_anchor: Option<(i64, DateTime<Utc>)>,
+    wall_anchor: Option<(i64, Timestamp)>,
     program_date_time: bool,
     finished: bool,
 }
@@ -398,7 +398,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                         .and_then(|slot| slot.checked_mul(self.segment_us))
                         .context("HLS target timestamp overflow")?,
                 );
-                self.wall_anchor = Some((start, Utc::now()));
+                self.wall_anchor = Some((start, Timestamp::now()));
             }
         }
 
@@ -485,6 +485,18 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             playlist.validate_duration(duration)?;
         }
 
+        let date = if self.program_date_time {
+            let (anchor, date) = self
+                .wall_anchor
+                .context("native HLS wall clock anchor missing")?;
+            let offset = SignedDuration::from_micros_i128(i128::from(start) - i128::from(anchor));
+            let date = date.checked_add(offset)?;
+
+            Some(date.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
+        } else {
+            None
+        };
+
         // Keep the completed segment in its existing storage. Move only
         // the packets beyond the cut into the buffer for the next segment.
         mem::swap(&mut self.packets, &mut self.completed);
@@ -505,13 +517,6 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         );
         self.completed.sort_by_key(|packet| packet.dts_us);
         self.bytes = self.packets.iter().map(|packet| packet.bytes).sum();
-
-        let date = self.program_date_time.then(|| {
-            let (anchor, date) = self.wall_anchor.expect("initialized with first keyframe");
-
-            (date + chrono::Duration::microseconds(start - anchor))
-                .to_rfc3339_opts(SecondsFormat::Millis, true)
-        });
 
         // All media resources are complete before any playlist can expose them.
         let media_result = self

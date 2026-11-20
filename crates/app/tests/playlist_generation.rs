@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use chrono::NaiveTime;
+use jiff::civil::Time;
 use sqlx::sqlite::SqlitePoolOptions;
 
 use ffplayout::{
@@ -130,14 +130,14 @@ async fn test_generate_playlist_from_template() {
     config.general.template = Some(Template {
         sources: vec![
             Source {
-                start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
-                duration: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+                start: Time::MIN,
+                duration: Time::constant(12, 0, 0, 0),
                 shuffle: false,
                 paths: vec![current_path.join("storage")],
             },
             Source {
-                start: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
-                duration: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+                start: Time::constant(12, 0, 0, 0),
+                duration: Time::constant(12, 0, 0, 0),
                 shuffle: true,
                 paths: vec![current_path.join("storage")],
             },

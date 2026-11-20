@@ -201,7 +201,7 @@ async fn access_token(state: &AppState, id: i32) -> String {
         .await
         .unwrap();
 
-    let now = chrono::Utc::now().timestamp();
+    let now = jiff::Timestamp::now().as_second();
     let claims = serde_json::from_value(serde_json::json!({
         "id": user.id,
         "channels": user.channel_ids.unwrap_or_default(),
