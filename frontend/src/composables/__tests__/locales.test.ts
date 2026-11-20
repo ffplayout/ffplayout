@@ -5,6 +5,7 @@ import de from '../../locales/de-DE.ts'
 import en from '../../locales/en-US.ts'
 import pt from '../../locales/pt-BR.ts'
 import ru from '../../locales/ru-RU.ts'
+import zh from '../../locales/zh-CN.ts'
 
 function entries(messages: object, prefix = ''): [string, string][] {
     return Object.entries(messages).flatMap(([key, value]) =>
@@ -16,7 +17,7 @@ function placeholders(value: string): string[] {
     return [...new Set([...value.matchAll(/\{\s*([a-zA-Z_]\w*|\d+)\s*\}/g)].map((match) => match[1]))].sort()
 }
 
-for (const [locale, messages] of Object.entries({ de, en, 'pt-br': pt, ru })) {
+for (const [locale, messages] of Object.entries({ de, en, 'pt-br': pt, ru, zh })) {
     test(`${locale} supplies all translation keys and valid message syntax`, () => {
         const expected = entries(en)
             .map(([key]) => key)

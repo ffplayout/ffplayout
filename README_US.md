@@ -1,0 +1,122 @@
+**ffplayout**
+================
+
+**[English](README_US.md) | [简体中文](README_ZH.md)**
+
+[![Validate](https://github.com/ffplayout/ffplayout/actions/workflows/validate.yml/badge.svg)](https://github.com/ffplayout/ffplayout/actions/workflows/validate.yml) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![GitHub Release](https://img.shields.io/github/v/release/ffplayout/ffplayout)](https://github.com/ffplayout/ffplayout/releases/latest)
+
+![player](/docs/images/player.png)
+
+[View all frontend screenshots](docs/images/README.md)
+
+ffplayout is a 24/7 broadcasting solution. It can playout a folder containing video clips, or play a *JSON* playlist for each day, keeping the current playlist editable.
+
+The application is mostly designed to run as a system service on Linux. In general it should run on any platform supported by Rust and FFmpeg.
+
+Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for prebuilt packages.
+
+### Features
+
+- start program with [web based frontend](/frontend/), or run playout in foreground mode without frontend
+- dynamic playlist
+- replace missing playlist or clip with single filler or multiple fillers from folder, if no filler exists, create dummy clip
+- playing clips in [watched](/docs/folder_mode.md) folder mode
+- send emails and [HTTP push notifications](/docs/notifications.md) for log alerts
+- overlay a [static or animated logo](docs/animated_logos.md)
+- control manual graphics, text and the program logo on the [Graphics page](docs/graphics_control.md) (**experimental** for manual graphics)
+- schedule [image/video graphics and lower thirds](docs/playlist_graphics.md) per playlist clip, with fades and repetitions (**experimental**)
+- overlay text, controllable through [web frontend](/frontend/)
+- loop playlist infinitely
+- [remote source](/docs/remote_source.md)
+- trim last clip, to get full 24 hours
+- when playlist is not 24 hours long, loop fillers until time is full
+- set a custom day start, for example from 06:00 to 06:00 instead of midnight to midnight
+- normal system requirements and no special tools beyond FFmpeg libraries
+- CPU-based processing; a GPU is not required
+- log to channel log files, mail queues, or color output to console
+- Conform audio and video as needed to match the output stream:
+  - letterbox or pillarbox to fit aspect
+  - change fps
+  - fit target resolution
+  - add silence if audio duration is too short
+  - hold the last frame if video duration is too short
+- [output](/docs/output.md): **stream**, **desktop**, **HLS**, and experimental **MoQ**
+- RTMP/SRT [live ingest](/docs/live_ingest.md)
+- image source (will loop until out duration is reached)
+- import playlist from text or m3u file, with CLI or frontend
+- generate playlist based on [template](/docs/playlist_gen.md)
+- run an [external task](/docs/external_tasks.md) when a clip starts
+- During playlist import, all video clips are validated and, if desired, checked to ensure that the audio track is not completely muted.
+- run multiple channels
+- WebVTT [subtitles](/docs/closed_captions.md) in HLS mode
+- multiple simultaneous [outputs](/docs/output.md) per channel, with individual resolutions and a shared program frame rate (experimental *)
+- explicit encoding sharing between compatible outputs, including selection of an HLS rendition as the encoding source (experimental *)
+- built-in [MoQ playback](/docs/moq.md) in the frontend: private publication starts on demand with a three-minute grace period; the optional public player publishes continuously and is disabled by default; it is intended for testing and small previews rather than serving many viewers (experimental *)
+- independent output reconnection: automatic retries every 15 seconds for up to three minutes, followed by a manual retry option; successful media delivery resets the retry window (experimental *)
+
+**\* Experimental features do not guarantee the same stability and may fail under unusual circumstances. Code and configuration options may change in the future.**
+
+Configure the new output instances in **Settings → Outputs**. HLS, Stream and MoQ outputs support experimental live configuration and activation changes. Program format, desktop and recording changes still require a channel restart. Reconnection uses the running configuration and keeps other outputs running. Multi-output, shared encoding, MoQ playback and reconnection still need sustained testing with real streaming destinations and browser playback before production use.
+
+### Requirements
+
+- RAM and CPU usage depends on video resolution; at least 4 dedicated threads and 3GB RAM for 720p are recommended
+- **FFmpeg** v7.0+ development libraries are required with either HLS packager; the maximum supported version follows `ffmpeg-next` and is currently FFmpeg 9.1. With the FFmpeg packager, builds with `libavformat` before v61.9.100 can use WebVTT subtitles, but may not support custom HLS subtitle display names. The native packager supports custom subtitle display names independently of the `libavformat` version.
+- **Live HLS subtitles:** The FFmpeg packager currently does not write `EXT-X-PROGRAM-DATE-TIME` to WebVTT subtitle playlists, which can cause subtitles to disappear during longer playback in hls.js and Video.js 10 using hls.js. The native packager with `hls_flags=program_date_time` writes matching timestamps to video and subtitle playlists. See [subtitles](docs/closed_captions.md) for details.
+- The macOS and Windows releases do not include FFmpeg shared libraries. Follow the [macOS](docs/install.md#macos) or [Windows](docs/install.md#windows) installation instructions to install them separately.
+
+### Install
+
+Check [install](docs/install.md) for details about how to install ffplayout.
+
+### Quick Start
+
+See [export and restore settings](docs/install.md#export-and-restore-settings)
+for complete JSON configuration exports using `--dump-config` and `--import-config`.
+
+1. Install a package from the [latest release](https://github.com/ffplayout/ffplayout/releases/latest).
+2. Start the ffplayout service as described in the [installation guide](docs/install.md).
+3. Open `http://<server-address>:8787` and complete the first-time setup. It creates the global settings and the first global admin.
+
+HLS is the default output mode. For production delivery, serve the generated HLS files through nginx, another web server, or a CDN; ffplayout's built-in HTTP route is intended for previewing.
+
+---
+
+### JSON Playlist Example
+
+```json
+{
+    "channel": "My Channel",
+    "date": "2026-07-15",
+    "program": [{
+            "in": 0,
+            "out": 647.68,
+            "duration": 647.68,
+            "source": "/Media/clip1.mp4"
+        }, {
+            "in": 0,
+            "out": 149,
+            "duration": 149,
+            "source": "/Media/clip2.mp4",
+            "ad": true
+        }, {
+            "in": 0,
+            "out": 114.72,
+            "duration": 114.72,
+            "source": "/Media/image.jpg"
+        }, {
+            "in": 0,
+            "out": 2531.36,
+            "duration": 2531.36,
+            "source": "https://example.org/big_buck_bunny.webm",
+            "ad": false
+        }
+    ]
+}
+```
+If you are in playlist mode and move backwards or forwards in time, the time shift is saved so the playlist is still in sync. Bear in mind, however, that this may make your playlist too short. If you do not reset it, it will automatically reset the next day.
+
+## Day-Long Playlists
+
+For continuous, day-based playout across multiple days, configure a **day_start** value and set **length** to **24 hours**. For shorter scheduled runs, start ffplayout with a scheduler such as `cron` or systemd timers.
