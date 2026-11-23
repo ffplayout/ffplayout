@@ -1074,6 +1074,13 @@ fn play_to_output<O: FrameOutput>(
                 .duration_seconds
                 .filter(|duration| duration.is_finite() && *duration > 0.0)
                 .map_or((fallback_duration, *timeline), |duration| (duration, start));
+
+            if !path.is_empty() {
+                log::error!(channel = config.channel_id.unwrap_or_default();
+                    "failed while playing {path}: {reason}; starting fallback"
+                );
+            }
+
             match write_fallback(
                 path,
                 config,

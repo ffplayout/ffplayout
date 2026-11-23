@@ -3,8 +3,7 @@ use std::sync::atomic::Ordering;
 use std::thread;
 
 use crate::{
-    PlaybackControl,
-    benchmark::{self, Stage},
+    PlaybackControl, benchmark,
     input::diagnostics::LiveInputStage,
     playout::{
         VideoDecoder, black_video_frame_for_config, div_ceil, encode_composited_frame,
@@ -96,7 +95,7 @@ pub(super) fn run(context: WorkerContext, spec: &StreamSpec) {
             if let Some(diagnostics) = diagnostics {
                 diagnostics.set_stage(LiveInputStage::ProcessingVideo);
             }
-            benchmark::measure(Stage::VideoDecode, || video.decoder.send_packet(&packet))?;
+            video.recovery.send(&mut video.decoder, &packet)?;
             receive_video_frames(
                 cfg,
                 None,

@@ -361,21 +361,13 @@ async fn play_loop(
                 node_sources = source_generator(manager.clone()).await;
                 continue;
             }
-            ClipResult::Played => {}
+            ClipResult::Played | ClipResult::Fallback { .. } => {}
             ClipResult::Skipped => {
                 // Global shutdown also uses `skip_current` to interrupt the
                 // decoder. That expected cleanup must not look like a manual
                 // skip in the log.
                 if manager.is_alive.load(Ordering::SeqCst) {
                     debug!(channel = id; "Skipped current clip by control command");
-                }
-            }
-            ClipResult::Fallback { reason } => {
-                if !node.source.is_empty() {
-                    error!(channel = id;
-                        "failed while playing {}: {reason}; fallback generated",
-                        display_source
-                    );
                 }
             }
             ClipResult::Stopped => {

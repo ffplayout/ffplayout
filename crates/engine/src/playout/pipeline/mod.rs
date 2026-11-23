@@ -59,7 +59,7 @@ pub(super) struct StreamSpec {
     time_base: Rational,
     average_rate: Rational,
     rate: Rational,
-    start_us: Option<i64>,
+    pub(super) start_us: Option<i64>,
     end_us: Option<i64>,
     frames: i64,
     #[cfg(test)]

@@ -8,6 +8,7 @@ use ffmpeg_next::{
 };
 use log::{debug, trace, warn};
 
+mod decode;
 mod pipeline;
 mod seek;
 
@@ -23,6 +24,8 @@ use crate::{
         helper::{even, is_live_input, open_media_input},
     },
 };
+
+use self::decode::DecodeRecovery;
 
 const LOGO_FADE_SECONDS: f64 = 1.0;
 const MEDIA_FADE_SECONDS: f64 = 1.0;
@@ -748,7 +751,7 @@ fn finish_video<O: FrameOutput>(
     }
 
     if let Some(video) = video.as_mut() {
-        benchmark::measure(Stage::VideoDecode, || video.decoder.send_eof())?;
+        video.recovery.start_drain(&mut video.decoder)?;
         receive_video_frames(
             cfg,
             audio_padding_end_pts,
@@ -941,9 +944,7 @@ fn receive_video_frames<O: FrameOutput>(
 ) -> Result<()> {
     let mut raw = frame::Video::empty();
 
-    while benchmark::measure_success(Stage::VideoDecode, || video.decoder.receive_frame(&mut raw))
-        .is_ok()
-    {
+    while video.recovery.receive(&mut video.decoder, &mut raw)? {
         if let Some(diagnostics) = output.input_diagnostics() {
             diagnostics.video_decoded();
         }
@@ -990,6 +991,17 @@ fn receive_video_frames<O: FrameOutput>(
                 Rational(1, video.output_fps as i32),
             )
         });
+        if !timeline.source_timestamp_mode
+            && video.recovery.errors() != 0
+            && video.frame_rate_converter.first_timestamp.is_none()
+        {
+            // A damaged first frame must not move the origin of the file.
+            video.frame_rate_converter.first_timestamp = video
+                .file_start_pts
+                .zip(timestamp)
+                .map(|(start, pts)| start.min(pts));
+        }
+
         let output_frames = video.frame_rate_converter.output_frames(timestamp);
         if output_frames == 0 {
             continue;
@@ -1220,44 +1232,32 @@ fn receive_audio_frames<O: FrameOutput>(
         if limit_pts.is_some_and(|limit| timeline.audio_pts >= limit) {
             return Ok(());
         }
-        let (mut converted, source_pts) = if let Some(pending) = audio.pending_output.take() {
-            pending
-        } else {
-            if benchmark::measure_success(Stage::AudioDecode, || {
-                audio.decoder.receive_frame(&mut raw)
-            })
-            .is_err()
-            {
-                break;
-            }
-            if let Some(diagnostics) = output.input_diagnostics() {
-                diagnostics.audio_decoded();
-            }
-            if raw.channel_layout().is_empty() {
-                raw.set_channel_layout(audio.input_channel_layout);
-            }
-            let buffered = audio.resampler.delay().map_or(0, |delay| delay.output);
-            let converted = benchmark::measure(Stage::AudioProcess, || {
-                resample_audio_frame(&mut audio.resampler, &raw)
-            })?;
-            let source_pts = raw.timestamp().or_else(|| raw.pts()).map(|pts| {
-                pts.rescale(audio.input_time_base, Rational(1, converted.rate() as i32))
-                    .saturating_sub(buffered)
-            });
-            (converted, source_pts)
+        let Some((mut converted, source_pts)) = audio.next_output_frame(
+            &mut raw,
+            output,
+            timeline.source_timestamp_mode,
+            playback_control,
+        )?
+        else {
+            break;
         };
-        let mut source_pts = source_pts;
-        if let Some((start_us, pts)) = audio.trim_start_us.zip(source_pts) {
-            let start = start_us.rescale(rescale::TIME_BASE, Rational(1, converted.rate() as i32));
-            let skip = start.saturating_sub(pts).max(0) as usize;
-            if skip >= converted.samples() {
-                continue;
-            }
-            if skip > 0 {
-                converted = trim_audio_start(&converted, skip)?;
-                source_pts = Some(pts.saturating_add(skip as i64));
+
+        if audio.recovery_padding > 0 {
+            let padding = limit_pts.map_or(audio.recovery_padding, |limit| {
+                audio
+                    .recovery_padding
+                    .min(limit.saturating_sub(timeline.audio_pts))
+            });
+            write_silence(converted.rate(), timeline, output, padding)?;
+            audio.recovery_padding -= padding;
+
+            if limit_pts.is_some_and(|limit| timeline.audio_pts >= limit) {
+                audio.pending_output = Some((converted, source_pts));
+
+                return Ok(());
             }
         }
+
         let samples = retain_audio_tail(
             audio,
             &mut converted,
@@ -1315,6 +1315,11 @@ fn receive_audio_frames<O: FrameOutput>(
             media_fade_plan.audio_gain_at(timeline.audio_pts + samples) < 1.0,
         )?;
         audio.source_next_pts = converted.pts().map(|pts| pts + samples);
+        if !timeline.source_timestamp_mode && audio.timestamps_reliable {
+            audio.file_next_pts = source_pts
+                .or(audio.file_next_pts)
+                .map(|pts| pts.saturating_add(samples));
+        }
         timeline.audio_pts += samples;
         *decoded_samples += samples;
     }
@@ -1605,6 +1610,8 @@ impl RuntimeTextOverlay {
 
 struct VideoDecoder {
     decoder: codec::decoder::Video,
+    recovery: DecodeRecovery,
+    file_start_pts: Option<i64>,
     scaler: Option<scaling::Context>,
     output_width: u32,
     output_height: u32,
@@ -1680,6 +1687,16 @@ impl VideoDecoder {
             RuntimeTextOverlay::new(label, cfg, start_pts, scroll_pts, "runtime text overlay")?;
         Ok(Self {
             decoder,
+            recovery: DecodeRecovery::new(
+                Stage::VideoDecode,
+                "video",
+                cfg.channel_id.unwrap_or_default(),
+            ),
+            file_start_pts: stream
+                .start_us
+                .max(trim_start_us)
+                .filter(|_| timestamps_reliable)
+                .map(|pts| pts.rescale(rescale::TIME_BASE, input_time_base)),
             scaler: None,
             output_width: cfg.width,
             output_height: cfg.height,
@@ -1882,6 +1899,12 @@ impl FrameRateConverter {
     }
 }
 
+struct AudioRecoveryFrame {
+    frame: frame::Audio,
+    pts: i64,
+    decode_errors: u64,
+}
+
 struct AudioDecoder {
     audio_frame_callback: Option<crate::AudioFrameCallback>,
     source_next_pts: Option<i64>,
@@ -1889,6 +1912,14 @@ struct AudioDecoder {
     live_timestamps: LiveTimestampTracker,
     channel_id: i32,
     decoder: codec::decoder::Audio,
+    recovery: DecodeRecovery,
+    synchronized_decode_errors: u64,
+    recovery_frame: Option<AudioRecoveryFrame>,
+    recovery_lookahead: Option<(frame::Audio, Option<i64>)>,
+    recovery_padding: i64,
+    draining: bool,
+    timestamps_reliable: bool,
+    file_next_pts: Option<i64>,
     resampler: resampling::Context,
     input_channel_layout: ChannelLayout,
     input_time_base: Rational,
@@ -2000,7 +2031,7 @@ impl ExternalAudioInput {
 
             let Some(packet) = packet else {
                 self.eof = true;
-                benchmark::measure(Stage::AudioDecode, || self.decoder.decoder.send_eof())?;
+                self.decoder.start_drain()?;
                 receive_audio_frames(
                     &mut self.decoder,
                     timeline,
@@ -2021,9 +2052,9 @@ impl ExternalAudioInput {
                 break;
             };
 
-            benchmark::measure(Stage::AudioDecode, || {
-                self.decoder.decoder.send_packet(&packet)
-            })?;
+            self.decoder
+                .recovery
+                .send(&mut self.decoder.decoder, &packet)?;
             receive_audio_frames(
                 &mut self.decoder,
                 timeline,
@@ -2041,7 +2072,7 @@ impl ExternalAudioInput {
             let silence_samples = target_audio_pts.saturating_sub(timeline.audio_pts);
 
             if silence_samples > 0 {
-                write_silence(cfg, timeline, output, silence_samples)?;
+                write_silence(cfg.sample_rate, timeline, output, silence_samples)?;
                 *decoded_samples += silence_samples;
             }
         }
@@ -2051,6 +2082,144 @@ impl ExternalAudioInput {
 }
 
 impl AudioDecoder {
+    fn start_drain(&mut self) -> Result<()> {
+        self.recovery.start_drain(&mut self.decoder)?;
+        self.draining = true;
+
+        Ok(())
+    }
+
+    fn next_output_frame<O: FrameOutput>(
+        &mut self,
+        raw: &mut frame::Audio,
+        output: &O,
+        preserve_source_timestamps: bool,
+        playback_control: &PlaybackControl,
+    ) -> Result<Option<(frame::Audio, Option<i64>)>> {
+        if let Some(pending) = self.pending_output.take() {
+            return Ok(Some(pending));
+        }
+
+        loop {
+            check_playback_control(playback_control)?;
+
+            let next = match self.recovery_lookahead.take() {
+                Some(frame) => Some(frame),
+                None => self.decode_frame(raw, output)?,
+            };
+            let Some((mut converted, mut pts)) = next else {
+                return Ok(if self.draining {
+                    // Without another timestamp, keep the final samples at
+                    // the next output position and leave EOF padding to playout.
+                    self.recovery_frame
+                        .take()
+                        .map(|candidate| (candidate.frame, self.file_next_pts))
+                } else {
+                    None
+                });
+            };
+
+            let time_base = Rational(1, converted.rate() as i32);
+            let timestamp_tolerance = 1_i64.rescale(self.input_time_base, time_base).max(1);
+            if let Some((start_us, source_pts)) = self.trim_start_us.zip(pts) {
+                let start = start_us.rescale(rescale::TIME_BASE, time_base);
+                let skip = start.saturating_sub(source_pts).max(0) as usize;
+
+                if skip >= converted.samples() {
+                    continue;
+                }
+
+                if skip > 0 {
+                    converted = trim_audio_start(&converted, skip)?;
+                    pts = Some(source_pts.saturating_add(skip as i64));
+                }
+            }
+
+            let decode_errors = self.recovery.errors();
+            if let Some(candidate) = self.recovery_frame.take() {
+                let expected = self.file_next_pts.unwrap_or(candidate.pts);
+                let samples = candidate.frame.samples() as i64;
+                let intervening_error = decode_errors != candidate.decode_errors;
+                let recovered_pts = pts.map_or(expected, |next_pts| {
+                    let contiguous_start = next_pts.saturating_sub(samples);
+                    let earliest = expected.saturating_sub(timestamp_tolerance);
+
+                    if intervening_error {
+                        // The next frame can bound this frame's position, but
+                        // it can no longer establish that they are adjacent.
+                        if candidate.pts <= contiguous_start.saturating_add(timestamp_tolerance) {
+                            candidate.pts
+                        } else {
+                            expected
+                        }
+                    } else if candidate.pts < earliest {
+                        contiguous_start
+                    } else if contiguous_start < earliest {
+                        candidate.pts
+                    } else {
+                        candidate.pts.min(contiguous_start)
+                    }
+                    .max(expected)
+                });
+                self.recovery_padding = recovered_pts.saturating_sub(expected);
+                self.synchronized_decode_errors = candidate.decode_errors;
+                let next_pts = if intervening_error {
+                    pts
+                } else {
+                    Some(recovered_pts.saturating_add(samples))
+                };
+                self.recovery_lookahead = Some((converted, next_pts));
+
+                return Ok(Some((candidate.frame, Some(recovered_pts))));
+            }
+
+            if !preserve_source_timestamps
+                && self.timestamps_reliable
+                && decode_errors != self.synchronized_decode_errors
+                && let Some((pts, expected)) = pts.zip(self.file_next_pts)
+                && pts.abs_diff(expected) > timestamp_tolerance as u64
+            {
+                self.recovery_frame = Some(AudioRecoveryFrame {
+                    frame: converted,
+                    pts,
+                    decode_errors,
+                });
+            } else {
+                return Ok(Some((converted, pts)));
+            }
+        }
+    }
+
+    fn decode_frame<O: FrameOutput>(
+        &mut self,
+        raw: &mut frame::Audio,
+        output: &O,
+    ) -> Result<Option<(frame::Audio, Option<i64>)>> {
+        if !self.recovery.receive(&mut self.decoder, raw)? {
+            return Ok(None);
+        }
+
+        if let Some(diagnostics) = output.input_diagnostics() {
+            diagnostics.audio_decoded();
+        }
+
+        if raw.channel_layout().is_empty() {
+            raw.set_channel_layout(self.input_channel_layout);
+        }
+
+        let buffered = self.resampler.delay().map_or(0, |delay| delay.output);
+        let converted = benchmark::measure(Stage::AudioProcess, || {
+            resample_audio_frame(&mut self.resampler, raw)
+        })?;
+        let time_base = Rational(1, converted.rate() as i32);
+        let pts = raw.timestamp().or_else(|| raw.pts()).map(|pts| {
+            pts.rescale(self.input_time_base, time_base)
+                .saturating_sub(buffered)
+        });
+
+        Ok(Some((converted, pts)))
+    }
+
     fn new(
         stream: &format::stream::Stream,
         cfg: &OutputConfig,
@@ -2111,6 +2280,22 @@ impl AudioDecoder {
             pending_output: None,
             live_timestamps: LiveTimestampTracker::default(),
             channel_id: cfg.channel_id.unwrap_or_default(),
+            recovery: DecodeRecovery::new(
+                Stage::AudioDecode,
+                "audio",
+                cfg.channel_id.unwrap_or_default(),
+            ),
+            synchronized_decode_errors: 0,
+            recovery_frame: None,
+            recovery_lookahead: None,
+            recovery_padding: 0,
+            draining: false,
+            timestamps_reliable,
+            file_next_pts: stream
+                .start_us
+                .max(trim_start_us)
+                .filter(|_| timestamps_reliable)
+                .map(|pts| pts.rescale(rescale::TIME_BASE, Rational(1, cfg.sample_rate as i32))),
             input_channel_layout: channel_layout,
             input_time_base,
             trim_start_us: timestamps_reliable.then_some(trim_start_us).flatten(),
@@ -2165,7 +2350,7 @@ pub(crate) fn write_fallback<O: FrameOutput>(
         } else {
             let remaining = (audio_end - timeline.audio_pts) as usize;
             let samples = remaining.min(output.audio_frame_size().max(1));
-            write_silence_frame(cfg, timeline, output, samples)?;
+            write_silence_frame(cfg.sample_rate, timeline, output, samples)?;
         }
     }
 
@@ -2201,7 +2386,7 @@ fn synchronize_timeline<O: FrameOutput>(
             audio_samples as f64 / f64::from(cfg.sample_rate)
         );
     }
-    write_silence(cfg, timeline, output, audio_samples)
+    write_silence(cfg.sample_rate, timeline, output, audio_samples)
 }
 
 /// Keep audio packets interleaved with video for video-only inputs. Deferring
@@ -2221,7 +2406,7 @@ fn synchronize_silence_to_video<O: FrameOutput>(
     let samples = target_audio_pts.saturating_sub(timeline.audio_pts);
 
     if samples > 0 {
-        write_silence(cfg, timeline, output, samples)?;
+        write_silence(cfg.sample_rate, timeline, output, samples)?;
     }
     check_playback_control(playback_control)
 }
@@ -2515,7 +2700,7 @@ fn copy_video_frame(
 }
 
 fn write_silence_frame<O: FrameOutput>(
-    cfg: &OutputConfig,
+    sample_rate: u32,
     timeline: &mut Timeline,
     output: &mut O,
     samples: usize,
@@ -2525,7 +2710,7 @@ fn write_silence_frame<O: FrameOutput>(
         samples,
         ChannelLayout::STEREO,
     );
-    frame.set_rate(cfg.sample_rate);
+    frame.set_rate(sample_rate);
     frame.set_pts(Some(timeline.audio_pts));
 
     for plane in 0..frame.planes() {
@@ -2539,7 +2724,7 @@ fn write_silence_frame<O: FrameOutput>(
 }
 
 fn write_silence<O: FrameOutput>(
-    cfg: &OutputConfig,
+    sample_rate: u32,
     timeline: &mut Timeline,
     output: &mut O,
     mut samples: i64,
@@ -2554,7 +2739,7 @@ fn write_silence<O: FrameOutput>(
 
     while samples > 0 {
         let current_samples = samples.min(frame_samples as i64) as usize;
-        write_silence_frame(cfg, timeline, output, current_samples)?;
+        write_silence_frame(sample_rate, timeline, output, current_samples)?;
         samples -= current_samples as i64;
     }
 
@@ -2647,6 +2832,7 @@ mod tests {
         audio_samples: usize,
         audio_frame_samples: Vec<usize>,
         audio_pts: Vec<i64>,
+        audio_waveform: Option<Vec<f32>>,
         events: Vec<&'static str>,
         reset_on_skip: bool,
         skip_target: Option<(i64, i64)>,
@@ -2719,6 +2905,9 @@ mod tests {
             self.audio_samples += frame.samples();
             self.audio_frame_samples.push(frame.samples());
             self.audio_pts.push(frame.pts().unwrap_or_default());
+            if let Some(waveform) = &mut self.audio_waveform {
+                waveform.extend_from_slice(frame.plane::<f32>(0));
+            }
             self.events.push("audio");
 
             Ok(())
@@ -2752,6 +2941,173 @@ mod tests {
             .join(name)
             .to_string_lossy()
             .into_owned()
+    }
+
+    #[test]
+    fn damaged_file_preserves_av_clock_with_embedded_or_external_audio() {
+        // MPEG-4 Part 2 with one zeroed video packet and MP3 with one damaged
+        // frame header. FFmpeg resumes MP3 output at 0.940 s after the gap.
+        let path = media_mix_asset("corrupt_av.avi");
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+
+        for external_audio in [None, Some(path.as_str())] {
+            let mut timeline = Timeline::new();
+            let mut output = RecordingOutput {
+                audio_waveform: Some(Vec::new()),
+                ..RecordingOutput::default()
+            };
+
+            super::play_clip_with_external_audio(
+                &path,
+                external_audio,
+                &cfg,
+                &mut timeline,
+                &mut output,
+                None,
+                Some(2.0),
+                None,
+                LogoFade::default(),
+                &PlaybackControl::default(),
+            )
+            .unwrap();
+
+            assert_eq!((timeline.video_pts, timeline.audio_pts), (50, 96_000));
+            assert!(output.video_frames.iter().map(|frame| frame.2).eq(0..50));
+            assert!(
+                output
+                    .audio_pts
+                    .iter()
+                    .copied()
+                    .eq(output.audio_frame_samples.iter().scan(0, |pts, &samples| {
+                        let start = *pts;
+                        *pts += samples as i64;
+                        Some(start)
+                    }))
+            );
+            let waveform = output.audio_waveform.unwrap();
+
+            assert_eq!(waveform.len(), 96_000);
+            assert!(waveform[43_200..44_640].iter().all(|sample| *sample == 0.0));
+            assert!(
+                waveform[46_080..47_040]
+                    .iter()
+                    .any(|sample| sample.abs() > 0.01)
+            );
+        }
+    }
+
+    #[test]
+    fn damaged_audio_recovers_at_source_positions() {
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+
+        // All four clips lose audio at 0.888–0.927 s. The first three
+        // shift a rejected or resumed packet's PTS. The fourth rejects
+        // another packet after one clean frame, opening a second gap.
+        for (fixture, second_loss) in [
+            ("corrupt_audio_packet_pts.mkv", false),
+            ("corrupt_audio_resume_pts.mkv", false),
+            ("corrupt_audio_resume_backwards_pts.mkv", false),
+            ("corrupt_audio_two_losses.mkv", true),
+        ] {
+            let path = media_mix_asset(fixture);
+
+            for external_audio in [None, Some(path.as_str())] {
+                let mut timeline = Timeline::new();
+                let mut output = RecordingOutput {
+                    audio_waveform: Some(Vec::new()),
+                    ..RecordingOutput::default()
+                };
+
+                super::play_clip_with_external_audio(
+                    &path,
+                    external_audio,
+                    &cfg,
+                    &mut timeline,
+                    &mut output,
+                    None,
+                    Some(2.0),
+                    None,
+                    LogoFade::default(),
+                    &PlaybackControl::default(),
+                )
+                .unwrap();
+
+                let waveform = output.audio_waveform.unwrap();
+
+                assert_eq!((timeline.video_pts, timeline.audio_pts), (50, 96_000));
+                assert_eq!(waveform.len(), 96_000);
+                assert!(
+                    waveform[43_000..44_200].iter().all(|sample| *sample == 0.0),
+                    "{fixture}: the missing audio must be replaced in place"
+                );
+                assert!(
+                    waveform[45_000..46_000]
+                        .iter()
+                        .any(|sample| sample.abs() > 0.01),
+                    "{fixture}: the recovered audio must resume at the source position"
+                );
+
+                if second_loss {
+                    assert!(
+                        waveform[46_000..48_100].iter().all(|sample| *sample == 0.0),
+                        "{fixture}: the second gap must remain after the recovered frame"
+                    );
+                    assert!(
+                        waveform[48_500..49_000]
+                            .iter()
+                            .any(|sample| sample.abs() > 0.01),
+                        "{fixture}: audio must resume after the second gap"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn damaged_input_preserves_live_source_timestamps() {
+        let path = media_mix_asset("corrupt_av.avi");
+        let cfg = OutputConfig::new(320, 240, 25, 48_000);
+        let mut timeline = Timeline::new();
+        let mut output = RecordingOutput::default();
+
+        play_opened_input(
+            &path,
+            open_media_input(&path).unwrap(),
+            &cfg,
+            &mut timeline,
+            &mut output,
+            InputPlaybackOptions {
+                seek_seconds: None,
+                duration_seconds: None,
+                subtitles_media_path: None,
+                logo_fade_plan: LogoFadePlan::none(0, &cfg),
+                playback_control: &PlaybackControl::default(),
+                preserve_source_timestamps: true,
+            },
+            None,
+        )
+        .unwrap();
+
+        let video_end = output.video_frames.last().unwrap().2 + 1;
+        let audio_end =
+            output.audio_pts.last().unwrap() + *output.audio_frame_samples.last().unwrap() as i64;
+
+        assert!(video_end >= 50);
+        assert!(
+            output
+                .video_frames
+                .windows(2)
+                .all(|frames| frames[0].2 < frames[1].2)
+        );
+        assert!(output.audio_pts.windows(2).all(|pts| pts[0] < pts[1]));
+        assert!(
+            output
+                .audio_pts
+                .windows(2)
+                .zip(&output.audio_frame_samples)
+                .any(|(pts, &samples)| pts[1] - pts[0] - samples as i64 >= 2_000)
+        );
+        assert!(audio_end.abs_diff(video_end * 1_920) <= 1_920);
     }
 
     #[test]

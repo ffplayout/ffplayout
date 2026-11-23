@@ -3,8 +3,7 @@ use std::sync::atomic::Ordering;
 use ffmpeg_next::{Rescale, rescale};
 
 use crate::{
-    PlaybackControl,
-    benchmark::{self, Stage},
+    PlaybackControl, benchmark,
     clock::SharedPlayoutClock,
     input::diagnostics::LiveInputStage,
     playout::{
@@ -120,7 +119,7 @@ pub(super) fn run(
                 let samples = plan.audio_limit_pts.map_or(samples, |end| {
                     samples.min(end.saturating_sub(state.audio_pts).max(0))
                 });
-                write_silence(cfg, &mut state, &mut sender, samples)?;
+                write_silence(cfg.sample_rate, &mut state, &mut sender, samples)?;
             }
 
             while let Some(packet) = audio_packets.recv()? {
@@ -130,7 +129,7 @@ pub(super) fn run(
                 if let Some(diagnostics) = diagnostics {
                     diagnostics.set_stage(LiveInputStage::ProcessingAudio);
                 }
-                benchmark::measure(Stage::AudioDecode, || audio.decoder.send_packet(&packet))?;
+                audio.recovery.send(&mut audio.decoder, &packet)?;
                 receive_audio_frames(
                     &mut audio,
                     &mut state,
@@ -153,7 +152,7 @@ pub(super) fn run(
             if stop.is_some_and(|stop| state.audio_pts >= stop) {
                 return Ok(());
             }
-            audio.decoder.send_eof()?;
+            audio.start_drain()?;
             sender.state = state;
             receive_audio_frames(
                 &mut audio,
