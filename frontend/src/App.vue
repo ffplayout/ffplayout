@@ -15,7 +15,7 @@ const route = useRoute()
 
 const language = localStorage.getItem('language')
 
-locale.value = language || 'en'
+locale.value = language || 'zh'
 
 const darkThemeMq = window.matchMedia('(prefers-color-scheme: dark)')
 const theme = ref(localStorage.getItem('theme'))
