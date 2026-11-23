@@ -43,12 +43,8 @@ function initialLocale(): string {
     } catch {
         // storage unavailable
     }
-    const nav = (navigator.language || 'en').toLowerCase()
-    if (nav.startsWith('zh')) {
-        return 'zh'
-    }
-    const match = locales.find((l) => l.language.toLowerCase() === nav)
-    return match ? match.code : 'en'
+    // Private deployment: default to Chinese unless the user explicitly saved another language.
+    return 'zh'
 }
 
 const instance = createI18n({
