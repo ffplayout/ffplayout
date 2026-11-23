@@ -34,9 +34,26 @@ export const locales = [
     },
 ]
 
+function initialLocale(): string {
+    try {
+        const saved = localStorage.getItem('language')
+        if (saved && locales.some((l) => l.code === saved)) {
+            return saved
+        }
+    } catch {
+        // storage unavailable
+    }
+    const nav = (navigator.language || 'en').toLowerCase()
+    if (nav.startsWith('zh')) {
+        return 'zh'
+    }
+    const match = locales.find((l) => l.language.toLowerCase() === nav)
+    return match ? match.code : 'en'
+}
+
 const instance = createI18n({
     legacy: false,
-    locale: 'en',
+    locale: initialLocale(),
     fallbackLocale: 'en',
     messages: {
         de: deDE,
