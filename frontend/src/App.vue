@@ -13,10 +13,6 @@ const { locale } = useI18n()
 const indexStore = useIndex()
 const route = useRoute()
 
-const language = localStorage.getItem('language')
-
-locale.value = language || 'en'
-
 const darkThemeMq = window.matchMedia('(prefers-color-scheme: dark)')
 const theme = ref(localStorage.getItem('theme'))
 

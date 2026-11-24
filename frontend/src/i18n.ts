@@ -34,10 +34,21 @@ export const locales = [
     },
 ]
 
+const defaultLocale = 'en'
+
+function initialLocale(): string {
+    try {
+        const saved = localStorage.getItem('language')
+        return locales.find(({ code }) => code === saved)?.code ?? defaultLocale
+    } catch {
+        return defaultLocale
+    }
+}
+
 const instance = createI18n({
     legacy: false,
-    locale: 'en',
-    fallbackLocale: 'en',
+    locale: initialLocale(),
+    fallbackLocale: defaultLocale,
     messages: {
         de: deDE,
         en: enUS,
