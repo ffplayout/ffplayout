@@ -39,10 +39,22 @@ const defaultLocale = 'en'
 function initialLocale(): string {
     try {
         const saved = localStorage.getItem('language')
-        return locales.find(({ code }) => code === saved)?.code ?? defaultLocale
+        const selected = locales.find(({ code }) => code === saved)
+        if (selected) return selected.code
     } catch {
-        return defaultLocale
+        // Browser language detection still works when storage is blocked.
     }
+
+    for (const preferred of globalThis.navigator?.languages ?? []) {
+        const tag = preferred.toLowerCase()
+        const language = tag.split('-')[0]
+        const supported =
+            locales.find((locale) => locale.language.toLowerCase() === tag || locale.code === tag) ??
+            locales.find((locale) => locale.language.toLowerCase().split('-')[0] === language)
+        if (supported) return supported.code
+    }
+
+    return defaultLocale
 }
 
 const instance = createI18n({
