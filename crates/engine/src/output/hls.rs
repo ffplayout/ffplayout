@@ -1,14 +1,15 @@
 use std::{
     collections::HashSet,
     ffi::CString,
+    fmt::Write as _,
     fs::{self, File, OpenOptions},
     io::ErrorKind,
     path::{Path, PathBuf},
     ptr,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, ensure};
 use ffmpeg_next as ffmpeg;
 
 use crate::utils::{
@@ -94,17 +95,6 @@ pub(super) fn output_context(path: &str) -> Result<ffmpeg::format::context::Outp
     }
 }
 
-pub(super) fn remove_master_playlist(path: &str) -> Result<()> {
-    let master = master_playlist_path(path);
-    if Path::new(path) == master {
-        return Ok(());
-    }
-
-    let _session = HlsSession::acquire(&[master.to_string_lossy().into_owned()], None, false)?;
-
-    remove_playlist(&master)
-}
-
 /// Files stay present so every process locks the same inode, including after a crash.
 /// Closing these handles releases ownership; lock files must never be unlinked.
 pub(super) struct HlsSession {
@@ -112,6 +102,8 @@ pub(super) struct HlsSession {
     media_playlists: Vec<String>,
     owned_playlists: Vec<String>,
     master_playlist: Option<String>,
+    pending_media: Vec<PathBuf>,
+    next_retirement: Instant,
 }
 
 impl HlsSession {
@@ -121,6 +113,20 @@ impl HlsSession {
         subtitles: bool,
     ) -> Result<Self> {
         let mut paths = cleanup_playlist_paths(media_playlists, master_playlist)?;
+        if master_playlist.is_none()
+            && let Some(first) = media_playlists.first()
+        {
+            let master = master_playlist_path(first);
+            let master = master.to_string_lossy();
+            let children = child_playlist_paths(&master)?;
+            if !children.is_empty()
+                && (media_playlists.iter().any(|p| p == master.as_ref())
+                    || children.iter().any(|path| media_playlists.contains(path)))
+            {
+                paths.extend(children);
+                paths.push(master.into_owned());
+            }
+        }
 
         // FFmpeg attaches the single subtitle track to the first rendition only.
         // Reserve its path even before the first master has been written.
@@ -177,7 +183,34 @@ impl HlsSession {
             locks.push(lock);
         }
 
+        let referenced = referenced_segments(&owned_playlists)?;
+        let owners: HashSet<_> = owned_playlists
+            .iter()
+            .filter_map(|p| Path::new(p).file_name())
+            .collect();
+        let mut pending_media = Vec::new();
+        if let Some(parent) = common_playlist_parent(&owned_playlists) {
+            for entry in fs::read_dir(parent)? {
+                let marker = entry?.path();
+                if let Some(path) = ff_hls::retention::marked_resource(&marker)
+                    && let Some(name) = path.file_name().and_then(|name| name.to_str())
+                    && !referenced.contains(name)
+                    && segment_family(name).is_some()
+                {
+                    let owner = match fs::read_to_string(&marker) {
+                        Ok(owner) => owner,
+                        Err(error) if error.kind() == ErrorKind::NotFound => continue,
+                        Err(error) => return Err(error.into()),
+                    };
+                    if owners.contains(std::ffi::OsStr::new(&owner)) {
+                        pending_media.push(path);
+                    }
+                }
+            }
+        }
         Ok(Self {
+            pending_media,
+            next_retirement: Instant::now(),
             _locks: locks,
             media_playlists: media_playlists.to_vec(),
             owned_playlists,
@@ -185,12 +218,32 @@ impl HlsSession {
         })
     }
 
-    fn reset_for_packager_change(&self, native: bool) -> Result<bool> {
-        let playlists =
-            cleanup_playlist_paths(&self.media_playlists, self.master_playlist.as_deref())?;
-        let mut changed = false;
+    pub fn retire_pending_media(&mut self) -> Result<()> {
+        if self.pending_media.is_empty() {
+            return Ok(());
+        }
+        let now = Instant::now();
+        if now >= self.next_retirement {
+            self.next_retirement = now + Duration::from_secs(1);
+            retire_media(&mut self.pending_media, SystemTime::now())?;
+        }
+        Ok(())
+    }
 
-        for path in &playlists {
+    pub(super) fn requires_replacement(&self, native: Option<bool>) -> Result<bool> {
+        if self.master_playlist.is_none()
+            && self.owned_playlists.iter().any(|path| {
+                !self.media_playlists.contains(path)
+                    && Path::new(path)
+                        .file_name()
+                        .is_some_and(|name| name == "master.m3u8")
+            })
+        {
+            return Ok(true);
+        }
+        let mut latest = None;
+
+        for path in &self.owned_playlists {
             let content = match fs::read_to_string(path) {
                 Ok(content) => content,
                 Err(error) if error.kind() == ErrorKind::NotFound => continue,
@@ -198,94 +251,532 @@ impl HlsSession {
                     return Err(error).with_context(|| format!("reading HLS playlist {path}"));
                 }
             };
-
-            if content.lines().any(|line| line.starts_with("#EXTINF:")) {
-                let was_native = content
+            if self.master_playlist.is_none()
+                && self.media_playlists.contains(path)
+                && content
                     .lines()
-                    .any(|line| line == "# ffplayout-packager: native");
-                changed |= was_native != native;
+                    .any(|line| line.starts_with("#EXT-X-STREAM-INF:"))
+            {
+                return Ok(true);
+            }
+            latest = latest.max(fresh_playlist_modified_time(path)?);
+            if !content.lines().any(|line| line.starts_with("#EXTINF:")) {
+                continue;
+            }
+            let was_native = content
+                .lines()
+                .any(|line| line == "# ffplayout-packager: native");
+            if was_native != native.is_some() {
+                return Ok(true);
+            }
+            if let Some(fragmented) = native
+                && content.lines().filter_map(playlist_uri).any(|uri| {
+                    if fragmented {
+                        uri.ends_with(".ts")
+                    } else {
+                        uri.ends_with(".m4s")
+                    }
+                })
+            {
+                return Ok(true);
             }
         }
 
-        if changed {
-            // Ownership locks are already held for current and previous master
-            // children. Remove only these resources, never the whole directory.
-            prune_unreferenced_segments(&self.owned_playlists)?;
-            remove_stale_playlists(&self.owned_playlists, self.master_playlist.as_deref())?;
-        }
-
-        Ok(changed)
+        Ok(latest.is_some_and(|modified| {
+            SystemTime::now()
+                .duration_since(modified)
+                .unwrap_or_default()
+                > HLS_RESUME_MAX_AGE
+        }))
     }
 
-    pub(super) fn prepare_native_resume(&self) -> Result<Option<u64>> {
-        if self.reset_for_packager_change(true)? {
-            return Ok(None);
-        }
-
-        prepare_resume_at(
-            &self.media_playlists,
-            self.master_playlist.as_deref(),
-            SystemTime::now(),
-            false,
-        )
+    pub(super) fn resume_start_number(&self) -> Result<Option<u64>> {
+        prune_unreferenced_segments(&self.owned_playlists)?;
+        media_sequence_start_number(&self.media_playlists)
     }
 
-    pub(super) fn prepare_resume_start_number(&self) -> Result<Option<u64>> {
-        if self.reset_for_packager_change(false)? {
-            return Ok(None);
+    pub fn staged_resume(&self, subtitles: bool, start: u64) -> Result<Option<StagedHls>> {
+        for path in &self.media_playlists {
+            match fs::read_to_string(path) {
+                Ok(text)
+                    if text
+                        .lines()
+                        .any(|line| line.starts_with("#EXT-X-DISCONTINUITY-SEQUENCE:")) =>
+                {
+                    return StagedHls::resume(self, subtitles, start).map(Some);
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
         }
+        Ok(None)
+    }
 
-        prepare_resume_start_number_at(
-            &self.media_playlists,
-            self.master_playlist.as_deref(),
-            SystemTime::now(),
-        )
+    pub(super) fn replacement(&self, subtitles: bool) -> Result<HlsReplacement> {
+        let mut retained = self
+            .media_playlists
+            .iter()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+        if subtitles && let Some(playlist) = retained.first() {
+            let stem = playlist
+                .file_stem()
+                .context("HLS playlist has no file stem")?;
+            retained.push(playlist.with_file_name(format!("{}_vtt.m3u8", stem.to_string_lossy())));
+        }
+        if let Some(master) = &self.master_playlist {
+            retained.push(PathBuf::from(master));
+        }
+        let referenced = referenced_segments(&self.owned_playlists)?;
+        let mut published_media = referenced_segment_paths(&self.owned_playlists)?;
+        published_media.sort();
+        published_media.dedup();
+        let mut media = published_media.clone();
+        let families = segment_families(&self.owned_playlists, &referenced)?;
+        if let Some(parent) = common_playlist_parent(&self.owned_playlists) {
+            for entry in fs::read_dir(parent)? {
+                let entry = entry?;
+                if entry
+                    .file_name()
+                    .to_str()
+                    .and_then(segment_family)
+                    .is_some_and(|family| families.contains(family))
+                    && is_hls_segment(&entry.path())
+                {
+                    media.push(entry.path());
+                }
+            }
+        }
+        let obsolete_playlists = self
+            .owned_playlists
+            .iter()
+            .map(PathBuf::from)
+            .filter(|path| !retained.contains(path))
+            .collect();
+
+        let mut next_sequence = 0;
+        let mut grace = Duration::ZERO;
+        let mut discontinuity_sequence = 0;
+        for path in &self.owned_playlists {
+            let content = match fs::read_to_string(path) {
+                Ok(content) => content,
+                Err(error) if error.kind() == ErrorKind::NotFound => continue,
+                Err(error) => return Err(error.into()),
+            };
+            let segments = content
+                .lines()
+                .filter(|line| line.starts_with("#EXTINF:"))
+                .count() as u64;
+
+            if segments > 0 {
+                let after_last = media_sequence(&content)
+                    .unwrap_or_default()
+                    .checked_add(segments)
+                    .context("HLS media sequence overflow")?;
+                next_sequence = next_sequence.max(after_last);
+            }
+            let durations = content.lines().filter_map(|line| {
+                line.strip_prefix("#EXTINF:")?
+                    .split(',')
+                    .next()?
+                    .parse()
+                    .ok()
+            });
+            grace = grace.max(ff_hls::retention::grace(durations));
+            let base = content
+                .lines()
+                .find_map(|line| line.strip_prefix("#EXT-X-DISCONTINUITY-SEQUENCE:"))
+                .map(str::parse::<u64>)
+                .transpose()?
+                .unwrap_or(0);
+            let count = content
+                .lines()
+                .filter(|line| *line == "#EXT-X-DISCONTINUITY")
+                .count() as u64;
+            discontinuity_sequence = discontinuity_sequence.max(
+                base.checked_add(count)
+                    .context("HLS discontinuity sequence overflow")?,
+            );
+        }
+        media.sort();
+        media.dedup();
+        Ok(HlsReplacement {
+            discontinuity_sequence,
+            owner: PathBuf::from(
+                self.master_playlist
+                    .as_ref()
+                    .unwrap_or(&self.media_playlists[0]),
+            ),
+            published_media,
+            grace,
+            next_check: None,
+            media,
+            obsolete_playlists,
+            next_sequence,
+        })
     }
 }
 
-fn prepare_resume_start_number_at(
-    media_playlists: &[String],
-    master_playlist: Option<&str>,
-    now: SystemTime,
-) -> Result<Option<u64>> {
-    prepare_resume_at(media_playlists, master_playlist, now, true)
+pub(in crate::output) struct HlsReplacement {
+    media: Vec<PathBuf>,
+    obsolete_playlists: Vec<PathBuf>,
+    pub next_sequence: u64,
+    pub discontinuity_sequence: u64,
+    grace: Duration,
+    owner: PathBuf,
+    published_media: Vec<PathBuf>,
+    next_check: Option<SystemTime>,
 }
 
-fn prepare_resume_at(
-    media_playlists: &[String],
-    master_playlist: Option<&str>,
-    now: SystemTime,
-    prune: bool,
-) -> Result<Option<u64>> {
-    let cleanup_playlists = cleanup_playlist_paths(media_playlists, master_playlist)?;
-
-    if prune {
-        prune_unreferenced_segments(&cleanup_playlists)?;
+impl HlsReplacement {
+    pub fn protect(&self, now: SystemTime) -> Result<()> {
+        let until = now
+            .checked_add(self.grace)
+            .context("invalid HLS retention duration")?;
+        for path in &self.published_media {
+            ff_hls::retention::protect(path, until, &self.owner)?;
+        }
+        Ok(())
     }
 
-    let mut latest = None;
+    pub fn retire(&mut self, now: SystemTime) -> Result<bool> {
+        let first = self.next_check.is_none();
+        if first {
+            for path in &self.obsolete_playlists {
+                remove_playlist(path)?;
+            }
+        } else if self.next_check.is_some_and(|deadline| now < deadline) {
+            return Ok(false);
+        }
+        retire_media(&mut self.media, now)?;
+        let delay = if first {
+            self.grace
+        } else {
+            Duration::from_secs(1)
+        };
+        self.next_check = now.checked_add(delay);
+        Ok(self.media.is_empty())
+    }
+}
 
-    for path in &cleanup_playlists {
-        if let Some(modified) = fresh_playlist_modified_time(path)? {
-            latest = latest.max(Some(modified));
+fn retire_media(paths: &mut Vec<PathBuf>, now: SystemTime) -> Result<()> {
+    let mut i = 0;
+    while i < paths.len() {
+        if ff_hls::retention::remove(&paths[i], now)? {
+            paths.swap_remove(i);
+        } else {
+            i += 1;
         }
     }
+    Ok(())
+}
 
-    let Some(latest) = latest else {
-        return Ok(None);
-    };
+// FFmpeg updates individual manifests as it closes renditions. On replacement
+// run those writes against private names, keeping segments at their public
+// paths. Mirror the new manifests once every rendition has media.
+pub(super) struct StagedHls {
+    prefix: String,
+    playlists: Vec<StagedPlaylist>,
+    replacement: Option<HlsReplacement>,
+    next_check: Instant,
+    start_number: u64,
+    discontinuity_base: u64,
+}
 
-    if now
-        .duration_since(latest)
-        .unwrap_or(Duration::ZERO)
-        .gt(&HLS_RESUME_MAX_AGE)
-    {
-        remove_stale_playlists(&cleanup_playlists, master_playlist)?;
+struct StagedPlaylist {
+    staged: PathBuf,
+    public: PathBuf,
+    modified: Option<SystemTime>,
+    history: Option<SegmentHistory>,
+}
 
-        return Ok(None);
+struct SegmentHistory {
+    first: u64,
+    base: u64,
+    segments: Vec<(String, u64)>,
+}
+
+impl SegmentHistory {
+    fn read(text: &str) -> Result<Self> {
+        let first = media_sequence(text).unwrap_or_default();
+        let base = text
+            .lines()
+            .find_map(|line| line.strip_prefix("#EXT-X-DISCONTINUITY-SEQUENCE:"))
+            .map(str::parse::<u64>)
+            .transpose()?
+            .unwrap_or_default();
+        let mut generation = base;
+        let mut segments = Vec::new();
+        for line in text.lines() {
+            if line == "#EXT-X-DISCONTINUITY" {
+                generation = generation
+                    .checked_add(1)
+                    .context("HLS discontinuity sequence overflow")?;
+            } else if !line.is_empty() && !line.starts_with('#') {
+                segments.push((line.to_owned(), generation));
+            }
+        }
+        Ok(Self {
+            first,
+            base,
+            segments,
+        })
     }
 
-    media_sequence_start_number(media_playlists)
+    // append_list reconstructs retained entries but discards their discontinuity
+    // base and can regenerate subtitle URIs. Restore both by media sequence.
+    fn restore(&self, text: &str, new_generation: u64) -> Result<String> {
+        let seq = media_sequence(text).context("missing HLS media sequence")?;
+        let offset = usize::try_from(
+            seq.checked_sub(self.first)
+                .context("HLS media sequence moved backwards")?,
+        )?;
+        let mut previous = if offset == 0 && !self.segments.is_empty() {
+            self.base
+        } else {
+            offset
+                .checked_sub(1)
+                .and_then(|n| self.segments.get(n))
+                .map_or(new_generation, |(_, generation)| *generation)
+        };
+        let mut history = self.segments.iter().skip(offset).peekable();
+        let mut result = String::with_capacity(text.len() + 64);
+
+        for line in text.lines() {
+            if line == "#EXT-X-DISCONTINUITY" || line.starts_with("#EXT-X-DISCONTINUITY-SEQUENCE:")
+            {
+                continue;
+            }
+
+            if line == "#EXTM3U" {
+                writeln!(result, "{line}\n#EXT-X-DISCONTINUITY-SEQUENCE:{previous}")?;
+            } else if line.starts_with("#EXTINF:") {
+                let generation = history
+                    .peek()
+                    .map_or(new_generation, |(_, generation)| *generation);
+                if generation != previous {
+                    ensure!(
+                        previous.checked_add(1) == Some(generation),
+                        "inconsistent HLS discontinuity history"
+                    );
+                    result.push_str("#EXT-X-DISCONTINUITY\n");
+                    previous = generation;
+                }
+                writeln!(result, "{line}")?;
+            } else if !line.is_empty() && !line.starts_with('#') {
+                writeln!(
+                    result,
+                    "{}",
+                    history.next().map_or(line, |(uri, _)| uri.as_str())
+                )?;
+            } else {
+                writeln!(result, "{line}")?;
+            }
+        }
+
+        Ok(result)
+    }
+}
+
+impl StagedHls {
+    pub fn new(session: &HlsSession, subtitles: bool, replacement: HlsReplacement) -> Result<Self> {
+        let mut staged = Self::open(session, subtitles, replacement.next_sequence)?;
+        staged.discontinuity_base = replacement.discontinuity_sequence;
+        staged.replacement = Some(replacement);
+        Ok(staged)
+    }
+
+    fn resume(session: &HlsSession, subtitles: bool, start: u64) -> Result<Self> {
+        let mut staged = Self::open(session, subtitles, start)?;
+        let mut last_segment = None;
+        for playlist in &mut staged.playlists {
+            if session.master_playlist.as_deref().map(Path::new) == Some(playlist.public.as_path())
+            {
+                continue;
+            }
+            let text = match fs::read_to_string(&playlist.public) {
+                Ok(text) => text,
+                Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
+                Err(error) => return Err(error.into()),
+            };
+            let history = SegmentHistory::read(&text)?;
+            let Some((_, generation)) = history.segments.last() else {
+                return Self::new(session, subtitles, session.replacement(subtitles)?);
+            };
+            let end = (history.segments.len(), *generation);
+            if history.first != start
+                || last_segment
+                    .replace(end)
+                    .is_some_and(|previous| previous != end)
+            {
+                // append_list starts all renditions at the same counter.
+                return Self::new(session, subtitles, session.replacement(subtitles)?);
+            }
+
+            staged.discontinuity_base = *generation;
+            fs::write(&playlist.staged, text)?;
+            // A seed is input for append_list, never a newly published window.
+            playlist.modified = Some(fs::metadata(&playlist.staged)?.modified()?);
+            playlist.history = Some(history);
+        }
+        Ok(staged)
+    }
+
+    fn open(session: &HlsSession, subtitles: bool, start_number: u64) -> Result<Self> {
+        let prefix = format!(".hls-{}-", jiff::Timestamp::now().as_microsecond());
+        let mut public = session
+            .media_playlists
+            .iter()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+        if subtitles && let Some(first) = public.first() {
+            let stem = first
+                .file_stem()
+                .context("HLS playlist has no stem")?
+                .to_string_lossy();
+            public.push(first.with_file_name(format!("{stem}_vtt.m3u8")));
+        }
+        if let Some(master) = &session.master_playlist {
+            public.push(PathBuf::from(master));
+        }
+        let playlists = public
+            .into_iter()
+            .map(|path| {
+                let staged = staged_path(&path, &prefix);
+                StagedPlaylist {
+                    staged,
+                    public: path,
+                    modified: None,
+                    history: None,
+                }
+            })
+            .collect();
+
+        Ok(Self {
+            discontinuity_base: 0,
+            prefix,
+            playlists,
+            replacement: None,
+            next_check: Instant::now(),
+            start_number,
+        })
+    }
+
+    pub fn path(&self, path: &str) -> String {
+        staged_path(Path::new(path), &self.prefix)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    pub fn master_name(&self) -> String {
+        format!("{}master.m3u8", self.prefix)
+    }
+
+    pub fn is_replacement(&self) -> bool {
+        self.replacement.is_some()
+    }
+
+    pub fn start_number(&self) -> u64 {
+        self.start_number
+    }
+
+    pub fn publish(&mut self, force: bool) -> Result<()> {
+        let now = Instant::now();
+        if !force && now < self.next_check {
+            return Ok(());
+        }
+        self.next_check = now + Duration::from_millis(250);
+        let mut updates = Vec::new();
+
+        for (index, playlist) in self.playlists.iter().enumerate() {
+            let StagedPlaylist {
+                staged,
+                public,
+                modified: previous,
+                history,
+            } = playlist;
+            let Some(modified) = fresh_playlist_modified_time(&staged.to_string_lossy())? else {
+                continue;
+            };
+            if Some(modified) == *previous {
+                continue;
+            }
+            let mut content = fs::read_to_string(staged)?;
+            let master = content
+                .lines()
+                .any(|line| line.starts_with("#EXT-X-STREAM-INF:"));
+            if master {
+                content = content.replace(&self.prefix, "");
+            } else if !content.lines().any(|line| line.starts_with("#EXTINF:")) {
+                continue;
+            } else if let Some(history) = history {
+                content = history.restore(
+                    &content,
+                    self.discontinuity_base
+                        .checked_add(1)
+                        .context("HLS discontinuity sequence overflow")?,
+                )?;
+            } else {
+                let sequence =
+                    media_sequence(&content).context("missing staged HLS media sequence")?;
+                let base = if sequence == self.start_number {
+                    self.discontinuity_base
+                } else {
+                    self.discontinuity_base
+                        .checked_add(1)
+                        .context("HLS discontinuity sequence overflow")?
+                };
+                // FFmpeg's subtitle playlist can omit discont_start. All
+                // tracks enter the same generation, even after it slides out.
+                let mut header = format!("#EXTM3U\n#EXT-X-DISCONTINUITY-SEQUENCE:{base}\n");
+                if sequence == self.start_number
+                    && !content.lines().any(|line| line == "#EXT-X-DISCONTINUITY")
+                {
+                    header.push_str("#EXT-X-DISCONTINUITY\n");
+                }
+                content = content.replacen("#EXTM3U\n", &header, 1);
+            }
+            updates.push((index, public.clone(), modified, content));
+        }
+
+        if let Some(previous) = &self.replacement
+            && previous.next_check.is_none()
+        {
+            if updates.len() != self.playlists.len() {
+                return Ok(());
+            }
+            previous.protect(SystemTime::now())?;
+        }
+        for (_, public, _, content) in &updates {
+            let temp = staged_path(public, ".hls-publish-");
+            fs::write(&temp, content)?;
+            fs::rename(&temp, public)?;
+        }
+        for (index, _, modified, _) in updates {
+            self.playlists[index].modified = Some(modified);
+        }
+        if let Some(replacement) = &mut self.replacement
+            && replacement.retire(SystemTime::now())?
+        {
+            self.replacement = None;
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for StagedHls {
+    fn drop(&mut self) {
+        for playlist in &self.playlists {
+            let _ = remove_playlist(&playlist.staged);
+        }
+    }
+}
+
+fn staged_path(path: &Path, prefix: &str) -> PathBuf {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    path.with_file_name(format!("{prefix}{name}"))
 }
 
 fn cleanup_playlist_paths(
@@ -330,7 +821,7 @@ fn prune_unreferenced_segments(media_playlists: &[String]) -> Result<()> {
         if segment_family(file_name).is_some_and(|family| segment_families.contains(family))
             && !referenced_segments.contains(file_name)
         {
-            remove_playlist(&path)?;
+            ff_hls::retention::remove(&path, SystemTime::now())?;
         }
     }
 
@@ -352,24 +843,6 @@ fn fresh_playlist_modified_time(path: &str) -> Result<Option<SystemTime>> {
         .with_context(|| format!("failed to read mtime for HLS playlist {path}"))
 }
 
-fn remove_stale_playlists(media_playlists: &[String], master_playlist: Option<&str>) -> Result<()> {
-    for segment in referenced_segment_paths(media_playlists)? {
-        remove_playlist(&segment)?;
-    }
-
-    for playlist in media_playlists {
-        remove_playlist(Path::new(playlist))
-            .with_context(|| format!("failed to remove stale HLS playlist {playlist}"))?;
-    }
-
-    if let Some(master_playlist) = master_playlist {
-        remove_playlist(Path::new(master_playlist))
-            .with_context(|| format!("failed to remove stale HLS master {master_playlist}"))?;
-    }
-
-    Ok(())
-}
-
 fn referenced_segment_paths(media_playlists: &[String]) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
 
@@ -378,9 +851,12 @@ fn referenced_segment_paths(media_playlists: &[String]) -> Result<Vec<PathBuf>> 
             continue;
         };
 
-        for segment in playlist_segment_entries(playlist)? {
-            paths.push(parent.join(segment));
-        }
+        paths.extend(
+            playlist_segment_entries(playlist)?
+                .into_iter()
+                .filter(|uri| !uri.contains(['/', '\\']))
+                .map(|uri| parent.join(uri)),
+        );
     }
 
     Ok(paths)
@@ -414,9 +890,23 @@ fn playlist_segment_entries(path: &str) -> Result<Vec<String>> {
 
     Ok(playlist
         .lines()
-        .filter_map(playlist_uri)
+        .filter_map(|line| {
+            playlist_uri(line)
+                .filter(|uri| {
+                    Path::new(uri)
+                        .extension()
+                        .is_some_and(|ext| ext == "ts" || ext == "vtt" || ext == "m4s")
+                })
+                .or_else(|| initialization_uri(line))
+        })
         .map(ToOwned::to_owned)
         .collect())
+}
+
+fn initialization_uri(line: &str) -> Option<&str> {
+    line.strip_prefix("#EXT-X-MAP:")?;
+    playlist_attribute_uri(line, "URI")
+        .filter(|uri| !uri.contains(['/', '\\']) && segment_family(uri).is_some())
 }
 
 fn child_playlist_paths(master_playlist: &str) -> Result<Vec<String>> {
@@ -434,9 +924,10 @@ fn child_playlist_paths(master_playlist: &str) -> Result<Vec<String>> {
         .lines()
         .filter_map(|line| playlist_uri(line).or_else(|| playlist_attribute_uri(line, "URI")))
         .filter(|entry| {
-            Path::new(entry)
-                .extension()
-                .is_some_and(|ext| ext == "m3u8")
+            !entry.contains(['/', '\\'])
+                && Path::new(entry)
+                    .extension()
+                    .is_some_and(|ext| ext == "m3u8")
         })
         .map(|entry| parent.join(entry).to_string_lossy().into_owned())
         .collect())
@@ -488,22 +979,33 @@ fn segment_family(file_name: &str) -> Option<&str> {
     let path = Path::new(file_name);
     let extension = path.extension()?.to_str()?;
 
-    if extension != "ts" && extension != "vtt" {
+    if !matches!(extension, "ts" | "vtt" | "m4s" | "mp4") {
         return None;
     }
 
-    let stem = path.file_stem()?.to_str()?;
+    let stem = if extension == "mp4" {
+        file_name.strip_suffix(".init.mp4")?
+    } else {
+        path.file_stem()?.to_str()?
+    };
     let number_start = stem
         .char_indices()
         .rev()
         .find(|(_, ch)| !ch.is_ascii_digit())
         .map_or(0, |(index, ch)| index + ch.len_utf8());
-    (number_start < stem.len()).then_some(&stem[..number_start])
+    (number_start < stem.len() && (extension != "mp4" || stem[..number_start].ends_with('_')))
+        .then_some(&stem[..number_start])
 }
 
 fn common_playlist_parent(media_playlists: &[String]) -> Option<PathBuf> {
     let first = media_playlists.first()?;
-    Path::new(first).parent().map(Path::to_path_buf)
+    Some(
+        Path::new(first)
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."))
+            .to_owned(),
+    )
 }
 
 fn is_hls_segment(path: &Path) -> bool {
@@ -511,7 +1013,7 @@ fn is_hls_segment(path: &Path) -> bool {
         && path
             .extension()
             .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension == "ts" || extension == "vtt")
+            .is_some_and(|extension| matches!(extension, "ts" | "vtt" | "m4s" | "mp4"))
 }
 
 fn remove_playlist(path: &Path) -> Result<()> {
@@ -536,16 +1038,20 @@ fn media_sequence_start_number(paths: &[String]) -> Result<Option<u64>> {
             }
         };
 
-        if let Some(sequence) = playlist.lines().find_map(|line| {
-            line.trim()
-                .strip_prefix("#EXT-X-MEDIA-SEQUENCE:")
-                .and_then(|value| value.trim().parse().ok())
-        }) {
+        if let Some(sequence) = media_sequence(&playlist) {
             return Ok(Some(sequence));
         }
     }
 
     Ok(None)
+}
+
+fn media_sequence(playlist: &str) -> Option<u64> {
+    playlist.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("#EXT-X-MEDIA-SEQUENCE:")
+            .and_then(|value| value.trim().parse().ok())
+    })
 }
 
 fn playlist_uri(line: &str) -> Option<&str> {
@@ -779,7 +1285,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_playlist_starts_clean_without_touching_other_output() {
+    fn stale_playlist_keeps_old_media_until_replacement() {
         let dir = env::temp_dir().join(format!("hls_stale_test_{}", process::id()));
         fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
@@ -788,14 +1294,29 @@ mod tests {
         fs::write(dir.join("stream_0.ts"), b"unreferenced").unwrap();
         fs::write(dir.join("stream_1.ts"), b"referenced").unwrap();
         fs::write(dir.join("other_0.ts"), b"other output").unwrap();
-        let now = SystemTime::now() + HLS_RESUME_MAX_AGE + Duration::from_secs(1);
+        File::open(&playlist)
+            .unwrap()
+            .set_modified(SystemTime::now() - HLS_RESUME_MAX_AGE - Duration::from_secs(1))
+            .unwrap();
 
-        let start_number =
-            prepare_resume_start_number_at(&[playlist.to_string_lossy().into_owned()], None, now)
-                .unwrap();
+        let paths = [playlist.to_string_lossy().into_owned()];
+        let session = HlsSession::acquire(&paths, None, false).unwrap();
 
-        assert_eq!(start_number, None);
-        assert!(!playlist.exists());
+        assert!(session.requires_replacement(None).unwrap());
+        let mut replacement = session.replacement(false).unwrap();
+
+        assert!(playlist.exists());
+        assert!(dir.join("stream_1.ts").exists());
+        fs::write(&playlist, "#EXTM3U\n").unwrap();
+        let now = SystemTime::now();
+        replacement.protect(now).unwrap();
+        assert!(!replacement.retire(now).unwrap());
+        for path in &replacement.published_media {
+            assert!(path.is_file());
+        }
+        assert!(replacement.retire(now + Duration::from_secs(10)).unwrap());
+
+        assert!(playlist.exists());
         assert!(!dir.join("stream_0.ts").exists());
         assert!(!dir.join("stream_1.ts").exists());
         assert!(dir.join("other_0.ts").exists());
@@ -824,6 +1345,91 @@ mod tests {
 #[cfg(test)]
 mod packager_switch_tests {
     use super::*;
+
+    #[test]
+    fn native_container_switch_clears_fragments_and_owned_initializations() {
+        let directory =
+            std::env::temp_dir().join(format!("hls-container-switch-{}", std::process::id()));
+        fs::remove_dir_all(&directory).ok();
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("stream.m3u8");
+        fs::write(&path, "#EXTM3U\n# ffplayout-packager: native\n#EXT-X-MAP:URI=\"stream_1.init.mp4\"\n#EXTINF:1.0,\nstream_1.m4s\n").unwrap();
+        let owned = [
+            "stream_0.m4s",
+            "stream_1.m4s",
+            "stream_1.init.mp4",
+            "stream_2.init.mp4",
+        ];
+        let unrelated = ["stream_3.mp4", "foreign_1.m4s", "foreign_1.init.mp4"];
+        for name in owned.into_iter().chain(unrelated) {
+            fs::write(directory.join(name), "media").unwrap();
+        }
+
+        let session =
+            HlsSession::acquire(&[path.to_string_lossy().into_owned()], None, false).unwrap();
+        assert!(session.requires_replacement(Some(false)).unwrap());
+        let mut replacement = session.replacement(false).unwrap();
+        assert!(path.exists());
+        assert!(owned.iter().all(|name| directory.join(name).exists()));
+        fs::write(&path, "#EXTM3U\n").unwrap();
+        let now = SystemTime::now();
+        replacement.protect(now).unwrap();
+        assert!(!replacement.retire(now).unwrap());
+        for path in &replacement.published_media {
+            assert!(path.is_file());
+        }
+        assert!(replacement.retire(now + Duration::from_secs(10)).unwrap());
+        assert!(path.exists());
+        assert!(owned.iter().all(|name| !directory.join(name).exists()));
+        assert!(unrelated.iter().all(|name| directory.join(name).exists()));
+
+        drop(session);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn replacement_grace_survives_restart_with_different_segment_names() {
+        let directory =
+            std::env::temp_dir().join(format!("hls-replacement-grace-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let playlist = directory.join("stream.m3u8");
+        let paths = [playlist.to_string_lossy().into_owned()];
+        let init = directory.join("stream_1.init.mp4");
+        let fragment = directory.join("stream_1.m4s");
+        fs::write(&init, b"init").unwrap();
+        fs::write(&fragment, b"fragment").unwrap();
+        fs::write(
+            &playlist,
+            "#EXTM3U\n#EXT-X-MAP:URI=\"stream_1.init.mp4\"\n#EXTINF:4,\nstream_1.m4s\n",
+        )
+        .unwrap();
+
+        let now = SystemTime::now();
+        {
+            let session = HlsSession::acquire(&paths, None, false).unwrap();
+            let mut previous = session.replacement(false).unwrap();
+            previous.protect(now).unwrap();
+            fs::write(&playlist, "#EXTM3U\n#EXTINF:4,\n.hls-new-stream_2.ts\n").unwrap();
+            fs::write(directory.join(".hls-new-stream_2.ts"), b"new").unwrap();
+            assert!(!previous.retire(now).unwrap());
+        }
+        let mut resumed = HlsSession::acquire(&paths, None, false).unwrap();
+        resumed.resume_start_number().unwrap();
+        assert_eq!(resumed.pending_media.len(), 2);
+        retire_media(&mut resumed.pending_media, now + Duration::from_secs(7)).unwrap();
+        assert_eq!(fs::read(&init).unwrap(), b"init");
+        assert_eq!(fs::read(&fragment).unwrap(), b"fragment");
+        retire_media(&mut resumed.pending_media, now + Duration::from_secs(9)).unwrap();
+        assert!(resumed.pending_media.is_empty());
+        assert!(!init.exists());
+        assert!(!fragment.exists());
+        assert_eq!(
+            fs::read(directory.join(".hls-new-stream_2.ts")).unwrap(),
+            b"new"
+        );
+        drop(resumed);
+        fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn backend_switch_removes_inactive_subtitles_and_retained_media() {
@@ -856,10 +1462,19 @@ mod packager_switch_tests {
         let path = directory.join("stream.m3u8").to_string_lossy().into_owned();
         let session = HlsSession::acquire(&[path], None, false).unwrap();
 
-        assert!(session.prepare_resume_start_number().unwrap().is_none());
+        assert!(session.requires_replacement(None).unwrap());
+        let mut replacement = session.replacement(false).unwrap();
+        assert!(directory.join("stream_vtt.m3u8").exists());
+        assert!(directory.join("stream_1.ts").exists());
+        let now = SystemTime::now();
+        replacement.protect(now).unwrap();
+        assert!(!replacement.retire(now).unwrap());
+        for path in &replacement.published_media {
+            assert!(path.is_file());
+        }
+        assert!(replacement.retire(now + Duration::from_secs(10)).unwrap());
 
         for name in [
-            "stream.m3u8",
             "stream_vtt.m3u8",
             "stream_0.ts",
             "stream_1.ts",

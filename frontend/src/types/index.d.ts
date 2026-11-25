@@ -89,6 +89,7 @@ declare global {
         desktop_available: boolean
         moq: OutputCodecOptions
         hls: OutputCodecOptions
+        hls_native?: OutputCodecOptions
         rtmp: OutputCodecOptions
         srt: OutputCodecOptions
         udp: OutputCodecOptions

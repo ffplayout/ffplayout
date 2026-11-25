@@ -555,8 +555,9 @@ export default {
         hlsSettings: 'HLS 设置',
         hlsPackager: 'HLS 打包器',
         hlsPackagerNative: '原生（实验性）',
-        hlsPackagerHelp:
-            '本地 MPEG-TS 配合 H.264/AAC。支持档位和 WebVTT。更换打包器会重启此输出。',
+        hlsPackagerHelp: '本地 MPEG-TS 或 fMP4，支持 AAC 音频、多码率及 WebVTT。更改打包器或容器会启动新的播放列表。',
+        hlsSegmentType: '分段容器',
+        hlsSegmentTypeAuto: '自动',
         hlsPlaylistName: '播放列表名称',
         outputFormat: '输出格式',
         hlsSegmentDuration: '分段时长（秒）',

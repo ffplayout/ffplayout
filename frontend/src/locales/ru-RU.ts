@@ -566,7 +566,9 @@ export default {
         hlsPackager: 'Упаковщик HLS',
         hlsPackagerNative: 'Встроенный (экспериментальный)',
         hlsPackagerHelp:
-            'Локальный MPEG-TS с H.264/AAC. Поддерживает варианты и WebVTT. Смена упаковщика перезапускает этот выход.',
+            'Локальные MPEG-TS или fMP4 со звуком AAC, вариантами и WebVTT. Смена упаковщика или контейнера создаёт новый плейлист.',
+        hlsSegmentType: 'Контейнер сегментов',
+        hlsSegmentTypeAuto: 'Автоматически',
         hlsPlaylistName: 'Название плейлиста',
         outputFormat: 'Формат вывода',
         hlsSegmentDuration: 'Длительность сегмента (секунды)',

@@ -4,6 +4,7 @@ use std::{
     fs,
     io::ErrorKind,
     path::{Path, PathBuf},
+    time::{Duration, SystemTime},
 };
 
 use anyhow::{Context, Result, ensure};
@@ -12,6 +13,7 @@ use anyhow::{Context, Result, ensure};
 pub(crate) struct Segment {
     pub sequence: u64,
     pub uri: String,
+    pub initialization: Option<String>,
     pub duration: f64,
     pub discontinuity: bool,
     pub date: Option<String>,
@@ -24,18 +26,26 @@ pub(crate) struct Playlist {
     target_duration: u64,
     retired: VecDeque<PathBuf>,
     delete_threshold: usize,
+    initialization_files: Vec<(u64, PathBuf)>,
+    replaced_resources: Option<(Duration, HashSet<PathBuf>)>,
 }
 
 impl Playlist {
-    pub fn load(path: PathBuf) -> Result<Self> {
-        let mut playlist = Self {
+    pub fn empty(path: PathBuf) -> Self {
+        Self {
             path,
             segments: VecDeque::new(),
             discontinuity_sequence: 0,
             target_duration: 1,
             retired: VecDeque::new(),
             delete_threshold: 1,
-        };
+            initialization_files: Vec::new(),
+            replaced_resources: None,
+        }
+    }
+
+    pub fn load(path: PathBuf) -> Result<Self> {
+        let mut playlist = Self::empty(path);
         let content = match fs::read_to_string(&playlist.path) {
             Ok(content) => content,
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(playlist),
@@ -55,6 +65,7 @@ impl Playlist {
         let mut duration = None;
         let mut discontinuity = false;
         let mut date = None;
+        let mut initialization = None;
 
         for line in content.lines().map(str::trim) {
             if let Some(value) = line.strip_prefix("#EXT-X-MEDIA-SEQUENCE:") {
@@ -69,6 +80,16 @@ impl Playlist {
                 );
             } else if line == "#EXT-X-DISCONTINUITY" {
                 discontinuity = true;
+            } else if let Some(value) = line.strip_prefix("#EXT-X-MAP:") {
+                let uri = value
+                    .strip_prefix("URI=\"")
+                    .and_then(|value| value.strip_suffix('"'))
+                    .context("invalid native HLS initialization map")?;
+                ensure!(
+                    safe_name(uri) && playlist.parent().join(uri).is_file(),
+                    "HLS initialization resource is invalid or missing: {uri}"
+                );
+                initialization = Some(uri.to_owned());
             } else if let Some(value) = line.strip_prefix("#EXT-X-PROGRAM-DATE-TIME:") {
                 date = Some(value.to_owned());
             } else if let Some(value) = line.strip_prefix("#EXTINF:") {
@@ -95,6 +116,7 @@ impl Playlist {
                 playlist.segments.push_back(Segment {
                     sequence,
                     uri: line.to_owned(),
+                    initialization: initialization.clone(),
                     duration: duration.take().context("HLS segment has no duration")?,
                     discontinuity,
                     date: date.take(),
@@ -117,8 +139,32 @@ impl Playlist {
         delete_threshold: u32,
         family: &str,
         extension: &str,
+        replacing: bool,
     ) -> Result<()> {
         let requested_target = u64::from(segment_seconds);
+        ensure!(
+            self.segments.iter().all(|segment| {
+                segment
+                    .uri
+                    .rsplit_once('.')
+                    .is_some_and(|(_, ext)| ext == extension)
+                    && segment.initialization.is_some() == (extension == "m4s")
+            }),
+            "native HLS segment format changed; start a fresh HLS history"
+        );
+        if extension == "m4s" {
+            ensure!(
+                self.segments.iter().all(|segment| {
+                    segment
+                        .initialization
+                        .as_deref()
+                        .and_then(|uri| resource_number(uri, family, ".init.mp4"))
+                        .zip(resource_number(&segment.uri, family, ".m4s"))
+                        .is_some_and(|(init, fragment)| init <= fragment)
+                }),
+                "native HLS fragment or initialization filename belongs to another rendition"
+            );
+        }
 
         if self.segments.is_empty() {
             self.target_duration = requested_target;
@@ -129,6 +175,9 @@ impl Playlist {
             );
         }
         self.delete_threshold = delete_threshold as usize;
+        if replacing {
+            return Ok(());
+        }
         let mut orphaned = Vec::new();
         let extension = format!(".{extension}");
         let referenced: HashSet<_> = self
@@ -141,6 +190,12 @@ impl Playlist {
             let entry = entry?;
             let name = entry.file_name();
             let name = name.to_string_lossy();
+
+            if extension == ".m4s"
+                && let Some(number) = resource_number(&name, family, ".init.mp4")
+            {
+                self.initialization_files.push((number, entry.path()));
+            }
 
             if let Some(number) = name
                 .strip_prefix(family)
@@ -162,6 +217,18 @@ impl Playlist {
     }
 
     pub fn reset_history(&mut self, discontinuity_sequence: u64) {
+        if !self.segments.is_empty() {
+            let grace = crate::retention::grace(self.segments.iter().map(|s| s.duration));
+            let resources = self
+                .segments
+                .iter()
+                .flat_map(|segment| {
+                    std::iter::once(&segment.uri).chain(segment.initialization.iter())
+                })
+                .map(|uri| self.parent().join(uri))
+                .collect();
+            self.replaced_resources = Some((grace, resources));
+        }
         let parent = self.parent().to_owned();
 
         self.retired.extend(
@@ -184,6 +251,23 @@ impl Playlist {
 
     pub fn append(&mut self, segment: Segment, limit: usize) -> Result<()> {
         self.validate_duration(segment.duration)?;
+        if let Some(uri) = &segment.initialization
+            && self
+                .segments
+                .back()
+                .and_then(|last| last.initialization.as_ref())
+                != Some(uri)
+            && let Some(number) = filename_number(uri)
+        {
+            let path = self.parent().join(uri);
+            if !self
+                .initialization_files
+                .iter()
+                .any(|(_, entry)| *entry == path)
+            {
+                self.initialization_files.push((number, path));
+            }
+        }
         self.segments.push_back(segment);
 
         let mut window_duration: f64 = self.segments.iter().map(|segment| segment.duration).sum();
@@ -217,14 +301,24 @@ impl Playlist {
 
     pub fn publish(&mut self) -> Result<()> {
         let sequence = self.segments.front().map_or(0, |segment| segment.sequence);
+        let version = if self
+            .segments
+            .iter()
+            .any(|segment| segment.initialization.is_some())
+        {
+            7
+        } else {
+            3
+        };
         let mut text = String::with_capacity(160 + self.segments.len() * 96);
 
         write!(
             text,
-            "#EXTM3U\n# ffplayout-packager: native\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:{sequence}\n#EXT-X-DISCONTINUITY-SEQUENCE:{}\n",
+            "#EXTM3U\n# ffplayout-packager: native\n#EXT-X-VERSION:{version}\n#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:{sequence}\n#EXT-X-DISCONTINUITY-SEQUENCE:{}\n",
             self.target_duration, self.discontinuity_sequence
         )?;
 
+        let mut initialization = None;
         for segment in &self.segments {
             if segment.discontinuity {
                 text.push_str("#EXT-X-DISCONTINUITY\n");
@@ -233,26 +327,89 @@ impl Playlist {
             if let Some(date) = &segment.date {
                 writeln!(text, "#EXT-X-PROGRAM-DATE-TIME:{date}")?;
             }
+            if let Some(uri) = &segment.initialization
+                && initialization != Some(uri)
+            {
+                writeln!(text, "#EXT-X-MAP:URI=\"{uri}\"")?;
+                initialization = Some(uri);
+            }
 
             write!(text, "#EXTINF:{:.6},\n{}\n", segment.duration, segment.uri)?;
         }
 
+        if let Some((grace, resources)) = &self.replaced_resources {
+            let until = SystemTime::now() + *grace;
+            for resource in resources {
+                crate::retention::protect(resource, until, &self.path)?;
+            }
+        }
         atomic_write(&self.path, text.as_bytes())?;
+        self.replaced_resources = None;
+        Ok(())
+    }
 
+    pub fn retire(&mut self) -> Result<()> {
         while self.retired.len() > self.delete_threshold {
             let path = self.retired.pop_front().expect("checked retirement queue");
 
-            match fs::remove_file(&path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == ErrorKind::NotFound => {}
-                Err(error) => {
-                    return Err(error).with_context(|| format!("retiring {}", path.display()));
+            if !crate::retention::remove(&path, SystemTime::now())? {
+                self.retired.push_front(path);
+                break;
+            }
+        }
+
+        // An init file belongs to every numbered fragment until the next init.
+        // Keep it as long as any of those fragments can still be fetched.
+        if !self.initialization_files.is_empty()
+            && let Some(oldest) = self
+                .segments
+                .front()
+                .and_then(|segment| filename_number(&segment.uri))
+            && let oldest = self
+                .retired
+                .iter()
+                .filter_map(|path| filename_number(path.file_name()?.to_str()?))
+                .fold(oldest, u64::min)
+            && let Some(keep_from) = self
+                .initialization_files
+                .iter()
+                .map(|(number, _)| *number)
+                .filter(|number| *number <= oldest)
+                .max()
+        {
+            let mut files = std::mem::take(&mut self.initialization_files);
+            for (number, path) in files.drain(..) {
+                if number < keep_from
+                    && !self.segments.iter().any(|segment| {
+                        segment.initialization.as_deref()
+                            == path.file_name().and_then(|name| name.to_str())
+                    })
+                {
+                    if !crate::retention::remove(&path, SystemTime::now())? {
+                        self.initialization_files.push((number, path));
+                    }
+                } else {
+                    self.initialization_files.push((number, path));
                 }
             }
         }
 
         Ok(())
     }
+}
+
+fn resource_number(name: &str, family: &str, extension: &str) -> Option<u64> {
+    name.strip_prefix(family)?
+        .strip_suffix(extension)?
+        .parse()
+        .ok()
+}
+
+fn filename_number(name: &str) -> Option<u64> {
+    let stem = name
+        .strip_suffix(".init.mp4")
+        .or_else(|| name.strip_suffix(".m4s"))?;
+    stem.rsplit_once('_')?.1.parse().ok()
 }
 
 pub(crate) fn safe_name(name: &str) -> bool {

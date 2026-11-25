@@ -565,7 +565,9 @@ export default {
         hlsPackager: 'HLS-Paketierer',
         hlsPackagerNative: 'Nativ (experimentell)',
         hlsPackagerHelp:
-            'Lokales MPEG-TS mit H.264/AAC. Unterstützt Varianten und WebVTT. Ein Wechsel startet diesen Output neu.',
+            'Lokales MPEG-TS oder fMP4 mit AAC-Audio, Varianten und WebVTT. Ein Wechsel des Paketierers oder Containers startet eine neue Playlist.',
+        hlsSegmentType: 'Segmentcontainer',
+        hlsSegmentTypeAuto: 'Automatisch',
         hlsPlaylistName: 'Playlist-Name',
         outputFormat: 'Ausgabeformat',
         hlsSegmentDuration: 'Segmentdauer (Sekunden)',

@@ -1,6 +1,9 @@
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
+    http::{
+        HeaderMap, HeaderValue,
+        header::{CONTENT_DISPOSITION, CONTENT_TYPE},
+    },
     response::Response,
 };
 use path_clean::PathClean;
@@ -23,10 +26,8 @@ pub async fn get_public(
     Path((id, public, file_stem)): Path<(i32, String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, ServiceError> {
-    let base_path = if file_stem.ends_with(".ts")
-        || file_stem.ends_with(".m3u8")
-        || file_stem.ends_with(".vtt")
-    {
+    let hls_type = hls_content_type(&file_stem);
+    let base_path = if hls_type.is_some() {
         let manager = {
             let guard = state.controller.read().await;
             guard.get(id)
@@ -50,5 +51,37 @@ pub async fn get_public(
     let path = base_path.join(file_stem.as_str()).clean();
     ensure_path_within_root(&base_path, &path)?;
 
-    stream_file(&path, &headers).await
+    let mut response = stream_file(&path, &headers).await?;
+
+    if let Some(content_type) = hls_type {
+        response
+            .headers_mut()
+            .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
+        response.headers_mut().remove(CONTENT_DISPOSITION);
+    }
+
+    Ok(response)
+}
+
+fn hls_content_type(name: &str) -> Option<&'static str> {
+    match std::path::Path::new(name).extension()?.to_str()? {
+        "m3u8" => Some("application/vnd.apple.mpegurl"),
+        "ts" => Some("video/mp2t"),
+        "vtt" => Some("text/vtt"),
+        "m4s" => Some("video/mp4"),
+        "mp4" if name.ends_with(".init.mp4") => Some("video/mp4"),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hls_content_type;
+
+    #[test]
+    fn routes_fmp4_and_its_initialization_as_channel_hls_resources() {
+        assert_eq!(hls_content_type("high_12.m4s"), Some("video/mp4"));
+        assert_eq!(hls_content_type("high_12.init.mp4"), Some("video/mp4"));
+        assert_eq!(hls_content_type("ordinary-video.mp4"), None);
+    }
 }

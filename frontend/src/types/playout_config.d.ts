@@ -24,7 +24,7 @@ export type Output = { id: number, label: string, enabled: boolean, inherit_reso
  */
 protocol_options: { [key in string]: string }, 
 /**
- * FFmpeg muxer options for this output, such as HLS `hls_flags`.
+ * Muxer options, including `ffplayout_packager` and native HLS `hls_segment_type`.
  */
 muxer_options: { [key in string]: string }, 
 /**

@@ -1,10 +1,11 @@
 //! FFmpeg adapter for the codec-independent ff-hls packager.
 use anyhow::{Context, Result, ensure};
 use ff_hls::{Config, Cue, MediaPacket, Packager, RenditionConfig, Subtitle};
-use ffmpeg_next::{Packet, Rational, Rescale, codec, format, rescale};
+use ffmpeg_next::{Packet, Rational, Rescale, format, rescale};
 
 mod codecs;
 mod container;
+mod fmp4;
 
 use crate::utils::{
     config::{HlsSubtitle, HlsVariant, OutputConfig},
@@ -12,10 +13,10 @@ use crate::utils::{
 };
 
 use codecs::Codecs;
-use container::{Track, TsWriter};
+use container::{ContainerWriter, Track};
 
 pub(super) struct NativeHls {
-    packager: Packager<Packet, TsWriter>,
+    packager: Packager<Packet, ContainerWriter>,
     time_bases: Vec<Rational>,
     renditions: usize,
     codecs: Vec<Codecs>,
@@ -28,8 +29,8 @@ impl NativeHls {
         config: &OutputConfig,
         variants: &[HlsVariant],
         subtitle: Option<&HlsSubtitle>,
-        segment_seconds: u32,
-        list_size: u32,
+        (segment_seconds, list_size): (u32, u32),
+        replacement: Option<super::hls::HlsReplacement>,
     ) -> Result<Self> {
         ensure!(
             !path.contains("://"),
@@ -53,6 +54,7 @@ impl NativeHls {
         let mut renditions = Vec::new();
         let mut tracks = Vec::new();
         let mut codecs = Vec::new();
+        let mut fragmented = None;
 
         for index in 0..variants.len().max(1) {
             let video = template
@@ -64,14 +66,20 @@ impl NativeHls {
             let video_parameters = video.parameters();
             let audio_parameters = audio.parameters();
 
+            let rendition_fragmented = crate::native_hls_uses_fmp4(
+                video_parameters.id().name(),
+                audio_parameters.id().name(),
+                config
+                    .muxer_options
+                    .get("hls_segment_type")
+                    .map(String::as_str),
+            )
+            .map_err(anyhow::Error::msg)?;
             ensure!(
-                video_parameters.id() == codec::Id::H264,
-                "native HLS currently supports H.264 video only"
+                fragmented.is_none_or(|value| value == rendition_fragmented),
+                "native HLS renditions must use the same segment container"
             );
-            ensure!(
-                audio_parameters.id() == codec::Id::AAC,
-                "native HLS currently supports AAC audio only"
-            );
+            fragmented = Some(rendition_fragmented);
 
             // SAFETY: the live template owns both codec parameter allocations.
             let (width, height, video_rate, audio_rate) = unsafe {
@@ -91,7 +99,8 @@ impl NativeHls {
                 variant.audio_bitrate
             });
 
-            let declaration = Codecs::new(&video_parameters, &audio_parameters);
+            let declaration =
+                (!rendition_fragmented).then(|| Codecs::new(&video_parameters, &audio_parameters));
 
             renditions.push(RenditionConfig {
                 name: variant
@@ -100,9 +109,12 @@ impl NativeHls {
                 width,
                 height,
                 bandwidth: bandwidth.max(128_000) * 12 / 10,
-                codecs: declaration.value().unwrap_or_default(),
+                codecs: declaration
+                    .as_ref()
+                    .and_then(Codecs::value)
+                    .unwrap_or_default(),
             });
-            codecs.push(declaration);
+            codecs.extend(declaration);
             tracks.push([
                 Track {
                     parameters: video_parameters.clone(),
@@ -116,33 +128,39 @@ impl NativeHls {
         }
 
         let count = renditions.len();
-        let packager = Packager::new(
-            Config {
-                directory: parent.to_owned(),
-                renditions,
-                subtitle: subtitle.map(|subtitle| Subtitle {
-                    name: subtitle.name.clone(),
-                    language: subtitle.language.clone(),
-                    default: subtitle.default,
-                }),
-                master_playlist: (!variants.is_empty() || subtitle.is_some())
-                    .then(|| "master.m3u8".to_owned()),
-                segment_seconds,
-                list_size,
-                delete_threshold: config
-                    .muxer_options
-                    .get("hls_delete_threshold")
-                    .map(|value| value.parse::<u32>())
-                    .transpose()
-                    .context("invalid native HLS delete threshold")?
-                    .unwrap_or(1),
-                program_date_time: config
-                    .muxer_options
-                    .get("hls_flags")
-                    .is_some_and(|flags| flags.split('+').any(|flag| flag == "program_date_time")),
-            },
-            TsWriter { tracks },
-        )?;
+        let config = Config {
+            directory: parent.to_owned(),
+            renditions,
+            subtitle: subtitle.map(|subtitle| Subtitle {
+                name: subtitle.name.clone(),
+                language: subtitle.language.clone(),
+                default: subtitle.default,
+            }),
+            master_playlist: (!variants.is_empty() || subtitle.is_some())
+                .then(|| "master.m3u8".to_owned()),
+            segment_seconds,
+            list_size,
+            delete_threshold: config
+                .muxer_options
+                .get("hls_delete_threshold")
+                .map(|value| value.parse::<u32>())
+                .transpose()
+                .context("invalid native HLS delete threshold")?
+                .unwrap_or(1),
+            program_date_time: config
+                .muxer_options
+                .get("hls_flags")
+                .is_some_and(|flags| flags.split('+').any(|flag| flag == "program_date_time")),
+        };
+        let counters = replacement
+            .as_ref()
+            .map(|previous| (previous.next_sequence, previous.discontinuity_sequence));
+        let writer = ContainerWriter::new(tracks, fragmented.unwrap_or_default(), replacement);
+        let packager = if let Some((next, discontinuities)) = counters {
+            Packager::new_replacing(config, writer, next, discontinuities)?
+        } else {
+            Packager::new(config, writer)?
+        };
 
         Ok(Self {
             packager,
@@ -174,7 +192,11 @@ impl NativeHls {
             });
         }
 
-        if let Some(codecs) = self.codecs[stream / 2].observe(packet) {
+        if let Some(codecs) = self
+            .codecs
+            .get_mut(stream / 2)
+            .and_then(|codecs| codecs.observe(packet))
+        {
             self.packager.set_codecs(stream / 2, codecs)?;
         }
 

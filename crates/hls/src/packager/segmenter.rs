@@ -1,7 +1,7 @@
 //! Experimental local HLS orchestration with a caller-provided container writer.
 //! One destination worker owns all renditions and publishes only closed files.
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fmt::Write,
     fs, mem,
     path::PathBuf,
@@ -52,10 +52,34 @@ pub struct Packager<T, W> {
     wall_anchor: Option<(i64, Timestamp)>,
     program_date_time: bool,
     finished: bool,
+    published: bool,
 }
 
 impl<T, W: SegmentWriter<T>> Packager<T, W> {
     pub fn new(config: Config, writer: W) -> Result<Self> {
+        Self::open(config, writer, None)
+    }
+
+    pub fn new_replacing(
+        config: Config,
+        writer: W,
+        next_sequence: u64,
+        discontinuity_sequence: u64,
+    ) -> Result<Self> {
+        Self::open(
+            config,
+            writer,
+            Some((next_sequence, discontinuity_sequence)),
+        )
+    }
+
+    fn open(config: Config, writer: W, replacement_sequence: Option<(u64, u64)>) -> Result<Self> {
+        let replace = replacement_sequence.is_some();
+        let extension = writer.extension();
+        ensure!(
+            matches!(extension, "ts" | "m4s"),
+            "unsupported native HLS video segment extension"
+        );
         ensure!(
             (1..=60).contains(&config.segment_seconds),
             "native HLS segment duration must be 1–60 seconds"
@@ -108,7 +132,12 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             );
 
             let uri = format!("{name}.m3u8");
-            let playlist = Playlist::load(parent.join(&uri))?;
+            let path = parent.join(&uri);
+            let playlist = if replace {
+                Playlist::empty(path)
+            } else {
+                Playlist::load(path)?
+            };
             let resumed_last_sequence = playlist.segments.back().map(|segment| segment.sequence);
 
             renditions.push(Rendition {
@@ -151,17 +180,22 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                 config.segment_seconds,
                 config.delete_threshold,
                 &format!("{}_", rendition.name),
-                "ts",
+                extension,
+                replace,
             )?;
         }
 
         let mut subtitles = config
             .subtitle
             .map(|subtitle| {
-                Ok::<_, anyhow::Error>((
-                    subtitle,
-                    Playlist::load(parent.join(format!("{}_vtt.m3u8", renditions[0].name)))?,
-                ))
+                Ok::<_, anyhow::Error>((subtitle, {
+                    let path = parent.join(format!("{}_vtt.m3u8", renditions[0].name));
+                    if replace {
+                        Playlist::empty(path)
+                    } else {
+                        Playlist::load(path)?
+                    }
+                }))
             })
             .transpose()?;
         if let Some((_, playlist)) = &mut subtitles {
@@ -170,60 +204,75 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                 config.delete_threshold,
                 &renditions[0].name,
                 "vtt",
+                replace,
             )?;
         }
 
-        // New tracks have no historical media. They join at the next sequence;
-        // retained tracks keep their playable window, including when the first
-        // configured rendition is new or a subtitle track is enabled later.
-        let reference = renditions
-            .iter()
-            .map(|rendition| &rendition.playlist)
-            .find(|playlist| !playlist.segments.is_empty());
-        let sequence = reference
-            .and_then(|playlist| playlist.segments.back())
-            .map_or(Ok(0), |segment| {
-                segment
-                    .sequence
-                    .checked_add(1)
-                    .context("HLS sequence overflow")
-            })?;
-        let discontinuity = reference.is_some();
-        let discontinuity_sequence = reference.map_or(0, |playlist| {
-            playlist.discontinuity_sequence
-                + playlist
-                    .segments
-                    .iter()
-                    .filter(|segment| segment.discontinuity)
-                    .count() as u64
-        });
-
-        for playlist in renditions
-            .iter_mut()
-            .map(|rendition| &mut rendition.playlist)
-        {
-            if let Some(last) = playlist.segments.back() {
+        // Native variants share one file counter. Two manifests assigning
+        // different media sequences to that same last set indicate corruption.
+        let mut last_files = HashMap::new();
+        for rendition in &renditions {
+            if let Some(last) = rendition.playlist.segments.back()
+                && let Some((_, suffix)) = last.uri.rsplit_once('_')
+                && let Some(previous) = last_files.insert(suffix, last.sequence)
+            {
                 ensure!(
-                    last.sequence.checked_add(1) == Some(sequence),
-                    "native HLS resume playlists have inconsistent sequences"
+                    previous == last.sequence,
+                    "inconsistent native HLS media sequence for the same segment set"
                 );
-            } else {
-                playlist.discontinuity_sequence = discontinuity_sequence;
             }
         }
-
+        let histories = renditions
+            .iter()
+            .map(|r| &r.playlist)
+            .chain(subtitles.iter().map(|(_, playlist)| playlist));
+        let mut latest = None;
+        let (mut sequence, mut discontinuity_sequence) = replacement_sequence.unwrap_or_default();
+        for playlist in histories {
+            if let Some(last) = playlist.segments.back() {
+                latest = Some(latest.unwrap_or(0).max(last.sequence));
+                let count = playlist.segments.iter().filter(|s| s.discontinuity).count() as u64;
+                discontinuity_sequence = discontinuity_sequence.max(
+                    playlist
+                        .discontinuity_sequence
+                        .checked_add(count)
+                        .context("HLS discontinuity sequence overflow")?,
+                );
+            }
+        }
+        let has_history = latest.is_some();
+        if let Some(last) = latest {
+            sequence = last.checked_add(1).context("HLS sequence overflow")?;
+        }
+        let discontinuity = has_history || sequence > 0;
+        // A process may have published only part of the last rendition set.
+        // Keep the advanced windows and let lagging tracks rejoin at the next
+        // unused sequence. Their on-disk playlists stay live until publication.
+        for rendition in &mut renditions {
+            let playlist = &mut rendition.playlist;
+            if playlist
+                .segments
+                .back()
+                .is_none_or(|s| Some(s.sequence) != latest)
+            {
+                playlist.reset_history(discontinuity_sequence);
+                rendition.resumed_last_sequence = None;
+            }
+        }
         if let Some((_, playlist)) = &mut subtitles
             && playlist
                 .segments
                 .back()
-                .is_none_or(|last| last.sequence.checked_add(1) != Some(sequence))
+                .is_none_or(|s| Some(s.sequence) != latest)
         {
-            // A previously disabled subtitle track can lag behind video.
-            // Start a new window; retire its old resources only on publish.
             playlist.reset_history(discontinuity_sequence);
         }
 
-        let mut file_number = sequence;
+        let mut file_number = if has_history {
+            sequence
+        } else {
+            writer.first_file_number().max(sequence)
+        };
 
         // Orphaned files can remain after a crash, or numbering may differ from
         // MEDIA-SEQUENCE in playlists produced by the FFmpeg backend.
@@ -240,7 +289,15 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             for prefix in &prefixes {
                 if let Some(number) = name
                     .strip_prefix(prefix)
-                    .and_then(|suffix| suffix.strip_suffix(".ts"))
+                    .and_then(|suffix| {
+                        suffix
+                            .strip_suffix(if extension == "m4s" { ".m4s" } else { ".ts" })
+                            .or_else(|| {
+                                (extension == "m4s")
+                                    .then(|| suffix.strip_suffix(".init.mp4"))
+                                    .flatten()
+                            })
+                    })
                     .and_then(|number| number.parse::<u64>().ok())
                 {
                     file_number = file_number.max(
@@ -291,6 +348,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             wall_anchor: None,
             program_date_time: config.program_date_time,
             finished: false,
+            published: false,
         })
     }
 
@@ -524,7 +582,12 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             .iter()
             .enumerate()
             .try_for_each(|(index, rendition)| {
-                let uri = format!("{}_{}.ts", rendition.name, self.file_number);
+                let uri = format!(
+                    "{}_{}.{}",
+                    rendition.name,
+                    self.file_number,
+                    self.writer.extension()
+                );
 
                 self.writer.write_segment(
                     &rendition.playlist.parent().join(&uri),
@@ -538,7 +601,8 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
 
         if let Some((_, playlist)) = &self.subtitles {
             let uri = format!("{}{}.vtt", self.renditions[0].name, self.file_number);
-            let mapping = (start / 1000 * 90).rem_euclid(MPEGTS_WRAP);
+            let mapping = (start.saturating_add(self.writer.presentation_offset_us()) / 1000 * 90)
+                .rem_euclid(MPEGTS_WRAP);
             let mut text = format!(
                 "WEBVTT\nX-TIMESTAMP-MAP=LOCAL:{},MPEGTS:{mapping}\n\n",
                 timestamp(start / 1000)
@@ -568,11 +632,56 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             atomic_write(&path, text.as_bytes())?;
         }
 
-        for rendition in &mut self.renditions {
+        if !self.published {
+            self.writer.before_first_publication()?;
+            let mut replace = false;
+            for (index, rendition) in self.renditions.iter().enumerate() {
+                if let Some(uri) = rendition
+                    .playlist
+                    .segments
+                    .back()
+                    .and_then(|segment| segment.initialization.as_ref())
+                {
+                    let previous = rendition.playlist.parent().join(uri);
+                    replace |= !self.writer.initialization_matches(index, &previous)?;
+                }
+            }
+
+            if replace {
+                for rendition in &mut self.renditions {
+                    let playlist = &mut rendition.playlist;
+                    let sequence = playlist.discontinuity_sequence
+                        + playlist
+                            .segments
+                            .iter()
+                            .filter(|segment| segment.discontinuity)
+                            .count() as u64;
+                    playlist.reset_history(sequence);
+                    rendition.resumed_last_sequence = None;
+                }
+                if let Some((_, playlist)) = &mut self.subtitles {
+                    let sequence = self.renditions[0].playlist.discontinuity_sequence;
+                    playlist.reset_history(sequence);
+                }
+            }
+        }
+
+        for (index, rendition) in self.renditions.iter_mut().enumerate() {
+            if let Some(codecs) = self.writer.codecs(index)
+                && rendition.codecs != codecs
+            {
+                rendition.codecs = codecs.to_owned();
+            }
             rendition.playlist.append(
                 Segment {
                     sequence: self.sequence,
-                    uri: format!("{}_{}.ts", rendition.name, self.file_number),
+                    uri: format!(
+                        "{}_{}.{}",
+                        rendition.name,
+                        self.file_number,
+                        self.writer.extension()
+                    ),
+                    initialization: self.writer.initialization(index).map(str::to_owned),
                     duration,
                     discontinuity: self.discontinuity,
                     date: date.clone(),
@@ -586,6 +695,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                 Segment {
                     sequence: self.sequence,
                     uri: format!("{}{}.vtt", self.renditions[0].name, self.file_number),
+                    initialization: None,
                     duration,
                     discontinuity: self.discontinuity,
                     date,
@@ -600,6 +710,14 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         }
 
         self.publish_master()?;
+        self.published = true;
+        self.writer.after_publication()?;
+        for rendition in &mut self.renditions {
+            rendition.playlist.retire()?;
+        }
+        if let Some((_, playlist)) = &mut self.subtitles {
+            playlist.retire()?;
+        }
         self.cues.retain(|cue| cue.end_ms > end / 1000);
         self.cue_bytes = self.cues.iter().map(|cue| cue.text.len()).sum();
         self.sequence = self

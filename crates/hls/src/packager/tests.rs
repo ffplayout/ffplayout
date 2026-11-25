@@ -85,6 +85,63 @@ impl SegmentWriter<()> for Writer {
     }
 }
 
+#[derive(Default)]
+struct FragmentWriter {
+    initialization: Option<String>,
+}
+
+impl SegmentWriter<()> for FragmentWriter {
+    fn extension(&self) -> &'static str {
+        "m4s"
+    }
+
+    fn initialization(&self, _rendition: usize) -> Option<&str> {
+        self.initialization.as_deref()
+    }
+
+    fn write_segment(
+        &mut self,
+        path: &Path,
+        _packets: &[MediaPacket<()>],
+        _rendition: usize,
+    ) -> Result<()> {
+        if self.initialization.is_none() {
+            let init = path.with_extension("init.mp4");
+            fs::write(&init, b"init")?;
+            self.initialization = Some(init.file_name().unwrap().to_string_lossy().into_owned());
+        }
+        fs::write(path, b"fragment")?;
+
+        Ok(())
+    }
+}
+
+#[test]
+fn fmp4_initialization_survives_resume_and_retires_with_its_last_fragment() {
+    let fixture = Fixture::new();
+    {
+        let mut packager = Packager::new(fixture.config(1, 3), FragmentWriter::default()).unwrap();
+        feed(&mut packager, 1, 0, 100).unwrap();
+        packager.finish().unwrap();
+    }
+    let first_init = fixture.0.join("v0_0.init.mp4");
+    let playlist = fixture.0.join("v0.m3u8");
+    assert!(first_init.exists());
+
+    let mut packager = Packager::new(fixture.config(1, 3), FragmentWriter::default()).unwrap();
+    feed(&mut packager, 1, 4_000_000, 51).unwrap();
+    let mixed = fs::read_to_string(&playlist).unwrap();
+    assert_eq!(mixed.matches("#EXT-X-MAP:").count(), 2);
+    assert!(first_init.exists());
+    feed(&mut packager, 1, 6_040_000, 100).unwrap();
+    packager.finish().unwrap();
+
+    let retired = fs::read_to_string(playlist).unwrap();
+    assert_eq!(retired.matches("#EXT-X-MAP:").count(), 1);
+    assert!(!first_init.exists());
+    assert!(fixture.0.join("v0_4.init.mp4").exists());
+}
+
 fn packet(stream: usize, pts_us: i64, keyframe: bool) -> MediaPacket<()> {
     MediaPacket {
         stream,
@@ -1419,22 +1476,40 @@ fn publication_failure_after_media_preserves_history_and_never_reuses_orphans() 
 }
 
 #[test]
-fn interrupted_variant_publication_rejects_inconsistent_resume_without_mutation() {
+fn interrupted_variant_publication_resumes_beyond_all_published_sequences() {
+    const CHILD_DIRECTORY: &str = "FF_HLS_PARTIAL_MANIFEST_FIXTURE";
+    let blocked = ".v1.m3u8.native.tmp";
+    if let Some(directory) = std::env::var_os(CHILD_DIRECTORY) {
+        let fixture = Fixture(PathBuf::from(directory));
+        let mut packager = Packager::new(
+            fixture.config(2, 3),
+            PublicationFault {
+                temporary_playlist: Some(blocked),
+                disk_full: false,
+            },
+        )
+        .unwrap();
+        feed(&mut packager, 2, 0, 26).unwrap();
+        assert!(feed(&mut packager, 2, 1_040_000, 26).is_err());
+        std::process::exit(74);
+    }
+
     let fixture = Fixture::new();
     let config = fixture.config(2, 3);
-    let blocked = ".v1.m3u8.native.tmp";
-    let mut packager = Packager::new(
-        fixture.config(2, 3),
-        PublicationFault {
-            temporary_playlist: Some(blocked),
-            disk_full: false,
-        },
-    )
-    .unwrap();
-
-    feed(&mut packager, 2, 0, 26).unwrap();
-    assert!(feed(&mut packager, 2, 1_040_000, 26).is_err());
-    drop(packager);
+    let child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "packager::tests::interrupted_variant_publication_resumes_beyond_all_published_sequences"])
+        .env(CHILD_DIRECTORY, &fixture.0).output().unwrap();
+    assert_eq!(child.status.code(), Some(74), "{child:?}");
+    assert!(
+        fs::read_to_string(fixture.0.join("v0.m3u8"))
+            .unwrap()
+            .contains("v0_1.ts")
+    );
+    assert!(
+        !fs::read_to_string(fixture.0.join("v1.m3u8"))
+            .unwrap()
+            .contains("v1_1.ts")
+    );
     fs::remove_dir(fixture.0.join(blocked)).unwrap();
 
     let snapshot: Vec<_> = fs::read_dir(&fixture.0)
@@ -1446,23 +1521,21 @@ fn interrupted_variant_publication_rejects_inconsistent_resume_without_mutation(
             (path, contents)
         })
         .collect();
-    let result = Packager::new(
+    let mut resumed = Packager::new(
         config,
         Writer {
             fail_rendition: None,
         },
-    );
-
-    assert!(
-        result
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("inconsistent sequences")
-    );
-
+    )
+    .unwrap();
     for (path, contents) in snapshot {
         assert_eq!(fs::read(path).unwrap(), contents);
+    }
+    feed(&mut resumed, 2, 3_000_000, 26).unwrap();
+    for (name, resource) in [("v0", "v0_2.ts"), ("v1", "v1_2.ts"), ("v0_vtt", "v02.vtt")] {
+        let playlist = fs::read_to_string(fixture.0.join(format!("{name}.m3u8"))).unwrap();
+        assert!(playlist.contains("#EXT-X-DISCONTINUITY\n"));
+        assert!(playlist.contains(resource));
     }
 }
 

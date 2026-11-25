@@ -106,6 +106,7 @@ pub struct FfmpegMuxer {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FfmpegOutputTarget {
     Hls,
+    HlsNative,
     Rtmp,
     Srt,
     Udp,
@@ -203,7 +204,7 @@ fn detect_encoders() -> Vec<FfmpegCodec> {
 }
 
 fn detect_muxers() -> Vec<FfmpegMuxer> {
-    ["hls", "flv", "mpegts", "matroska"]
+    ["hls", "mp4", "flv", "mpegts", "matroska"]
         .into_iter()
         .filter_map(|name| {
             let muxer = muxer_for_name(name)?;
@@ -238,6 +239,7 @@ fn output_muxer_supports_codec(
 fn muxer_for_target(target: FfmpegOutputTarget) -> Option<&'static str> {
     match target {
         FfmpegOutputTarget::Hls => Some("hls"),
+        FfmpegOutputTarget::HlsNative => Some("mp4"),
         FfmpegOutputTarget::Rtmp => Some("flv"),
         FfmpegOutputTarget::Srt | FfmpegOutputTarget::Udp => Some("mpegts"),
         FfmpegOutputTarget::Matroska => Some("matroska"),
@@ -245,6 +247,14 @@ fn muxer_for_target(target: FfmpegOutputTarget) -> Option<&'static str> {
 }
 
 fn output_supports_codec(target: FfmpegOutputTarget, codec: &FfmpegCodec) -> bool {
+    if target == FfmpegOutputTarget::HlsNative {
+        return match codec.media_type {
+            FfmpegMediaType::Video => matches!(codec.codec_id.as_str(), "h264" | "hevc" | "av1"),
+            FfmpegMediaType::Audio => codec.codec_id == "aac",
+            FfmpegMediaType::Subtitle => false,
+        };
+    }
+
     if target != FfmpegOutputTarget::Rtmp {
         return true;
     }
@@ -295,6 +305,25 @@ const HLS_COMPATIBLE_FLAGS: &[&str] = &[
     "round_durations",
 ];
 
+/// Validate a native HLS codec pair and resolve the segment container.
+pub fn native_hls_uses_fmp4(
+    video: &str,
+    audio: &str,
+    segment_type: Option<&str>,
+) -> Result<bool, String> {
+    if audio != "aac" || !matches!(video, "h264" | "hevc" | "av1") {
+        return Err("native HLS requires H.264, HEVC or AV1 video and AAC audio".into());
+    }
+
+    match segment_type {
+        None => Ok(video != "h264"),
+        Some("fmp4") => Ok(true),
+        Some("mpegts") if video == "h264" => Ok(false),
+        Some("mpegts") => Err("native HLS requires fMP4 for HEVC and AV1".into()),
+        Some(value) => Err(format!("unknown native HLS segment type {value:?}")),
+    }
+}
+
 /// Validates custom muxer options against the linked FFmpeg build without
 /// opening an output. HLS is restricted further because ffplayout owns its
 /// segment layout, numbering, playlist lifecycle, and cleanup.
@@ -318,6 +347,7 @@ pub fn validate_muxer_options(
                 let supported = match key.as_str() {
                     "hls_flags" => value.split('+').all(|flag| flag == "program_date_time"),
                     "hls_delete_threshold" => value.parse::<i32>().is_ok_and(|value| value >= 1),
+                    "hls_segment_type" => matches!(value.as_str(), "mpegts" | "fmp4"),
                     _ => false,
                 };
 

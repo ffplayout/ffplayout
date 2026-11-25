@@ -16,6 +16,39 @@ pub struct MediaPacket<T> {
 }
 
 pub trait SegmentWriter<T> {
+    fn extension(&self) -> &'static str {
+        "ts"
+    }
+
+    fn first_file_number(&self) -> u64 {
+        0
+    }
+
+    fn initialization(&self, _rendition: usize) -> Option<&str> {
+        None
+    }
+
+    fn initialization_matches(&self, _rendition: usize, _previous: &Path) -> Result<bool> {
+        Ok(true)
+    }
+
+    fn codecs(&self, _rendition: usize) -> Option<&str> {
+        None
+    }
+
+    fn presentation_offset_us(&self) -> i64 {
+        0
+    }
+
+    /// Called after all resources are ready, before replacing the first manifest.
+    fn before_first_publication(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    fn after_publication(&mut self) -> Result<()> {
+        Ok(())
+    }
+
     /// Write, close, then atomically publish a new segment. Never overwrite an
     /// existing resource. All packets retain their common presentation clock.
     fn write_segment(

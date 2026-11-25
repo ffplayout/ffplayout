@@ -76,8 +76,8 @@ local-ip-address = "0.6"
 log = { version = "0.4", features = ["std", "kv"] }
 mime_guess = "2"
 nix = { version = "0.32", features = ["user", "fs"] }
-notify = "8.0"
-notify-debouncer-full = { version = "*", default-features = false }
+notify = "9"
+notify-debouncer-full = { version = "0.8", default-features = false }
 path-clean = "1.0"
 protect-axum = "0.2"
 rand = "0.10"

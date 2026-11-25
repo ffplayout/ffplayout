@@ -41,8 +41,17 @@ const hlsPackager = computed({
         editedOutput.value.muxer_options = selectHlsPackager(editedOutput.value.muxer_options, value)
     },
 })
+const hlsSegmentType = computed({
+    get: () => editedOutput.value.muxer_options.hls_segment_type ?? '',
+    set(value: string) {
+        if (value) setMuxerOption('hls_segment_type', value)
+        else removeMuxerOption('hls_segment_type')
+    },
+})
 const visibleMuxerOptions = computed(() =>
-    Object.entries(editedOutput.value.muxer_options).filter(([key]) => key !== 'ffplayout_packager'),
+    Object.entries(editedOutput.value.muxer_options).filter(
+        ([key]) => key !== 'ffplayout_packager' && !(hlsPackager.value === 'native' && key === 'hls_segment_type'),
+    ),
 )
 
 const newMetadataKey = ref('')
@@ -85,7 +94,14 @@ const codecOptions = computed<OutputCodecOptions>(() => {
     }
 
     if (output.value === 'moq') return configStore.outputCodecs.moq ?? { video: [], audio: [] }
-    return configStore.outputCodecs.hls
+    if (hlsPackager.value !== 'native') return configStore.outputCodecs.hls
+
+    const hls = configStore.outputCodecs.hls_native ?? configStore.outputCodecs.hls
+    const videoIds = hlsSegmentType.value === 'mpegts' ? ['h264'] : ['h264', 'hevc', 'av1']
+    return {
+        video: hls.video.filter((codec) => videoIds.includes(codec.codec_id)),
+        audio: hls.audio.filter((codec) => codec.codec_id === 'aac'),
+    }
 })
 
 function codecLabel(codec: CodecOption): string {
@@ -726,6 +742,14 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
                     <option value="native">{{ t('config.hlsPackagerNative') }}</option>
                 </select>
                 <span v-if="hlsPackager === 'native'" class="fieldset-label">{{ t('config.hlsPackagerHelp') }}</span>
+            </label>
+            <label v-if="hlsPackager === 'native'" class="fieldset">
+                <span class="fieldset-legend">{{ t('config.hlsSegmentType') }}</span>
+                <select v-model="hlsSegmentType" class="select select-sm w-full">
+                    <option value="">{{ t('config.hlsSegmentTypeAuto') }}</option>
+                    <option value="mpegts">MPEG-TS (H.264)</option>
+                    <option value="fmp4">fMP4 (H.264, HEVC, AV1)</option>
+                </select>
             </label>
             <div class="grid gap-3 sm:grid-cols-3">
                 <label class="fieldset">

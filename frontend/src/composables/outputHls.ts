@@ -10,6 +10,7 @@ export function selectHlsPackager(options: Record<string, string>, packager: str
         }
     } else {
         delete updated.ffplayout_packager
+        if (previous === 'native') delete updated.hls_segment_type
     }
 
     return updated

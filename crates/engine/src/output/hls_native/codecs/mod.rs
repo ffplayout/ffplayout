@@ -1,8 +1,10 @@
 use ffmpeg_next::{Packet, codec, packet::side_data};
 
 mod aac;
+mod av1;
 mod bits;
 mod h264;
+mod hevc;
 #[cfg(test)]
 mod tests;
 
@@ -23,6 +25,22 @@ fn initialization(parameters: &codec::Parameters) -> &[u8] {
 
         std::slice::from_raw_parts(raw.extradata, raw.extradata_size as usize)
     }
+}
+
+pub(super) fn avc_codec(config: &[u8]) -> Option<String> {
+    h264::codec(config)
+}
+
+pub(super) fn hevc_codec(config: &[u8]) -> Option<String> {
+    hevc::codec(config)
+}
+
+pub(super) fn av1_codec(config: &[u8]) -> Option<String> {
+    av1::codec(config)
+}
+
+pub(super) fn aac_codec(parameters: &codec::Parameters) -> Option<String> {
+    aac::codec(initialization(parameters))
 }
 
 impl Codecs {

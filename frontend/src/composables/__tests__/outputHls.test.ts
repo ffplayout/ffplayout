@@ -26,3 +26,7 @@ test('explicit muxer flags are preserved when changing packagers', () => {
     assert.equal(selectHlsPackager(options, 'native').hls_flags, options.hls_flags)
     assert.deepEqual(selectHlsPackager({ ...options, ffplayout_packager: 'native' }, 'ffmpeg'), options)
 })
+
+test('switching to FFmpeg removes the native segment container option', () => {
+    assert.deepEqual(selectHlsPackager({ ffplayout_packager: 'native', hls_segment_type: 'fmp4' }, 'ffmpeg'), {})
+})

@@ -64,7 +64,7 @@ pub(super) struct EncodedOutput {
     recording_monitor: Option<RecordingMonitor>,
     channel_id: Option<i32>,
     // Drop after mux: its worker must release the FFmpeg context before these locks.
-    _hls_session: Option<hls::HlsSession>,
+    hls_session: Option<hls::HlsSession>,
 }
 
 #[derive(Clone)]
@@ -234,6 +234,30 @@ impl EncodedOutput {
                 .muxer_options
                 .get("ffplayout_packager")
                 .is_some_and(|value| value == "native");
+        let native_format = if native_hls {
+            let (video, audio) = if let Some((video, audio)) =
+                parameters.as_ref().and_then(|tracks| tracks.first())
+            {
+                (video.id(), audio.id())
+            } else {
+                let video = codec::encoder::find_by_name(&cfg.video_codec)
+                    .context("native HLS video encoder is unavailable")?;
+                let audio = codec::encoder::find_by_name(&cfg.audio_codec)
+                    .context("native HLS audio encoder is unavailable")?;
+                (video.id(), audio.id())
+            };
+            let fragmented = crate::native_hls_uses_fmp4(
+                video.name(),
+                audio.name(),
+                cfg.muxer_options
+                    .get("hls_segment_type")
+                    .map(String::as_str),
+            )
+            .map_err(anyhow::Error::msg)?;
+            Some(fragmented)
+        } else {
+            None
+        };
         let vtt_subtitles = hls_subtitle.is_some();
         hls::validate_variants(hls_variants)?;
 
@@ -303,19 +327,23 @@ impl EncodedOutput {
             None
         };
 
-        let hls_start_number = hls_session
-            .as_ref()
-            .map(|session| {
+        let mut replacement = None;
+        let mut staged_hls = None;
+        let mut hls_start_number = None;
+        if let Some(session) = &hls_session {
+            if session.requires_replacement(native_format)? {
+                let previous = session.replacement(vtt_subtitles)?;
                 if native_hls {
-                    session.prepare_native_resume()
+                    replacement = Some(previous);
                 } else {
-                    session.prepare_resume_start_number()
+                    staged_hls = Some(hls::StagedHls::new(session, vtt_subtitles, previous)?);
                 }
-            })
-            .transpose()?
-            .flatten();
-        if hls_session.is_some() && !uses_var_stream_map {
-            hls::remove_master_playlist(path)?;
+            } else if !native_hls {
+                hls_start_number = session.resume_start_number()?;
+                if let Some(start) = hls_start_number {
+                    staged_hls = session.staged_resume(vtt_subtitles, start)?;
+                }
+            }
         }
 
         // Network outputs get a write timeout so a stalled TCP connection
@@ -324,7 +352,13 @@ impl EncodedOutput {
             // The HLS muxer opens its playlists and segments itself. Avoid
             // preopening the output path because that truncates a standalone
             // playlist before `append_list` can resume it.
-            EncodedFormat::Hls { .. } => hls::output_context(&hls_output_path)?,
+            EncodedFormat::Hls { .. } => {
+                let path = staged_hls.as_ref().map_or_else(
+                    || hls_output_path.clone(),
+                    |staged| staged.path(&hls_output_path),
+                );
+                hls::output_context(&path)?
+            }
             EncodedFormat::Stream { ref muxer } if is_network_url(path) => {
                 open_network_output(path, Some(muxer), &cfg.protocol_options)?
             }
@@ -365,10 +399,11 @@ impl EncodedOutput {
         // stream muxers accept those headers as well. An encode-mode recording
         // runs on its own independent encoders, so it must not affect the
         // primary output's header behavior.
-        let global_header = cfg
-            .recording
-            .as_ref()
-            .is_some_and(|recording| recording.encode.is_none())
+        let global_header = native_format == Some(true)
+            || cfg
+                .recording
+                .as_ref()
+                .is_some_and(|recording| recording.encode.is_none())
             || octx
                 .format()
                 .flags()
@@ -443,8 +478,14 @@ impl EncodedOutput {
                 ..
             } => {
                 if !native_hls {
-                    let default_hls_flags = if hls_start_number.is_some() {
+                    let default_hls_flags = if hls_start_number.is_some()
+                        && !staged_hls
+                            .as_ref()
+                            .is_some_and(hls::StagedHls::is_replacement)
+                    {
                         "append_list+delete_segments+omit_endlist+temp_file+discont_start"
+                    } else if staged_hls.is_some() {
+                        "delete_segments+omit_endlist+temp_file+discont_start"
                     } else {
                         "delete_segments+omit_endlist+temp_file"
                     };
@@ -472,14 +513,24 @@ impl EncodedOutput {
                     } else {
                         hls::standalone_segment_pattern(path)
                     };
+                    let segment_filename = match &staged_hls {
+                        Some(staged) => staged.path(&segment_filename),
+                        None => segment_filename,
+                    };
                     options.set("hls_segment_filename", &segment_filename);
 
                     if let Some(start_number) = hls_start_number {
                         options.set("start_number", &start_number.to_string());
                     }
+                    if let Some(staged) = &staged_hls {
+                        options.set("start_number", &staged.start_number().to_string());
+                    }
 
                     if uses_var_stream_map {
-                        options.set("master_pl_name", "master.m3u8");
+                        let master = staged_hls
+                            .as_ref()
+                            .map_or_else(|| "master.m3u8".to_owned(), hls::StagedHls::master_name);
+                        options.set("master_pl_name", &master);
                         options.set(
                             "var_stream_map",
                             &hls::var_stream_map(variants_for_naming, hls_subtitle),
@@ -505,13 +556,19 @@ impl EncodedOutput {
                 cfg,
                 hls_variants,
                 hls_subtitle,
-                *segment_seconds,
-                *list_size,
+                (*segment_seconds, *list_size),
+                replacement,
             )?;
 
             MuxOutput::native_hls(octx, packager, threaded_output, hls_health, cfg.channel_id)?
         } else {
-            MuxOutput::new(octx, threaded_output, hls_health, cfg.channel_id)?
+            MuxOutput::new_with_staging(
+                octx,
+                threaded_output,
+                hls_health,
+                cfg.channel_id,
+                staged_hls,
+            )?
         };
 
         let recording_video_stream_index = cfg
@@ -615,7 +672,7 @@ impl EncodedOutput {
             transcoded_recording,
             recording_monitor: None,
             channel_id: cfg.channel_id,
-            _hls_session: hls_session,
+            hls_session,
         })
     }
 
@@ -852,6 +909,9 @@ impl EncodedOutput {
             monitor.check()?;
         }
 
+        if let Some(session) = &mut self.hls_session {
+            session.retire_pending_media()?;
+        }
         let stream_time_base = self.mux.time_base(stream_index)?;
 
         packet.set_stream(stream_index);
@@ -1502,12 +1562,20 @@ mod open_tests {
     }
 
     #[test]
-    fn standalone_hls_output_does_not_create_master_playlist() {
+    fn standalone_hls_output_leaves_an_independent_master_and_children_alone() {
         ffmpeg::init().ok();
         let dir = env::temp_dir().join(format!("hls_standalone_test_{}", process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("stream.m3u8");
-        fs::write(dir.join("master.m3u8"), "stale").unwrap();
+        fs::write(dir.join("master.m3u8"), "#EXTM3U\nother.m3u8\n").unwrap();
+        fs::write(dir.join("other.m3u8"), "#EXTM3U\n#EXTINF:1,\nother_0.ts\n").unwrap();
+        fs::write(dir.join("other_0.ts"), b"other stream").unwrap();
+        let unrelated = hls::HlsSession::acquire(
+            &[dir.join("other.m3u8").to_string_lossy().into_owned()],
+            Some(dir.join("master.m3u8").to_str().unwrap()),
+            false,
+        )
+        .unwrap();
         let cfg = OutputConfig::new(320, 240, 25, 44100);
         let output = EncodedOutput::open(
             path.to_str().unwrap(),
@@ -1523,10 +1591,13 @@ mod open_tests {
 
         output.finish().unwrap();
         assert!(path.exists(), "expected stream.m3u8 to exist");
-        assert!(
-            !dir.join("master.m3u8").exists(),
-            "standalone HLS output must not create master.m3u8"
+        assert_eq!(
+            fs::read_to_string(dir.join("master.m3u8")).unwrap(),
+            "#EXTM3U\nother.m3u8\n"
         );
+        assert!(dir.join("other.m3u8").is_file());
+        assert_eq!(fs::read(dir.join("other_0.ts")).unwrap(), b"other stream");
+        drop(unrelated);
         fs::remove_dir_all(&dir).ok();
     }
 

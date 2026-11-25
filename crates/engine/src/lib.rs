@@ -76,7 +76,7 @@ pub use utils::{
     },
     ffmpeg_capabilities::{
         FfmpegCapabilities, FfmpegCodec, FfmpegFeatureSet, FfmpegMediaType, FfmpegMuxer,
-        FfmpegOutputTarget, ffmpeg_capabilities, validate_muxer_options,
+        FfmpegOutputTarget, ffmpeg_capabilities, native_hls_uses_fmp4, validate_muxer_options,
     },
     helper::is_live_input,
     logging,

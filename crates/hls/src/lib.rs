@@ -3,5 +3,6 @@
 //! owns an output's manifests; the caller must enforce exclusive file ownership.
 mod manifest;
 mod packager;
+pub mod retention;
 
 pub use packager::{Config, Cue, MediaPacket, Packager, RenditionConfig, SegmentWriter, Subtitle};

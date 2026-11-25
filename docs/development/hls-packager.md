@@ -54,7 +54,12 @@ Inconsistent video windows or missing resources still fail explicitly.
 
 ## Initial scope and limitations
 
-Local MPEG-TS with H.264 video, AAC audio, adaptive renditions and optional WebVTT.
+Local MPEG-TS supports H.264/AAC. Local fMP4 supports H.264, HEVC and AV1
+with AAC. Both support adaptive renditions and optional WebVTT. The native
+packager chooses MPEG-TS for H.264 and fMP4 for HEVC and AV1 by default.
+Set `hls_segment_type=fmp4` to use fMP4 with H.264. Changing the container
+or changing the fMP4 video codec starts a fresh playlist under the existing
+output ownership locks.
 Segments are 1–60 seconds, with a configured playlist size of 1–10000 entries.
 Short live windows retain additional entries as needed to keep at least three
 TARGETDURATIONs of media when removing an entry. TARGETDURATION remains fixed
@@ -62,13 +67,19 @@ across resume, including an existing target of eight seconds from older builds. 
 increasing it beyond the existing target is rejected without
 removing media and requires an explicitly fresh HLS history. The native
 backend accepts `hls_flags=program_date_time` and `hls_delete_threshold`
-(default 1, minimum 1). The latter keeps that many extra TS/WebVTT segments per
+(default 1, minimum 1). The latter keeps that many extra media segments per
 track outside the playlist, including after resume; larger windows do not add a
 second time-based retention period. Excess files are deleted only after a fresh
 playlist has been published. Other custom HLS options and
 container metadata are currently rejected.
 
-All TS files in a new segment group and its subtitle file are published before
+The native fMP4 writer publishes a separate init file per rendition and
+generation. Media playlists attach it to fragments through `EXT-X-MAP`
+and retain it while those fragments remain available. WebVTT stays in
+separate `.vtt` segments and follows the presentation timeline in either
+container.
+
+All media files in a new segment group and its subtitle file are published before
 updating their playlists. Each playlist replacement is atomic; the group of
 playlist replacements is not. The master is published last. New renditions and
 subtitle tracks join at the next media sequence and the current discontinuity
@@ -79,9 +90,12 @@ endpoints still require deliberate recovery.
 
 The minimal playlist serializer handles the initial scope only. General HLS tag
 libraries remain to be evaluated before extending serialization to timed events,
-advertising, fMP4/CMAF, encryption and LL-HLS.
+advertising, encryption and LL-HLS.
 
-The engine derives per-rendition RFC 6381 CODECS declarations from H.264 SPS data
+For fMP4, the writer reads video CODECS identifiers from the init file's
+`avcC`, `hvcC` or `av1C` record and the AAC identifier from the muxed track's
+codec initialization data. For MPEG-TS, the engine derives per-rendition RFC
+6381 CODECS declarations from H.264 SPS data
 (AVC configuration records or Annex B) and AAC AudioSpecificConfig, including
 explicit/implicit SBR and PS for AAC-LC, HE-AAC and HE-AAC v2. Encoder profile hints
 are not substituted for actual headers. If SPS data arrives with the first key
@@ -90,11 +104,18 @@ conflicting or unsupported initialization leaves CODECS omitted for that renditi
 the packager does not advertise a partial audio/video declaration. This discovery
 runs at initialization, not as continuous frame analysis. Dynamic codec changes
 within a running destination remain outside the initial scope.
-On resume, declarations are compared with the previous master per rendition.
-Changed or unknown declarations are omitted while historical segments remain in
-that rendition's live window, then restored automatically. Matching declarations
-remain available immediately. This does not clear retained segments; normal
-retention still applies, including across repeated restarts.
+On MPEG-TS resume, declarations are compared with the previous master per
+rendition. Changed or unknown declarations are omitted while historical
+segments remain in that rendition's live window, then restored automatically.
+On fMP4 resume, the first new segment set is checked against the previous init
+files. Matching configurations keep the existing window. An init change,
+including a resolution change with the same codec, publishes a fresh window
+at the next sequence number. Backend and segment-container switches keep the
+previous playlists and media available until the replacement renditions are
+ready. Replaced segments, WebVTT and init files remain available for the old
+playlist duration plus its longest segment. Per-resource expiry markers preserve
+that deadline across writer restarts. Replacement playlists continue the media
+and discontinuity counters across renditions.
 
 Real encoder tests verify TS timestamps against `X-TIMESTAMP-MAP`, aligned
 renditions, restart/resume, switching backends and sharing encoders. Browser/player

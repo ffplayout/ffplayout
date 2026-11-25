@@ -19,7 +19,8 @@ The initial implementation:
   storage is limited to 8 MiB / 10000 cues. An unmatched boundary fails the output.
 - Writes media first and atomically replaces each playlist. Multiple playlists
   are not a filesystem transaction; a crash between replacements can leave
-  inconsistent windows, which resume rejects without overwriting them.
+  different last sequences. On restart, lagging tracks rejoin at the next unused
+  sequence with a discontinuity. Cached playlists retain access to their media.
 - Anchors nominal cuts on the shared program grid at multiples of the
   configured segment duration, with a shorter first segment when joining between grid points. A delayed cut can be followed by a shorter segment
   to catch up, while EXTINF always describes the actual interval.

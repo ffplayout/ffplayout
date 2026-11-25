@@ -22,7 +22,7 @@ const MAX_BYTES: usize = 32 * 1024 * 1024;
 const IDLE_DRAIN: Duration = Duration::from_millis(20);
 
 enum PacketWriter {
-    Container(format::context::Output),
+    Container(format::context::Output, Option<Box<super::hls::StagedHls>>),
     Native(Box<dyn PacketSink>),
     Hls(Box<NativeHls>),
 }
@@ -31,7 +31,13 @@ impl PacketWriter {
     fn write(&mut self, packet: Packet) -> Result<()> {
         match self {
             Self::Hls(output) => output.write(&packet),
-            Self::Container(output) => packet.write_interleaved(output).map_err(Into::into),
+            Self::Container(output, staged) => {
+                packet.write_interleaved(output)?;
+                if let Some(staged) = staged {
+                    staged.publish(false)?;
+                }
+                Ok(())
+            }
             Self::Native(sink) => sink.write_owned(OwnedEncodedFrame::from_packet(packet)?),
         }
     }
@@ -39,7 +45,13 @@ impl PacketWriter {
     fn finish(&mut self) -> Result<()> {
         match self {
             Self::Hls(output) => output.finish(),
-            Self::Container(output) => output.write_trailer().map_err(Into::into),
+            Self::Container(output, staged) => {
+                output.write_trailer()?;
+                if let Some(staged) = staged {
+                    staged.publish(true)?;
+                }
+                Ok(())
+            }
             Self::Native(sink) => sink.finish(),
         }
     }
@@ -79,6 +91,7 @@ struct Shared {
 /// file reading. Recording retains its direct, unpaced sink.
 pub(super) struct MuxOutput {
     direct: Option<format::context::Output>,
+    staged_hls: Option<Box<super::hls::StagedHls>>,
     native_hls: Option<Box<NativeHls>>,
     direct_delivered: bool,
     time_bases: Vec<Rational>,
@@ -98,6 +111,16 @@ impl MuxOutput {
         health: Option<HlsHealth>,
         channel: Option<i32>,
     ) -> Result<Self> {
+        Self::new_with_staging(output, threaded, health, channel, None)
+    }
+
+    pub(super) fn new_with_staging(
+        output: format::context::Output,
+        threaded: bool,
+        health: Option<HlsHealth>,
+        channel: Option<i32>,
+        staged_hls: Option<super::hls::StagedHls>,
+    ) -> Result<Self> {
         let time_bases = output.streams().map(|stream| stream.time_base()).collect();
         #[cfg(test)]
         let stream_bitrates = output
@@ -106,6 +129,7 @@ impl MuxOutput {
             .collect();
         let mut mux = Self {
             direct: Some(output),
+            staged_hls: staged_hls.map(Box::new),
             native_hls: None,
             direct_delivered: false,
             time_bases,
@@ -137,8 +161,9 @@ impl MuxOutput {
                 })
                 .map(|stream| stream.index())
                 .collect();
+            let staged = mux.staged_hls.take();
             mux.start(
-                PacketWriter::Container(output),
+                PacketWriter::Container(output, staged),
                 active_streams,
                 pace_packets,
                 channel,
@@ -155,6 +180,7 @@ impl MuxOutput {
     ) -> Result<Self> {
         let mut mux = Self {
             direct: None,
+            staged_hls: None,
             native_hls: None,
             direct_delivered: false,
             time_bases: vec![rescale::TIME_BASE; streams],
@@ -291,6 +317,14 @@ impl MuxOutput {
 
     pub(super) fn set_rate(&mut self, rate: f64) {
         self.rate = rate;
+
+        if self.shared.is_some() {
+            let mut clock = self.clock.lock().unwrap_or_else(PoisonError::into_inner);
+
+            if clock.media_time_us().is_none() {
+                clock.set_rate(rate);
+            }
+        }
     }
 
     pub(super) fn write(&mut self, packet: &mut Packet) -> Result<()> {
@@ -299,6 +333,9 @@ impl MuxOutput {
                 packager.write(packet)?;
             } else {
                 packet.write_interleaved(self.direct.as_mut().context("mux context missing")?)?;
+                if let Some(staged) = &mut self.staged_hls {
+                    staged.publish(false)?;
+                }
             }
             self.direct_delivered = true;
             if let Some(health) = &self.health {
@@ -378,6 +415,9 @@ impl MuxOutput {
         }
         if let Some(output) = &mut self.direct {
             output.write_trailer()?;
+            if let Some(staged) = &mut self.staged_hls {
+                staged.publish(true)?;
+            }
         }
 
         if let Some(packager) = &mut self.native_hls {

@@ -56,6 +56,16 @@ impl Fixture {
         native: bool,
         bitrates: [u64; 3],
     ) -> Result<EncodedOutput> {
+        self.try_open_container(name, native, bitrates, None)
+    }
+
+    fn try_open_container(
+        &self,
+        name: &str,
+        native: bool,
+        bitrates: [u64; 3],
+        container: Option<&str>,
+    ) -> Result<EncodedOutput> {
         let mut config = OutputConfig::new(320, 180, 25, 48_000);
         config
             .video_options
@@ -68,6 +78,12 @@ impl Fixture {
             config
                 .muxer_options
                 .insert("ffplayout_packager".into(), "native".into());
+        }
+
+        if let Some(container) = container {
+            config
+                .muxer_options
+                .insert("hls_segment_type".into(), container.into());
         }
 
         let mut output = EncodedOutput::open(
@@ -285,7 +301,8 @@ fn fresh_hls_resume_preserves_published_segments_and_unrelated_files() {
         hls::HlsSession::acquire(&[playlist.to_string_lossy().into_owned()], None, false).unwrap();
 
     // FFmpeg append_list derives the next segment from this existing sequence.
-    assert_eq!(session.prepare_resume_start_number().unwrap(), Some(7));
+    assert!(!session.requires_replacement(None).unwrap());
+    assert_eq!(session.resume_start_number().unwrap(), Some(7));
     assert_eq!(fs::read_to_string(playlist).unwrap(), contents);
     assert_eq!(
         fs::read(fixture.0.join("stream_7.ts")).unwrap(),
@@ -393,6 +410,313 @@ fn open_ts(path: &std::path::Path) -> format::context::Input {
     format::open(path, &ffmpeg::Format::Input(input_format))
         .unwrap()
         .input()
+}
+
+#[test]
+fn native_fmp4_keeps_video_audio_and_webvtt_on_the_program_clock() {
+    for (encoder, declaration) in [
+        ("libx264", "avc1."),
+        ("libx265", "hvc1."),
+        ("libsvtav1", "av01."),
+    ] {
+        ffmpeg::init().unwrap();
+        if codec::encoder::find_by_name(encoder).is_none() {
+            continue;
+        }
+
+        let fixture = Fixture::new();
+        let mut config = OutputConfig::new(320, 180, 25, 48_000);
+        config.video_codec = encoder.into();
+        config.video_options.insert(
+            "preset".into(),
+            if encoder == "libsvtav1" {
+                "10"
+            } else if encoder == "libx264" {
+                "medium"
+            } else {
+                "ultrafast"
+            }
+            .into(),
+        );
+        config
+            .muxer_options
+            .insert("ffplayout_packager".into(), "native".into());
+        if encoder == "libx264" {
+            config
+                .muxer_options
+                .insert("hls_segment_type".into(), "fmp4".into());
+        }
+
+        let first = if encoder == "libx264" { 0 } else { 53 };
+        for start in [first, 125] {
+            let mut output = EncodedOutput::open(
+                fixture.0.join("high.m3u8").to_str().unwrap(),
+                &config,
+                EncodedFormat::Hls {
+                    variants: [("high", 320, 180), ("low", 160, 96)]
+                        .into_iter()
+                        .map(|(name, width, height)| HlsVariant {
+                            name: name.into(),
+                            width,
+                            height,
+                            video_bitrate: 400_000,
+                            audio_bitrate: 96_000,
+                        })
+                        .collect(),
+                    subtitle: Some(HlsSubtitle {
+                        name: "Captions".into(),
+                        language: "en".into(),
+                        default: true,
+                    }),
+                    segment_seconds: 1,
+                    list_size: 9,
+                },
+            )
+            .unwrap();
+            output
+                .write_vtt_subtitles(
+                    fixture.0.join("source.mp4").to_str().unwrap(),
+                    0,
+                    0,
+                    Some(30_000),
+                )
+                .unwrap();
+            write_frames(&mut output, start..start + 68, &mut (start * 1920));
+            output.finish().unwrap();
+        }
+
+        let media = fs::read_to_string(fixture.0.join("high.m3u8")).unwrap();
+        let low = fs::read_to_string(fixture.0.join("low.m3u8")).unwrap();
+        let subtitle = fs::read_to_string(fixture.0.join("high_vtt.m3u8")).unwrap();
+        let master = fs::read_to_string(fixture.0.join("master.m3u8")).unwrap();
+        assert!(
+            master.contains(&format!("CODECS=\"{declaration}")),
+            "{encoder}: {master}"
+        );
+        assert!(media.contains("#EXT-X-VERSION:7"));
+        assert_eq!(
+            media.matches("#EXT-X-MAP:").count(),
+            2,
+            "{encoder}: {media}"
+        );
+        assert!(media.contains("\n#EXT-X-DISCONTINUITY\n"));
+        assert_eq!(
+            media.matches("#EXTINF:").count(),
+            subtitle.matches("#EXTINF:").count()
+        );
+        assert_eq!(
+            media
+                .lines()
+                .filter(|line| line.starts_with("#EXTINF:"))
+                .collect::<Vec<_>>(),
+            low.lines()
+                .filter(|line| line.starts_with("#EXTINF:"))
+                .collect::<Vec<_>>()
+        );
+        assert!(low.contains("#EXT-X-MAP:URI=\"low_"));
+
+        let mut init = "";
+        let mut starts_us = Vec::new();
+        let mut total_video = 0;
+        for line in media.lines() {
+            if let Some(uri) = line
+                .strip_prefix("#EXT-X-MAP:URI=\"")
+                .and_then(|uri| uri.strip_suffix('"'))
+            {
+                init = uri;
+            } else if line.ends_with(".m4s") {
+                let mut bytes = fs::read(fixture.0.join(init)).unwrap();
+                bytes.extend(fs::read(fixture.0.join(line)).unwrap());
+                let input_file = fixture.0.join("probe.mp4");
+                fs::write(&input_file, bytes).unwrap();
+                let mut input = format::input(&input_file).unwrap();
+                let stream = input.streams().best(ffmpeg::media::Type::Video).unwrap();
+                let video = stream.index();
+                let audio = input
+                    .streams()
+                    .best(ffmpeg::media::Type::Audio)
+                    .unwrap()
+                    .index();
+                let mut decoder = codec::context::Context::from_parameters(stream.parameters())
+                    .unwrap()
+                    .decoder()
+                    .video()
+                    .unwrap();
+                let mut first_audio = None;
+                let mut first_video = None;
+                let mut decoded = 0;
+                let mut raw = frame::Video::empty();
+
+                for (stream, packet) in input.packets() {
+                    use ffmpeg::Rescale;
+                    let pts = packet
+                        .pts()
+                        .unwrap()
+                        .rescale(stream.time_base(), ffmpeg::rescale::TIME_BASE);
+                    if stream.index() == video {
+                        if first_video.is_none() {
+                            assert!(packet.is_key(), "{encoder}: {line}");
+                            first_video = Some(pts);
+                        }
+                        decoder.send_packet(&packet).unwrap();
+                        while decoder.receive_frame(&mut raw).is_ok() {
+                            decoded += 1;
+                        }
+                    } else if stream.index() == audio {
+                        first_audio.get_or_insert(pts);
+                    }
+                }
+                decoder.send_eof().unwrap();
+                while decoder.receive_frame(&mut raw).is_ok() {
+                    decoded += 1;
+                }
+                assert!(decoded > 0, "{encoder}: {line}");
+                total_video += decoded;
+                let first_video = first_video.unwrap();
+                assert!(
+                    first_video.abs_diff(first_audio.unwrap()) <= 22_000,
+                    "{encoder}: {line} audio={first_audio:?} video={first_video}"
+                );
+                starts_us.push(first_video);
+            }
+        }
+
+        assert!(
+            starts_us.windows(2).all(|pair| pair[0] < pair[1]),
+            "{encoder}: {starts_us:?}"
+        );
+        assert_eq!(total_video, 136, "{encoder}");
+        // Exercise the actual HLS demuxer as well as isolated fragments.
+        let playlist = fixture.0.join("low.m3u8");
+        fs::write(&playlist, format!("{low}#EXT-X-ENDLIST\n")).unwrap();
+        let mut input = format::input(&playlist).unwrap();
+        assert_eq!(
+            input
+                .packets()
+                .filter(|(stream, _)| stream.parameters().medium() == ffmpeg::media::Type::Video)
+                .count(),
+            136,
+            "{encoder}: media playlist lost video packets"
+        );
+        if first == 0 {
+            assert!(
+                (0..=120_000).contains(&starts_us[0]),
+                "{encoder}: {starts_us:?}"
+            );
+        } else {
+            assert!(
+                (2_120_000..=2_122_000).contains(&starts_us[0]),
+                "{encoder}: {starts_us:?}"
+            );
+        }
+        for (line, pts) in subtitle
+            .lines()
+            .filter(|uri| uri.ends_with(".vtt"))
+            .zip(starts_us)
+        {
+            let vtt = fs::read_to_string(fixture.0.join(line)).unwrap();
+            let map: i64 = vtt
+                .lines()
+                .find_map(|line| line.split_once("MPEGTS:"))
+                .unwrap()
+                .1
+                .parse()
+                .unwrap();
+            assert!(
+                map.abs_diff(pts * 90 / 1000) <= 90,
+                "{encoder}: {line} map={map} pts={pts}"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_fmp4_replaces_incompatible_initialization_after_the_first_segment() {
+    let fixture = Fixture::new();
+    let path = fixture.0.join("high.m3u8");
+    let mut config = OutputConfig::new(320, 180, 25, 48_000);
+    config
+        .video_options
+        .insert("preset".into(), "ultrafast".into());
+    config
+        .muxer_options
+        .insert("ffplayout_packager".into(), "native".into());
+    config
+        .muxer_options
+        .insert("hls_segment_type".into(), "fmp4".into());
+    let open = |width, height| {
+        EncodedOutput::open(
+            path.to_str().unwrap(),
+            &config,
+            EncodedFormat::Hls {
+                variants: vec![HlsVariant {
+                    name: "high".into(),
+                    width,
+                    height,
+                    video_bitrate: 400_000,
+                    audio_bitrate: 96_000,
+                }],
+                subtitle: None,
+                segment_seconds: 1,
+                list_size: 9,
+            },
+        )
+        .unwrap()
+    };
+
+    let mut output = open(320, 180);
+    write_frames(&mut output, 0..50, &mut 0);
+    output.finish().unwrap();
+    let previous = fs::read_to_string(&path).unwrap();
+    assert_eq!(previous.matches("#EXTINF:").count(), 2);
+    assert_eq!(previous.matches("#EXT-X-MAP:").count(), 1);
+
+    drop(open(160, 96));
+    assert_eq!(fs::read_to_string(&path).unwrap(), previous);
+    let mut output = open(160, 96);
+    assert_eq!(fs::read_to_string(&path).unwrap(), previous);
+    write_frames(&mut output, 50..100, &mut (50 * 1920));
+    output.finish().unwrap();
+
+    let current = fs::read_to_string(&path).unwrap();
+    assert_eq!(current.matches("#EXTINF:").count(), 2);
+    assert_eq!(current.matches("#EXT-X-MAP:").count(), 1);
+    assert!(current.contains("#EXT-X-MEDIA-SEQUENCE:2"));
+    for line in previous.lines().filter(|line| line.ends_with(".m4s")) {
+        assert!(!current.contains(line));
+        assert!(fixture.0.join(line).is_file());
+    }
+    let old_init = previous
+        .lines()
+        .find_map(|line| line.strip_prefix("#EXT-X-MAP:URI=\"")?.strip_suffix('"'))
+        .unwrap();
+    assert!(fixture.0.join(old_init).is_file());
+
+    fs::write(&path, format!("{current}#EXT-X-ENDLIST\n")).unwrap();
+    let mut input = format::input(&path).unwrap();
+    let stream = input.streams().best(ffmpeg::media::Type::Video).unwrap();
+    let video = stream.index();
+    let mut decoder = codec::context::Context::from_parameters(stream.parameters())
+        .unwrap()
+        .decoder()
+        .video()
+        .unwrap();
+    let mut decoded = Vec::new();
+    let mut raw = frame::Video::empty();
+    for (_, packet) in input
+        .packets()
+        .filter(|(stream, _)| stream.index() == video)
+    {
+        decoder.send_packet(&packet).unwrap();
+        while decoder.receive_frame(&mut raw).is_ok() {
+            decoded.push((raw.width(), raw.height()));
+        }
+    }
+    decoder.send_eof().unwrap();
+    while decoder.receive_frame(&mut raw).is_ok() {
+        decoded.push((raw.width(), raw.height()));
+    }
+    assert_eq!(decoded, vec![(160, 96); 50]);
 }
 
 #[test]
@@ -561,25 +885,176 @@ fn native_hls_vtt_mapping_matches_actual_pes_presentation_time() {
 }
 
 #[test]
-fn native_and_ffmpeg_packager_switches_clear_owned_media_in_both_directions() {
+fn native_and_ffmpeg_switches_keep_published_media_until_replacement_is_ready() {
     let fixture = Fixture::new();
+    let playlists = [
+        "master.m3u8",
+        "high.m3u8",
+        "mid.m3u8",
+        "low.m3u8",
+        "high_vtt.m3u8",
+    ];
+    let read = || playlists.map(|name| fs::read(fixture.0.join(name)).unwrap());
+    let media_range = |playlist: &[u8]| {
+        let playlist = std::str::from_utf8(playlist).unwrap();
+        let sequence: u64 = playlist
+            .lines()
+            .find_map(|line| line.strip_prefix("#EXT-X-MEDIA-SEQUENCE:"))
+            .unwrap()
+            .parse()
+            .unwrap();
+        let count = playlist.matches("#EXTINF:").count() as u64;
 
-    for native in [false, true, false] {
-        let mut output = fixture.try_open_packager("master.m3u8", native).unwrap();
+        sequence..sequence + count
+    };
+    let mut output = fixture.try_open_packager("master.m3u8", false).unwrap();
+    write_frames(&mut output, 0..100, &mut 0);
+    output.finish().unwrap();
 
-        // Switching backends starts fresh, including retained/orphaned resources.
-        assert!(!fixture.0.join("high_999.ts").exists());
-        assert!(!fixture.0.join("high999.vtt").exists());
-        write_frames(&mut output, 0..100, &mut 0);
-        output.finish().unwrap();
-        assert!(fixture.check_references() >= 9);
-
+    // The old generation has already crossed several timestamp resets.
+    for name in &playlists[1..] {
+        let path = fixture.0.join(name);
+        let text = fs::read_to_string(&path).unwrap();
+        fs::write(
+            path,
+            text.replacen("#EXTM3U\n", "#EXTM3U\n#EXT-X-DISCONTINUITY-SEQUENCE:7\n", 1),
+        )
+        .unwrap();
+    }
+    let generation = |playlist: &[u8]| {
+        let text = std::str::from_utf8(playlist).unwrap();
+        let base: u64 = text
+            .lines()
+            .find_map(|line| line.strip_prefix("#EXT-X-DISCONTINUITY-SEQUENCE:"))
+            .unwrap()
+            .parse()
+            .unwrap();
+        base + text
+            .lines()
+            .filter(|line| *line == "#EXT-X-DISCONTINUITY")
+            .count() as u64
+    };
+    for (native, container) in [(true, Some("mpegts")), (true, Some("fmp4")), (false, None)] {
+        let open = || {
+            fixture
+                .try_open_container("master.m3u8", native, [96_000; 3], container)
+                .unwrap()
+        };
+        let previous = read();
+        let old_high = std::str::from_utf8(&previous[1]).unwrap();
+        let old_segment = fixture.0.join(
+            old_high
+                .lines()
+                .find(|line| !line.is_empty() && !line.starts_with('#'))
+                .unwrap(),
+        );
+        let old_init = old_high
+            .lines()
+            .find_map(|line| line.strip_prefix("#EXT-X-MAP:URI=\"")?.strip_suffix('"'))
+            .map(|uri| (fixture.0.join(uri), fs::read(fixture.0.join(uri)).unwrap()));
+        let old_media = fs::read(&old_segment).unwrap();
         fs::write(fixture.0.join("high_999.ts"), "old orphan").unwrap();
         fs::write(fixture.0.join("high999.vtt"), "old orphan").unwrap();
         fs::write(fixture.0.join("unrelated_999.ts"), "other output").unwrap();
+
+        drop(open());
+        assert_eq!(read(), previous);
+        assert_eq!(fs::read(&old_segment).unwrap(), old_media);
+        let mut output = open();
+        assert_eq!(read(), previous);
+        write_frames(&mut output, 0..100, &mut 0);
+        output.finish().unwrap();
+        assert!(fixture.check_references() >= 9);
+        let current = read();
+        assert_ne!(current, previous);
+        let expected = generation(&previous[1]) + 1;
+        assert!(
+            current[1..]
+                .iter()
+                .all(|playlist| generation(playlist) == expected)
+        );
+        assert!(media_range(&current[1]).start >= media_range(&previous[1]).end);
+        assert_eq!(fs::read(old_segment).unwrap(), old_media);
+        if let Some((path, bytes)) = old_init {
+            assert_eq!(fs::read(path).unwrap(), bytes);
+        }
+        assert!(!fixture.0.join("high_999.ts").exists());
+        assert!(!fixture.0.join("high999.vtt").exists());
     }
 
     assert!(fixture.0.join("unrelated_999.ts").exists());
+}
+
+#[test]
+fn ffmpeg_restart_after_native_switch_preserves_segment_generations() {
+    let fixture = Fixture::new();
+    let read = || {
+        ["high", "mid", "low", "high_vtt"].map(|name| {
+            let text = fs::read_to_string(fixture.0.join(format!("{name}.m3u8"))).unwrap();
+            let mut generation = 0_u64;
+            let mut sequence = 0_u64;
+            let mut segments = Vec::new();
+            for line in text.lines() {
+                if let Some(base) = line.strip_prefix("#EXT-X-DISCONTINUITY-SEQUENCE:") {
+                    generation = base.parse().unwrap();
+                } else if let Some(first) = line.strip_prefix("#EXT-X-MEDIA-SEQUENCE:") {
+                    sequence = first.parse().unwrap();
+                } else if line == "#EXT-X-DISCONTINUITY" {
+                    generation += 1;
+                } else if !line.is_empty() && !line.starts_with('#') {
+                    segments.push((sequence, line.to_owned(), generation));
+                    sequence += 1;
+                }
+            }
+            segments
+        })
+    };
+    let run = |native, frames| {
+        let mut output = fixture.try_open_packager("master.m3u8", native).unwrap();
+        write_frames(&mut output, 0..frames, &mut 0);
+        output.finish().unwrap();
+    };
+    run(true, 75);
+    for name in ["high", "mid", "low", "high_vtt"] {
+        let path = fixture.0.join(format!("{name}.m3u8"));
+        let text = fs::read_to_string(&path).unwrap();
+        fs::write(
+            path,
+            text.replace("DISCONTINUITY-SEQUENCE:0", "DISCONTINUITY-SEQUENCE:7"),
+        )
+        .unwrap();
+    }
+    run(false, 100);
+    let mut previous = read();
+    for _ in 0..3 {
+        run(false, 25);
+        let current = read();
+        for (old, new) in previous.iter().zip(&current) {
+            let last = old.last().unwrap();
+            assert!(last.2 >= 8);
+            assert_eq!(
+                &new[..new.len() - 1],
+                &old[1..],
+                "retained segment identities"
+            );
+            assert_eq!(new.last().unwrap().0, last.0 + 1);
+            assert_eq!(new.last().unwrap().2, last.2 + 1);
+            for (_, uri, _) in new {
+                assert!(fixture.0.join(uri).is_file(), "{uri}");
+            }
+        }
+        previous = current;
+    }
+    run(false, 150);
+    for (old, new) in previous.iter().zip(read()) {
+        let last = old.last().unwrap();
+        assert!(new.first().unwrap().0 > last.0 + 1);
+        assert!(
+            new.iter()
+                .all(|(_, uri, generation)| *generation == last.2 + 1
+                    && fixture.0.join(uri).is_file())
+        );
+    }
 }
 
 #[test]

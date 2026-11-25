@@ -1056,7 +1056,7 @@ pub struct Output {
     /// FFmpeg AVIO/protocol options used while opening a network stream.
     #[serde(default)]
     pub protocol_options: BTreeMap<String, String>,
-    /// FFmpeg muxer options and the application-owned `ffplayout_packager` selector.
+    /// Muxer options, including `ffplayout_packager` and native HLS `hls_segment_type`.
     #[serde(default)]
     pub muxer_options: BTreeMap<String, String>,
     /// Global container metadata. Availability depends on the output muxer.
@@ -1327,6 +1327,14 @@ impl Output {
 
         if matches!(self.mode, OutputMode::HLS | OutputMode::Stream) {
             let target = match self.mode {
+                OutputMode::HLS
+                    if self
+                        .muxer_options
+                        .get("ffplayout_packager")
+                        .is_some_and(|value| value == "native") =>
+                {
+                    ff_engine::FfmpegOutputTarget::HlsNative
+                }
                 OutputMode::HLS => ff_engine::FfmpegOutputTarget::Hls,
                 OutputMode::Stream => self
                     .stream_type
@@ -1455,20 +1463,25 @@ impl Output {
         }
 
         let capabilities = ff_engine::ffmpeg_capabilities();
-        let video_supported = capabilities
-            .video_codecs_for(ff_engine::FfmpegOutputTarget::Hls)
-            .iter()
-            .any(|codec| codec.name == self.video_codec && codec.codec_id == "h264");
-        let audio_supported = capabilities
-            .audio_codecs_for(ff_engine::FfmpegOutputTarget::Hls)
-            .iter()
-            .any(|codec| codec.name == self.audio_codec && codec.codec_id == "aac");
+        let video = capabilities
+            .video_codecs_for(ff_engine::FfmpegOutputTarget::HlsNative)
+            .into_iter()
+            .find(|codec| codec.name == self.video_codec)
+            .ok_or("native HLS video encoder is unavailable")?;
+        let audio = capabilities
+            .audio_codecs_for(ff_engine::FfmpegOutputTarget::HlsNative)
+            .into_iter()
+            .find(|codec| codec.name == self.audio_codec)
+            .ok_or("native HLS audio encoder is unavailable")?;
 
-        if !video_supported || !audio_supported {
-            return Err("native HLS currently requires H.264 video and AAC audio".into());
-        }
-
-        Ok(())
+        ff_engine::native_hls_uses_fmp4(
+            &video.codec_id,
+            &audio.codec_id,
+            self.muxer_options
+                .get("hls_segment_type")
+                .map(String::as_str),
+        )
+        .map(|_| ())
     }
 
     fn video_maxrate(&self) -> u64 {
@@ -2491,6 +2504,32 @@ mod output_tests {
             .muxer_options
             .insert("ffplayout_packager".into(), "native".into());
         assert!(output.validate().is_ok());
+        output
+            .muxer_options
+            .insert("hls_segment_type".into(), "fmp4".into());
+        assert!(output.validate().is_ok());
+
+        let capabilities = ff_engine::ffmpeg_capabilities();
+        for name in ["libx265", "libsvtav1"] {
+            if capabilities
+                .encoders
+                .iter()
+                .any(|encoder| encoder.name == name)
+            {
+                let mut alternate = output.clone();
+                alternate.video_codec = name.into();
+                alternate.video_options = ff_engine::video_option_defaults(name);
+                assert!(
+                    alternate.validate().is_ok(),
+                    "{name}: {:?}",
+                    alternate.validate()
+                );
+                alternate
+                    .muxer_options
+                    .insert("hls_segment_type".into(), "mpegts".into());
+                assert!(alternate.validate().unwrap_err().contains("requires fMP4"));
+            }
+        }
 
         let json = serde_json::to_string(&output).unwrap();
         let restored: Output = serde_json::from_str(&json).unwrap();

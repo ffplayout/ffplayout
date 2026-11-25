@@ -35,6 +35,15 @@ impl PlayoutClock {
         })
     }
 
+    pub(crate) fn start_if_needed(&mut self, media_us: i64) {
+        if self.anchor_wall.is_none() {
+            self.anchor_wall = Some(Instant::now());
+            self.anchor_media_us = media_us;
+            self.rate = self.pending_rate;
+            self.reanchor_next = false;
+        }
+    }
+
     pub(crate) fn set_rate(&mut self, rate: f64) {
         let rate = if rate.is_finite() && rate > 0.0 {
             rate

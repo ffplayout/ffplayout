@@ -73,6 +73,18 @@ impl ReadRate {
         let Some(timestamp) = timestamp_us else {
             return Ok(());
         };
+
+        // An encoder may buffer several seconds before the muxer sees a
+        // packet. Start the shared clock before admitting that input burst.
+        if self.first.iter().all(Option::is_none)
+            && let Some(clock) = &self.clock
+        {
+            clock
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .start_if_needed(self.base_us);
+        }
+
         let first = *self.first[stream].get_or_insert(timestamp.max(self.source_start_us));
         self.progress[stream] = Some(
             self.progress[stream]
@@ -118,6 +130,19 @@ mod tests {
         sync::{Arc, Mutex},
         time::{Duration, Instant},
     };
+
+    #[test]
+    fn readrate_starts_the_clock_on_input_before_any_output_packet() {
+        let clock = Arc::new(Mutex::new(PlayoutClock::new()));
+        let mut rate = ReadRate::new(Some(clock.clone()), 4_000_000, 100_000_000);
+        let control = PipelineControl::default();
+
+        assert!(clock.lock().unwrap().media_time_us().is_none());
+        rate.update(0, Some(100_000_000), &control).unwrap();
+
+        assert!(clock.lock().unwrap().media_time_us().unwrap() >= 4_000_000);
+    }
+
     #[test]
     fn readrate_uses_slowest_stream_with_half_second_initial_lead() {
         let clock = Arc::new(Mutex::new(PlayoutClock::new()));
