@@ -2,6 +2,7 @@ import { useI18n } from 'vue-i18n'
 
 const settingLabels: Record<string, string> = {
     Preset: 'preset',
+    'Real-time mode': 'realTimeMode',
     Tune: 'tune',
     'Rate control': 'rateControl',
     Quality: 'quality',
@@ -26,6 +27,8 @@ const choiceLabels: Record<string, string> = {
     '0 (slowest)': 'slowest',
     '8 (default)': 'defaultSpeed',
     '13 (fastest)': 'fastest',
+    '12 (requires real-time mode)': 'preset12RealTime',
+    '13 (requires real-time mode)': 'preset13RealTime',
 }
 
 /** Translate display text while retaining the encoder's actual option values. */

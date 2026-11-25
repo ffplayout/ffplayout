@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useOutputLabels } from '@/composables/useOutputLabels'
-import { outputVariantNames } from '@/composables/outputEncoding'
+import { outputVariantNames, updateVideoOption, videoChoiceDisabled } from '@/composables/outputEncoding'
 
 import GenericModal from '@/components/utils/GenericModal.vue'
 
@@ -78,10 +78,11 @@ function settingIsVisible(setting: EncoderSetting) {
 }
 
 function setVideoOption(key: string, value: string | number) {
-    configStore.playout.recording.video_options = {
-        ...configStore.playout.recording.video_options,
-        [key]: String(value),
-    }
+    configStore.playout.recording.video_options = updateVideoOption(
+        configStore.playout.recording.video_options,
+        key,
+        value,
+    )
 }
 
 function setAudioOption(key: string, value: string | number) {
@@ -228,17 +229,24 @@ async function saveRecording() {
                             <span class="fieldset-legend">{{ encoderSettingLabel(setting) }}</span>
                             <select
                                 v-if="setting.kind === 'select'"
-                                :value="configStore.playout.recording.video_options[setting.key]"
+                                :value="configStore.playout.recording.video_options[setting.key] ?? setting.default"
                                 class="select select-sm w-full"
                                 @change="setVideoOption(setting.key, eventValue($event))"
                             >
-                                <option v-for="choice in setting.choices" :key="choice.value" :value="choice.value">
+                                <option
+                                    v-for="choice in setting.choices"
+                                    :key="choice.value"
+                                    :value="choice.value"
+                                    :disabled="
+                                        videoChoiceDisabled(setting.key, choice.value, configStore.playout.recording.video_options)
+                                    "
+                                >
                                     {{ encoderChoiceLabel(choice) }}
                                 </option>
                             </select>
                             <input
                                 v-else
-                                :value="configStore.playout.recording.video_options[setting.key]"
+                                :value="configStore.playout.recording.video_options[setting.key] ?? setting.default"
                                 type="number"
                                 :min="setting.minimum ?? undefined"
                                 :max="setting.maximum ?? undefined"

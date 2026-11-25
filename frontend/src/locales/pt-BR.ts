@@ -342,6 +342,7 @@ export default {
         custom: 'Personalizado',
         processingModes: { folder: 'Pasta', playlist: 'Lista de reprodução' },
         encoderLabels: {
+            realTimeMode: 'Modo em tempo real',
             tune: 'Ajuste do codificador',
             preset: 'Predefinição',
             rateControl: 'Controle de taxa de bits',
@@ -355,6 +356,8 @@ export default {
             rowMultithreading: 'Processamento paralelo de linhas',
         },
         encoderChoices: {
+            preset12RealTime: '12 (requer modo em tempo real)',
+            preset13RealTime: '13 (requer modo em tempo real)',
             goodQuality: 'Alta qualidade',
             realtime: 'Tempo real',
             automatic: 'Automático',

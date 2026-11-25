@@ -336,6 +336,7 @@ export default {
         custom: '自定义',
         processingModes: { folder: '文件夹', playlist: '节目单' },
         encoderLabels: {
+            realTimeMode: '实时模式',
             tune: '编码器调优',
             preset: '预设',
             rateControl: '码率控制',
@@ -349,6 +350,8 @@ export default {
             rowMultithreading: '行多线程',
         },
         encoderChoices: {
+            preset12RealTime: '12 (需要实时模式)',
+            preset13RealTime: '13 (需要实时模式)',
             goodQuality: '高质量',
             realtime: '实时',
             automatic: '自动',

@@ -341,6 +341,7 @@ export default {
         custom: 'Benutzerdefiniert',
         processingModes: { folder: 'Ordner', playlist: 'Wiedergabeliste' },
         encoderLabels: {
+            realTimeMode: 'Echtzeitmodus',
             tune: 'Encoder-Abstimmung',
             preset: 'Voreinstellung',
             rateControl: 'Bitratensteuerung',
@@ -354,6 +355,8 @@ export default {
             rowMultithreading: 'Parallele Zeilenverarbeitung',
         },
         encoderChoices: {
+            preset12RealTime: '12 (benötigt Echtzeitmodus)',
+            preset13RealTime: '13 (benötigt Echtzeitmodus)',
             goodQuality: 'Gute Qualität',
             realtime: 'Echtzeit',
             automatic: 'Automatisch',

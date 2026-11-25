@@ -28,3 +28,15 @@ export function encodingOwner(
     }
     return undefined
 }
+
+export function videoChoiceDisabled(key: string, value: string, options: Record<string, string>) {
+    return key === 'preset' && options.rtc === '1' && Number(value) < 7
+}
+
+export function updateVideoOption(options: Record<string, string>, key: string, value: string | number) {
+    const updated = { ...options, [key]: String(value) }
+    if (key === 'rtc' && videoChoiceDisabled('preset', updated.preset, updated)) {
+        updated.preset = '7'
+    }
+    return updated
+}

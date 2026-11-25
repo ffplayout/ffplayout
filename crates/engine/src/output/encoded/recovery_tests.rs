@@ -414,10 +414,11 @@ fn open_ts(path: &std::path::Path) -> format::context::Input {
 
 #[test]
 fn native_fmp4_keeps_video_audio_and_webvtt_on_the_program_clock() {
-    for (encoder, declaration) in [
-        ("libx264", "avc1."),
-        ("libx265", "hvc1."),
-        ("libsvtav1", "av01."),
+    for (encoder, declaration, preset, rtc) in [
+        ("libx264", "avc1.", "medium", false),
+        ("libx265", "hvc1.", "ultrafast", false),
+        ("libsvtav1", "av01.", "10", false),
+        ("libsvtav1", "av01.", "12", true),
     ] {
         ffmpeg::init().unwrap();
         if codec::encoder::find_by_name(encoder).is_none() {
@@ -427,17 +428,10 @@ fn native_fmp4_keeps_video_audio_and_webvtt_on_the_program_clock() {
         let fixture = Fixture::new();
         let mut config = OutputConfig::new(320, 180, 25, 48_000);
         config.video_codec = encoder.into();
-        config.video_options.insert(
-            "preset".into(),
-            if encoder == "libsvtav1" {
-                "10"
-            } else if encoder == "libx264" {
-                "medium"
-            } else {
-                "ultrafast"
-            }
-            .into(),
-        );
+        config.video_options.insert("preset".into(), preset.into());
+        if rtc {
+            config.video_options.insert("rtc".into(), "1".into());
+        }
         config
             .muxer_options
             .insert("ffplayout_packager".into(), "native".into());

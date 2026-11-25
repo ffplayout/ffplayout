@@ -920,14 +920,33 @@ const SVT_AV1_PRESETS: &[VideoOptionChoice] = &[
     },
     VideoOptionChoice {
         value: "12",
-        label: "12",
+        label: "12 (requires real-time mode)",
     },
     VideoOptionChoice {
         value: "13",
-        label: "13 (fastest)",
+        label: "13 (requires real-time mode)",
     },
 ];
 const SVT_AV1_SETTINGS: &[VideoOptionSpec] = &[
+    VideoOptionSpec {
+        key: "rtc",
+        label: "Real-time mode",
+        kind: VideoOptionKind::Select,
+        default: "0",
+        choices: &[
+            VideoOptionChoice {
+                value: "0",
+                label: "Disabled",
+            },
+            VideoOptionChoice {
+                value: "1",
+                label: "Enabled",
+            },
+        ],
+        minimum: None,
+        maximum: None,
+        visible_when: None,
+    },
     VideoOptionSpec {
         key: "preset",
         label: "Preset",
@@ -1187,8 +1206,8 @@ pub fn validate_video_options(codec: &str, options: &VideoOptions) -> Result<(),
     }
 
     for spec in specs {
-        // Tune was added after persisted profiles existed; absence retains zerolatency.
-        if spec.key == "tune" {
+        // Older profiles omit these settings and use the encoder defaults.
+        if matches!(spec.key, "tune" | "rtc") {
             continue;
         }
         if video_option_is_visible(spec, options) && !options.contains_key(spec.key) {
@@ -1197,6 +1216,16 @@ pub fn validate_video_options(codec: &str, options: &VideoOptions) -> Result<(),
                 spec.key
             ));
         }
+    }
+
+    if codec == "libsvtav1"
+        && options.get("rtc").is_some_and(|value| value == "1")
+        && options
+            .get("preset")
+            .and_then(|value| value.parse::<u8>().ok())
+            .is_some_and(|preset| preset < 7)
+    {
+        return Err("SVT-AV1 real-time mode requires a preset from 7 to 13".into());
     }
 
     Ok(())
@@ -1742,12 +1771,29 @@ mod tests {
     }
 
     #[test]
-    fn svt_av1_options_include_preset_and_quality() {
-        let options = video_option_defaults("libsvtav1");
+    fn svt_av1_realtime_setting_is_optional_and_validated() {
+        let mut options = video_option_defaults("libsvtav1");
 
         assert_eq!(options.get("preset").map(String::as_str), Some("8"));
         assert_eq!(options.get("quality").map(String::as_str), Some("30"));
         assert!(validate_video_options("libsvtav1", &options).is_ok());
+        assert_eq!(options.get("rtc").map(String::as_str), Some("0"));
+
+        options.remove("rtc");
+        options.insert("preset".into(), "12".into());
+        assert!(validate_video_options("libsvtav1", &options).is_ok());
+
+        options.insert("rtc".into(), "1".into());
+        assert!(validate_video_options("libsvtav1", &options).is_ok());
+
+        options.insert("preset".into(), "6".into());
+        assert!(validate_video_options("libsvtav1", &options).is_err());
+
+        options.insert("preset".into(), "7".into());
+        assert!(validate_video_options("libsvtav1", &options).is_ok());
+
+        options.insert("rtc".into(), "2".into());
+        assert!(validate_video_options("libsvtav1", &options).is_err());
     }
 
     #[test]

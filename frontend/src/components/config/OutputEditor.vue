@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOutputLabels } from '@/composables/useOutputLabels'
 import { useConfig } from '@/stores/config'
-import { encodingOwner, outputVariantNames } from '@/composables/outputEncoding'
+import { encodingOwner, outputVariantNames, updateVideoOption, videoChoiceDisabled } from '@/composables/outputEncoding'
 import { selectHlsPackager } from '@/composables/outputHls'
 const props = defineProps<{ item: PlayoutConfigExt['output'] }>()
 const editedOutput = computed(() => props.item)
@@ -132,10 +132,7 @@ function normalizeVideoOptions() {
 }
 
 function setVideoOption(key: string, value: string | number) {
-    editedOutput.value.video_options = {
-        ...editedOutput.value.video_options,
-        [key]: String(value),
-    }
+    editedOutput.value.video_options = updateVideoOption(editedOutput.value.video_options, key, value)
 }
 
 function setAudioCodec() {
@@ -475,7 +472,12 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
                             class="select select-sm w-full"
                             @change="setVideoOption(setting.key, eventValue($event))"
                         >
-                            <option v-for="choice in setting.choices" :key="choice.value" :value="choice.value">
+                            <option
+                                v-for="choice in setting.choices"
+                                :key="choice.value"
+                                :value="choice.value"
+                                :disabled="videoChoiceDisabled(setting.key, choice.value, editedOutput.video_options)"
+                            >
                                 {{ encoderChoiceLabel(choice) }}
                             </option>
                         </select>

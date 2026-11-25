@@ -342,6 +342,7 @@ export default {
         custom: 'Другой',
         processingModes: { folder: 'Папка', playlist: 'Плейлист' },
         encoderLabels: {
+            realTimeMode: 'Режим реального времени',
             tune: 'Настройка кодировщика',
             preset: 'Предустановка',
             rateControl: 'Управление битрейтом',
@@ -355,6 +356,8 @@ export default {
             rowMultithreading: 'Параллельная обработка строк',
         },
         encoderChoices: {
+            preset12RealTime: '12 (требуется режим реального времени)',
+            preset13RealTime: '13 (требуется режим реального времени)',
             goodQuality: 'Высокое качество',
             realtime: 'Реальное время',
             automatic: 'Автоматически',

@@ -293,7 +293,18 @@ pub(in crate::output) fn open_video_encoder(
         options.set("x264-params", "open-gop=0:repeat-headers=1");
     }
 
-    let mut video_encoder = video_ctx.open_as_with(video_codec, options)?;
+    let mut video_encoder = video_ctx
+        .open_as_with(video_codec, options)
+        .with_context(|| {
+            if encoder_backend == VideoEncoderBackend::SvtAv1
+                && cfg.video_option("rtc") == Some("1")
+            {
+                "opening SVT-AV1 with real-time mode enabled (requires SVT-AV1 3.1 or newer)"
+                    .to_owned()
+            } else {
+                format!("opening video encoder {}", video_codec.name())
+            }
+        })?;
     // Quality-based encoders clear AVCodecContext::bit_rate while opening.
     // Restore the configured maximum as metadata so the HLS muxer can
     // calculate BANDWIDTH for master.m3u8. QSV and VAAPI observe a bitrate
@@ -490,6 +501,11 @@ impl VideoEncoderBackend {
             }
             Self::SvtAv1 => {
                 options.set("preset", cfg.video_option("preset").unwrap_or("8"));
+                if cfg.video_option("rtc") == Some("1") {
+                    options.set("svtav1-params", "rtc=1");
+                    // Make libavcodec propagate rejected SVT parameters as an error.
+                    options.set("err_detect", "explode");
+                }
                 options.set("crf", cfg.video_option("quality").unwrap_or("30"));
                 options.set("maxrate", &maxrate.to_string());
                 options.set("bufsize", &maxrate.saturating_mul(2).to_string());
@@ -577,6 +593,38 @@ pub(in crate::output) fn stream_gop_size(fps: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn svt_av1_realtime_options_fail_when_svt_rejects_a_parameter() {
+        ffmpeg::init().unwrap();
+        let Some(codec) = codec::encoder::find_by_name("libsvtav1") else {
+            return;
+        };
+        let mut context = codec::context::Context::new_with_codec(codec)
+            .encoder()
+            .video()
+            .unwrap();
+        let mut config = OutputConfig::new(320, 180, 25, 48_000);
+        config.video_options = crate::utils::config::video_option_defaults("libsvtav1");
+        config.video_options.insert("rtc".into(), "1".into());
+        let mut options = ffmpeg::Dictionary::new();
+
+        context.set_width(320);
+        context.set_height(180);
+        context.set_format(Pixel::YUV420P);
+        context.set_time_base(Rational(1, 25));
+        context.set_frame_rate(Some(Rational(25, 1)));
+        VideoEncoderBackend::SvtAv1.configure_options(&mut options, &config, 400_000);
+        assert_eq!(options.get("svtav1-params"), Some("rtc=1"));
+
+        options.set("svtav1-params", "ffplayout_invalid_parameter=1");
+        assert!(matches!(
+            context.open_as_with(codec, options),
+            Err(ffmpeg::Error::Other {
+                errno: ffmpeg::error::EINVAL
+            })
+        ));
+    }
 
     #[test]
     fn hls_renditions_keep_common_keyframes_across_different_scene_cuts() {

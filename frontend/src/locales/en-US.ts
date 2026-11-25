@@ -336,6 +336,7 @@ export default {
         custom: 'Custom',
         processingModes: { folder: 'Folder', playlist: 'Playlist' },
         encoderLabels: {
+            realTimeMode: 'Real-time mode',
             tune: 'Encoder tuning',
             preset: 'Preset',
             rateControl: 'Rate control',
@@ -349,6 +350,8 @@ export default {
             rowMultithreading: 'Row multithreading',
         },
         encoderChoices: {
+            preset12RealTime: '12 (requires real-time mode)',
+            preset13RealTime: '13 (requires real-time mode)',
             goodQuality: 'Good quality',
             realtime: 'Realtime',
             automatic: 'Automatic',
