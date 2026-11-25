@@ -414,213 +414,221 @@ fn open_ts(path: &std::path::Path) -> format::context::Input {
 
 #[test]
 fn native_fmp4_keeps_video_audio_and_webvtt_on_the_program_clock() {
-    for (encoder, declaration, preset, rtc) in [
-        ("libx264", "avc1.", "medium", false),
-        ("libx265", "hvc1.", "ultrafast", false),
-        ("libsvtav1", "av01.", "10", false),
-        ("libsvtav1", "av01.", "12", true),
-    ] {
-        ffmpeg::init().unwrap();
-        if codec::encoder::find_by_name(encoder).is_none() {
-            continue;
-        }
+    ffmpeg::init().unwrap();
 
-        let fixture = Fixture::new();
-        let mut config = OutputConfig::new(320, 180, 25, 48_000);
-        config.video_codec = encoder.into();
-        config.video_options.insert("preset".into(), preset.into());
-        if rtc {
-            config.video_options.insert("rtc".into(), "1".into());
+    for (encoder, declaration, preset) in [
+        ("libx264", "avc1.", "medium"),
+        ("libx265", "hvc1.", "ultrafast"),
+        ("libsvtav1", "av01.", "10"),
+    ] {
+        if codec::encoder::find_by_name(encoder).is_some() {
+            check_native_fmp4_program_clock(encoder, declaration, preset, false);
         }
+    }
+}
+
+#[test]
+#[ignore = "requires FFmpeg linked against SVT-AV1 with RTC preset 12 support"]
+fn native_fmp4_svt_av1_realtime_keeps_the_program_clock() {
+    check_native_fmp4_program_clock("libsvtav1", "av01.", "12", true);
+}
+
+fn check_native_fmp4_program_clock(encoder: &str, declaration: &str, preset: &str, rtc: bool) {
+    let fixture = Fixture::new();
+    let mut config = OutputConfig::new(320, 180, 25, 48_000);
+    config.video_codec = encoder.into();
+    config.video_options.insert("preset".into(), preset.into());
+    if rtc {
+        config.video_options.insert("rtc".into(), "1".into());
+    }
+    config
+        .muxer_options
+        .insert("ffplayout_packager".into(), "native".into());
+    if encoder == "libx264" {
         config
             .muxer_options
-            .insert("ffplayout_packager".into(), "native".into());
-        if encoder == "libx264" {
-            config
-                .muxer_options
-                .insert("hls_segment_type".into(), "fmp4".into());
-        }
+            .insert("hls_segment_type".into(), "fmp4".into());
+    }
 
-        let first = if encoder == "libx264" { 0 } else { 53 };
-        for start in [first, 125] {
-            let mut output = EncodedOutput::open(
-                fixture.0.join("high.m3u8").to_str().unwrap(),
-                &config,
-                EncodedFormat::Hls {
-                    variants: [("high", 320, 180), ("low", 160, 96)]
-                        .into_iter()
-                        .map(|(name, width, height)| HlsVariant {
-                            name: name.into(),
-                            width,
-                            height,
-                            video_bitrate: 400_000,
-                            audio_bitrate: 96_000,
-                        })
-                        .collect(),
-                    subtitle: Some(HlsSubtitle {
-                        name: "Captions".into(),
-                        language: "en".into(),
-                        default: true,
-                    }),
-                    segment_seconds: 1,
-                    list_size: 9,
-                },
+    let first = if encoder == "libx264" { 0 } else { 53 };
+    for start in [first, 125] {
+        let mut output = EncodedOutput::open(
+            fixture.0.join("high.m3u8").to_str().unwrap(),
+            &config,
+            EncodedFormat::Hls {
+                variants: [("high", 320, 180), ("low", 160, 96)]
+                    .into_iter()
+                    .map(|(name, width, height)| HlsVariant {
+                        name: name.into(),
+                        width,
+                        height,
+                        video_bitrate: 400_000,
+                        audio_bitrate: 96_000,
+                    })
+                    .collect(),
+                subtitle: Some(HlsSubtitle {
+                    name: "Captions".into(),
+                    language: "en".into(),
+                    default: true,
+                }),
+                segment_seconds: 1,
+                list_size: 9,
+            },
+        )
+        .unwrap();
+        output
+            .write_vtt_subtitles(
+                fixture.0.join("source.mp4").to_str().unwrap(),
+                0,
+                0,
+                Some(30_000),
             )
             .unwrap();
-            output
-                .write_vtt_subtitles(
-                    fixture.0.join("source.mp4").to_str().unwrap(),
-                    0,
-                    0,
-                    Some(30_000),
-                )
+        write_frames(&mut output, start..start + 68, &mut (start * 1920));
+        output.finish().unwrap();
+    }
+
+    let media = fs::read_to_string(fixture.0.join("high.m3u8")).unwrap();
+    let low = fs::read_to_string(fixture.0.join("low.m3u8")).unwrap();
+    let subtitle = fs::read_to_string(fixture.0.join("high_vtt.m3u8")).unwrap();
+    let master = fs::read_to_string(fixture.0.join("master.m3u8")).unwrap();
+    assert!(
+        master.contains(&format!("CODECS=\"{declaration}")),
+        "{encoder}: {master}"
+    );
+    assert!(media.contains("#EXT-X-VERSION:7"));
+    assert_eq!(
+        media.matches("#EXT-X-MAP:").count(),
+        2,
+        "{encoder}: {media}"
+    );
+    assert!(media.contains("\n#EXT-X-DISCONTINUITY\n"));
+    assert_eq!(
+        media.matches("#EXTINF:").count(),
+        subtitle.matches("#EXTINF:").count()
+    );
+    assert_eq!(
+        media
+            .lines()
+            .filter(|line| line.starts_with("#EXTINF:"))
+            .collect::<Vec<_>>(),
+        low.lines()
+            .filter(|line| line.starts_with("#EXTINF:"))
+            .collect::<Vec<_>>()
+    );
+    assert!(low.contains("#EXT-X-MAP:URI=\"low_"));
+
+    let mut init = "";
+    let mut starts_us = Vec::new();
+    let mut total_video = 0;
+    for line in media.lines() {
+        if let Some(uri) = line
+            .strip_prefix("#EXT-X-MAP:URI=\"")
+            .and_then(|uri| uri.strip_suffix('"'))
+        {
+            init = uri;
+        } else if line.ends_with(".m4s") {
+            let mut bytes = fs::read(fixture.0.join(init)).unwrap();
+            bytes.extend(fs::read(fixture.0.join(line)).unwrap());
+            let input_file = fixture.0.join("probe.mp4");
+            fs::write(&input_file, bytes).unwrap();
+            let mut input = format::input(&input_file).unwrap();
+            let stream = input.streams().best(ffmpeg::media::Type::Video).unwrap();
+            let video = stream.index();
+            let audio = input
+                .streams()
+                .best(ffmpeg::media::Type::Audio)
+                .unwrap()
+                .index();
+            let mut decoder = codec::context::Context::from_parameters(stream.parameters())
+                .unwrap()
+                .decoder()
+                .video()
                 .unwrap();
-            write_frames(&mut output, start..start + 68, &mut (start * 1920));
-            output.finish().unwrap();
-        }
+            let mut first_audio = None;
+            let mut first_video = None;
+            let mut decoded = 0;
+            let mut raw = frame::Video::empty();
 
-        let media = fs::read_to_string(fixture.0.join("high.m3u8")).unwrap();
-        let low = fs::read_to_string(fixture.0.join("low.m3u8")).unwrap();
-        let subtitle = fs::read_to_string(fixture.0.join("high_vtt.m3u8")).unwrap();
-        let master = fs::read_to_string(fixture.0.join("master.m3u8")).unwrap();
-        assert!(
-            master.contains(&format!("CODECS=\"{declaration}")),
-            "{encoder}: {master}"
-        );
-        assert!(media.contains("#EXT-X-VERSION:7"));
-        assert_eq!(
-            media.matches("#EXT-X-MAP:").count(),
-            2,
-            "{encoder}: {media}"
-        );
-        assert!(media.contains("\n#EXT-X-DISCONTINUITY\n"));
-        assert_eq!(
-            media.matches("#EXTINF:").count(),
-            subtitle.matches("#EXTINF:").count()
-        );
-        assert_eq!(
-            media
-                .lines()
-                .filter(|line| line.starts_with("#EXTINF:"))
-                .collect::<Vec<_>>(),
-            low.lines()
-                .filter(|line| line.starts_with("#EXTINF:"))
-                .collect::<Vec<_>>()
-        );
-        assert!(low.contains("#EXT-X-MAP:URI=\"low_"));
-
-        let mut init = "";
-        let mut starts_us = Vec::new();
-        let mut total_video = 0;
-        for line in media.lines() {
-            if let Some(uri) = line
-                .strip_prefix("#EXT-X-MAP:URI=\"")
-                .and_then(|uri| uri.strip_suffix('"'))
-            {
-                init = uri;
-            } else if line.ends_with(".m4s") {
-                let mut bytes = fs::read(fixture.0.join(init)).unwrap();
-                bytes.extend(fs::read(fixture.0.join(line)).unwrap());
-                let input_file = fixture.0.join("probe.mp4");
-                fs::write(&input_file, bytes).unwrap();
-                let mut input = format::input(&input_file).unwrap();
-                let stream = input.streams().best(ffmpeg::media::Type::Video).unwrap();
-                let video = stream.index();
-                let audio = input
-                    .streams()
-                    .best(ffmpeg::media::Type::Audio)
+            for (stream, packet) in input.packets() {
+                use ffmpeg::Rescale;
+                let pts = packet
+                    .pts()
                     .unwrap()
-                    .index();
-                let mut decoder = codec::context::Context::from_parameters(stream.parameters())
-                    .unwrap()
-                    .decoder()
-                    .video()
-                    .unwrap();
-                let mut first_audio = None;
-                let mut first_video = None;
-                let mut decoded = 0;
-                let mut raw = frame::Video::empty();
-
-                for (stream, packet) in input.packets() {
-                    use ffmpeg::Rescale;
-                    let pts = packet
-                        .pts()
-                        .unwrap()
-                        .rescale(stream.time_base(), ffmpeg::rescale::TIME_BASE);
-                    if stream.index() == video {
-                        if first_video.is_none() {
-                            assert!(packet.is_key(), "{encoder}: {line}");
-                            first_video = Some(pts);
-                        }
-                        decoder.send_packet(&packet).unwrap();
-                        while decoder.receive_frame(&mut raw).is_ok() {
-                            decoded += 1;
-                        }
-                    } else if stream.index() == audio {
-                        first_audio.get_or_insert(pts);
+                    .rescale(stream.time_base(), ffmpeg::rescale::TIME_BASE);
+                if stream.index() == video {
+                    if first_video.is_none() {
+                        assert!(packet.is_key(), "{encoder}: {line}");
+                        first_video = Some(pts);
                     }
+                    decoder.send_packet(&packet).unwrap();
+                    while decoder.receive_frame(&mut raw).is_ok() {
+                        decoded += 1;
+                    }
+                } else if stream.index() == audio {
+                    first_audio.get_or_insert(pts);
                 }
-                decoder.send_eof().unwrap();
-                while decoder.receive_frame(&mut raw).is_ok() {
-                    decoded += 1;
-                }
-                assert!(decoded > 0, "{encoder}: {line}");
-                total_video += decoded;
-                let first_video = first_video.unwrap();
-                assert!(
-                    first_video.abs_diff(first_audio.unwrap()) <= 22_000,
-                    "{encoder}: {line} audio={first_audio:?} video={first_video}"
-                );
-                starts_us.push(first_video);
             }
+            decoder.send_eof().unwrap();
+            while decoder.receive_frame(&mut raw).is_ok() {
+                decoded += 1;
+            }
+            assert!(decoded > 0, "{encoder}: {line}");
+            total_video += decoded;
+            let first_video = first_video.unwrap();
+            assert!(
+                first_video.abs_diff(first_audio.unwrap()) <= 22_000,
+                "{encoder}: {line} audio={first_audio:?} video={first_video}"
+            );
+            starts_us.push(first_video);
         }
+    }
 
+    assert!(
+        starts_us.windows(2).all(|pair| pair[0] < pair[1]),
+        "{encoder}: {starts_us:?}"
+    );
+    assert_eq!(total_video, 136, "{encoder}");
+    // Exercise the actual HLS demuxer as well as isolated fragments.
+    let playlist = fixture.0.join("low.m3u8");
+    fs::write(&playlist, format!("{low}#EXT-X-ENDLIST\n")).unwrap();
+    let mut input = format::input(&playlist).unwrap();
+    assert_eq!(
+        input
+            .packets()
+            .filter(|(stream, _)| stream.parameters().medium() == ffmpeg::media::Type::Video)
+            .count(),
+        136,
+        "{encoder}: media playlist lost video packets"
+    );
+    if first == 0 {
         assert!(
-            starts_us.windows(2).all(|pair| pair[0] < pair[1]),
+            (0..=120_000).contains(&starts_us[0]),
             "{encoder}: {starts_us:?}"
         );
-        assert_eq!(total_video, 136, "{encoder}");
-        // Exercise the actual HLS demuxer as well as isolated fragments.
-        let playlist = fixture.0.join("low.m3u8");
-        fs::write(&playlist, format!("{low}#EXT-X-ENDLIST\n")).unwrap();
-        let mut input = format::input(&playlist).unwrap();
-        assert_eq!(
-            input
-                .packets()
-                .filter(|(stream, _)| stream.parameters().medium() == ffmpeg::media::Type::Video)
-                .count(),
-            136,
-            "{encoder}: media playlist lost video packets"
+    } else {
+        assert!(
+            (2_120_000..=2_122_000).contains(&starts_us[0]),
+            "{encoder}: {starts_us:?}"
         );
-        if first == 0 {
-            assert!(
-                (0..=120_000).contains(&starts_us[0]),
-                "{encoder}: {starts_us:?}"
-            );
-        } else {
-            assert!(
-                (2_120_000..=2_122_000).contains(&starts_us[0]),
-                "{encoder}: {starts_us:?}"
-            );
-        }
-        for (line, pts) in subtitle
+    }
+    for (line, pts) in subtitle
+        .lines()
+        .filter(|uri| uri.ends_with(".vtt"))
+        .zip(starts_us)
+    {
+        let vtt = fs::read_to_string(fixture.0.join(line)).unwrap();
+        let map: i64 = vtt
             .lines()
-            .filter(|uri| uri.ends_with(".vtt"))
-            .zip(starts_us)
-        {
-            let vtt = fs::read_to_string(fixture.0.join(line)).unwrap();
-            let map: i64 = vtt
-                .lines()
-                .find_map(|line| line.split_once("MPEGTS:"))
-                .unwrap()
-                .1
-                .parse()
-                .unwrap();
-            assert!(
-                map.abs_diff(pts * 90 / 1000) <= 90,
-                "{encoder}: {line} map={map} pts={pts}"
-            );
-        }
+            .find_map(|line| line.split_once("MPEGTS:"))
+            .unwrap()
+            .1
+            .parse()
+            .unwrap();
+        assert!(
+            map.abs_diff(pts * 90 / 1000) <= 90,
+            "{encoder}: {line} map={map} pts={pts}"
+        );
     }
 }
 
