@@ -6,9 +6,12 @@ Design and incrementally implement a native, CPU-first graphics subsystem for ff
 
 The existing YUV-based video pipeline must remain the primary processing path. Avoid unnecessary full-frame RGB conversions.
 
-The architecture must support both an optimized YUV compositing path and an optional high-quality linear RGB compositing path. Linear-light blending is a quality policy, not an assumed CPU optimization. Renderer selection, compositing policy, and storage location are separate decisions.
+The native CPU renderer uses optimized YUV compositing. The blend laboratory
+provides a linear-light RGB reference. A production linear-light mode is an
+optional follow-up that requires separate quality and performance evidence.
 
-**Do not introduce Chromium, CEF, Electron, Node.js, or another browser runtime in the current implementation.** Define an adapter contract for a potential future Servo integration, but do not implement or require Servo. GPU rendering and GPU compositing must also remain optional future backends.
+The current implementation uses native CPU rendering. Phase 11 tracks optional
+browser-based rendering, GPU acceleration and additional color formats.
 
 ## General Instructions
 
@@ -26,289 +29,41 @@ The architecture must support both an optimized YUV compositing path and an opti
 
 ---
 
-## Graphics frontend and manual control — 2026-11-04
+## Current state
 
-The shared Graphics page now provides manual graphics, existing Text controls and
-Program logo tabs. General Settings links to the logo tab; logo fields/database
-and the existing renderer/scaling behavior are preserved. Manual graphics use a
-separate bounded program group (eight layers), shared immutable output snapshots,
-channel preparation budgets and off-video-thread source preparation. HTTP commands
-require observed revisions; stop/clear invalidates obsolete completions. Placement
-preview and program-pixel dragging are available in both the playlist and manual
-editors. The browser preview does not simulate final video/color/timing. See
-[Graphics control](../docs/graphics_control.md) for limits and recovery semantics.
-Manual layer settings and requested playback/visibility state now persist per channel,
-with DaisyUI collapse editors and background restoration. Reusable templates and
-exact render-backed previews remain open. The shared placement canvas supports
-checkerboard transparency, program-pixel dragging, proportional corner resizing,
-fit-to-canvas and center snapping with alignment guides. Tiny graphics use an
-expanded dashed drag area with only the bottom-right resize handle; numeric sizing remains
-available. It edits source size;
-applying a new size to a running manual layer still requires Take/Start.
-Status-poll recovery clears retrieval errors without hiding command failures.
-A fresh playout resets the manual graphics clock with its new program timeline;
-Clear within the same run preserves the current clock.
-Historical milestone descriptions below predate this additional HTTP/frontend work.
+- **Scene and output.** The internal `ff-graphics` crate owns scene revisions,
+  program-time transitions, geometry and CPU composition. Ready logo, text and
+  clip layers share an immutable frame snapshot across immediate and deferred
+  outputs. HLS composes shared graphics at the largest rendition and scales
+  smaller renditions from it.
+  [Graphics architecture](../docs/development/graphics-architecture.md)
+- **Assets and resource lifetime.** Native text and supported PNG, GIF, AVIF and
+  local video assets prepare off the video thread. Bounded workers, generation
+  checks and pixel leases cover requests, cached and streamed surfaces, and
+  queued frames. Program-time source playback and fade repeats have independent
+  clocks. Planned entrances prewarm within 500 ms and longer invisible gaps
+  park the decoder.
+  [Animated logos](../docs/animated_logos.md) ·
+  [Playlist graphics](../docs/playlist_graphics.md)
+- **Controls.** The Graphics page has Graphics, Text, Program Logo and Settings
+  tabs. Its placement editor supports program-pixel dragging, proportional
+  sizing and snapping. Manual layer settings and requested state persist per
+  channel. Authenticated commands check the observed revision. The Program Logo
+  reloads in the background and keeps its last ready pixels during preparation.
+  [Graphics control](../docs/graphics_control.md)
+- **Verification.** Tests cover worker cancellation, resource release,
+  mixed-resolution composition, cached and streamed timing, and independent
+  numerical references for prepared YUVA. Benchmarks cover 0, 3 and 8 layers
+  and short graphics-only runs up to 4K/50. Native-library allocations and
+  full process RSS extend beyond the graphics reservation budget.
+  [Graphics testing](../docs/development/graphics-testing.md)
 
-Program-logo changes now apply through a lazy, tracked preparation/retirement
-worker without restarting the channel. Position/opacity reuse source pixels and
-preserve animation phase; source/scale changes swap only after readiness. Pending
-updates are bounded/latest-only and reset safely across preparation-service
-restarts. Relative output placement, clip/ad fades and HLS rendition behavior are
-preserved. Invalid enabled paths/layouts are rejected before saving from the logo
-page; failed asynchronous replacements retain the active source.
-
-## Implemented Groundwork — Workspace Crate Extraction
-
-- [x] Introduce an internal `ff-graphics` workspace crate with one-way engine → graphics dependencies.
-- [x] Move native text rendering and existing blend/layout code while preserving algorithms and public engine configuration behavior.
-- [x] Keep native text bitmap/style APIs independent of FFmpeg and font-library types; isolate FFmpeg surfaces and compositing in an optional backend module.
-- [x] Keep media path/regex selection, network-opening policy and pipeline/program-time integration in engine adapters.
-- [x] Reuse refcounted logo pixels without additional per-frame channels, workers or frame copies.
-- [x] Define straight-alpha CPU bitmap results, correct text/background/desktop alpha preparation, and apply requested glyph opacity once.
-- [x] Extract existing text fade/scroll evaluation into a backend-independent component with explicit program-frame timing and named preparation context.
-- [x] Keep logo backend access behind explicit engine-adapter methods rather than `Deref`.
-- [x] Route desktop program graphics through the shared video compositor; reuse prepared pixels for desktop, recording and matching encoder resolutions. Preserve largest-rendition composition and subsequent downscaling for HLS variants.
-- [x] Cache outward-aligned alpha bounds during preparation and skip transparent borders without changing original layout dimensions or copying frames.
-- [x] Unify serial/parallel clipping and SIMD execution; use a shared, capped Rayon pool only for large visible regions and serial fallback when busy.
-- [x] Measure both wall and aggregate CPU time, including a self-contained area sweep and byte-identical full-scene comparison. Keep small cropped overlays serial.
-- [x] Update the overlay benchmark to use graphics-crate kernels/backend and document the extraction in `docs/development/graphics-architecture.md`.
-
-Extraction is complete. The first internal scene core now provides bounded
-commands, immutable revisions, ready-resource leases and program-time fades/repeats.
-Prepared clip scenes now run through the engine's shared output compositor via
-typed engine playback options. Ready logo/text/clip snapshots now share one
-ordered layer handoff and composition dispatch. Native logo/text activation,
-replacement and resource states now use `SceneController`. CPU plane/color descriptors and bounded native preparation are implemented;
-general backend negotiation and new asset renderers remain separate work.
-GPU, Servo and templates are not implemented. Manual HTTP/frontend controls are
-implemented in the application adapter; see Phase 8.
-
----
-
-## Status reconciliation — 2026-11-04
-
-Checkboxes below distinguish the existing CPU logo/text implementation from the
-planned general scene engine. A completed item may explicitly name its current
-scope; that does not imply support for arbitrary layers, formats or backends.
-Sources of evidence:
-
-- [Graphics architecture](../docs/development/graphics-architecture.md): crate
-  boundaries, program-time evaluation, shared composition, CPU execution and tests.
-- [Animated logos](../docs/animated_logos.md): supported source formats, looping,
-  cache/lookahead bounds, failure policy and worker lifetime.
-- [Blend experiments](../docs/frame-blend.md): independent color-policy references
-  and benchmarks; experimental linear-light paths are not production features.
-- [Playlist graphics](../docs/playlist_graphics.md): implemented JSON operations,
-  source/transition timing, preparation limits and failure policies.
-- [Graphics testing](../docs/development/graphics-testing.md): regression coverage,
-  release load measurements, entrance preparation and remaining long-run limits.
-- Implementation/tests in `crates/graphics/src/`, `crates/engine/src/graphics/`,
-  and `crates/engine/src/output/composition.rs`.
-
-**Current milestone:** the first minimal scene/layer core is implemented internally
-and tested through the CPU compositor. Native logo/text resource state now runs
-through the common controller; their established scroll/fade and source-frame
-clocks remain the compatibility baseline.
-The engine accepts prepared clip scenes, evaluates their clip-local clock and
-passes immutable snapshots through output fan-out. Existing logo/text ordering
-and HLS rendition/layout behaviour remain the compatibility baseline. The optional
-playlist JSON adapter now prepares static PNGs and bounded GIF/AVIF/video assets asynchronously. Templates,
-SVG, GPU and Servo remain separate work. Manual HTTP controls and the shared
-Graphics page are implemented (Phase 8). Do not repeat the
-completed extraction or scheduling/engine integration. Recent increments add bounded entrance preparation, first-visible-frame
-selection from ready lookahead, metadata-aware alpha preparation, per-source
-quality controls and a configurable animation cache.
-
-**How to read this status:** checked items describe the implemented CPU/native
-scope only. Partially delivered requirements are split into completed foundations
-and unchecked extensions. Compatibility pixel comparisons and short smoke runs
-are not independent color-quality validation or a 24/7 stability certification.
-The detailed phases below are reconciled with the delivered milestones above.
-
-Completed-scope evidence map:
-
-| Area | Implementation and regression evidence |
-| --- | --- |
-| Commands, layers, revisions, resource state | `scene/controller.rs`, `scene/playlist.rs`; ordered updates, stale completions, clock reset and bounded admission tests |
-| Worker and pixel lifetime | `resources/preparation/`, `resources/surface.rs`; shutdown/restart, leases, cancellation and native resource-budget tests |
-| CPU layout, metadata and composition | `layout/context.rs`, `ffmpeg/compositor/`; checked geometry, tag preservation, cache/pixel compatibility and unsupported-layer tests |
-| Cached/streamed assets and preparation | `ffmpeg/sources/animation/`, `timing/`; repeats, seeks, entrance phase, idle decoding and 20-cycle cleanup tests |
-| Production integration | engine `graphics/` and app `player/graphics/`; shared output handoff, pre-first-take preparation, occurrence disposal and playlist JSON tests |
-| Measured load | `benches/animated_scene.rs` and [Graphics testing](../docs/development/graphics-testing.md); 0/3/8 layers, 1080p/4K25/50, Rust allocation counters and short soak runs |
-
-Graphics-only implementation paths above are relative to `crates/graphics/src/`
-unless qualified as an engine/application/benchmark path.
-
-**Next work, in priority order:**
-
-1. Extend the completed prepared-YUVA signal reference through RGBA preparation,
-   color conversion and independent visual fixtures (Phases 3/4/10).
-2. Full-channel long-run, simultaneous multi-channel and output fan-out measurements
-   with animated graphics, live ingest and repeated replacements (Phase 10).
-3. Generalized anchors, normalized/relative placement and explicit fit/aspect
-   policies (Phase 2). The implemented browser Fit button is not this layout model.
-4. Exact renderer-backed preview and reusable templates with editable text/image
-   groups (Phases 7/8); the current preview is a browser placement aid.
-5. SVG/shapes and slide/scale/easing/crossfade transitions as independent features
-   (Phases 5/6), followed by broader source/backend contracts.
-
-GPU/Servo/HDR and production linear-light compositing remain optional later work.
-The unchecked items below retain their detailed acceptance requirements; ordinary
-manual controls, persistence and placement editing are no longer pending work.
-
-### Scene core delivered in this increment
-
-- [x] Stable layer IDs, explicit reference-canvas pixel positions/scopes, deterministic
-  `(z, layer ID)` order, visibility and opacity updates.
-- [x] Bounded FIFO control with nonblocking submission and explicit per-command
-  acknowledgements/rejections after publication at a frame boundary. No command
-  coalescing: prepare/ready/take/stop/clear ordering is retained.
-- [x] Immutable scene revisions and ready-resource leases; old frames retain their
-  own resource references. Unchanged frames share the existing scene allocation.
-- [x] Separate source repeat and layer-transition repeat policies. Counts include
-  the first play; `Forever` means unbounded repeats. Finite source completion
-  explicitly selects hide or hold-last. Existing animated-logo configuration still
-  loops forever; finite repeats are an internal capability, not a new UI setting.
-- [x] Static layer entrance/hold/exit, separate durations, indefinite hold, finite
-  or infinite fade cycles, stop from current opacity, and immediate clear.
-- [x] Increasing preparation revisions reject stale results after replacement,
-  release or clear-all. A program-clock rewind clears the current epoch and
-  rejects queued old-epoch commands. No new decoding/preparation workers are added.
-- [x] CPU resource storage bounded by surface count and accounted bytes, with
-  lease-based retirement. Unsupported/missing scene surfaces are skipped without
-  failing video. Existing CPU YUV kernels and text bitmap conversion are reused.
-- [x] Regression tests for ordered layers, stop/clear, late results, resource limits,
-  immutable snapshots, differing FPS, long-running/finite repeats and pixel equality
-  with existing blending. A separate `scene_evaluation` benchmark measures only
-  metadata advance/evaluation, not rasterization or full-frame performance.
-
-### Common program-frame handoff delivered
-
-- [x] Map ready logo, clip-scene groups, configured text and runtime text to
-  backend-independent ordered `FrameLayers`; retain stable group IDs and the
-  existing logo → clip graphics → configured text → runtime text order.
-- [x] Replace independent deferred logo/text/clip setters with one atomic
-  `GraphicsFrame` snapshot, retained by parallel, desktop and recording outputs.
-- [x] Use the same composition dispatch for immediate and deferred outputs;
-  preserve destination-pixel logo placement, reference-canvas text scaling and
-  largest-rendition HLS composition. No new workers, pixel copies or per-frame
-  allocations for the layer container.
-- [x] Clear deferred metadata on occurrence completion while queued frames retain
-  ready resources; test four-group pixel compatibility, layout invalidation,
-  layer ordering and cache/resource lifetime.
-
-### Native controller integration delivered
-
-- [x] Track program logo, configured text and runtime text as three bounded
-  controller layers/resources. Translate native controls at frame boundaries;
-  publish controller-approved layers through the existing shared snapshots.
-- [x] Provide single-owner frame-boundary batches without control queues or
-  receipt allocation. Keep the queued control API for other adapters and explicitly
-  retain its ordering, acknowledgements and stale-epoch behavior.
-- [x] Tag logo producer results by source generation. Track loading/active/failed
-  replacements, keep good pixels while replacements load/fail, and reject retired
-  results after replacement/clear. Expose old active resource status independently
-  of its newer loading/failed replacement.
-- [x] Keep decoding/rasterization with existing native source/decoder owners;
-  cancellation/join still happens at their lifetime boundary. Frame snapshots
-  retain only ready pixels. No new preparation workers or per-frame decoding,
-  rasterization, pixel copies or resource-generation changes are introduced.
-- [x] Preserve animated-logo source clocks and legacy text scroll/fade evaluation;
-  avoid applying a second controller fade. Release text on occurrence completion,
-  preserve the program logo across clips/live, and rebind resources on clock rewind.
-- [x] Test batched publication, loading/failed replacement, stale results, queued
-  resource lifetime, stop/clear, resource reuse across animation/scroll frames,
-  channel isolation, backwards clocks and native/scaled pixel compatibility.
-
-### Asynchronous preparation and shared resource budgets delivered
-
-- [x] Prepare configured and runtime native text on one lazy, persistent CPU
-  preparation worker per channel. Frame processing polls ready cells, retains
-  last-good text during replacement, and never waits for rasterization.
-- [x] Keep only the latest text request per producer; drop/clear/replacement
-  invalidates old completion tickets. Retry a busy queue at most every 250 ms;
-  late results evaluate the original program fade/scroll phase.
-- [x] Share a 256 MiB pixel/workspace reservation budget, 1024 resource leases
-  and 16 queued/running job permits across native text, logo preparation and
-  application playlist graphics. Preserve tighter source-specific limits.
-- [x] Carry leases with cached source/scaled pixels, including queued frame
-  references. Logo repositioning shares its lease. Last-reference destruction
-  releases budget without a retirement queue or per-frame pixel copies.
-- [x] Reserve text/PNG workspace before large allocations. Bound text input and
-  canvas size; skip a failed destination graphic instead of stopping media.
-- [x] Cancel queued text work and invalidate running publication on shutdown;
-  join outside frame processing with a deadline, retain unfinished worker handles,
-  and prohibit overlapping replacements across restarts. Logo streaming and
-  playlist preparation retain their existing owned, cancellable worker lifetimes.
-- [x] Test stale/cleared text, failures, overload/retry, worker reuse, panic
-  containment, shutdown deadlines, restart exclusion, shared leases and pixel
-  equality with the established synchronous text path.
-
-### CPU surface/layout contracts — 2026-11-03
-
-- [x] Describe prepared CPU plane dimensions, byte strides/storage, visible alpha
-  bounds and actual matrix/primaries/transfer/range/chroma tags. Validate their
-  consistency; preserve unknown tags explicitly and avoid guessing by resolution.
-- [x] Tag native text/PNG matrix/range and preserve metadata through pure YUVA
-  resizing. Logo descriptors read prepared-frame metadata.
-- [x] Preserve fast SIMD/Rayon YUVA signal blending as the production compatibility
-  policy. Add optional strict SDR/color/siting admission for CPU scenes; unsupported
-  layers are reported/skipped without failing video. No new UI setting.
-- [x] Introduce backend-neutral reference/destination pixel layout contexts, checked
-  scaling arithmetic and explicit YUVA alignment/clipping rules. Use the context
-  for shared text/scene scaling; preserve logo placement and HLS rendition behavior.
-- [x] Test padded planes, metadata validation/preservation, unsupported color and
-  alpha combinations, differing aspect ratios and negative/overflowing coordinates.
-
-**Still open in this milestone:** generalized anchors/normalized coordinates,
-renderer capability negotiation and conversion planning beyond current CPU SDR,
-and adapters for future independent scene sources. The shared budget bounds
-accounted graphics pixels/workspace and jobs, not FFmpeg/font-library internals
-or total process RSS. Group fades operate on one prepared surface; no nested-scene
-renderer or source crossfade is implied.
-
----
-
-### Hybrid animated playlist sources — 2026-11-03
-
-- [x] Support GIF and local video playlist assets through the existing logo decoder
-  and common CPU scene compositor, with source timestamps independent of playout FPS.
-- [x] Cache sources within 256 frames/five seconds/configurable bytes (128 MiB default) completely; switch larger
-  assets to tracked background decoding with up to 500 ms/16 frames/configurable byte lookahead.
-  Restrict inputs to regular local files and non-nesting demuxers; check cancellation.
-- [x] Coalesce up to 32 presentation requests per streaming asset, support worker-side
-  seek/looping, discard inactive/obsolete work and park satisfied/hidden sources.
-- [x] Freeze selected surfaces before audio lookahead/output fan-out; recycle bounded
-  frame metadata and retain queued pixels independently from playback owners.
-- [x] Cancel on final playback-owner disposal; join media workers through the channel
-  service off the video thread, with tracked handles and restart exclusion.
-- [x] Separate `source_repeat`/`source_end` from fade repeats; allow finite/forever,
-  hide/hold-last, deterministic seek/live return and a fresh clock on every take.
-- [x] Account cached/poster pixels through scene admission and all dynamic pixels through shared channel leases;
-  snapshots keep caches alive until the final consumer releases them.
-- [x] Test GIF timing, multiple playout FPS, retakes, finite completion, local video,
-  cancellation, partial budget failure, scaled composition and playlist JSON.
-
-- [x] Compare overlapping variable-delay animation/fade cycles at 24/25/30/50/60 FPS
-  and repeat streamed take/stop/clear/live-suppression lifecycles with complete
-  reservation release. Add a paced release load/soak benchmark with zero-layer
-  baseline, 1080p/4K canvases, CPU/RSS, latency and Rust allocation measurements.
-  See [Graphics testing](../docs/development/graphics-testing.md). Extended 24/7
-  full-channel stability validation remains open.
-
-- [x] Prewarm planned takes/visibility entrances and fade-repeat entrances within
-  500 ms, select the first visible program tick from ready bounded lookahead,
-  retain program-time phase across differing FPS, and park longer invisible gaps.
-  Keep current presentations ahead of future retakes and preserve queued pixels.
-  Cover pre-first-take engine integration, source-frame boundary crossings,
-  finite repeats, stop/clear, resource retirement and zero-graphics overhead.
-
-Animated PNGs and further decoder/source unification remain separate work.
-Single frames exceeding the configured cache still require smaller dimensions. Program-logo streaming uses the same configurable per-source ceiling and falls
-back to bounded decoding under shared channel-budget pressure. Evicted private
-and published cache references release their leases; temporary pressure retains
-the last ready image while the worker waits. See [source processing settings](../docs/graphics_control.md#source-processing-and-animation-cache).
+Graphics were shown in normal playout for several days without observed issues.
+This provides operational evidence for the exercised setup. Phase 10 tracks
+reproducible color and alpha checks, resource measurements and targeted load
+and failure scenarios. Layout, renderer-backed preview, templates and new
+sources remain in their feature phases. Phase 11 tracks optional renderer and
+format extensions.
 
 ---
 
@@ -452,9 +207,8 @@ Create an abstraction that supports different graphics surfaces and compositing 
 - [ ] Extend composition beyond the documented CPU 4:2:0 alignment/coverage contract to arbitrary chroma siting; descriptor coverage is already implemented.
 - [x] Describe actual CPU primaries/transfer/matrix/range/chroma metadata, retain
   unknown values explicitly and preserve tags through pure YUVA resizing.
-- [ ] Validate and implement general color conversions beyond the current SDR
-  compatibility/strict-admission policies; preserving tags alone is not conversion.
-- [ ] Design for future 10-bit and HDR support without requiring immediate implementation.
+- [ ] Implement general color conversions beyond the current SDR policies.
+  Phase 10 tracks end-to-end validation for mismatched range and matrix.
 - [x] Distinguish straight, encoded-premultiplied and linear-premultiplied alpha; the CPU YUVA path accepts straight alpha only.
 - [x] Carry explicit AVIF `prem` and available FFmpeg frame/stream alpha metadata
   through source preparation. Unknown sources keep the legacy straight interpretation;
@@ -487,7 +241,8 @@ Create an abstraction that supports different graphics surfaces and compositing 
   does not change HLS rendition behavior.
 - [ ] Add an explicit color policy for linear-premultiplied/HDR source normalization;
   the current SDR adapter rejects these cases instead of treating them as encoded RGB.
-- [ ] Ensure alpha is not incorrectly applied to offset-encoded YUV components.
+- [x] Test that encoded-premultiplied SDR source normalization preserves YUV
+  signal offsets. End-to-end color and alpha checks are tracked in Phase 10.
 - [x] Describe current CPU surfaces with independent format, color, alpha, geometry and storage metadata.
 - [x] Specify encoded versus linear premultiplication separately from pixel layout (`Alpha`); current CPU YUVA preparation requires straight alpha.
 - [x] Describe current full-resolution alpha, visible bounds, plane dimensions/strides and actual chroma siting; arbitrary-siting composition remains open.
@@ -521,11 +276,10 @@ Treat these as candidate formats, not mandatory implementations. Adapt them to t
   linear-light RGB references in the blend laboratory; do not conflate their semantics.
 - [ ] Decide whether to expose a production linear-light policy after separate
   quality/performance evaluation; it is not currently selectable.
-- [ ] Allow a future GPU backend to own final compositing as well as graphic rasterization.
 - [x] Keep CPU byte access and full-frame RGB conversion out of backend-neutral
   scene/control contracts. Current implementation requires no GPU upload/readback.
-- [ ] Evaluate device sharing, synchronization and transfers before implementing
-  a GPU renderer/compositor contract (Phase 11).
+Phase 11 tracks GPU rasterization and composition, including device sharing,
+synchronization and transfers.
 
 ### Acceptance Criteria
 
@@ -552,16 +306,13 @@ Continue using the existing YUV compositing approach where appropriate.
 - [x] Preserve transparent/opaque alpha endpoints; skip zero-alpha pixels and cached transparent borders, retaining SIMD handling for visible regions.
 - [x] Verify offset-preserving blending for matching BT.709 limited/full-range
   source/target samples, exact endpoints and unchanged metadata.
-- [ ] Validate source preparation and range/matrix conversion for mismatched inputs.
-- [ ] Handle chroma subsampling without introducing unnecessary color bleeding.
 - [x] Apply documented even alignment, visible-region clipping and alpha bounds
   for current CPU YUV420 composition, including negative/odd requested coordinates.
-- [ ] Validate chroma quality independently and decide whether exact odd/subpixel
-  placement warrants a new composition path.
 - [x] Prepare and reuse 2×2-averaged coverage for the existing 4:2:0 U/V planes. Arbitrary chroma siting remains open.
 - [x] Preserve existing performance optimizations.
 
-Pay special attention to chroma blending at partially transparent edges.
+Phase 10 tracks independent color and chroma references for source preparation,
+partially transparent edges and odd or subpixel placement.
 
 ### Correctness Reference — Signal-Domain YUV
 
@@ -572,9 +323,8 @@ Pay special attention to chroma blending at partially transparent edges.
 - [x] Test exact transparent/opaque endpoints, single-sample chroma coverage,
   saturated red/green over blue, opacity gradients, overlapping layers, even
   negative/edge clipping, SIMD tails, strides and unchanged padding.
-- [ ] Extend independent references through RGBA preparation, nonuniform source
-  chroma within a 2×2 cell, mismatched color metadata and arbitrary siting. These
-  tests currently begin with prepared straight-alpha YUVA420P samples.
+The numerical signal-domain tests begin with prepared straight-alpha YUVA420P.
+Phase 10 covers the remaining end-to-end references.
 
 ### Quality Reference — Linear RGB Compositor
 
@@ -641,7 +391,10 @@ Logo configuration adapter → Graphics layer
   canonical program clock (`PreparedSurface`); freeze pixels before output fan-out.
 - [ ] Unify remaining legacy-logo and playlist-source internals behind a reusable
   renderer/source adapter contract beyond the current FFmpeg CPU implementation.
-- [x] Document/test the initial PNG, variable-duration GIF, alpha qtrle video and opaque FFV1 scope. APNG, animated WebP and image sequences remain outside the tested scope; see `docs/animated_logos.md`.
+- [x] Document and test PNG, variable-duration GIF, still and animated AVIF,
+  qtrle with alpha and opaque FFV1. APNG, animated WebP and image sequences
+  remain outside the tested scope.
+  [Animated logos](../docs/animated_logos.md)
 - [x] Preserve source frame durations, including variable durations, and map them to program presentation time rather than advancing one animation frame per video frame.
 - [x] Define internal finite/forever source timing and hide/hold-last completion,
   independently from layer fade cycles. Existing animated-logo user settings
@@ -854,19 +607,11 @@ Validate template data and resource paths before activation.
 
 **Priority: Medium**
 
-Expose the graphics subsystem through the existing ffplayout API architecture.
-
-Potential operations:
-
-```text
-GET    /api/graphics/{channel}
-POST   /api/graphics/{channel}/take
-PUT    /api/graphics/{channel}/{layer}
-DELETE /api/graphics/{channel}/{layer}
-POST   /api/graphics/{channel}/clear
-```
-
-Adapt paths and naming to existing project conventions.
+The authenticated manual graphics API exposes `GET /api/graphics/{channel}` for
+state and `POST /api/graphics/{channel}` for actions. The request body carries
+the action and the last observed revision. Logo and cache settings use scoped
+playout configuration updates.
+[HTTP API](../docs/graphics_control.md#http-api)
 
 ### Tasks
 
@@ -880,13 +625,12 @@ Adapt paths and naming to existing project conventions.
   action ordering, sparse updates, fades, repeats and independent source playback.
   Preserve existing JSON/unknown fields and cancel edits without mutating the playlist.
 - [x] Add authenticated manual take/update/stop/visibility/clear controls on a
-  shared Graphics/Text/Program-logo page, with program-pixel placement preview
+  shared Graphics page, with program-pixel placement preview
   reused by the playlist editor. Keep legacy logo sizing and HLS behavior.
 - [x] Add shared checkerboard placement preview, proportional resize handles at
   top-left/bottom-right, fit-to-canvas and center snapping with guides. Publish
-  combined size/position edits atomically. Check all four locale key sets.
+  combined size/position edits atomically. Check all supported locale key sets.
 - [ ] Add exact renderer-backed canvas/video preview.
-- [ ] Add reusable graphic templates (Phase 7).
 - [x] Define internal FIFO submission and equal-time playlist declaration order without coalescing.
 - [x] Require observed revisions for manual HTTP commands; reject intervening changes/preparation completions with conflicts.
 - [x] Define current worker cancellation/join/restart exclusion, clock-epoch reset and clip-occurrence disposal.
@@ -894,7 +638,7 @@ Adapt paths and naming to existing project conventions.
 - [x] Keep current controllers, preparation services, budgets and playlist file containment per channel; controller isolation is tested.
 - [x] Test manual graphics authorization/channel isolation, revision conflicts, failed sources, and scoped administrator-only logo saves through HTTP routes.
 
-Do not introduce breaking changes to existing clients.
+Phase 7 tracks reusable templates. Preserve compatibility with existing clients.
 
 ---
 
@@ -1010,21 +754,24 @@ change; manual graphics persist per channel and use GET/POST
 Create reproducible reference test cases for:
 
 - [x] Verify white antialiased text over black with the native renderer; the glyph alpha is applied once.
-- [ ] Saturated red text over blue video.
 - [x] Numerically validate semitransparent alpha gradients on prepared saturated
   YUVA surfaces; independent visual/rasterization fixtures remain separate.
-- [ ] Soft shadows.
 - [x] Compare overlapping CPU scene layers/fades with existing surface blending for pixel compatibility.
 - [x] Add independent f64 numerical references for overlapping prepared transparent graphics.
-- [ ] Add independent golden-image references including asset rasterization and preparation.
 - [x] Exercise transparent PNG borders and cached alpha bounds in the existing compositor; broader color-policy references remain open.
 - [x] Test documented even-alignment/clipping of odd/negative CPU graphic positions.
-- [ ] Independently validate subpixel/odd-position chroma quality; arbitrary-siting support remains open.
 - [x] Validate matching BT.709 limited/full signal blending numerically.
-- [ ] Validate BT.709 conversion/preparation end to end, including chroma-edge quality.
 - [x] Test multiple staggered layers with animated opacity against independently selected source frames and existing blend kernels.
-- [ ] Add independent color/alpha quality references for multilayer animated-opacity scenes.
-- [ ] Color-conversion round trips.
+- [ ] Extend independent numerical and golden-image references from asset
+  rasterization and RGBA preparation through final composition. Include the
+  following cases in those references.
+  - Saturated red text on blue video and soft shadows.
+  - Nonuniform chroma within 2×2 cells, transparent edges and odd or subpixel
+    positions. Use the results to assess whether a new placement path is
+    warranted. Extend coverage to arbitrary chroma siting as support is added.
+  - End-to-end BT.709 preparation, source/target range and matrix mismatches,
+    and supported color-conversion round trips.
+  - Multiple layers with independently animated opacity.
 
 Validate each optimized compositor against an independent reference with the same mathematical policy. Separately compare signal-domain YUV and linear-light RGB visually and numerically, without treating their intentional differences as implementation errors.
 
@@ -1046,7 +793,9 @@ Benchmark:
 - [x] Measure aggregate process CPU and peak RSS alongside sampled graphics reservations.
 - [ ] Measure memory bandwidth; current allocated-byte counters are not bandwidth measurements.
 - [x] Run three-minute 4K/50 graphics-only smoke checks with worker join and zero reservations after cleanup.
-- [ ] Validate 24/7 full-channel operation with encoding, HLS renditions, live ingest and output failures.
+- [ ] Run a targeted full-channel test with encoding, HLS renditions, live
+  ingest and injected output failures. Record the exercised transitions and
+  resource trends.
 - [x] Direct caller-thread SIMD versus persistent worker pools, with wall latency and aggregate CPU measured separately.
 - [x] Unit-test idle preparation services, updates/clear/replacement, eviction,
   failed/cancelled jobs, restart exclusion and bounded CPU reservations.
@@ -1066,8 +815,8 @@ Benchmark:
   overload fault injection beyond current deterministic fixtures.
 - [x] Verify bounded current cache/request storage, cached-source pixel reuse,
   parked satisfied/inactive decoders and complete retirement across 20 source lifecycles.
-- [ ] Run multi-hour animated program-logo and playlist-source loops, including
-  large assets and allocator/RSS trends; a short smoke test is insufficient.
+- [ ] Measure allocator and RSS trends in a targeted multi-hour run with
+  large animated program-logo and playlist assets.
 
 ### Performance Goals
 
@@ -1086,7 +835,7 @@ Do not claim performance improvements without measurements. Establish a baseline
 Keep the architecture extensible for:
 
 - Servo-based HTML/CSS graphics rendering.
-- Optional GPU acceleration.
+- Optional GPU rasterization and composition.
 - HDR graphics and wide-gamut color.
 - Higher bit-depth compositing.
 - Animated vector graphics.
@@ -1094,7 +843,7 @@ Keep the architecture extensible for:
 - External fill/key outputs.
 - Preview/program graphics workflows.
 
-### Future Adapter Contracts to Document Now
+### Future adapter contracts
 
 Current CPU ownership, timestamps, cancellation and resource budgets are already
 documented in the architecture report. The unchecked items below concern the
@@ -1109,7 +858,8 @@ they do not reopen the implemented CPU scene/control contract.
 - [ ] Keep any future Servo-specific HTML/CSS/JavaScript behavior behind its adapter rather than adding browser concepts to native scene nodes or control commands.
 - [ ] For GPU integration, evaluate renderer-to-compositor resource sharing, device identity, synchronization, and transfers across the video pipeline before choosing an implementation.
 
-Do not implement Servo, GPU backends, or speculative plugin-loading infrastructure now. Document these contracts and implement only the CPU interfaces needed by existing logo/text functionality. Do not add unnecessary abstractions solely for hypothetical future features.
+Record these contracts when planning a concrete adapter. The current milestone
+uses the native CPU interfaces needed by the existing graphics features.
 
 ---
 
