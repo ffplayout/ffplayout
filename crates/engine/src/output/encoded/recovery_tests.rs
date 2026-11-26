@@ -1240,6 +1240,58 @@ fn native_mpegts_shared_audio_has_one_playlist_on_the_video_clock() {
 }
 
 #[test]
+fn native_mpegts_replaces_the_previous_shared_audio_file_names() {
+    let mut fixture = Fixture::new();
+    fixture.1 = true;
+    let open = || {
+        fixture
+            .try_open_container("master.m3u8", true, [96_000; 3], Some("mpegts"), false)
+            .unwrap()
+    };
+    let mut output = open();
+
+    write_frames(&mut output, 0..75, &mut 0);
+    output.finish().unwrap();
+
+    let master_path = fixture.0.join("master.m3u8");
+    let audio_path = fixture.0.join("audio.m3u8");
+    let previous_path = fixture.0.join("_ffplayout_audio.m3u8");
+    let previous = fs::read_to_string(&audio_path).unwrap();
+    let legacy = previous.replace("audio_", "_ffplayout_audio_");
+    let legacy_last_segment = fixture.0.join(legacy.lines().last().unwrap());
+
+    for (current, old) in previous.lines().zip(legacy.lines()) {
+        if current.starts_with("audio_") {
+            fs::rename(fixture.0.join(current), fixture.0.join(old)).unwrap();
+        }
+    }
+    fs::remove_file(&audio_path).unwrap();
+    fs::write(&previous_path, &legacy).unwrap();
+    let master = fs::read_to_string(&master_path).unwrap();
+    fs::write(
+        &master_path,
+        master.replace("audio.m3u8", "_ffplayout_audio.m3u8"),
+    )
+    .unwrap();
+
+    let mut output = open();
+
+    assert!(previous_path.is_file());
+    assert!(!audio_path.exists());
+
+    write_frames(&mut output, 0..25, &mut 0);
+    output.finish().unwrap();
+
+    let current = fs::read_to_string(audio_path).unwrap();
+
+    assert!(media_range(current.as_bytes()).start >= media_range(previous.as_bytes()).end);
+    assert!(current.lines().last().unwrap().starts_with("audio_"));
+    assert_eq!(fs::read_to_string(master_path).unwrap(), master);
+    assert!(!previous_path.exists());
+    assert!(legacy_last_segment.is_file());
+}
+
+#[test]
 fn native_mpegts_switches_from_shared_audio_after_losing_the_master_playlist() {
     let mut fixture = Fixture::new();
     fixture.1 = true;
@@ -1304,7 +1356,7 @@ fn check_native_shared_audio(container: &str) {
     output.finish().unwrap();
 
     let master_path = fixture.0.join("master.m3u8");
-    let audio_name = format!("{}.m3u8", ff_hls::SHARED_AUDIO_NAME);
+    let audio_name = "audio.m3u8";
     let master = fs::read_to_string(&master_path).unwrap();
 
     assert_eq!(master.matches("#EXT-X-MEDIA:TYPE=AUDIO,").count(), 1);
@@ -1377,7 +1429,7 @@ fn check_native_shared_audio(container: &str) {
         );
         timestamps
     };
-    let audio = inspect(&audio_name, ffmpeg::media::Type::Audio);
+    let audio = inspect(audio_name, ffmpeg::media::Type::Audio);
 
     assert!(audio.len() >= 3);
     for name in ["high.m3u8", "mid.m3u8", "low.m3u8"] {
@@ -1394,7 +1446,7 @@ fn check_native_shared_audio(container: &str) {
     // Open a finite copy so probing the master never waits for a live reload.
     let mut finite_master = master;
     for name in [
-        &*audio_name,
+        audio_name,
         "high.m3u8",
         "mid.m3u8",
         "low.m3u8",
@@ -1440,12 +1492,12 @@ fn check_native_shared_audio(container: &str) {
     }
     assert!(received_audio && received_video);
 
-    let before = fs::read_to_string(fixture.0.join(&audio_name)).unwrap();
+    let before = fs::read_to_string(fixture.0.join(audio_name)).unwrap();
     let last = before.lines().last().unwrap();
     let mut output = open(&fixture);
     write_frames(&mut output, 0..25, &mut 0);
     output.finish().unwrap();
-    let resumed = fs::read_to_string(fixture.0.join(&audio_name)).unwrap();
+    let resumed = fs::read_to_string(fixture.0.join(audio_name)).unwrap();
     assert!(resumed.lines().any(|line| line == last));
     assert!(resumed.contains("#EXT-X-DISCONTINUITY\n"));
     assert_eq!(
@@ -1465,7 +1517,7 @@ fn check_native_shared_audio(container: &str) {
             .unwrap()
             .contains("TYPE=AUDIO")
     );
-    assert!(!fixture.0.join(&audio_name).exists());
+    assert!(!fixture.0.join(audio_name).exists());
     assert!(fixture.0.join(last).is_file());
 }
 

@@ -5,7 +5,7 @@ mod manifest;
 mod packager;
 pub mod retention;
 
-pub const SHARED_AUDIO_NAME: &str = "_ffplayout_audio";
+pub const SHARED_AUDIO_NAME: &str = "audio";
 pub const SHARED_AUDIO_MARKER: &str = "# ffplayout-audio: shared";
 
 pub use packager::{Config, Cue, MediaPacket, Packager, RenditionConfig, SegmentWriter, Subtitle};

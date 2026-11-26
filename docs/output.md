@@ -262,7 +262,9 @@ and enable **Shared audio track** in the HLS settings. The shared track uses
 the base output's audio bitrate. This works with MPEG-TS (H.264) and fMP4. For API
 configuration, the switch is stored as `hls_shared_audio=1` in the muxer
 options. Changing the switch starts a fresh live window. Use the master
-playlist for playback with shared audio.
+playlist for playback with shared audio. The audio playlist is named
+`audio.m3u8`, with segments named `audio_*`. With shared audio enabled,
+`audio` is reserved as a rendition name.
 
 **It is recommended to serve the HLS stream with nginx or another web server,
 and not with ffplayout (which is more meant for previewing).**
