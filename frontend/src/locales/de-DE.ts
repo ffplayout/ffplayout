@@ -604,7 +604,7 @@ export default {
         hlsSegmentType: 'Segmentcontainer',
         hlsSegmentTypeAuto: 'Automatisch',
         hlsSharedAudio: 'Gemeinsame Audiospur',
-        hlsSharedAudioHelp: 'Eine AAC-Spur für alle Varianten. Verwende in allen Varianten dieselbe Audio-Bitrate.',
+        hlsSharedAudioHelp: 'Eine AAC-Spur für alle Varianten mit der Audio-Bitrate der Basisausgabe.',
         hlsPlaylistName: 'Playlist-Name',
         outputFormat: 'Ausgabeformat',
         hlsSegmentDuration: 'Segmentdauer (Sekunden)',

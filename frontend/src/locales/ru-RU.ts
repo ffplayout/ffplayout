@@ -605,7 +605,7 @@ export default {
         hlsSegmentType: 'Контейнер сегментов',
         hlsSegmentTypeAuto: 'Автоматически',
         hlsSharedAudio: 'Общая аудиодорожка',
-        hlsSharedAudioHelp: 'Используйте одну дорожку AAC для всех вариантов с одинаковым битрейтом звука.',
+        hlsSharedAudioHelp: 'Одна дорожка AAC для всех вариантов с битрейтом звука базового выхода.',
         hlsPlaylistName: 'Название плейлиста',
         outputFormat: 'Формат вывода',
         hlsSegmentDuration: 'Длительность сегмента (секунды)',

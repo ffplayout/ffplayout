@@ -595,7 +595,7 @@ export default {
         hlsSegmentType: 'Segment container',
         hlsSegmentTypeAuto: 'Automatic',
         hlsSharedAudio: 'Shared audio track',
-        hlsSharedAudioHelp: 'Use one AAC track for all variants. Set the same audio bitrate in each variant.',
+        hlsSharedAudioHelp: 'Use one AAC track for all variants at the base output’s audio bitrate.',
         hlsPlaylistName: 'Playlist name',
         outputFormat: 'Output format',
         hlsSegmentDuration: 'Segment duration (seconds)',

@@ -258,8 +258,8 @@ By default, each video rendition contains muxed audio. Renditions with matching
 audio settings reuse one encoder and mux its packets into each rendition.
 
 To publish one AAC playlist shared by all video renditions, select **Native**
-and enable **Shared audio track** in the HLS settings. Use the same audio
-bitrate in all variants. This works with MPEG-TS (H.264) and fMP4. For API
+and enable **Shared audio track** in the HLS settings. The shared track uses
+the base output's audio bitrate. This works with MPEG-TS (H.264) and fMP4. For API
 configuration, the switch is stored as `hls_shared_audio=1` in the muxer
 options. Changing the switch starts a fresh live window. Use the master
 playlist for playback with shared audio.

@@ -594,7 +594,7 @@ export default {
         hlsSegmentType: '分段容器',
         hlsSegmentTypeAuto: '自动',
         hlsSharedAudio: '共享音轨',
-        hlsSharedAudioHelp: '所有变体共用一条 AAC 音轨。请为每个变体设置相同的音频比特率。',
+        hlsSharedAudioHelp: '所有变体共用一条 AAC 音轨，使用基础输出的音频比特率。',
         hlsPlaylistName: '播放列表名称',
         outputFormat: '输出格式',
         hlsSegmentDuration: '分段时长（秒）',

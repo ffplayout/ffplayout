@@ -603,7 +603,7 @@ export default {
         hlsSegmentType: 'Contêiner dos segmentos',
         hlsSegmentTypeAuto: 'Automático',
         hlsSharedAudio: 'Faixa de áudio compartilhada',
-        hlsSharedAudioHelp: 'Use uma faixa AAC para todas as variantes com a mesma taxa de bits de áudio.',
+        hlsSharedAudioHelp: 'Use uma faixa AAC para todas as variantes com a taxa de bits de áudio da saída base.',
         hlsPlaylistName: 'Nome da playlist',
         outputFormat: 'Formato de saída',
         hlsSegmentDuration: 'Duração do segmento (segundos)',

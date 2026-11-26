@@ -143,7 +143,7 @@ pub(super) fn configure_destinations(
         let (owner, _) = config
             .encoding_source(output)
             .map_err(ServiceError::Conflict)?;
-        settings.encoding_revision = encoding_revision(owner, config);
+        settings.encoding_revision = encoding_revision(owner, config)?;
         settings.destinations.clear();
         settings.encoding_source = if output.encoding_source_id.is_some() {
             let (owner, rendition) = config
@@ -233,22 +233,70 @@ fn destination_revision(output: &crate::utils::config::Output) -> Result<String,
     Ok(value.to_string())
 }
 
-fn encoding_revision(output: &crate::utils::config::Output, config: &PlayoutConfig) -> String {
+fn encoding_revision(
+    output: &crate::utils::config::Output,
+    config: &PlayoutConfig,
+) -> Result<String, ServiceError> {
+    let hls = if output.mode == OutputMode::HLS {
+        let streams = output.hls_streams().map_err(ServiceError::Conflict)?;
+        let variants = streams
+            .into_iter()
+            .skip(1)
+            .map(|stream| {
+                (
+                    stream.name,
+                    stream.width,
+                    stream.height,
+                    stream.video_bitrate,
+                    stream.audio_bitrate,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        Some((variants, output.hls_segment_duration))
+    } else {
+        None
+    };
     let value = serde_json::json!({
         "width": output.width, "height": output.height, "inherit_resolution": output.inherit_resolution,
         "fps": output.fps, "video_codec": output.video_codec, "video_options": output.video_options,
         "audio_codec": output.audio_codec, "audio_options": output.audio_options, "audio_bitrate": output.audio_bitrate,
-        "hls": (output.mode == OutputMode::HLS).then_some((&output.hls_variants, output.hls_segment_duration)),
+        "hls": hls,
         "recording": config.recording,
     });
 
-    value.to_string()
+    Ok(value.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::utils::config::Output;
+
+    #[test]
+    fn shared_hls_audio_rebuilds_encoders_when_variant_bitrates_change() {
+        let config = PlayoutConfig::default();
+        let mut output = config.output.clone();
+        output.hls_variants = vec!["small:320x180:600k:64k".into()];
+
+        let separate = encoding_revision(&output, &config).unwrap();
+        output
+            .muxer_options
+            .insert("hls_shared_audio".into(), "1".into());
+        let shared = encoding_revision(&output, &config).unwrap();
+
+        assert_ne!(shared, separate);
+
+        output.hls_variants = vec!["small:320x180:600k:96k".into()];
+
+        assert_eq!(encoding_revision(&output, &config).unwrap(), shared);
+
+        let before_rename = destination_revision(&output).unwrap();
+        output.hls_playlist_name = "renamed".into();
+
+        assert_eq!(encoding_revision(&output, &config).unwrap(), shared);
+        assert_ne!(destination_revision(&output).unwrap(), before_rename);
+    }
 
     #[test]
     fn saved_hls_packager_selection_changes_only_delivery_revision() {

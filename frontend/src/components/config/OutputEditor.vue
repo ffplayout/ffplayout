@@ -876,6 +876,7 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
                     class="input input-sm w-32"
                 />
                 <input
+                    v-if="!hlsSharedAudio"
                     :value="variant.audioBitrate"
                     @input="updateHlsVariant(index, 'audioBitrate', ($event.target as HTMLInputElement).value)"
                     type="text"

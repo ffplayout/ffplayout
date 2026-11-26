@@ -1249,23 +1249,40 @@ impl Output {
     /// Parses `hls_variants` into engine-ready [`ff_engine::HlsVariant`]s,
     /// returning a descriptive error for the offending entry on failure.
     pub fn parsed_hls_variants(&self) -> Result<Vec<ff_engine::HlsVariant>, String> {
+        let shared_audio = self.hls_shared_audio();
+
         self.hls_variants
             .iter()
             .map(|spec| {
-                spec.parse::<ff_engine::HlsVariant>()
-                    .map_err(|e| format!("invalid HLS variant \"{spec}\": {e}"))
+                let active_spec = if shared_audio {
+                    // The optional fourth field is inactive while audio is shared.
+                    spec.match_indices(':')
+                        .nth(2)
+                        .map_or(spec.as_str(), |(separator, _)| &spec[..separator])
+                } else {
+                    spec.as_str()
+                };
+                let mut variant = active_spec
+                    .parse::<ff_engine::HlsVariant>()
+                    .map_err(|e| format!("invalid HLS variant \"{spec}\": {e}"))?;
+
+                if shared_audio {
+                    variant.audio_bitrate = u64::from(self.audio_bitrate) * 1_000;
+                }
+
+                Ok(variant)
             })
             .collect()
     }
 
-    /// Returns all HLS renditions, with the configured base output first and
-    /// additional variants appended.
     pub(crate) fn hls_shared_audio(&self) -> bool {
         self.muxer_options
             .get("hls_shared_audio")
             .is_some_and(|value| value == "1")
     }
 
+    /// Returns all HLS renditions, with the configured base output first and
+    /// additional variants appended.
     pub fn hls_streams(&self) -> Result<Vec<ff_engine::HlsVariant>, String> {
         let base = ff_engine::HlsVariant {
             name: self.hls_playlist_name.trim().to_string(),
@@ -1524,14 +1541,6 @@ impl Output {
                 .any(|variant| variant.name == ff_engine::HLS_SHARED_AUDIO_NAME)
             {
                 return Err("HLS variant name is reserved for shared audio".into());
-            }
-            if variants
-                .windows(2)
-                .any(|pair| pair[0].audio_bitrate != pair[1].audio_bitrate)
-            {
-                return Err(
-                    "shared HLS audio requires the same audio bitrate for all variants".into(),
-                );
             }
         }
 
@@ -2599,7 +2608,7 @@ mod output_tests {
     }
 
     #[test]
-    fn shared_hls_audio_requires_native_and_one_audio_bitrate() {
+    fn shared_hls_audio_requires_native_and_uses_the_base_audio_bitrate() {
         let mut output = output(OutputMode::HLS);
         output.audio_bitrate = 96;
         output
@@ -2616,15 +2625,39 @@ mod output_tests {
             .muxer_options
             .insert("hls_segment_type".into(), "fmp4".into());
         assert!(output.validate().is_ok());
-        output.hls_variants = vec!["small:320x180:600k:64k".into()];
+
+        output.hls_variants = vec![
+            "small:320x180:600k:64k".into(),
+            "mid:640x360:1200k".into(),
+            "high:1280x720:2200k:abc".into(),
+        ];
+
+        assert!(output.validate().is_ok());
         assert!(
             output
-                .validate()
-                .unwrap_err()
-                .contains("same audio bitrate")
+                .hls_streams()
+                .unwrap()
+                .iter()
+                .all(|stream| stream.audio_bitrate == 96_000)
         );
-        output.hls_variants = vec!["small:320x180:600k:96k".into()];
-        assert!(output.validate().is_ok());
+
+        output.audio_bitrate = 160;
+
+        assert!(
+            output
+                .hls_streams()
+                .unwrap()
+                .iter()
+                .all(|stream| stream.audio_bitrate == 160_000)
+        );
+
+        output.muxer_options.remove("hls_shared_audio");
+
+        assert!(output.validate().unwrap_err().contains("abc"));
+
+        output.hls_variants.pop();
+
+        assert_eq!(output.hls_streams().unwrap()[1].audio_bitrate, 64_000);
     }
 
     #[test]
