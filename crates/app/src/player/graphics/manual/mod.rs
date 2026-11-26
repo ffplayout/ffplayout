@@ -7,15 +7,19 @@ use sqlx::types::Json;
 
 mod preparation;
 mod runtime;
+mod schedule;
 mod settings;
 
 #[cfg(test)]
 mod tests;
 
 use crate::{
-    db::{handles, models::GraphicLayer},
+    db::{
+        handles,
+        models::{GraphicAppointment, GraphicLayer},
+    },
     player::controller::ChannelManager,
-    utils::errors::ServiceError,
+    utils::{errors::ServiceError, time_machine::time_now},
 };
 
 pub(crate) use runtime::{ManualState, begin_restore, stop_runtime};
@@ -31,11 +35,15 @@ pub(crate) async fn status(manager: &ChannelManager) -> Result<Value, ServiceErr
         .map_or((config.output.width, config.output.height), |program| {
             (program.width, program.height)
         });
-    let (revision, rows) = handles::select_graphic_layers(&manager.db_pool, manager.id).await?;
+    let (revision, rows, mut schedules) =
+        handles::select_graphics(&manager.db_pool, manager.id).await?;
+    let now = time_now(&manager.config.read().await.channel.timezone);
     let (_, live) = manager.manual_graphics.status();
     let layers: Vec<_> = rows
         .into_iter()
         .map(|row| {
+            let appointments = schedules.remove(&row.layer_id).unwrap_or_default();
+            let timing = schedule::timing(&appointments, &now);
             let active = live
                 .iter()
                 .any(|layer| layer.id == row.layer_id as u64 && layer.active);
@@ -47,6 +55,9 @@ pub(crate) async fn status(manager: &ChannelManager) -> Result<Value, ServiceErr
                 "running": row.running,
                 "visible": row.visible,
                 "active": active,
+                "appointments": appointments,
+                "schedule_active_until": timing.active_until,
+                "schedule_next_start": timing.next_start,
                 "position": row.settings.get("position").cloned().unwrap_or(json!([0,0])),
                 "opacity": row.settings.get("opacity").cloned().unwrap_or(json!(1.0)),
                 "z_index": row.settings.get("z_index").cloned().unwrap_or(json!(0)),
@@ -59,6 +70,7 @@ pub(crate) async fn status(manager: &ChannelManager) -> Result<Value, ServiceErr
         "revision": revision,
         "running": manager.is_alive.load(Ordering::SeqCst),
         "canvas": canvas,
+        "timezone": now.time_zone().iana_name().unwrap_or("UTC"),
         "layers": layers,
     }))
 }
@@ -68,8 +80,8 @@ pub(crate) async fn command(
     expected: u64,
     data: Value,
 ) -> Result<u64, ServiceError> {
-    // Serialize DB state changes and runtime handoff, never frame rendering.
-    let _operation = manager.manual_state.operations.lock().await;
+    // Serialize state changes and runtime handoff. Media preparation releases the lock.
+    let mut operation = manager.manual_state.operations.lock().await;
     let (revision, mut rows) = handles::select_graphic_layers(&manager.db_pool, manager.id).await?;
 
     if u64::try_from(revision).ok() != Some(expected) {
@@ -97,6 +109,50 @@ pub(crate) async fn command(
         .filter(|id| (0..=9_007_199_254_740_991).contains(id))
         .ok_or_else(|| ServiceError::BadRequest("Invalid or missing layer ID".into()))?;
     let index = rows.iter().position(|row| row.layer_id == id);
+
+    if action == "schedule" {
+        index.ok_or_else(|| ServiceError::NotFound("Unknown graphic layer".into()))?;
+        let appointments: Vec<GraphicAppointment> =
+            serde_json::from_value(data.get("appointments").cloned().unwrap_or(Value::Null))
+                .map_err(|error| {
+                    ServiceError::BadRequest(format!("Invalid graphics schedule: {error}"))
+                })?;
+
+        if let Some(index) = appointments
+            .iter()
+            .position(|appointment| !appointment.is_valid())
+        {
+            return Err(ServiceError::BadRequest(format!(
+                "Invalid graphic appointment {}",
+                index + 1
+            )));
+        }
+
+        let baseline: Option<Vec<GraphicAppointment>> = data
+            .get("expected_appointments")
+            .map(|expected| serde_json::from_value(expected.clone()))
+            .transpose()
+            .map_err(|error| {
+                ServiceError::BadRequest(format!("Invalid graphics schedule baseline: {error}"))
+            })?;
+
+        let revision = handles::store_graphic_schedule(
+            &manager.db_pool,
+            manager.id,
+            revision,
+            id,
+            &appointments,
+            baseline.as_deref(),
+        )
+        .await
+        .map_err(|error| {
+            ServiceError::Conflict(format!("Could not save graphics schedule: {error}"))
+        })?;
+
+        manager.manual_state.wake_schedule();
+
+        return Ok(revision as u64);
+    }
 
     if action == "clear" {
         let index = index.ok_or_else(|| ServiceError::NotFound("Unknown graphic layer".into()))?;
@@ -134,10 +190,18 @@ pub(crate) async fn command(
     configure_row(&mut row, action, &data)?;
 
     if action != "stop" && !(action == "visibility" && !row.visible) {
-        let config = manager.config.read().await.clone();
-        settings::validate(&row.settings, &config.storage.path).map_err(|error| {
-            ServiceError::BadRequest(format!("Invalid graphic settings: {error:#}"))
-        })?;
+        drop(operation);
+
+        let root = manager.config.read().await.storage.path.clone();
+        let settings = row.settings.clone();
+
+        tokio::task::spawn_blocking(move || settings::validate(&settings, &root))
+            .await?
+            .map_err(|error| {
+                ServiceError::BadRequest(format!("Invalid graphic settings: {error:#}"))
+            })?;
+
+        operation = manager.manual_state.operations.lock().await;
     }
 
     let alive = manager.is_alive.load(Ordering::SeqCst);
@@ -158,7 +222,13 @@ pub(crate) async fn command(
     let prepared = if activate
         && (action == "take" || !manager.manual_state.loaded(&row) || !has_runtime(&manager, id))
     {
-        Some(preparation::prepare(&manager, row.settings.0.clone()).await?)
+        drop(operation);
+
+        let prepared = preparation::prepare(&manager, row.settings.0.clone()).await?;
+        operation = manager.manual_state.operations.lock().await;
+
+        // The revision checked by persist still protects the snapshot taken before preparation.
+        Some(prepared)
     } else {
         None
     };
@@ -186,6 +256,8 @@ pub(crate) async fn command(
         return Err(error);
     }
 
+    drop(operation);
+
     Ok(revision)
 }
 
@@ -194,10 +266,15 @@ async fn persist(
     revision: i64,
     rows: &[GraphicLayer],
 ) -> Result<u64, ServiceError> {
-    handles::store_graphic_layers(&manager.db_pool, manager.id, revision, rows)
+    let revision = handles::store_graphic_layers(&manager.db_pool, manager.id, revision, rows)
         .await
-        .map(|revision| revision as u64)
-        .map_err(|error| ServiceError::Conflict(format!("Could not save graphic layers: {error}")))
+        .map_err(|error| {
+            ServiceError::Conflict(format!("Could not save graphic layers: {error}"))
+        })?;
+
+    manager.manual_state.wake_schedule();
+
+    Ok(revision as u64)
 }
 
 fn configure_row(row: &mut GraphicLayer, action: &str, data: &Value) -> Result<(), ServiceError> {

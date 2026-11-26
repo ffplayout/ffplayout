@@ -1025,6 +1025,11 @@ pub struct Output {
     #[serde(default)]
     pub encoding_source_id: Option<i32>,
     #[serde(default)]
+    pub forward_listener_id: Option<i32>,
+    #[serde(default)]
+    #[ts(type = "\"auto\" | \"copy\" | \"transcode\"")]
+    pub forward_mode: ff_engine::ForwardMode,
+    #[serde(default)]
     pub encoding_variant: String,
     #[serde(default)]
     pub public_moq: bool,
@@ -1174,6 +1179,8 @@ impl Output {
                 None
             },
             encoding_variant: output.encoding_variant,
+            forward_listener_id: output.forward_listener_id,
+            forward_mode: output.forward_mode.parse().unwrap_or_default(),
             public_moq: output.public_moq,
             mode,
             discard: false,
@@ -1381,6 +1388,11 @@ impl Output {
                 } else {
                     capabilities.video_codecs_for(target)
                 };
+            if self.forward_listener_id.is_some()
+                && self.forward_mode == ff_engine::ForwardMode::Copy
+            {
+                return Ok(());
+            }
             if !video_codecs
                 .iter()
                 .any(|codec| codec.name == self.video_codec)
@@ -1554,6 +1566,9 @@ impl PlayoutConfig {
                 .chain(self.outputs.iter())
                 .find(|source| source.id == id)
                 .ok_or("encoding source must be a configured output")?;
+            if source.forward_listener_id.is_some() {
+                return Err("live forwarding destinations do not own a program encoder".into());
+            }
             if source.mode == OutputMode::Desktop || current.mode == OutputMode::Desktop {
                 return Err("desktop output cannot provide or reuse encoded packets".into());
             }
@@ -1636,6 +1651,34 @@ impl PlayoutConfig {
             }
             if output.id < 0 || (output.id != 0 && !ids.insert(output.id)) {
                 return Err("duplicate or invalid output ID".into());
+            }
+            if let Some(listener) = output.forward_listener_id {
+                if !self
+                    .ingest
+                    .listeners
+                    .iter()
+                    .any(|input| input.id > 0 && input.id == listener)
+                {
+                    return Err(
+                        "remove the forwarding destination before removing its live input".into(),
+                    );
+                }
+                if output.mode != OutputMode::Stream
+                    || output.stream_type == StreamType::Custom
+                    || output.encoding_source_id.is_some()
+                {
+                    return Err(
+                        "live ingest forwarding requires an independent RTMP, SRT or UDP output"
+                            .into(),
+                    );
+                }
+                if self.recording.enable
+                    && (self.recording.source_output_id == Some(output.id)
+                        || (self.recording.source == EncodingSource::Encode
+                            && output.id == self.output.id))
+                {
+                    return Err("program recording cannot use a live forwarding destination".into());
+                }
             }
             if output.fps
                 != self
@@ -1788,7 +1831,11 @@ async fn get_config_with_args(
         } else {
             let outputs = handles::select_outputs(pool, channel_id).await?;
             let mode = selection.mode().to_string();
-            let matching = || outputs.iter().filter(|output| output.name == mode);
+            let matching = || {
+                outputs
+                    .iter()
+                    .filter(|output| output.name == mode && output.forward_listener_id.is_none())
+            };
             let record = matching()
                 .find(|output| output.active)
                 .or_else(|| matching().find(|output| output.configured))
@@ -1814,6 +1861,7 @@ async fn get_config_with_args(
         }
 
         output.encoding_source_id = None;
+        output.forward_listener_id = None;
         output.encoding_variant.clear();
         output.share_encoding = false;
         output.mode = selection.mode();
@@ -1914,6 +1962,8 @@ mod output_tests {
             inherit_resolution: false,
             share_encoding: true,
             encoding_source_id: None,
+            forward_listener_id: None,
+            forward_mode: ff_engine::ForwardMode::Auto,
             encoding_variant: String::new(),
             public_moq: false,
             mode,

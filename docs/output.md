@@ -129,6 +129,43 @@ For example, you can use:
 
 Of course, you can also use media platforms that support streaming input.
 
+### Forwarding a live ingest
+
+Under **Settings → Outputs**, add or edit a **Stream** output. Set **Media
+source** to a saved live listener and enter the destination URL. The listener's
+entry under **Ingest** links to each of its configured destinations.
+Forwarding works while the listener is on standby, including while the channel
+plays a playlist or another live input. The program's overlays and audio
+processing stay on the program path.
+
+- **Automatic** copies each compatible track and transcodes the tracks that
+  need conversion. Selecting an explicit output size also transcodes video
+  when the incoming size differs.
+- **Copy only** forwards encoded packets and reports an error if a track
+  cannot be copied. Set the output to inherit resolution to preserve the
+  incoming dimensions.
+- **Transcode** encodes the incoming tracks with the output's codec settings.
+  Destinations with the same source and equivalent processing settings can
+  share a transcoder while keeping independent connections.
+
+The supported targets are RTMP with FLV, and SRT or UDP with MPEG-TS.
+SRT/MPEG-TS with H.264 video and AAC audio can be forwarded to RTMP/FLV in
+**Copy only** mode. Compatibility checks use the incoming codec parameters and
+the selected container. Destination-specific constraints can still cause
+delivery to fail.
+
+Save to add, edit, enable, disable or remove a forwarding destination while
+the channel and listener are running. Changing a destination restarts its
+own connection. A destination waits for the publisher and, for video, a
+usable keyframe. Publisher disconnects return it to waiting for input, and
+delivery failures retry every 15 seconds for up to three minutes. After
+retry exhaustion, use **Reconnect** in Outputs. Reassign or remove dependent
+destinations before deleting a listener.
+
+The output configuration API uses `forward_listener_id` and `forward_mode`
+(`auto`, `copy` or `transcode`). A null listener ID selects the playout
+program. Forwarding is experimental.
+
 ### Container metadata
 
 The advanced output settings accept global container metadata as key/value

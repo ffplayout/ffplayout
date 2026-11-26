@@ -8,6 +8,7 @@ use ff_graphics::{
     preparation::PreparationService,
 };
 use serde_json::Value;
+use tokio::sync::OwnedSemaphorePermit;
 
 use crate::{player::controller::ChannelManager, utils::errors::ServiceError};
 
@@ -22,6 +23,29 @@ pub(super) async fn prepare(
         .clone()
         .try_acquire_owned()
         .map_err(|_| ServiceError::Conflict("Graphics preparation busy; retry shortly".into()))?;
+
+    prepare_with_permit(manager, data, permit).await
+}
+
+pub(super) async fn prepare_scheduled(
+    manager: &ChannelManager,
+    data: Value,
+) -> Result<ClipGraphics, ServiceError> {
+    let permit = manager
+        .manual_jobs
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| ServiceError::Conflict("Graphics preparation stopped".into()))?;
+
+    prepare_with_permit(manager, data, permit).await
+}
+
+async fn prepare_with_permit(
+    manager: &ChannelManager,
+    data: Value,
+    permit: OwnedSemaphorePermit,
+) -> Result<ClipGraphics, ServiceError> {
     let config = match manager.running_config() {
         Some(config) => (*config).clone(),
         None => manager.config.read().await.clone(),

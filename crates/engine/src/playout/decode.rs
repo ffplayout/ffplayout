@@ -3,7 +3,7 @@ use log::warn;
 
 use crate::benchmark::{self, Stage};
 
-pub(super) struct DecodeRecovery {
+pub(crate) struct DecodeRecovery {
     stage: Stage,
     track: &'static str,
     channel_id: i32,
@@ -11,7 +11,7 @@ pub(super) struct DecodeRecovery {
 }
 
 impl DecodeRecovery {
-    pub(super) fn new(stage: Stage, track: &'static str, channel_id: i32) -> Self {
+    pub(crate) fn new(stage: Stage, track: &'static str, channel_id: i32) -> Self {
         Self {
             stage,
             track,
@@ -24,7 +24,7 @@ impl DecodeRecovery {
         self.errors
     }
 
-    pub(super) fn send(&mut self, decoder: &mut Opened, packet: &Packet) -> Result<(), Error> {
+    pub(crate) fn send(&mut self, decoder: &mut Opened, packet: &Packet) -> Result<(), Error> {
         match benchmark::measure(self.stage, || decoder.send_packet(packet)) {
             Err(Error::InvalidData) => {
                 self.record_error();
@@ -45,7 +45,7 @@ impl DecodeRecovery {
         }
     }
 
-    pub(super) fn receive(
+    pub(crate) fn receive(
         &mut self,
         decoder: &mut Opened,
         frame: &mut Frame,

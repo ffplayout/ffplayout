@@ -7,6 +7,7 @@ use log::info;
 use crate::{
     benchmark,
     input::diagnostics::LiveInputStage,
+    output::forwarding::Session,
     utils::pipeline_queue::{POLL_INTERVAL, run_worker},
 };
 
@@ -52,6 +53,9 @@ pub(super) fn run(
     }
     run_worker(control, || {
         let mut prefetched = prefetched.into_iter();
+        let mut forwarding =
+            diagnostics.map(|input| Session::new(input.listener_id, &cfg.output_status));
+        let mut wait_for_program_keyframe = false;
         loop {
             control.check()?;
 
@@ -88,6 +92,12 @@ pub(super) fn run(
             if let Some(diagnostics) = diagnostics {
                 diagnostics.set_stage(LiveInputStage::ReadingPacket);
                 diagnostics.packet_received();
+            }
+
+            if let (Some(forwarding), Some(diagnostics)) = (&mut forwarding, diagnostics) {
+                let active = forwarding.publish(&input, &packet);
+
+                diagnostics.set_forwarding(active);
             }
 
             let (queue, track, time_base) =
@@ -147,7 +157,55 @@ pub(super) fn run(
                 control.notify_activity();
             }
 
-            let sent = queue.send(packet, bytes, pts_us);
+            // A program decoder may be blocked by playout backpressure.
+            // Keep reading for the independent forwarding consumers. If the
+            // program queue drops video, restart it on the next keyframe.
+            let sent = if let Some(forwarding) = &mut forwarding {
+                let mut packet = packet;
+                loop {
+                    if track == 0 && wait_for_program_keyframe && !packet.is_key() {
+                        break Ok(());
+                    }
+
+                    match queue.try_send(packet, bytes, pts_us) {
+                        Ok(None) => {
+                            if track == 0 {
+                                wait_for_program_keyframe = false;
+                            }
+
+                            break Ok(());
+                        }
+                        Ok(Some(pending)) => {
+                            if !forwarding.active() && forwarding.has_unseen_route() {
+                                let active = forwarding.publish(&input, &pending);
+
+                                if let Some(diagnostics) = diagnostics {
+                                    diagnostics.set_forwarding(active);
+                                }
+                            }
+
+                            if forwarding.active() {
+                                if track == 0 {
+                                    wait_for_program_keyframe = true;
+                                }
+
+                                break Ok(());
+                            }
+
+                            packet = pending;
+
+                            if let Err(error) =
+                                queue.wait_for_capacity(bytes, pts_us, POLL_INTERVAL)
+                            {
+                                break Err(error);
+                            }
+                        }
+                        Err(error) => break Err(error),
+                    }
+                }
+            } else {
+                queue.send(packet, bytes, pts_us)
+            };
             progress
                 .demux_blocked_track
                 .store(NO_TIMESTAMP, Ordering::Release);

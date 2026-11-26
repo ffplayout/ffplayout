@@ -171,7 +171,7 @@ pub async fn save_outputs_on(
     config_id: i32,
     config: &mut crate::utils::config::PlayoutConfig,
 ) -> Result<(), ProcessError> {
-    sqlx::query("UPDATE config_output SET active = 0, configured = 0 WHERE config_id = $1")
+    sqlx::query("UPDATE config_output SET active = 0, configured = 0, forward_listener_id = NULL WHERE config_id = $1")
         .bind(config_id)
         .execute(&mut *connection)
         .await?;
@@ -191,6 +191,8 @@ pub async fn save_outputs_on(
             inherit_resolution: output.inherit_resolution,
             share_encoding: output.share_encoding,
             encoding_source_id: output.encoding_source_id,
+            forward_listener_id: output.forward_listener_id,
+            forward_mode: output.forward_mode.as_str().into(),
             encoding_variant: output.encoding_variant.clone(),
             public_moq: output.public_moq,
             runtime_status: None,
@@ -259,7 +261,7 @@ pub async fn save_outputs_on(
             }
         }
         sqlx::query(
-            "UPDATE config_output SET active = $4, name = $3, configured = 1, label = $5, inherit_resolution = $6, share_encoding = $7, encoding_source_id = $8, encoding_variant = $9, public_moq = $10 WHERE id = $1 AND config_id = $2",
+            "UPDATE config_output SET active = $4, name = $3, configured = 1, label = $5, inherit_resolution = $6, share_encoding = $7, encoding_source_id = $8, encoding_variant = $9, public_moq = $10, forward_listener_id = $11, forward_mode = $12 WHERE id = $1 AND config_id = $2",
         )
         .bind(output.id)
         .bind(config_id)
@@ -271,6 +273,8 @@ pub async fn save_outputs_on(
         .bind(output.encoding_source_id)
         .bind(&output.encoding_variant)
         .bind(output.public_moq)
+        .bind(output.forward_listener_id)
+        .bind(&record.forward_mode)
         .execute(&mut *connection)
         .await?;
     }
@@ -317,6 +321,61 @@ mod tests {
 
     use super::*;
     use crate::{db::handles::db_migrate, utils::config::OutputMode};
+
+    #[tokio::test]
+    async fn forwarding_output_keeps_its_listener_and_mode_when_disabled() {
+        use crate::utils::config::{Output as ConfigOutput, PlayoutConfig};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+
+        db_migrate(&pool).await.unwrap();
+
+        let listener: i32 =
+            sqlx::query_scalar("SELECT id FROM config_live_input WHERE config_id = 1 LIMIT 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let primary = select_outputs(&pool, 1)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|output| output.active)
+            .unwrap();
+        let mut destination = ConfigOutput::from_record(Output::new(1, OutputMode::Stream));
+        let mut config = PlayoutConfig {
+            output: ConfigOutput::from_record(primary),
+            ..Default::default()
+        };
+
+        destination.forward_listener_id = Some(listener);
+        destination.forward_mode = ff_engine::ForwardMode::Copy;
+        destination.stream_url = "rtmp://example.invalid/live/forward".into();
+        destination.enabled = false;
+        config.outputs.push(destination);
+
+        let mut transaction = pool.begin().await.unwrap();
+
+        save_outputs_on(&mut transaction, 1, &mut config)
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+
+        let stored = select_outputs(&pool, 1)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|output| output.id == config.outputs[0].id)
+            .map(ConfigOutput::from_record)
+            .unwrap();
+
+        assert!(!stored.enabled);
+        assert_eq!(stored.forward_listener_id, Some(listener));
+        assert_eq!(stored.forward_mode, ff_engine::ForwardMode::Copy);
+    }
 
     #[tokio::test]
     async fn all_destinations_can_be_disabled_without_losing_configuration() {

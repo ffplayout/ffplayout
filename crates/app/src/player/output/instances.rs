@@ -135,6 +135,10 @@ pub(super) fn configure_destinations(
         scoped.recording.enable = record_here;
         let mut settings = program.clone();
         settings.delivery_enabled = deliver(output);
+        settings.forward_listener = output.forward_listener_id;
+        settings.forward_mode = output.forward_mode;
+        settings.forward_resize =
+            output.forward_listener_id.is_some() && !output.inherit_resolution;
         settings.destination_revision = destination_revision(output)?;
         let (owner, _) = config
             .encoding_source(output)

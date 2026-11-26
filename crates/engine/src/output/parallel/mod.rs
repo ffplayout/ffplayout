@@ -28,6 +28,7 @@ use super::{
     composition::{ProgramVideo, VideoCompositor, VideoConsumers},
     diagnostics::EncodingProgress,
     encoded::EncodedFormat,
+    forwarding::{Route, Routes},
 };
 
 #[cfg(test)]
@@ -69,9 +70,38 @@ struct OutputRegistry {
     next_generation: u64,
     dynamic: bool,
     update: Option<Vec<OutputDestination>>,
+    forwarding: Routes,
+}
+
+impl OutputRegistry {
+    fn replace_forwarding(&mut self, forwards: Vec<Route>) {
+        for (id, phase) in self.forwarding.replace(forwards) {
+            self.generations.remove(&id);
+            self.reconnectable.remove(&id);
+            self.retry.remove(&id);
+            self.retry_wake.remove(&id);
+            self.states.insert(id, OutputState { phase, error: None });
+        }
+    }
 }
 
 impl OutputStatus {
+    pub(super) fn has_forwarding(&self, listener: i32) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .forwarding
+            .has_listener(listener)
+    }
+
+    fn forwards_output(&self, id: i32) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .forwarding
+            .contains(id)
+    }
+
     pub fn supports_live_updates(&self) -> bool {
         self.0
             .lock()
@@ -85,15 +115,29 @@ impl OutputStatus {
             destinations.len() <= 8,
             "at most eight outputs are supported"
         );
+        let (forwards, destinations): (Vec<_>, Vec<_>) = destinations
+            .into_iter()
+            .partition(|destination| destination.config.forward_listener.is_some());
+
         super::shared::groups(&destinations)?;
+        let forwards = Routes::prepare(forwards)?;
         let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         ensure!(
             registry.dynamic,
             "output runtime does not support live changes"
         );
+        registry.replace_forwarding(forwards);
         registry.update = Some(destinations);
 
         Ok(())
+    }
+
+    pub(super) fn forwarding(&self, listener: i32) -> Vec<Arc<super::forwarding::Route>> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .forwarding
+            .for_listener(listener)
     }
 
     fn take_update(&self) -> Option<Vec<OutputDestination>> {
@@ -120,6 +164,20 @@ impl OutputStatus {
 
     pub(super) fn scoped(&self, id: i32) -> Self {
         let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+
+        self.scoped_on(&mut registry, id)
+    }
+
+    pub(super) fn scope_forwarding(&self, route: &Arc<Route>) -> Option<Self> {
+        let mut registry = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+
+        registry
+            .forwarding
+            .is_current(route)
+            .then(|| self.scoped_on(&mut registry, route.id))
+    }
+
+    fn scoped_on(&self, registry: &mut OutputRegistry, id: i32) -> Self {
         registry.next_generation += 1;
         let generation = registry.next_generation;
         registry.generations.insert(id, generation);
@@ -606,17 +664,26 @@ impl ParallelOutput {
             config.destinations.len() <= 8,
             "at most eight outputs are supported"
         );
-        let workers = super::shared::groups(&config.destinations)?
+        let (forwards, destinations): (Vec<_>, Vec<_>) = config
+            .destinations
+            .iter()
+            .cloned()
+            .partition(|destination| destination.config.forward_listener.is_some());
+        let forwards = Routes::prepare(forwards)?;
+        let workers = super::shared::groups(&destinations)?
             .into_iter()
             .map(|destinations| DestinationWorker::start_group(destinations, config))
             .collect::<Result<Vec<_>>>()?;
 
-        config
-            .output_status
-            .0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .dynamic = true;
+        {
+            let mut registry = config
+                .output_status
+                .0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            registry.replace_forwarding(forwards);
+            registry.dynamic = true;
+        }
         let mut program = config.clone();
         program.destinations.clear();
 
@@ -684,7 +751,7 @@ impl ParallelOutput {
         }
         for mut worker in previous {
             for id in &worker.ids {
-                if !ids.contains(id) {
+                if !ids.contains(id) && !self.config.output_status.forwards_output(*id) {
                     self.config
                         .output_status
                         .scoped(*id)
@@ -1009,6 +1076,7 @@ impl Drop for ParallelOutput {
             .unwrap_or_else(PoisonError::into_inner);
         registry.dynamic = false;
         registry.update = None;
+        registry.replace_forwarding(Vec::new());
         drop(registry);
         for worker in self
             .retired

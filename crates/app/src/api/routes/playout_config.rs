@@ -1220,6 +1220,36 @@ mod tests {
     }
 
     #[test]
+    fn forwarding_output_edits_do_not_restart_playout() {
+        use crate::{
+            db::models,
+            utils::config::{Output, OutputMode},
+        };
+
+        let current = PlayoutConfig::default();
+        let mut added = current.clone();
+        let mut destination = Output::from_record(models::Output::new(1, OutputMode::Stream));
+
+        destination.id = 12;
+        destination.forward_listener_id = Some(2);
+        destination.stream_url = "rtmp://example.invalid/live/first".into();
+        added.outputs.push(destination);
+
+        assert!(!requires_playout_restart(&current, &added));
+
+        let mut edited = added.clone();
+        let destination = &mut edited.outputs[0];
+
+        destination.forward_listener_id = Some(3);
+        destination.forward_mode = ff_engine::ForwardMode::Transcode;
+        destination.stream_url = "rtmp://example.invalid/live/second".into();
+        destination.enabled = false;
+
+        assert!(!requires_playout_restart(&added, &edited));
+        assert!(!requires_playout_restart(&edited, &current));
+    }
+
+    #[test]
     fn program_changes_require_restart_but_output_options_are_live() {
         let current = PlayoutConfig::default();
         let mut updated = current.clone();

@@ -153,6 +153,45 @@ async fn manual_graphics_authorization_revision_and_failure_isolation() {
     assert_eq!(revision, 6);
     assert_eq!(saved[0].name, "Stored while stopped");
     assert!(!saved[0].running);
+
+    let appointment = json!({
+        "enabled": true, "weekdays": [1, 5], "start_time": "23:50", "end_time": "00:10"
+    });
+
+    for (channel, revision, appointments, expected) in [
+        (2, 6, json!([appointment]), StatusCode::FORBIDDEN),
+        (1, 5, json!([appointment]), StatusCode::CONFLICT),
+        (
+            1,
+            6,
+            json!([{"enabled": true, "weekdays": [8], "start_time": "23:50", "duration_seconds": 0}]),
+            StatusCode::BAD_REQUEST,
+        ),
+        (1, 6, json!([appointment]), StatusCode::OK),
+    ] {
+        let response = fixture
+            .app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                &format!("/api/graphics/{channel}"),
+                Some(&user),
+                json!({"revision":revision,"action":"schedule","layer":0,"appointments":appointments}),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), expected);
+    }
+
+    let (revision, _, schedules) = handles::select_graphics(&fixture.state.pool, 1)
+        .await
+        .unwrap();
+
+    assert_eq!(revision, 7);
+    assert_eq!(schedules[&0][0].weekdays, [1, 5]);
+
+    // A tab can poll the latest revision while its editor still holds an older schedule.
     let response = fixture
         .app
         .clone()
@@ -160,18 +199,32 @@ async fn manual_graphics_authorization_revision_and_failure_isolation() {
             "POST",
             "/api/graphics/1",
             Some(&user),
-            json!({"revision":6,"action":"clear","layer":0}),
+            json!({"revision":7,"action":"schedule","layer":0,"appointments":[],"expected_appointments":[]}),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/graphics/1",
+            Some(&user),
+            json!({"revision":7,"action":"clear","layer":0}),
         ))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(
-        handles::select_graphic_layers(&fixture.state.pool, 1)
-            .await
-            .unwrap()
-            .1
-            .is_empty()
-    );
+
+    let (_, saved, schedules) = handles::select_graphics(&fixture.state.pool, 1)
+        .await
+        .unwrap();
+
+    assert!(saved.is_empty());
+    assert!(schedules.is_empty());
 }
 
 #[tokio::test]

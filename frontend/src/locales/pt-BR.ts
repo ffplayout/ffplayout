@@ -1,4 +1,26 @@
 export default {
+    graphicsSchedule: {
+        conflict: 'O agendamento mudou. Redefina o rascunho para carregar a versão salva.',
+        title: 'Agendamento',
+        scheduled: 'Agendado',
+        activeUntil: 'Agendado até {time}',
+        nextStart: 'Próximo início {time}',
+        enabled: 'Ativado',
+        remove: 'Remover',
+        recurrence: 'Recorrência',
+        once: 'Uma vez',
+        weekly: 'Semanal',
+        date: 'Data',
+        from: 'A partir de (opcional)',
+        through: 'Até (inclusive, opcional)',
+        weekdays: 'Dias da semana',
+        start: 'Hora de início',
+        endBy: 'Encerrar por',
+        duration: 'Duração (segundos)',
+        end: 'Hora de término',
+        add: 'Adicionar horário',
+        save: 'Salvar agendamento',
+    },
     graphicsPage: {
         settingsHelp:
             'Estas configurações se aplicam ao logotipo do programa, aos gráficos manuais e aos gráficos da playlist.',
@@ -322,6 +344,10 @@ export default {
         outputModes: { hls: 'HLS', stream: 'Transmissão', desktop: 'Área de trabalho', moq: 'MoQ' },
         outputRetry: 'Reconectar',
         outputStates: {
+            waiting_input: 'Aguardando entrada ao vivo',
+            waiting_keyframe: 'Aguardando quadro-chave',
+            copying: 'Copiando pacotes',
+            transcoding: 'Transcodificando',
             retrying: 'Aguardando reconexão',
             starting: 'Iniciando',
             running: 'Em execução',
@@ -557,6 +583,12 @@ export default {
             'A origem selecionada fornece resolução, codecs e taxas de bits. Os parâmetros de codificação próprios ficam ocultos. Salve novas saídas antes de selecioná-las como origem.',
         outputSharingHelp:
             'Cada saída pode codificar de forma independente ou reutilizar outra saída ou variante HLS. Endereços de destino e parâmetros do multiplexador permanecem independentes.',
+        outputMediaSource: 'Fonte de mídia',
+        outputProgramMedia: 'Programa de exibição',
+        forwardProcessing: 'Processamento do encaminhamento',
+        forwardCopy: 'Somente cópia',
+        forwardTranscode: 'Transcodificar',
+        forwardDestinations: 'Destinos de encaminhamento',
         encodingSource: 'Origem da codificação',
         outputHelp:
             'Configure até oito saídas abaixo. Cada saída tem sua própria resolução, configurações de codificação e destino. Alterações de HLS, Stream e MoQ são aplicadas sem reiniciar o canal. Desktop requer suporte na compilação. Todas usam a taxa de quadros do programa.',

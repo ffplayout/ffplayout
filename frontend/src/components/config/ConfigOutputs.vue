@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watchPostEffect } from 'vue'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useConfig } from '@/stores/config'
 import { useAuth } from '@/stores/auth'
@@ -18,6 +19,13 @@ const instances = computed(() =>
         (a, b) => Number(b.mode === 'moq') - Number(a.mode === 'moq'),
     ),
 )
+const route = useRoute()
+watchPostEffect(() => {
+    const id = route.hash.slice('#output-'.length)
+    if (route.hash.startsWith('#output-') && instances.value.some((item) => String(item.id) === id)) {
+        document.getElementById(`output-${id}`)?.scrollIntoView({ block: 'nearest' })
+    }
+})
 const newMode = ref<'hls' | 'stream' | 'desktop' | 'moq'>('stream')
 const keys = new WeakMap<object, number>()
 let nextKey = 0
@@ -39,6 +47,8 @@ function addOutput() {
         inherit_resolution: true,
         share_encoding: true,
         encoding_source_id: null,
+        forward_listener_id: null,
+        forward_mode: 'auto',
         encoding_variant: '',
         public_moq: false,
         mode: newMode.value,
@@ -142,6 +152,8 @@ onUnmounted(() => {
                 <section
                     v-for="item in instances"
                     :key="instanceKey(item)"
+                    :id="item.id > 0 ? `output-${item.id}` : undefined"
+                    :class="route.hash === `#output-${item.id}` && 'ring-2 ring-primary'"
                     class="border border-base-300 rounded-box bg-base-100/40 p-4"
                 >
                     <div class="flex flex-wrap items-center gap-3 mb-3">
@@ -169,7 +181,10 @@ onUnmounted(() => {
                     </div>
                     <p class="text-sm mb-3" role="status">
                         {{ t('config.outputRuntime') }}: {{ outputStatusLabel(runtime(item)?.runtime_status) }}
-                        <span v-if="runtime(item)?.runtime_error" class="text-error">
+                        <span
+                            v-if="runtime(item)?.runtime_error"
+                            :class="{ 'text-error': runtime(item)?.runtime_status !== 'transcoding' }"
+                        >
                             — {{ runtime(item)?.runtime_error }}</span
                         >
                     </p>

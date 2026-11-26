@@ -60,6 +60,31 @@ removing previously working graphics. Status is refreshed once per second while
 this tab is mounted. A revision conflict requires refreshing before retrying; the
 UI refreshes status after every command. Navigating away does not clear graphics.
 
+## Graphics schedules
+
+Open **Schedule** on a saved layer to add, edit, disable, or remove appointments.
+Choose a single date or a weekly recurrence on selected weekdays, optionally
+limited by inclusive start and end dates. Each appointment starts at a local
+time in the channel's timezone and runs for a duration or until a local end time.
+An end time earlier than the start falls on the following day. During a daylight
+saving change, an appointment with a nonexistent start or end time is skipped.
+An ambiguous local time uses its first occurrence.
+
+Saving a schedule takes effect during playback without restarting the channel.
+Schedules run over playlists and live inputs. Sources are prepared shortly
+before the scheduled start. When the channel starts during an appointment,
+the graphic is prepared for the remaining time. Overlapping or
+adjacent appointments for the same layer keep the graphic going continuously.
+The scheduled window controls the layer's lifetime. The saved entrance and exit
+fades apply, and a completed finite animation holds its last frame until the end
+of the window. A source replacement takes over once it is ready. If preparation
+fails, the current graphic stays on air for the rest of the active window.
+
+An explicitly started manual layer takes priority over its schedule, including
+when manually hidden. Stopping that manual layer returns control to the schedule.
+To take a scheduled layer off air, disable the active appointments and save the
+schedule. Clearing a layer also deletes its appointments.
+
 ## Program Logo
 
 All existing logo settings have moved from General Settings to **Graphics → Program
@@ -109,10 +134,31 @@ Saving cache settings requires channel/global administrator rights.
   Take and Start set `running` to true immediately; only Stop sets it to false.
   Transparent, hidden or naturally completed graphics retain that requested state.
 - `POST /api/graphics/{channel}` accepts an action with the last observed `revision`.
-  Supported actions: `save`, `take`, `update`, `start`, `stop`, `visibility`, `clear`, `clear_all`.
+  Supported actions: `save`, `take`, `update`, `start`, `stop`, `visibility`, `schedule`, `clear`, `clear_all`.
   Save/Take accept `{action, revision, layer, name, settings}`; `settings` is a
   playlist Take definition with time fixed at zero. Legacy flattened Take bodies
   remain accepted. Status includes each layer's full `settings`, `name` and `error`.
+- `schedule` replaces one saved layer's appointments. Send an empty list to
+  remove all appointments. Send the original `expected_appointments` list to
+  detect changes to that schedule while editing it. A changed list returns 409.
+  The status response includes `timezone`, and each
+  layer includes `appointments`, `schedule_active_until`, and
+  `schedule_next_start`. The two status times use UTC and may be null.
+
+  ```json
+  {
+    "action": "schedule",
+    "revision": 4,
+    "layer": 1,
+    "appointments": [
+      {"enabled": true, "date": "2026-12-24", "start_time": "18:00:00", "duration_seconds": 30},
+      {"enabled": true, "weekdays": [1, 5], "start_time": "20:00:00", "end_time": "20:01:00", "start_date": "2026-12-01"}
+    ]
+  }
+  ```
+
+  Weekdays use ISO numbering from Monday (1) to Sunday (7).
+
 - `PUT /api/playout/config/{channel}?scope=logo` saves only the program-logo fields,
   including `processing.logo_high_quality`.
 - `PUT /api/playout/config/{channel}?scope=graphics_cache` saves only

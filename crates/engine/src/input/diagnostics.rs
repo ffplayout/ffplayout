@@ -32,8 +32,8 @@ impl LiveInputStage {
     }
 }
 
-/// Diagnostic timestamps do not extend watchdog deadlines. Only frame output
-/// and the existing queue heartbeat update `last_activity_ms`, as before.
+/// A selected forwarding route can use packet progress while program decoding
+/// is paused; otherwise the watchdog observes decoded frames and queue activity.
 /// Snapshots span atomics and are approximate, rather than locking the reader.
 pub(crate) struct LiveInputDiagnostics {
     pub(crate) listener_id: i32,
@@ -46,6 +46,7 @@ pub(crate) struct LiveInputDiagnostics {
     activity_source: AtomicU8,
     stage: AtomicU8,
     packet_ms: AtomicU64,
+    forwarding: AtomicBool,
     audio_ms: AtomicU64,
     video_ms: AtomicU64,
     frame_ms: AtomicU64,
@@ -67,6 +68,7 @@ impl LiveInputDiagnostics {
             activity_source: AtomicU8::new(0),
             stage: AtomicU8::new(LiveInputStage::Starting as u8),
             packet_ms: AtomicU64::new(NEVER),
+            forwarding: AtomicBool::new(false),
             audio_ms: AtomicU64::new(NEVER),
             video_ms: AtomicU64::new(NEVER),
             frame_ms: AtomicU64::new(NEVER),
@@ -91,6 +93,15 @@ impl LiveInputDiagnostics {
         let waiting_for_video =
             self.video_required && !self.video_frame_seen.load(Ordering::Relaxed);
         let ready = self.frame_seen.load(Ordering::Relaxed) && !waiting_for_video;
+
+        if ready && self.forwarding.load(Ordering::Relaxed) {
+            let packet_at = self.packet_ms.load(Ordering::Relaxed);
+
+            if packet_at != NEVER {
+                return (true, now.saturating_sub(packet_at));
+            }
+        }
+
         let since = if waiting_for_video {
             self.started_ms
         } else {
@@ -102,6 +113,10 @@ impl LiveInputDiagnostics {
 
     pub(crate) fn set_stage(&self, stage: LiveInputStage) {
         self.stage.store(stage as u8, Ordering::Relaxed);
+    }
+
+    pub(crate) fn set_forwarding(&self, active: bool) {
+        self.forwarding.store(active, Ordering::Relaxed);
     }
 
     pub(crate) fn packet_received(&self) {
@@ -200,6 +215,34 @@ mod tests {
             (false, 10_001)
         );
         diagnostics.video_frame_ready();
+        assert_eq!(diagnostics.watchdog_progress(started + 10_001), (true, 1));
+    }
+
+    #[test]
+    fn forwarding_only_changes_idle_tracking_after_the_first_usable_frame() {
+        let diagnostics = LiveInputDiagnostics::new(1, 1).requiring_video(true);
+        let started = diagnostics.started_ms;
+
+        diagnostics.set_forwarding(true);
+        diagnostics.packet_ms.store(started + 1, Ordering::Relaxed);
+
+        assert_eq!(
+            diagnostics.watchdog_progress(started + 3_000),
+            (false, 3_000)
+        );
+
+        diagnostics.frame_ready();
+        diagnostics
+            .packet_ms
+            .store(started + 10_000, Ordering::Relaxed);
+
+        assert_eq!(
+            diagnostics.watchdog_progress(started + 10_001),
+            (false, 10_001)
+        );
+
+        diagnostics.video_frame_ready();
+
         assert_eq!(diagnostics.watchdog_progress(started + 10_001), (true, 1));
     }
 

@@ -248,6 +248,9 @@ mod log_level_tests {
 pub struct OutputConfig {
     /// Independent destinations consuming the same processed program.
     pub destinations: Vec<crate::OutputDestination>,
+    pub forward_listener: Option<i32>,
+    pub forward_mode: crate::ForwardMode,
+    pub forward_resize: bool,
     /// An encoder can remain available while its own destination is disabled.
     pub delivery_enabled: bool,
     /// Application-provided stable revisions for independent live updates.
@@ -1408,6 +1411,9 @@ impl OutputConfig {
     pub fn new(width: u32, height: u32, fps: u32, sample_rate: u32) -> Self {
         Self {
             destinations: Vec::new(),
+            forward_listener: None,
+            forward_mode: crate::ForwardMode::Auto,
+            forward_resize: false,
             delivery_enabled: true,
             encoding_revision: String::new(),
             destination_revision: String::new(),

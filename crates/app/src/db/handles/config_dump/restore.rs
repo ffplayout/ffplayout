@@ -52,6 +52,19 @@ pub async fn restore(pool: &SqlitePool, mut dump: ConfigDump) -> Result<(), Proc
     let pristine = export(&baseline).await?;
     let mut transaction = pool.begin_with("BEGIN IMMEDIATE").await?;
 
+    if let Some(outputs) = dump.tables.get_mut("config_output") {
+        for output in outputs {
+            // Dumps created before forwarding contain neither column.
+            if !output.contains_key("forward_listener_id") && !output.contains_key("forward_mode") {
+                output.insert("forward_listener_id".into(), Value::Null);
+                output.insert("forward_mode".into(), Value::from("auto"));
+            }
+        }
+    }
+
+    dump.tables
+        .entry("config_graphics_schedule".into())
+        .or_default();
     validate(&mut transaction, &dump).await?;
 
     if snapshot(&mut transaction).await?.tables != pristine.tables {

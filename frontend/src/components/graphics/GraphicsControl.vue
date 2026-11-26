@@ -122,6 +122,7 @@ onBeforeUnmount(() => {
                 :channel="channel"
                 :canvas="status.canvas"
                 :running="status.running"
+                :timezone="status.timezone"
                 :busy="busy"
                 :load="load"
                 @command="command"

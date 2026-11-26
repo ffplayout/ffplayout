@@ -9,11 +9,16 @@ const props = defineProps<{ item: PlayoutConfigExt['output'] }>()
 const editedOutput = computed(() => props.item)
 const output = computed(() => props.item.mode)
 const usesEncodingSource = computed(() => props.item.encoding_source_id !== null)
+const forwardsIngest = computed(() => props.item.forward_listener_id !== null)
+const showEncoder = computed(
+    () => !usesEncodingSource.value && (!forwardsIngest.value || props.item.forward_mode !== 'copy'),
+)
 const allOutputs = computed(() => [configStore.playout.output, ...configStore.playout.outputs])
 const encodingSources = computed(() =>
     allOutputs.value.filter((candidate) => {
         // Borrowed encoding must be selected directly from its owning output.
-        if (candidate.id <= 0 || candidate.encoding_source_id !== null) return false
+        if (candidate.id <= 0 || candidate.encoding_source_id !== null || candidate.forward_listener_id !== null)
+            return false
         const owner = encodingOwner(candidate, allOutputs.value, props.item)
         if (!owner) return false
         return (
@@ -24,6 +29,15 @@ const encodingSources = computed(() =>
 )
 const selectedSource = computed(() => encodingSources.value.find((item) => item.id === props.item.encoding_source_id))
 const sourceVariants = computed(() => (selectedSource.value ? outputVariantNames(selectedSource.value) : []))
+function changeMediaSource() {
+    if (forwardsIngest.value) {
+        editedOutput.value.encoding_source_id = null
+        editedOutput.value.inherit_resolution = true
+        if (editedOutput.value.stream_type === 'custom') editedOutput.value.stream_type = 'rtmp'
+        changeEncodingSource()
+    }
+}
+
 function changeEncodingSource() {
     editedOutput.value.encoding_variant = sourceVariants.value[0] ?? ''
     editedOutput.value.share_encoding = usesEncodingSource.value
@@ -344,6 +358,40 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
 }
 </script>
 <template>
+    <fieldset v-if="output === 'stream'" class="fieldset">
+        <label class="fieldset">
+            <span class="fieldset-legend">{{ t('config.outputMediaSource') }}</span>
+            <select
+                v-model="editedOutput.forward_listener_id"
+                class="select select-sm w-full"
+                @change="changeMediaSource"
+            >
+                <option :value="null">{{ t('config.outputProgramMedia') }}</option>
+                <option
+                    v-for="listener in configStore.playout.ingest.listeners.filter((item) => item.id > 0)"
+                    :key="listener.id"
+                    :value="listener.id"
+                >
+                    {{ listener.name || listener.backend.toUpperCase() + ' #' + listener.id }}
+                </option>
+            </select>
+        </label>
+        <label v-if="forwardsIngest" class="fieldset">
+            <span class="fieldset-legend">{{ t('config.forwardProcessing') }}</span>
+            <select
+                v-model="editedOutput.forward_mode"
+                class="select select-sm w-full"
+                @change="
+                    editedOutput.inherit_resolution =
+                        editedOutput.forward_mode === 'copy' || editedOutput.inherit_resolution
+                "
+            >
+                <option value="auto">{{ t('config.encoderChoices.automatic') }}</option>
+                <option value="copy">{{ t('config.forwardCopy') }}</option>
+                <option value="transcode">{{ t('config.forwardTranscode') }}</option>
+            </select>
+        </label>
+    </fieldset>
     <div>
         <div v-if="editedOutput.mode === 'stream'" class="grid gap-3 sm:grid-cols-2">
             <fieldset class="fieldset">
@@ -352,7 +400,7 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
                     <option value="rtmp">RTMP</option>
                     <option value="srt">SRT</option>
                     <option value="udp">UDP</option>
-                    <option value="custom">{{ t('config.custom') }}</option>
+                    <option v-if="!forwardsIngest" value="custom">{{ t('config.custom') }}</option>
                 </select>
             </fieldset>
             <fieldset v-if="editedOutput.stream_type === 'custom'" class="fieldset">
@@ -382,7 +430,7 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
             </label>
         </fieldset>
 
-        <fieldset v-if="output !== 'desktop'" class="fieldset">
+        <fieldset v-if="output !== 'desktop' && !forwardsIngest" class="fieldset">
             <label class="fieldset">
                 <span class="fieldset-legend">{{ t('config.encodingSource') }}</span>
                 <select
@@ -411,7 +459,7 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
             </label>
             <p class="text-sm">{{ t('config.encodingSourceHelp') }}</p>
         </fieldset>
-        <fieldset v-if="!usesEncodingSource" class="fieldset">
+        <fieldset v-if="showEncoder" class="fieldset">
             <legend class="fieldset-legend">{{ t('config.outputFormat') }}</legend>
             <label class="fieldset-label text-base-content">
                 <input v-model="editedOutput.inherit_resolution" type="checkbox" class="checkbox checkbox-sm" />
@@ -441,10 +489,7 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
             </div>
         </fieldset>
 
-        <fieldset
-            v-if="!usesEncodingSource && (output === 'hls' || output === 'stream' || output === 'moq')"
-            class="fieldset"
-        >
+        <fieldset v-if="showEncoder && (output === 'hls' || output === 'stream' || output === 'moq')" class="fieldset">
             <legend class="fieldset-legend">{{ t('config.encodingSettings') }}</legend>
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <label class="fieldset">
@@ -519,7 +564,7 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
             <div class="collapse-title font-semibold">{{ t('player.advanced') }}</div>
             <div class="collapse-content">
                 <fieldset
-                    v-if="!usesEncodingSource && (output === 'hls' || output === 'stream' || output === 'moq')"
+                    v-if="showEncoder && (output === 'hls' || output === 'stream' || output === 'moq')"
                     class="fieldset"
                 >
                     <legend class="fieldset-legend">{{ t('config.audioEncoderOptions') }}</legend>

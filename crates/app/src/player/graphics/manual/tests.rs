@@ -351,3 +351,176 @@ async fn applying_and_saving_fades_update_existing_controls_without_preparing_th
     pool.close().await;
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
+
+#[tokio::test]
+async fn schedule_can_be_saved_while_take_waits_for_graphic_validation() {
+    let (manager, pool) = test_support::channel_manager().await;
+    let root = manager.config.read().await.storage.path.clone();
+
+    tokio::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests_assets/storage/media_images/animated-logo.gif"),
+        root.join("logo.gif"),
+    )
+    .await
+    .unwrap();
+    manager.is_alive.store(true, Ordering::SeqCst);
+    manager.graphics.resume();
+
+    let revision = saved(&manager, 0, 1, "logo.gif").await;
+    let config = manager.config.write().await;
+    let operation = manager.manual_state.operations.lock().await;
+    let take = command(
+        manager.clone(),
+        revision,
+        json!({"action": "take", "layer": 1, "settings": {"source": "logo.gif"}}),
+    );
+
+    tokio::pin!(take);
+
+    // Queue the take first, then keep its configuration read pending.
+    tokio::select! {
+        biased;
+        _ = &mut take => panic!("take should wait for the operations lock"),
+        () = std::future::ready(()) => {},
+    }
+    drop(operation);
+
+    let schedule = command(
+        manager.clone(),
+        revision,
+        json!({"action": "schedule", "layer": 1, "appointments": []}),
+    );
+
+    tokio::select! {
+        biased;
+        _ = &mut take => panic!("take should wait for configuration"),
+        result = tokio::time::timeout(Duration::from_secs(3), schedule) => {
+            assert_eq!(result.unwrap().unwrap(), revision + 1);
+        }
+    }
+    drop(config);
+
+    let result = take.await.unwrap_err();
+
+    assert!(result.to_string().contains("Graphics revision changed"));
+    assert!(manager.manual_graphics.status().1.is_empty());
+    manager.is_alive.store(false, Ordering::SeqCst);
+    manager.graphics.cancel();
+    manager.graphics.join(1).await;
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn saved_graphic_schedule_changes_during_playback_and_releases_the_layer() {
+    use jiff::{SignedDuration, Timestamp, tz::TimeZone};
+
+    let (manager, pool) = test_support::channel_manager().await;
+    let root = manager.config.read().await.storage.path.clone();
+
+    tokio::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests_assets/storage/media_images/animated-logo.gif"),
+        root.join("logo.gif"),
+    )
+    .await
+    .unwrap();
+    manager.config.write().await.channel.timezone = Some(TimeZone::UTC);
+
+    let revision = saved(&manager, 0, 1, "logo.gif").await;
+    let start = Timestamp::now()
+        .checked_sub(SignedDuration::from_secs(20))
+        .unwrap()
+        .to_zoned_datetime(TimeZone::UTC);
+    let appointment = json!({
+        "enabled":true, "date": start.date(), "start_time": start.time(), "duration_seconds":120
+    });
+    let revision = command(
+        manager.clone(),
+        revision,
+        json!({"action":"schedule","layer":1,"appointments":[appointment]}),
+    )
+    .await
+    .unwrap();
+
+    assert!(manager.manual_graphics.status().1.is_empty());
+    manager.is_alive.store(true, Ordering::SeqCst);
+    manager.graphics.resume();
+    begin_restore(&manager).await;
+
+    let wait_for_layers = async |count| {
+        let deadline = Instant::now() + Duration::from_secs(5);
+
+        while manager.manual_graphics.status().1.len() != count {
+            assert!(
+                Instant::now() < deadline,
+                "expected {count} runtime graphics layers"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+    };
+
+    wait_for_layers(1).await;
+
+    let runtime_revision = manager.manual_graphics.revision();
+    let revision = command(
+        manager.clone(),
+        revision,
+        json!({"action":"schedule","layer":1,"appointments":[appointment, appointment]}),
+    )
+    .await
+    .unwrap();
+
+    sleep(Duration::from_millis(200)).await;
+
+    assert_eq!(manager.manual_graphics.revision(), runtime_revision);
+
+    let revision = saved(&manager, revision, 1, "logo.gif").await;
+    let current = status(&manager).await.unwrap();
+
+    assert_eq!(
+        current["layers"][0]["appointments"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(current["layers"][0]["schedule_active_until"].is_string());
+
+    // The old pixels stay on air if a saved replacement fails to decode.
+    tokio::fs::write(root.join("broken.gif"), b"invalid graphic")
+        .await
+        .unwrap();
+
+    let revision = saved(&manager, revision, 1, "broken.gif").await;
+    let deadline = Instant::now() + Duration::from_secs(5);
+
+    while manager.manual_state.error(1).is_none() {
+        assert!(
+            Instant::now() < deadline,
+            "expected the replacement to fail"
+        );
+        sleep(Duration::from_millis(10)).await;
+    }
+
+    assert_eq!(manager.manual_graphics.revision(), runtime_revision);
+    assert_eq!(manager.manual_graphics.status().1.len(), 1);
+
+    command(
+        manager.clone(),
+        revision,
+        json!({"action":"schedule","layer":1,"appointments":[]}),
+    )
+    .await
+    .unwrap();
+    wait_for_layers(0).await;
+
+    assert!(manager.is_alive.load(Ordering::SeqCst));
+    manager.is_alive.store(false, Ordering::SeqCst);
+    manager.graphics.cancel();
+    stop_runtime(&manager).await;
+    manager.graphics.join(1).await;
+
+    assert_eq!(manager.graphics.preparation().budget().usage(), (0, 0, 0));
+    pool.close().await;
+}

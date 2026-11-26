@@ -12,6 +12,7 @@ pub(crate) mod desktop;
 mod diagnostics;
 mod encoded;
 mod encoding;
+pub(crate) mod forwarding;
 mod hls;
 mod hls_native;
 mod mux;

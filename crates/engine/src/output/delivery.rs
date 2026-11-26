@@ -142,7 +142,7 @@ impl DestinationOutput {
 const RETRY_INTERVAL: Duration = Duration::from_secs(15);
 const RETRY_WINDOW: Duration = Duration::from_secs(180);
 
-struct Retry {
+pub(super) struct Retry {
     interval: Duration,
     window: Duration,
     first_failure: Option<Instant>,
@@ -161,26 +161,26 @@ impl Default for Retry {
 }
 
 impl Retry {
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.first_failure = None;
         self.next = None;
     }
 
-    fn failed(&mut self, now: Instant) {
+    pub(super) fn failed(&mut self, now: Instant) {
         self.first_failure.get_or_insert(now);
         self.next = Some(now + self.interval);
     }
 
-    fn expired(&self, now: Instant) -> bool {
+    pub(super) fn expired(&self, now: Instant) -> bool {
         self.first_failure
             .is_some_and(|first| now.saturating_duration_since(first) >= self.window)
     }
 
-    fn due(&self, now: Instant) -> bool {
+    pub(super) fn due(&self, now: Instant) -> bool {
         !self.expired(now) && self.next.is_none_or(|next| now >= next)
     }
 
-    fn phase(&self, now: Instant) -> &'static str {
+    pub(super) fn phase(&self, now: Instant) -> &'static str {
         if self.expired(now) {
             "failed"
         } else {

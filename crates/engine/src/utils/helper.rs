@@ -58,6 +58,25 @@ pub(crate) fn open_network_output(
     muxer: Option<&str>,
     options: &BTreeMap<String, String>,
 ) -> anyhow::Result<format::context::Output> {
+    open_network_output_interruptible(path, muxer, options, None)
+}
+
+/// If supplied, the interrupt callback must remain valid until the output is dropped.
+pub(crate) unsafe fn open_network_output_with_callback(
+    path: &str,
+    muxer: &str,
+    options: &BTreeMap<String, String>,
+    interrupt: ffi::AVIOInterruptCB,
+) -> anyhow::Result<format::context::Output> {
+    open_network_output_interruptible(path, Some(muxer), options, Some(interrupt))
+}
+
+fn open_network_output_interruptible(
+    path: &str,
+    muxer: Option<&str>,
+    options: &BTreeMap<String, String>,
+    interrupt: Option<ffi::AVIOInterruptCB>,
+) -> anyhow::Result<format::context::Output> {
     let path = CString::new(path)?;
     let muxer = muxer.map(CString::new).transpose()?;
     // Defence in depth for callers bypassing configuration validation.
@@ -83,12 +102,19 @@ pub(crate) fn open_network_output(
         // From this point the RAII wrapper closes pb and frees the context,
         // including on an avio_open2 failure or unused-option error.
         let output = format::context::Output::wrap(context);
+        if let Some(interrupt) = interrupt {
+            (*context).interrupt_callback = interrupt;
+        }
+        // Connection runs before the first media write.
+        let callback = interrupt
+            .as_ref()
+            .map_or(ptr::null(), |value| value as *const _);
         let mut dictionary = network_output_options(options).disown();
         let result = ffi::avio_open2(
             &mut (*context).pb,
             path.as_ptr(),
             ffi::AVIO_FLAG_WRITE,
-            ptr::null(),
+            callback,
             &mut dictionary,
         );
         let remaining = Dictionary::own(dictionary);

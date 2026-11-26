@@ -7,12 +7,14 @@ import { validateGraphicEvents, type GraphicEvent } from '@/composables/playlist
 import type { BrowserLoader } from '@/composables/fileBrowser'
 import type { ManualGraphicLayer } from '@/composables/manualGraphics'
 import PlaylistGraphicsEditor from './PlaylistGraphicsEditor.vue'
+import GraphicScheduleEditor from './GraphicScheduleEditor.vue'
 
 const props = defineProps<{
     layer: ManualGraphicLayer
     channel: number
     canvas: [number, number]
     running: boolean
+    timezone?: string
     busy: boolean
     load: BrowserLoader
 }>()
@@ -56,7 +58,9 @@ function save(action: 'save' | 'take') {
                             ? layer.visible
                                 ? 'graphicsPage.started'
                                 : 'graphicsPage.hidden'
-                            : 'graphicsPage.layerStopped',
+                            : layer.active && layer.schedule_active_until
+                              ? 'graphicsSchedule.scheduled'
+                              : 'graphicsPage.layerStopped',
                     )
                 }}
             </span>
@@ -136,6 +140,12 @@ function save(action: 'save' | 'take') {
                     </button>
                 </div>
             </fieldset>
+            <GraphicScheduleEditor
+                :layer="layer"
+                :timezone="timezone"
+                :busy="busy"
+                @command="emit('command', $event)"
+            />
         </div>
     </details>
 </template>

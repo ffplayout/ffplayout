@@ -19,7 +19,9 @@ const configStore = useConfig()
 const indexStore = useIndex()
 
 const configuredOutputs = computed(() =>
-    [configStore.playout.output, ...(configStore.playout.outputs ?? [])].filter((output) => output.id > 0),
+    [configStore.playout.output, ...(configStore.playout.outputs ?? [])].filter(
+        (output) => output.id > 0 && output.forward_listener_id == null,
+    ),
 )
 
 const hlsVariants = computed(() => {

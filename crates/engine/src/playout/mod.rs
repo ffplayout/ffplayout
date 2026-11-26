@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-use self::decode::DecodeRecovery;
+pub(crate) use self::decode::DecodeRecovery;
 
 const LOGO_FADE_SECONDS: f64 = 1.0;
 const MEDIA_FADE_SECONDS: f64 = 1.0;

@@ -136,6 +136,12 @@ output is opened. The map is rejected for HLS, desktop, and local-file outputs.
 Values such as SRT passphrases are stored and returned unchanged by these
 authenticated endpoints.
 
+For each Stream output, `forward_listener_id` selects a saved live listener
+in the same channel. A null listener ID selects the playout program.
+`forward_mode` accepts `"auto"`, `"copy"`, or `"transcode"`. Forwarding changes
+apply at runtime and can use RTMP, SRT, or UDP destinations.
+See [Forwarding a live ingest](output.md#forwarding-a-live-ingest).
+
 `output.metadata_options` is a separate string map of global container tags,
 such as `title`, `copyright`, `service_name`, or `service_provider`. Tag names
 and values are validated for safe length and characters before saving. They
@@ -190,7 +196,7 @@ curl -X POST http://127.0.0.1:8787/api/control/1/process \
 | `GET` | `/api/graphics/{id}` | `GA, CA, U` | Read `revision`, channel `running` state, the program `canvas`, and manual layer settings and status. |
 | `POST` | `/api/graphics/{id}` | `GA, CA, U` | Send a graphics action with the latest `revision`. Returns `{ "revision": <NEW_REVISION> }`. |
 
-Actions are `save`, `take`, `update`, `start`, `stop`, `visibility`, `clear` and
+Actions are `save`, `take`, `update`, `start`, `stop`, `visibility`, `schedule`, `clear` and
 `clear_all`. Commands with an outdated revision return HTTP 409. For example,
 `{ "action": "stop", "revision": 4, "layer": 1 }` stops layer 1 using revision 4.
 Read the current revision before sending a command; the example revision is

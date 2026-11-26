@@ -11,8 +11,17 @@ before considering the work complete:
 
 ```sh
 cargo fmt --all --
-cargo clippy --all-features --all-targets -- --deny warnings
+cargo clippy --workspace --all-targets \
+  --features ffplayout/desktop-cpu,ffplayout/dev-metrics,ffplayout/processing-bench \
+  --features ffplayout/ffmpeg-filter,ffplayout/ffmpeg-device \
+  --features ffplayout/mimalloc,ff-engine/transcription-example \
+  -- --deny warnings
 ```
+
+The default features remain enabled. On Linux with glibc, checking mimalloc
+covers the allocator integration for this routine check. Using `--all-features`
+also enables jemalloc, which Cargo reports as unused because ffplayout gives
+mimalloc precedence when both are enabled.
 
 ## Architecture and responsibilities
 
@@ -87,6 +96,8 @@ cargo clippy --all-features --all-targets -- --deny warnings
 
 ## Imports and module layout
 
+- Use `name/mod.rs` for a Rust module that has a `name/` directory. Keep
+  standalone modules without a directory in `name.rs`.
 - Order the top-level groups in each Rust file as follows, with a blank line
   between groups: (1) `std` imports, (2) external-crate imports, (3) `mod` and
   `pub mod` declarations, (4) imports from this crate via `crate::`, and

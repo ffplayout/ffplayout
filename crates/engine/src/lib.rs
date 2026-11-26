@@ -55,6 +55,7 @@ pub use input::live::{
 use input::live::{LiveEnded, LiveOverrideOutput};
 #[cfg(all(feature = "desktop-base", feature = "tokio"))]
 pub use output::desktop::thread::run_on_main_thread as run_desktop_on_main_thread;
+pub use output::forwarding::ForwardMode;
 pub use output::parallel::{
     EncodedFrame, EncodedStream, OutputDestination, OutputEndpoint, OutputState, OutputStatus,
     OutputTarget, OwnedEncodedFrame, PacketSink,

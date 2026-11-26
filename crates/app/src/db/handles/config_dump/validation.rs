@@ -5,7 +5,7 @@ use serde_json::Value;
 use sqlx::{Row, SqliteConnection};
 
 use crate::{
-    db::models::ConfigDump,
+    db::models::{ConfigDump, GraphicAppointment},
     utils::{config::ProgramFormat, errors::ProcessError},
 };
 
@@ -157,6 +157,18 @@ fn validate_relationships(dump: &ConfigDump) -> Result<(), ProcessError> {
         return Err(invalid("Each configuration must have outputs"));
     }
 
+    for output in &dump.tables["config_output"] {
+        if let Some(listener) = output["forward_listener_id"].as_i64()
+            && !dump.tables["config_live_input"]
+                .iter()
+                .any(|input| input["id"] == listener && input["config_id"] == output["config_id"])
+        {
+            return Err(invalid(
+                "Live forwarding references must remain within their channel",
+            ));
+        }
+    }
+
     for table in ["config_output", "config_recording"] {
         for row in &dump.tables[table] {
             let column = if table == "config_output" {
@@ -240,6 +252,18 @@ fn validate_structured_settings(dump: &ConfigDump) -> Result<(), ProcessError> {
     ] {
         for row in &dump.tables[table] {
             parse_field::<BTreeMap<String, Value>>(table, column, row[column].as_str().unwrap())?;
+        }
+    }
+
+    for row in &dump.tables["config_graphics_schedule"] {
+        let appointment = parse_field::<GraphicAppointment>(
+            "config_graphics_schedule",
+            "appointment",
+            row["appointment"].as_str().unwrap(),
+        )?;
+
+        if !appointment.is_valid() {
+            return Err(invalid("Invalid graphic appointment in settings dump"));
         }
     }
 

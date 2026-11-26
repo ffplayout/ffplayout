@@ -1,6 +1,17 @@
 import { computed, ref } from 'vue'
 import type { GraphicEvent } from './playlistGraphics'
 
+export interface GraphicAppointment {
+    enabled: boolean
+    start_time: string
+    end_time: string | null
+    duration_seconds: number | null
+    date: string | null
+    weekdays: number[]
+    start_date: string | null
+    end_date: string | null
+}
+
 export interface ManualGraphicLayer {
     layer: number
     name: string
@@ -8,6 +19,9 @@ export interface ManualGraphicLayer {
     running: boolean
     visible: boolean
     active: boolean
+    appointments?: GraphicAppointment[]
+    schedule_active_until?: string | null
+    schedule_next_start?: string | null
     error?: string
 }
 
@@ -15,6 +29,7 @@ export interface ManualGraphicsStatus {
     revision: number
     running: boolean
     canvas: [number, number]
+    timezone?: string
     layers: ManualGraphicLayer[]
 }
 

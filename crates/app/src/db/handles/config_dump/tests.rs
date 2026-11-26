@@ -41,6 +41,7 @@ async fn populated() -> SqlitePool {
          INSERT INTO auth_user_channels(id,user_id,channel_id) VALUES(81,67,1);
          INSERT INTO config_graphics_state(channel_id,revision) VALUES(1,12);
          INSERT INTO config_graphics(channel_id,layer_id,name,settings,running,visible) VALUES(1,42,'Lower third','{\"source\":\"lower-third.png\"}',1,0);
+         INSERT INTO config_graphics_schedule(channel_id,layer_id,position,appointment) VALUES(1,42,0,'{\"enabled\":true,\"date\":\"2026-11-28\",\"start_time\":\"10:00\",\"duration_seconds\":30}');
          INSERT INTO config_output_audio(id,output_id,position,title) SELECT 92,id,0,'Custom audio' FROM config_output WHERE name='hls' LIMIT 1;
          INSERT INTO auth_refresh_tokens(jti,family_id,user_id,expires_at,created_at) VALUES('omitted-session','omitted-family',67,9999999999,1);"
     ).execute(&pool).await.unwrap();
@@ -71,6 +72,7 @@ async fn restores_every_persistent_table_with_sparse_ids_and_relationships() {
          UPDATE channels SET id=id+1000;
          UPDATE config_graphics SET channel_id=channel_id+1000;
          UPDATE config_graphics_state SET channel_id=channel_id+1000;
+         UPDATE config_graphics_schedule SET channel_id=channel_id+1000;
          UPDATE config SET id=id+1000;
          UPDATE auth_user SET id=id+1000;
          UPDATE config_text_presets SET id=id+1000;
@@ -322,6 +324,32 @@ async fn rejects_invalid_structured_settings_and_encoding_cycles() {
         );
         assert_eq!(export(&target).await.unwrap(), before);
     }
+}
+
+#[tokio::test]
+async fn restores_settings_exported_before_ingest_forwarding_and_graphics_schedules() {
+    let source = populated().await;
+    let target = pool().await;
+    let mut expected = export(&source).await.unwrap();
+
+    expected
+        .tables
+        .get_mut("config_graphics_schedule")
+        .unwrap()
+        .clear();
+
+    let mut old_dump = expected.clone();
+
+    old_dump.tables.remove("config_graphics_schedule");
+
+    for output in old_dump.tables.get_mut("config_output").unwrap() {
+        output.remove("forward_listener_id");
+        output.remove("forward_mode");
+    }
+
+    restore(&target, old_dump).await.unwrap();
+
+    assert_eq!(export(&target).await.unwrap().tables, expected.tables);
 }
 
 #[tokio::test]

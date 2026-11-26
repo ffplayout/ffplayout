@@ -82,6 +82,14 @@ position. The output remains continuous.
 
 In rare cases, it may happen that, for a short moment after switching, the image freezes, but then it will continue. Also, a brief frame flicker might occur.
 
+#### Forwarding a live input
+
+A saved live listener can feed one or more streaming destinations independently
+of program takeover. Configure destinations in **Settings → Outputs** and use
+the links in the listener entry to reopen them. Saving a forwarding change
+keeps the current publisher session and the channel running.
+See [Forwarding a live ingest](output.md#forwarding-a-live-ingest).
+
 #### Live idle timeout
 
 Each RTMP/SRT listener has a **Live idle timeout (seconds)** field in the

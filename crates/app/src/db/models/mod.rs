@@ -1,6 +1,9 @@
 use std::{error::Error, fmt, str::FromStr};
 
-use jiff::tz::TimeZone;
+use jiff::{
+    civil::{Date, Time},
+    tz::TimeZone,
+};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -28,6 +31,41 @@ pub struct GraphicLayer {
     pub settings: Json<Value>,
     pub running: bool,
     pub visible: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GraphicAppointment {
+    pub enabled: bool,
+    pub start_time: Time,
+    pub end_time: Option<Time>,
+    pub duration_seconds: Option<u32>,
+    pub date: Option<Date>,
+    #[serde(default)]
+    pub weekdays: Vec<i8>,
+    pub start_date: Option<Date>,
+    pub end_date: Option<Date>,
+}
+
+impl GraphicAppointment {
+    pub(crate) fn is_valid(&self) -> bool {
+        let timing = match (self.duration_seconds, self.end_time) {
+            (Some(seconds), None) => seconds > 0,
+            (None, Some(end)) => end != self.start_time,
+            _ => false,
+        };
+        let recurrence = if self.date.is_some() {
+            self.weekdays.is_empty() && self.start_date.is_none() && self.end_date.is_none()
+        } else {
+            !self.weekdays.is_empty()
+                && self.weekdays.iter().all(|day| (1..=7).contains(day))
+                && self
+                    .start_date
+                    .zip(self.end_date)
+                    .is_none_or(|(start, end)| start <= end)
+        };
+
+        timing && recurrence
+    }
 }
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
@@ -623,6 +661,12 @@ pub struct Output {
     pub encoding_source_id: Option<i32>,
     #[sqlx(default)]
     #[serde(default)]
+    pub forward_listener_id: Option<i32>,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub forward_mode: String,
+    #[sqlx(default)]
+    #[serde(default)]
     pub encoding_variant: String,
     #[sqlx(default)]
     #[serde(default)]
@@ -685,6 +729,8 @@ impl Output {
             inherit_resolution: false,
             share_encoding: true,
             encoding_source_id: None,
+            forward_listener_id: None,
+            forward_mode: "auto".into(),
             encoding_variant: String::new(),
             public_moq: false,
             runtime_status: None,

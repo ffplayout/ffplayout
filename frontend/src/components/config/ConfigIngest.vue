@@ -6,6 +6,12 @@ import { useConfig } from '@/stores/config'
 const { t } = useI18n()
 const configStore = useConfig()
 const indexStore = useIndex()
+function forwardingOutputs(id: number) {
+    return [configStore.playout.output, ...configStore.playout.outputs].filter(
+        (output) => output.forward_listener_id === id,
+    )
+}
+
 const logLevels = ['INFO', 'WARNING', 'ERROR']
 function eventValue(event: Event): string {
     return (event.target as HTMLInputElement).value
@@ -166,6 +172,21 @@ async function onSubmitPlayout() {
                         <button type="button" class="btn btn-ghost btn-sm" @click="removeLiveListener(index)">
                             {{ t('config.liveListenerRemove') }}
                         </button>
+                    </div>
+                    <div v-if="forwardingOutputs(listener.id).length" class="flex flex-wrap gap-2 my-2">
+                        <span>{{ t('config.forwardDestinations') }}</span>
+                        <RouterLink
+                            v-for="output in forwardingOutputs(listener.id)"
+                            :key="output.id"
+                            :to="{
+                                name: 'configure-outputs',
+                                query: $route.query,
+                                hash: output.id > 0 ? `#output-${output.id}` : '',
+                            }"
+                            class="link link-primary"
+                        >
+                            {{ output.label || t('config.outputs') + ' #' + output.id }}
+                        </RouterLink>
                     </div>
                     <label class="flex items-center gap-3 mb-3">
                         <input v-model="listener.auto_takeover" type="checkbox" class="toggle toggle-primary" />
