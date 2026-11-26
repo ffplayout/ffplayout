@@ -1554,12 +1554,14 @@ mod tests {
             let queued = loop {
                 let frozen =
                     cpu.freeze(&controller.advance(2_100_000), 2_100_000, Scope::default());
-                if stream.ready_at(2_100_000, (0, 1, 0)) {
+                // The decoder can become ready after freeze sampled its pixels.
+                // Keep only a snapshot that actually owns the ready surface.
+                if !frozen.is_empty() && stream.ready_at(2_100_000, (0, 1, 0)) {
                     break frozen;
                 }
                 assert!(
                     Instant::now() < deadline,
-                    "cycle {cycle} never became ready"
+                    "cycle {cycle} never captured a ready surface"
                 );
                 std::thread::sleep(Duration::from_millis(1));
             };
