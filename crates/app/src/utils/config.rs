@@ -2237,6 +2237,16 @@ mod output_tests {
             ..Default::default()
         };
         assert!(config.validate_outputs().is_ok());
+        if ff_engine::ffmpeg_capabilities()
+            .usable_codecs(ff_engine::FfmpegMediaType::Video)
+            .iter()
+            .any(|codec| codec.name == "libsvtav1")
+        {
+            config.output.video_codec = "libsvtav1".into();
+            config.output.video_options = ff_engine::video_option_defaults("libsvtav1");
+            assert!(config.validate_outputs().is_ok());
+        }
+
         config.output.audio_codec = "libopus".into();
         assert!(config.validate_outputs().is_err());
     }

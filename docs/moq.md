@@ -31,10 +31,8 @@ advertises available FFmpeg encoders validated for the native publisher, includi
 supported hardware encoders; validation uses codec IDs rather than names such as
 `libx264` or `libx265`.
 
-The currently validated combinations are H.264/H.265 video with AAC audio.
-The direct API can support additional codecs, but they are not advertised until
-their encoder initialization and browser playback have been validated.
-Extending transport capabilities does not require a database migration.
+MoQ supports H.264, HEVC, or AV1 video with AAC audio. The player needs a
+browser that can decode the selected video codec through WebCodecs.
 
 Browser codec support, GOP length, B-frames and encoder buffering affect playback
 and latency. MoQ does not start another playlist player or ingest listener.

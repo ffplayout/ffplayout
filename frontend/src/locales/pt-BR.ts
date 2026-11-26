@@ -374,7 +374,7 @@ export default {
         audioCodec: 'Codec de áudio',
         preview: 'MoQ',
         previewDescription:
-            'Prévia MoQ adicional de uma saída HLS ou de transmissão ativada, ou com codificação dedicada para qualquer modo de saída. A codificação dedicada suporta H.264/H.265 e AAC; a reprodução depende dos codecs suportados pelo navegador. As prévias ativadas são públicas e não exigem login. As alterações exigem reiniciar o playout deste canal. Configure uma saída MoQ regular em Playout; ela não pode ser ativada junto com esta prévia adicional.',
+            'Prévia MoQ adicional de uma saída HLS ou de transmissão ativada, ou com codificação dedicada para qualquer modo de saída. A codificação dedicada suporta H.264/H.265/AV1 e AAC; a reprodução depende dos codecs suportados pelo navegador. As prévias ativadas são públicas e não exigem login. As alterações exigem reiniciar o playout deste canal. Configure uma saída MoQ regular em Playout; ela não pode ser ativada junto com esta prévia adicional.',
         previewUnavailable: 'Esta compilação não inclui suporte a MoQ.',
         previewEnable: 'Ativar prévia pública via MoQ',
         previewEncode: 'Codificação dedicada para prévia',

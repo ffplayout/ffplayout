@@ -373,7 +373,7 @@ export default {
         audioCodec: 'Audio-Codec',
         preview: 'MoQ',
         previewDescription:
-            'Zusätzliche MoQ-Vorschau einer aktivierten HLS- oder Stream-Ausgabe oder mit eigener Kodierung für jeden Ausgabemodus. Die eigene Kodierung unterstützt H.264/H.265 und AAC; die Wiedergabe hängt von der Codec-Unterstützung des Browsers ab. Aktivierte Vorschauen sind ohne Anmeldung öffentlich zugänglich. Änderungen erfordern einen Neustart des Playouts dieses Kanals. Eine reguläre MoQ-Ausgabe wird unter Playout konfiguriert und kann nicht gleichzeitig mit dieser zusätzlichen Vorschau aktiviert werden.',
+            'Zusätzliche MoQ-Vorschau einer aktivierten HLS- oder Stream-Ausgabe oder mit eigener Kodierung für jeden Ausgabemodus. Die eigene Kodierung unterstützt H.264/H.265/AV1 und AAC; die Wiedergabe hängt von der Codec-Unterstützung des Browsers ab. Aktivierte Vorschauen sind ohne Anmeldung öffentlich zugänglich. Änderungen erfordern einen Neustart des Playouts dieses Kanals. Eine reguläre MoQ-Ausgabe wird unter Playout konfiguriert und kann nicht gleichzeitig mit dieser zusätzlichen Vorschau aktiviert werden.',
         previewUnavailable: 'Dieser Build enthält keine MoQ-Unterstützung.',
         previewEnable: 'Öffentliche MoQ-Vorschau aktivieren',
         previewEncode: 'Eigene Vorschau-Kodierung',

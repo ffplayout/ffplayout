@@ -366,7 +366,7 @@ export default {
         },
         preview: 'MoQ',
         previewDescription:
-            'Additional MoQ preview for an enabled HLS or stream output, or with dedicated encoding for any output mode. Dedicated encoding supports H.264/H.265 and AAC; playback depends on browser codec support. Enabled previews are publicly accessible without login. Changes require restarting this channel’s playout. Configure a regular MoQ output under Playout; it cannot be enabled together with this additional preview.',
+            'Additional MoQ preview for an enabled HLS or stream output, or with dedicated encoding for any output mode. Dedicated encoding supports H.264/H.265/AV1 and AAC; playback depends on browser codec support. Enabled previews are publicly accessible without login. Changes require restarting this channel’s playout. Configure a regular MoQ output under Playout; it cannot be enabled together with this additional preview.',
         previewUnavailable: 'This build does not include MoQ support.',
         previewEnable: 'Enable public MoQ preview',
         previewEncode: 'Dedicated preview encoding',

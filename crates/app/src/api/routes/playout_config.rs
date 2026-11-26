@@ -299,7 +299,7 @@ fn output_codec_options(target: ff_engine::FfmpegOutputTarget) -> OutputCodecOpt
 }
 
 fn moq_output_codec_options() -> OutputCodecOptions {
-    let mut options = output_codec_options(ff_engine::FfmpegOutputTarget::Srt);
+    let mut options = custom_output_codec_options();
     options
         .video
         .retain(|codec| crate::utils::moq_codecs::supports_video(&codec.codec_id));
@@ -976,7 +976,7 @@ mod tests {
             .unwrap();
         assert!(x264.settings.iter().all(|setting| setting.key != "tune"));
         let expected =
-            ff_engine::ffmpeg_capabilities().video_codecs_for(ff_engine::FfmpegOutputTarget::Srt);
+            ff_engine::ffmpeg_capabilities().usable_codecs(ff_engine::FfmpegMediaType::Video);
         for codec in expected
             .iter()
             .filter(|codec| crate::utils::moq_codecs::supports_video(&codec.codec_id))

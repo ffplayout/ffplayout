@@ -457,15 +457,32 @@ mod tests {
             eprintln!("libx265 unavailable in this FFmpeg build");
             return;
         }
-        native_video("libx265", "hev1", -98771).await;
+        native_video("libx265", "hev1", -98771, false, false).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_av1_publishes_decoder_configuration_and_video_frames_with_aac() {
+        if ff_engine::ffmpeg_capabilities()
+            .encoders
+            .iter()
+            .any(|codec| codec.name == "libsvtav1")
+        {
+            native_video("libsvtav1", "av01.", -98773, false, true).await;
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "requires FFmpeg linked against SVT-AV1 with RTC preset 12 support"]
+    async fn native_av1_realtime_publishes_video_frames_with_aac() {
+        native_video("libsvtav1", "av01.", -98774, true, false).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn native_avc_b_frames_publish_reorder_hint_and_presentation_timestamps() {
-        native_video("libx264", "avc3", -98772).await;
+        native_video("libx264", "avc3", -98772, false, false).await;
     }
 
-    async fn native_video(encoder: &str, codec: &str, channel: i32) {
+    async fn native_video(encoder: &str, codec: &str, channel: i32, rtc: bool, share_hls: bool) {
         let (origin, driver) = moq_net::origin::Producer::new(Default::default());
         let observer = origin.consume();
         let driver = tokio::spawn(moq_net::time::run(driver));
@@ -482,22 +499,48 @@ mod tests {
         });
         let mut config = ff_engine::OutputConfig::new(160, 90, 25, 48_000);
         config.video_codec = encoder.into();
-        config.video_options.insert(
-            "preset".into(),
-            if encoder == "libx264" {
-                "superfast"
-            } else {
-                "ultrafast"
-            }
-            .into(),
-        );
+        config.video_options = ff_engine::video_option_defaults(encoder);
+        if rtc {
+            config.video_options.insert("rtc".into(), "1".into());
+        }
+
+        let preset = match encoder {
+            "libx264" => "superfast",
+            "libsvtav1" if rtc => "12",
+            "libsvtav1" => "10",
+            _ => "ultrafast",
+        };
+        config.video_options.insert("preset".into(), preset.into());
         if encoder == "libx264" {
             config.video_options.insert("tune".into(), "none".into());
         }
-        config.stream_endpoint = Some(endpoint.clone());
+        let hls_directory =
+            std::env::temp_dir().join(format!("moq-av1-hls-{}", uuid::Uuid::new_v4()));
+        let hls_playlist = hls_directory.join("index.m3u8");
+        let mut moq = config.clone();
+        moq.stream_endpoint = Some(endpoint.clone());
+
+        if share_hls {
+            config
+                .muxer_options
+                .insert("ffplayout_packager".into(), "native".into());
+            moq.encoding_source = Some((1, 0));
+            config.destinations.push(ff_engine::OutputDestination {
+                id: 1,
+                config: config.clone(),
+                target: ff_engine::OutputTarget::Hls {
+                    playlist: hls_playlist.to_string_lossy().into_owned(),
+                    variants: vec![],
+                    subtitle: None,
+                    segment_seconds: 2,
+                    list_size: 6,
+                },
+            });
+        }
+
         config.destinations.push(ff_engine::OutputDestination {
             id: 5,
-            config: config.clone(),
+            config: moq,
             target: ff_engine::OutputTarget::Stream { url: String::new() },
         });
         let worker = tokio::task::spawn_blocking(move || {
@@ -528,7 +571,7 @@ mod tests {
             );
             playout.finish().unwrap();
         });
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(12), async {
             let broadcast = loop {
                 if let Ok(broadcast) = observer
                     .request_broadcast(format!("channels/channel-{channel}.hang"))
@@ -544,7 +587,7 @@ mod tests {
                 .subscribe(None)
                 .await
                 .unwrap();
-            let name = loop {
+            let (name, audio) = loop {
                 let mut group = catalogs.recv_group().await.unwrap().unwrap();
                 let frame = group.read_frame().await.unwrap().unwrap();
                 let value: serde_json::Value = serde_json::from_slice(&frame.payload).unwrap();
@@ -561,7 +604,25 @@ mod tests {
                     {
                         continue;
                     }
-                    break name.clone();
+                    let audio = if encoder == "libsvtav1" {
+                        let Some(audio) = value["audio"]["renditions"]["1.audio"].as_object()
+                        else {
+                            continue;
+                        };
+                        assert_eq!(audio["codec"], "mp4a.40.2");
+                        assert_eq!(audio["sampleRate"], 48_000);
+                        Some(
+                            broadcast
+                                .track("1.audio")
+                                .unwrap()
+                                .subscribe(None)
+                                .await
+                                .unwrap(),
+                        )
+                    } else {
+                        None
+                    };
+                    break (name.clone(), audio);
                 }
             };
             let mut video = broadcast
@@ -574,6 +635,25 @@ mod tests {
             let frame = group.read_frame().await.unwrap().unwrap();
             let media = hang::container::Frame::decode(frame.payload).unwrap();
             assert!(media.payload.len() > 100);
+            if let Some(mut audio) = audio {
+                let mut later = video.recv_group().await.unwrap().unwrap();
+                let frame = later.read_frame().await.unwrap().unwrap();
+                let later = hang::container::Frame::decode(frame.payload).unwrap();
+                let timestamp = later.timestamp.as_micros();
+
+                assert!(timestamp >= media.timestamp.as_micros() + 1_900_000);
+                assert!(!later.payload.is_empty());
+                loop {
+                    let mut group = audio.recv_group().await.unwrap().unwrap();
+                    let frame = group.read_frame().await.unwrap().unwrap();
+                    let audio = hang::container::Frame::decode(frame.payload).unwrap();
+                    assert!(!audio.payload.is_empty());
+                    if audio.timestamp.as_micros() >= timestamp {
+                        assert!(audio.timestamp.as_micros() - timestamp <= 40_000);
+                        break;
+                    }
+                }
+            }
             if encoder == "libx264" {
                 let mut times = vec![media.timestamp.as_micros()];
                 for _ in 0..4 {
@@ -594,6 +674,13 @@ mod tests {
         .await
         .expect("native video publication missing");
         worker.await.unwrap();
+        if share_hls {
+            let manifest = std::fs::read_to_string(hls_playlist).unwrap();
+            assert!(manifest.contains("#EXT-X-MAP:"));
+            assert!(manifest.lines().any(|line| line.ends_with(".m4s")));
+            std::fs::remove_dir_all(hls_directory).unwrap();
+        }
+
         assert_eq!(endpoint.connections.load(Ordering::SeqCst), 1);
         assert_eq!(endpoint.disconnects.load(Ordering::SeqCst), 1);
         driver.abort();

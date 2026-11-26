@@ -37,7 +37,7 @@ impl Publisher {
         let anchor = clock::Anchor::new(catalog.clock());
         let video = &streams[0];
         let format = video_format(&video.codec, &video.initialization)?;
-        let mut init = import::VideoInit::new(format, video.initialization.clone());
+        let mut init = import::VideoInit::new(format, video_initialization(video).to_vec());
         init.hint.optimize_for_latency = Some(true);
         let video =
             import::Track::video(broadcast.reserve_track("0.video")?, catalog.reserve(), init)?;
@@ -66,6 +66,20 @@ impl Publisher {
             running: false,
             reorder_us: 0,
         })
+    }
+}
+
+fn video_initialization(video: &ff_engine::EncodedStream) -> &[u8] {
+    let initialization = video.initialization.as_slice();
+
+    // av1C wraps the configuration OBUs in a four-byte header. Feed the
+    // OBUs to the direct importer so it can initialize the catalog and keep
+    // the sequence header with the first frame. A record without OBUs lets
+    // the first inline sequence header initialize the track.
+    if video.codec == "av1" && initialization.len() >= 4 && initialization[0] == 0x81 {
+        &initialization[4..]
+    } else {
+        initialization
     }
 }
 
@@ -211,6 +225,48 @@ mod tests {
                 initialization: vec![0x11, 0x90],
             },
         ]
+    }
+
+    #[test]
+    fn direct_av1_accepts_a_short_configuration_record() {
+        let mut streams = streams();
+        streams[0] = ff_engine::EncodedStream {
+            codec: "av1".into(),
+            initialization: vec![0x81, 0x08, 0x0c, 0],
+        };
+        let broadcast = moq_net::broadcast::Producer::new(Default::default());
+        let status = Arc::new(Mutex::new(PublicationStatus {
+            phase: "starting",
+            error: None,
+        }));
+
+        Publisher::new(
+            broadcast,
+            &streams,
+            Default::default(),
+            status,
+            CancellationToken::new(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn av1_configuration_record_keeps_its_sequence_header_obu() {
+        let sequence_header = [
+            0x0a, 0x0b, 0x02, 0x00, 0x00, 0x05, 0x1d, 0xa7, 0xec, 0x89, 0x5f, 0x20, 0x08,
+        ];
+        let mut stream = ff_engine::EncodedStream {
+            codec: "av1".into(),
+            initialization: [0x81, 0x00, 0x0c, 0x00]
+                .into_iter()
+                .chain(sequence_header)
+                .collect(),
+        };
+
+        assert_eq!(video_initialization(&stream), sequence_header);
+
+        stream.initialization = sequence_header.to_vec();
+        assert_eq!(video_initialization(&stream), sequence_header);
     }
 
     #[test]

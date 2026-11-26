@@ -361,7 +361,7 @@ dedicated recording remains a separate feature.
 
 MoQ is always available as mode `moq`. It can be the only output and publishes to
 the `/moq/player?channel=ID` browser player. It currently supports one
-MoQ instance per channel, H.264/H.265 with AAC, and requires `--listen` to start
+MoQ instance per channel, H.264, HEVC, or AV1 with AAC, and requires `--listen` to start
 the relay. Encoder names are unrestricted in the database; runtime codec
 capabilities advertise the combinations validated for direct frame publication.
 Additional codecs require encoder-initialization and browser-playback validation.
@@ -424,7 +424,7 @@ for switching back. For HLS sources, select the named rendition as well. Save a
 new output before using it as a source. The UI offers outputs with their own
 encoding; select the original owner directly. Existing source chains remain readable.
 
-MoQ packet reuse requires H.264/H.265 video and AAC audio. Other outputs follow
+MoQ packet reuse requires H.264, HEVC, or AV1 video with AAC audio. Other outputs follow
 the codecs supported by their muxer. Advanced transport, muxer and metadata
 settings remain independently editable. Recording can copy a derived output;
 its HLS source selector offers the derived output's single playlist.
