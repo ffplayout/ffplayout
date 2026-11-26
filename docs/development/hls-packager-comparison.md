@@ -1,6 +1,6 @@
 # FFmpeg versus native HLS packager
 
-Measured on 2026-11-11, Apple M5 Pro, 48 GiB RAM, macOS arm64,
+Initial measurements on 2026-11-11, Apple M5 Pro, 48 GiB RAM, macOS arm64,
 local APFS storage. This compares the two current ffplayout output paths,
 including their configured muxer options, rather than every possible FFmpeg setup.
 
@@ -129,6 +129,55 @@ and large-bitrate buffer behavior remain required before making it the default.
   writer stopped. Variant switching, seeking, other players, end-to-end latency
   and a 24-hour soak remain unqualified.
 
+## Remeasurement on 2026-11-26
+
+Revision `49b355fd` plus the benchmark options below, macOS arm64 on local APFS,
+FFmpeg build `47b92841e3` (`libavformat 63.12.100`, `libavcodec 63.22.100`).
+The harness submitted the same H.264/AAC fixture to both backends with six-second
+segments. Each row shows the median of three fresh processes per available backend.
+The 48 runs were accelerated and excluded decoding and encoding.
+
+| Scenario | FFmpeg CPU | Native CPU | FFmpeg peak RSS | Native peak RSS |
+|---|---:|---:|---:|---:|
+| TS, one variant, short window | 29.1 ms | 24.7 ms | 103.3 MiB | 39.2 MiB |
+| TS, three variants, short window | 62.7 ms | 54.3 ms | 110.9 MiB | 48.7 MiB |
+| TS, three variants, hour window | 1.801 s | 1.537 s | 263.2 MiB | 48.8 MiB |
+| TS, three variants + WebVTT, short window | 68.1 ms | 59.7 ms | 112.9 MiB | 48.3 MiB |
+| TS, three variants + WebVTT, hour window | 1.898 s | 1.650 s | 265.6 MiB | 48.9 MiB |
+| TS, three variants + WebVTT + PDT, short window | 93.2 ms | 59.0 ms | 113.2 MiB | 48.9 MiB |
+| TS, three variants + WebVTT + PDT, hour window | 79.496 s | 1.641 s | 266.0 MiB | 49.7 MiB |
+| fMP4, three variants + WebVTT + PDT, short window | — | 112.4 ms | — | 77.7 MiB |
+| fMP4, three variants + WebVTT + PDT, hour window | — | 3.265 s | — | 261.0 MiB |
+
+The FFmpeg HLS backend in ffplayout supports MPEG-TS for this comparison.
+On the test host, optional `EXT-X-PROGRAM-DATE-TIME` (PDT) dominates CPU time
+for its full window. In a separate ten-minute run, FFmpeg used 2.51 s CPU with
+the system timezone and no `TZ` override, 2.03 s with `TZ=Europe/Berlin`, and
+1.41 s with `TZ=UTC`. These figures describe local playlist generation on this
+system. FFmpeg formats the date for each entry when rewriting a playlist.
+[FFmpeg HLS playlist source](https://ffmpeg.org/doxygen/trunk/hlsplaylist_8c_source.html)
+
+- Both backends published identical H.264/AAC codec declarations and aligned
+  six-second segments. Full windows contained 90,000 video and 168,840 audio
+  packets per variant. All referenced files existed. Sampled segments decoded
+  independently, and a seek to 30 minutes decoded 25 frames in each rendition
+  of each full window using FFmpeg as a reader.
+- In the MPEG-TS samples, identical payloads had a common 80 ms PTS shift in
+  the FFmpeg backend, for video and audio alike. Native fMP4's sampled first
+  audio and video PTS differed by at most 10.7 ms.
+- Native generated matching program dates on all three variants and WebVTT,
+  wrote `X-TIMESTAMP-MAP`, and included the caption spanning 100–103 s in
+  both adjacent VTT segments. FFmpeg's WebVTT playlist omitted PDT, and its VTT
+  segment for 102 s omitted the crossing cue and the timestamp map.
+- With three segments requested, both backends retained 18 s. A second
+  retention check with two segments requested kept 18 s in native and 12 s in
+  FFmpeg, in video and WebVTT alike. Both declared `TARGETDURATION:6`.
+- The native fMP4 clock regression passed separately for H.264, HEVC and AV1.
+
+The measurements cover packaging throughput, packet timestamps and local
+media seeking. Deployment CPU/RSS, player latency and live rendition
+switching depend on the full playout and client paths.
+
 ## Reproduction
 
 Create the six-track fixture (commands used for these measurements):
@@ -162,7 +211,10 @@ cargo test -p ff-engine --release --no-default-features --lib \
 
 Set the backend to `ffmpeg` for the counterpart, `VARIANTS=1` for the single
 rendition, `SUBTITLES=0` to omit captions, and `SECONDS=120` / `LIST_SIZE=3`
-for the short window. The test emits one `HLS_BENCH` JSON record. Verify the
+for the short window. The test emits one `HLS_BENCH` JSON record. The current
+`reopen_ms` field measures opening the output after finalization. Native HLS
+decides whether program dates overlap when it receives the first common
+keyframe, after that measurement. Verify the
 resulting media outside the timed region; append `#EXT-X-ENDLIST` to a copy of
 a media playlist before using ffprobe packet counting, so it does not poll a
 finished live playlist. Remove generated directories after inspection.
@@ -172,3 +224,7 @@ Additional controls: `HLS_BENCH_REALTIME=1` paces submission by DTS;
 absolute PTS values while retaining the encoded payload; `HLS_BENCH_START_MS`
 skips earlier packets for exploratory midstream-entry tests. These controls are
 not enabled in the 30-run throughput table.
+
+Set `HLS_BENCH_PROGRAM_DATE_TIME=1` to measure publication with wall-clock
+tags. Set `HLS_BENCH_SEGMENT_TYPE=fmp4` with the native backend to measure
+fragmented MP4. The ffplayout FFmpeg backend uses MPEG-TS for this comparison.

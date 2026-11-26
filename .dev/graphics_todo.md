@@ -133,8 +133,8 @@ Completed-scope evidence map:
 | Commands, layers, revisions, resource state | `scene/controller.rs`, `scene/playlist.rs`; ordered updates, stale completions, clock reset and bounded admission tests |
 | Worker and pixel lifetime | `resources/preparation/`, `resources/surface.rs`; shutdown/restart, leases, cancellation and native resource-budget tests |
 | CPU layout, metadata and composition | `layout/context.rs`, `ffmpeg/compositor/`; checked geometry, tag preservation, cache/pixel compatibility and unsupported-layer tests |
-| Cached/streamed assets and preparation | `ffmpeg/sources/animation.rs`, `ffmpeg/sources/animation/streaming.rs`, `timing/`; repeats, seeks, entrance phase, idle decoding and 20-cycle cleanup tests |
-| Production integration | engine `graphics/` and app `player/graphics.rs`; shared output handoff, pre-first-take preparation, occurrence disposal and playlist JSON tests |
+| Cached/streamed assets and preparation | `ffmpeg/sources/animation/`, `timing/`; repeats, seeks, entrance phase, idle decoding and 20-cycle cleanup tests |
+| Production integration | engine `graphics/` and app `player/graphics/`; shared output handoff, pre-first-take preparation, occurrence disposal and playlist JSON tests |
 | Measured load | `benches/animated_scene.rs` and [Graphics testing](../docs/development/graphics-testing.md); 0/3/8 layers, 1080p/4K25/50, Rust allocation counters and short soak runs |
 
 Graphics-only implementation paths above are relative to `crates/graphics/src/`
@@ -344,8 +344,8 @@ Reuse and review the work already present rather than starting from scratch:
 
 - `crates/graphics/src/`: native text rendering, plain style types, shared plane kernels, and the optional FFmpeg CPU compositor backend.
 - `crates/engine/src/graphics/`: compatibility adapters for media-derived text and source-opening policy.
-- `crates/graphics/examples/frame_blend.rs` and its supporting modules: color models, independent references, linear-light SIMD and text-rendering experiments.
-- `crates/graphics/benches/overlay_blend.rs`: single-plane microbenchmarks and complete-overlay comparisons, including direct SIMD calls and one-/four-worker pools.
+- `crates/graphics/examples/frame_blend/`: color models, independent references, linear-light SIMD and text-rendering experiments.
+- `crates/graphics/benches/overlay_blend/`: single-plane microbenchmarks and complete-overlay comparisons, including direct SIMD calls and one-/four-worker pools.
 - `docs/frame-blend.md`: assumptions, timing boundaries, measurements, and limitations.
 
 These experiments are evidence and reusable test material, not production architecture. Existing measurements favor the current YUV compositor for speed. Do not infer aggregate CPU savings from lower wall time with multiple workers; caller/worker scheduling and CPU core placement also affect comparisons.

@@ -21,7 +21,7 @@ cargo clippy --all-features --all-targets -- --deny warnings
   and utilities must call these functions instead of executing SQL directly.
   Use bound parameters for query values. Test modules may execute SQL to build
   fixtures and verify persisted data.
-- Keep database models in `crates/app/src/db/models.rs` and connection pool
+- Keep database models in `crates/app/src/db/models/` and connection pool
   setup in `crates/app/src/db/mod.rs`.
 - Keep REST API handlers in `crates/app/src/api/`, grouped by domain under
   `crates/app/src/api/routes/`. Authentication routes belong to `api/auth.rs`.

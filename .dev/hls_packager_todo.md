@@ -109,8 +109,12 @@ evaluations are deferred extension work, not prerequisites for that prototype.
   boundaries; never cut every stream independently on elapsed wall-clock time.
 - [x] Anchor optional PROGRAM-DATE-TIME once per session and derive matching dates
   from media time for all renditions and captions; preserve retained segment dates.
-- [ ] Qualify clock corrections and restart anchors without conflicting absolute-
-  time mappings. Use scoped-clock tests rather than only comparing rendition dates.
+- [x] At the first common keyframe after a native restart, replace the window
+  when the new PROGRAM-DATE-TIME precedes the end of retained media. Test a
+  delayed keyframe at the exact join, MPEG-TS and
+  fMP4 replacement with WebVTT, and preservation of old resources for clients
+  during the existing retention period.
+- [ ] Test wall-clock steps in both directions during ongoing playout.
 - [x] Signal resumed timestamp generations with consistent EXT-X-DISCONTINUITY
   and EXT-X-DISCONTINUITY-SEQUENCE values, including subtitle playlists.
 - [ ] Define in-session timestamp-reset and codec-initialization-change handling;
@@ -204,18 +208,20 @@ evaluations are deferred extension work, not prerequisites for that prototype.
 
 - [x] Record accelerated FFmpeg/native CPU/RSS and resume comparisons, packet
   coverage and raw measurements; complete the documented short Safari smoke test.
-- [ ] Remeasure short windows after the three-TARGETDURATION retention correction;
-  assess PROGRAM-DATE-TIME overhead and qualify the current dependency versions.
-- [ ] Differentially compare generated media/manifests with the current backend:
-  codec declarations, rendition alignment, seekability, subtitles and A/V sync.
+- [x] Remeasure short windows after the three-TARGETDURATION retention correction
+  and assess PROGRAM-DATE-TIME overhead with the current local dependencies.
+- [x] Compare MPEG-TS codec declarations, rendition alignment, file seeking,
+  WebVTT and A/V packet timestamps. Record native fMP4 separately.
+  See the [2026-11-26 comparison](../docs/development/hls-packager-comparison.md#remeasurement-on-2026-11-26).
 - [x] Smoke-test later player entry, a two-minute backward seek and subtitle
   disable/re-enable in Firefox/Video.js and Safari/native HLS against the real stream.
 - [x] Inspect live takeover/return segments and empty-to-populated VTT transitions
   against the running stream, in addition to automated encoder tests.
 - [ ] Extend browser coverage to sustained rendition switching, cross-segment
   cues and clip/live transitions observed directly in each player.
-- [ ] Test restart/resume, abrupt termination, concurrent destination attempts,
-  slow/full storage, missing files and clock corrections with scoped clocks.
+- [x] Establish baseline restart/resume, abrupt termination, destination ownership,
+  slow/full storage and missing-file coverage. See publication and retention
+  above for the cases exercised on real storage and the remaining variants.
 - [x] Unit-test X-TIMESTAMP-MAP modulo the 33-bit clock after a timestamp wrap.
 - [x] Inspect a real 58 h 50 min playlist run and video/WebVTT samples after two
   MPEG-TS clock wraps; validate timestamp mapping and decodability.

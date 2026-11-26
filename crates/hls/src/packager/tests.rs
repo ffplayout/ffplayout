@@ -45,7 +45,7 @@ impl Fixture {
             segment_seconds: 1,
             list_size,
             delete_threshold: 1,
-            program_date_time: true,
+            program_date_time: false,
         }
     }
 }
@@ -160,14 +160,22 @@ fn feed<W: SegmentWriter<()>>(
     base: i64,
     frames: i64,
 ) -> Result<()> {
+    feed_with_clock(packager, renditions, base, frames, Timestamp::now)
+}
+
+fn feed_with_clock<W: SegmentWriter<()>>(
+    packager: &mut Packager<(), W>,
+    renditions: usize,
+    base: i64,
+    frames: i64,
+    clock: impl Fn() -> Timestamp,
+) -> Result<()> {
     for frame in 0..frames {
         for rendition in 0..renditions {
-            packager.write(packet(
-                rendition * 2,
-                base + frame * 40_000,
-                frame % 25 == 0,
-            ))?;
-            packager.write(packet(rendition * 2 + 1, base + frame * 40_000, false))?;
+            let pts = base + frame * 40_000;
+
+            packager.write_with_clock(packet(rendition * 2, pts, frame % 25 == 0), &clock)?;
+            packager.write_with_clock(packet(rendition * 2 + 1, pts, false), &clock)?;
         }
     }
 
@@ -248,7 +256,11 @@ fn date_time_mapping_is_shared_across_renditions_and_preserved_on_resume() {
             )
             .unwrap();
 
-            feed(&mut packager, 2, 0, 100).unwrap();
+            let first = Timestamp::UNIX_EPOCH
+                .checked_add(SignedDuration::from_secs(session as i64 * 4))
+                .unwrap();
+
+            feed_with_clock(&mut packager, 2, 0, 100, || first).unwrap();
             packager.finish().unwrap();
             drop(packager);
 
@@ -287,6 +299,56 @@ fn date_time_mapping_is_shared_across_renditions_and_preserved_on_resume() {
             previous_dates = playlists[0].clone();
         }
     }
+}
+
+#[test]
+fn restart_checks_program_date_at_the_first_common_keyframe() {
+    let fixture = Fixture::new();
+    let open = || {
+        let mut config = fixture.config(2, 10);
+        config.program_date_time = true;
+
+        Packager::new(
+            config,
+            Writer {
+                fail_rendition: None,
+            },
+        )
+        .unwrap()
+    };
+    // Opening the packager and receiving the first rendition still happen
+    // before the old window ends. The shared keyframe arrives at its end.
+    let old_start = Timestamp::from_second(Timestamp::now().as_second() + 60).unwrap();
+    let old_end = old_start.checked_add(SignedDuration::from_secs(2)).unwrap();
+    let mut first = open();
+
+    feed_with_clock(&mut first, 2, 0, 50, || old_start).unwrap();
+    first.finish().unwrap();
+    drop(first);
+
+    let path = fixture.0.join("v0.m3u8");
+    let previous = fs::read_to_string(&path).unwrap();
+    let mut resumed = open();
+
+    resumed
+        .write_with_clock(packet(0, 0, true), || {
+            panic!("one rendition cannot establish the program date")
+        })
+        .unwrap();
+    assert_eq!(fs::read_to_string(&path).unwrap(), previous);
+
+    feed_with_clock(&mut resumed, 2, 1_000_000, 25, || old_end).unwrap();
+    resumed.finish().unwrap();
+
+    let text = fs::read_to_string(path).unwrap();
+
+    assert!(text.contains("#EXT-X-MEDIA-SEQUENCE:0\n"));
+    assert!(text.contains("v0_0.ts\n"));
+    assert!(text.contains(&format!(
+        "#EXT-X-PROGRAM-DATE-TIME:{}\n",
+        old_end.strftime("%FT%T%.3fZ")
+    )));
+    assert_eq!(text.matches("#EXTINF:").count(), 3);
 }
 
 #[test]

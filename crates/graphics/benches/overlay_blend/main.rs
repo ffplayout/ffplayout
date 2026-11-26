@@ -6,13 +6,13 @@ use std::{
 use ff_graphics::{blend, ffmpeg::overlay};
 
 #[allow(dead_code, unused_imports)]
-#[path = "../examples/frame_blend/color.rs"]
+#[path = "../../examples/frame_blend/color.rs"]
 mod color;
-#[path = "../examples/frame_blend/linear_simd.rs"]
+#[path = "../../examples/frame_blend/linear_simd.rs"]
 mod linear_simd;
-#[path = "overlay_blend/comparison.rs"]
+#[path = "comparison.rs"]
 mod overlay_comparison;
-#[path = "../examples/frame_blend/video_input.rs"]
+#[path = "../../examples/frame_blend/video_input.rs"]
 mod video_input;
 
 const SAMPLE_COUNT: usize = 25;

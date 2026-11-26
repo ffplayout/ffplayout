@@ -8,6 +8,7 @@ use ffmpeg_next::{
     ChannelLayout,
     format::{Sample, pixel::Pixel, sample::Type},
 };
+use jiff::{SignedDuration, Timestamp};
 
 use super::*;
 
@@ -56,7 +57,7 @@ impl Fixture {
         native: bool,
         bitrates: [u64; 3],
     ) -> Result<EncodedOutput> {
-        self.try_open_container(name, native, bitrates, None)
+        self.try_open_container(name, native, bitrates, None, false)
     }
 
     fn try_open_container(
@@ -65,6 +66,7 @@ impl Fixture {
         native: bool,
         bitrates: [u64; 3],
         container: Option<&str>,
+        program_date_time: bool,
     ) -> Result<EncodedOutput> {
         let mut config = OutputConfig::new(320, 180, 25, 48_000);
         config
@@ -84,6 +86,12 @@ impl Fixture {
             config
                 .muxer_options
                 .insert("hls_segment_type".into(), container.into());
+        }
+
+        if program_date_time {
+            config
+                .muxer_options
+                .insert("hls_flags".into(), "program_date_time".into());
         }
 
         let mut output = EncodedOutput::open(
@@ -193,6 +201,97 @@ fn write_frames(output: &mut EncodedOutput, frames: std::ops::Range<i64>, audio_
             *audio_pts += size as i64;
         }
         output.advance_vtt_subtitles(index * 40).unwrap();
+    }
+}
+
+#[test]
+fn native_hls_replaces_only_overlapping_program_dates_on_restart() {
+    const DATE_TAG: &str = "#EXT-X-PROGRAM-DATE-TIME:";
+    const SEQUENCE_TAG: &str = "#EXT-X-MEDIA-SEQUENCE:";
+    let manifests = ["high.m3u8", "mid.m3u8", "low.m3u8", "high_vtt.m3u8"];
+    let suffixes = [Some("mpegts"), Some("fmp4")];
+
+    for (container, overlaps) in suffixes
+        .into_iter()
+        .flat_map(|container| [false, true].map(|overlaps| (container, overlaps)))
+    {
+        let fixture = Fixture::new();
+        let open = || {
+            fixture
+                .try_open_container("master.m3u8", true, [96_000; 3], container, true)
+                .unwrap()
+        };
+        let mut output = open();
+        write_frames(&mut output, 0..50, &mut 0);
+        output.finish().unwrap();
+
+        let retained_start = Timestamp::now()
+            .checked_add(SignedDuration::from_secs(if overlaps { 30 } else { -30 }))
+            .unwrap();
+        let previous = manifests.map(|name| {
+            let path = fixture.0.join(name);
+            let text = fs::read_to_string(&path).unwrap();
+            let mut retained_date = retained_start;
+            let previous = text
+                .lines()
+                .map(|line| {
+                    if line.starts_with(DATE_TAG) {
+                        let date = retained_date.strftime("%FT%T%.3fZ");
+                        let line = format!("{DATE_TAG}{date}");
+                        retained_date = retained_date
+                            .checked_add(SignedDuration::from_secs(1))
+                            .unwrap();
+                        line
+                    } else {
+                        line.to_owned()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n";
+            fs::write(path, &previous).unwrap();
+            previous
+        });
+        let last_old_segment = previous[0].lines().last().unwrap();
+        let old_bytes = fs::read(fixture.0.join(last_old_segment)).unwrap();
+        let mut output = open();
+
+        for (name, old) in manifests.iter().zip(&previous) {
+            assert_eq!(&fs::read_to_string(fixture.0.join(name)).unwrap(), old);
+        }
+
+        write_frames(&mut output, 0..25, &mut 0);
+        output.finish().unwrap();
+        fixture.check_references();
+        assert_eq!(
+            fs::read(fixture.0.join(last_old_segment)).unwrap(),
+            old_bytes
+        );
+
+        let dates = manifests.map(|name| {
+            let text = fs::read_to_string(fixture.0.join(name)).unwrap();
+            let dates: Vec<Timestamp> = text
+                .lines()
+                .filter_map(|line| line.strip_prefix(DATE_TAG))
+                .map(|date| date.parse().unwrap())
+                .collect();
+
+            assert!(text.lines().any(|line| line == "#EXT-X-DISCONTINUITY"));
+            if overlaps {
+                assert!(text.contains(&format!("{SEQUENCE_TAG}2\n")));
+                assert_eq!(dates.len(), 1);
+                assert!(dates[0] < retained_start);
+            } else {
+                assert!(text.contains(&format!("{SEQUENCE_TAG}0\n")));
+                assert_eq!(dates.len(), 3);
+                assert_eq!(dates[0].as_millisecond(), retained_start.as_millisecond());
+                assert!(dates[2] > dates[1]);
+            }
+
+            dates
+        });
+
+        assert!(dates.windows(2).all(|pair| pair[0] == pair[1]));
     }
 }
 
@@ -939,7 +1038,7 @@ fn native_and_ffmpeg_switches_keep_published_media_until_replacement_is_ready() 
     for (native, container) in [(true, Some("mpegts")), (true, Some("fmp4")), (false, None)] {
         let open = || {
             fixture
-                .try_open_container("master.m3u8", native, [96_000; 3], container)
+                .try_open_container("master.m3u8", native, [96_000; 3], container, false)
                 .unwrap()
         };
         let previous = read();

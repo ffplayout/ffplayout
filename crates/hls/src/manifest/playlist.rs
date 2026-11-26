@@ -8,6 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, ensure};
+use jiff::{SignedDuration, Timestamp};
 
 #[derive(Clone)]
 pub(crate) struct Segment {
@@ -216,6 +217,14 @@ impl Playlist {
         Ok(())
     }
 
+    pub fn last_discontinuity_sequence(&self) -> Result<u64> {
+        let count = self.segments.iter().filter(|s| s.discontinuity).count() as u64;
+
+        self.discontinuity_sequence
+            .checked_add(count)
+            .context("HLS discontinuity sequence overflow")
+    }
+
     pub fn reset_history(&mut self, discontinuity_sequence: u64) {
         if !self.segments.is_empty() {
             let grace = crate::retention::grace(self.segments.iter().map(|s| s.duration));
@@ -237,6 +246,30 @@ impl Playlist {
                 .map(|segment| parent.join(segment.uri)),
         );
         self.discontinuity_sequence = discontinuity_sequence;
+    }
+
+    pub fn overlaps_program_date_time(&self, next: Timestamp) -> Result<bool> {
+        let mut start = None;
+
+        for segment in &self.segments {
+            if let Some(date) = &segment.date {
+                start = Some(date.parse::<Timestamp>()?);
+            }
+            if let Some(date) = start {
+                let duration =
+                    SignedDuration::try_from(Duration::try_from_secs_f64(segment.duration)?)?;
+                let end = date.checked_add(duration)?;
+
+                if end > next {
+                    return Ok(true);
+                }
+
+                // Undated segments after an anchor inherit its time progression.
+                start = Some(end);
+            }
+        }
+
+        Ok(false)
     }
 
     pub fn validate_duration(&self, duration: f64) -> Result<()> {

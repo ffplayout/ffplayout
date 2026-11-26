@@ -91,6 +91,8 @@ fn compare_hls_packagers() -> Result<()> {
     let segment_seconds = option("HLS_BENCH_SEGMENT_SECONDS", 6);
     let list_size = option("HLS_BENCH_LIST_SIZE", 600);
     let subtitles = option("HLS_BENCH_SUBTITLES", 1) != 0;
+    let program_date_time = option("HLS_BENCH_PROGRAM_DATE_TIME", 0) != 0;
+    let segment_type = env::var("HLS_BENCH_SEGMENT_TYPE").unwrap_or_else(|_| "mpegts".into());
     let start_ms = i64::from(option("HLS_BENCH_START_MS", 0));
     let realtime = option("HLS_BENCH_REALTIME", 0) != 0;
     let skipped_keyframes: BTreeSet<i64> = env::var("HLS_BENCH_SKIP_KEYFRAME_MS")
@@ -106,10 +108,30 @@ fn compare_hls_packagers() -> Result<()> {
     );
     ensure!(seconds.is_multiple_of(10), "fixture is ten seconds long");
     ensure!(!directory.exists(), "use a fresh benchmark directory");
+    ensure!(
+        matches!(segment_type.as_str(), "mpegts" | "fmp4"),
+        "HLS_BENCH_SEGMENT_TYPE must be mpegts or fmp4"
+    );
+    ensure!(
+        native || segment_type == "mpegts",
+        "fMP4 requires the native backend"
+    );
     fs::create_dir_all(&directory)?;
 
     let sample = Sample::load(&source, variants)?;
     let mut config = OutputConfig::new(1920, 1080, 25, 48_000);
+
+    if segment_type == "fmp4" {
+        config
+            .muxer_options
+            .insert("hls_segment_type".into(), segment_type.clone());
+    }
+
+    if program_date_time {
+        config
+            .muxer_options
+            .insert("hls_flags".into(), "program_date_time".into());
+    }
 
     if native {
         config
@@ -249,7 +271,7 @@ fn compare_hls_packagers() -> Result<()> {
 
     let wall = started.elapsed().as_secs_f64();
     let finished = usage();
-    let resume_started = Instant::now();
+    let reopen_started = Instant::now();
     let output = EncodedOutput::open_internal(
         path,
         &config,
@@ -258,7 +280,7 @@ fn compare_hls_packagers() -> Result<()> {
         false,
         Some(sample.parameters.clone()),
     )?;
-    let resume_ms = resume_started.elapsed().as_secs_f64() * 1000.0;
+    let reopen_ms = reopen_started.elapsed().as_secs_f64() * 1000.0;
 
     drop(output);
 
@@ -268,7 +290,7 @@ fn compare_hls_packagers() -> Result<()> {
     let first_visible = first_visible.map_or("null".into(), |value| format!("{value:.3}"));
 
     println!(
-        "HLS_BENCH {{\"backend\":\"{backend}\",\"variants\":{variants},\"seconds\":{seconds},\"subtitles\":{subtitles},\"packets\":{packet_count},\"wall_s\":{wall:.6},\"cpu_s\":{cpu:.6},\"peak_rss_bytes\":{rss_bytes},\"resume_ms\":{resume_ms:.3},\"first_visible_media_s\":{first_visible}}}"
+        "HLS_BENCH {{\"backend\":\"{backend}\",\"segment_type\":\"{segment_type}\",\"list_size\":{list_size},\"program_date_time\":{program_date_time},\"variants\":{variants},\"seconds\":{seconds},\"subtitles\":{subtitles},\"packets\":{packet_count},\"wall_s\":{wall:.6},\"cpu_s\":{cpu:.6},\"peak_rss_bytes\":{rss_bytes},\"reopen_ms\":{reopen_ms:.3},\"first_visible_media_s\":{first_visible}}}"
     );
 
     Ok(())

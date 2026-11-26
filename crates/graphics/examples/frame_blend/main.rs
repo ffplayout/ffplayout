@@ -10,21 +10,13 @@ use image::{
 };
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-#[path = "frame_blend/color.rs"]
 mod color;
-#[path = "frame_blend/cpu_time.rs"]
 mod cpu_time;
-#[path = "frame_blend/data.rs"]
 mod data;
-#[path = "frame_blend/kernels.rs"]
 mod kernels;
-#[path = "frame_blend/linear_simd.rs"]
 mod linear_simd;
-#[path = "frame_blend/paths.rs"]
 mod paths;
-#[path = "frame_blend/text_demo.rs"]
 mod text_demo;
-#[path = "frame_blend/video_input.rs"]
 mod video_input;
 
 use color::{Color, Matrix, Range, Rect, Transfer, quantize, source_rgb};

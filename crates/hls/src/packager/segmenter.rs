@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, ensure};
-use jiff::{SignedDuration, Timestamp};
+use jiff::{RoundMode, SignedDuration, Timestamp, TimestampRound, Unit};
 
 use crate::manifest::{Playlist, Segment, atomic_write, load_codecs, safe_name};
 
@@ -231,13 +231,8 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         for playlist in histories {
             if let Some(last) = playlist.segments.back() {
                 latest = Some(latest.unwrap_or(0).max(last.sequence));
-                let count = playlist.segments.iter().filter(|s| s.discontinuity).count() as u64;
-                discontinuity_sequence = discontinuity_sequence.max(
-                    playlist
-                        .discontinuity_sequence
-                        .checked_add(count)
-                        .context("HLS discontinuity sequence overflow")?,
-                );
+                discontinuity_sequence =
+                    discontinuity_sequence.max(playlist.last_discontinuity_sequence()?);
             }
         }
         let has_history = latest.is_some();
@@ -386,7 +381,62 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         Ok(())
     }
 
+    fn anchor_program_date_time(&mut self, media_start: i64, date: Timestamp) -> Result<()> {
+        let published_date = date.round(
+            TimestampRound::new()
+                .smallest(Unit::Millisecond)
+                .mode(RoundMode::Floor),
+        )?;
+        let mut overlaps = false;
+
+        for playlist in self.playlists() {
+            overlaps |= playlist.overlaps_program_date_time(published_date)?;
+        }
+
+        if overlaps {
+            self.reset_history()?;
+        }
+
+        self.wall_anchor = Some((media_start, date));
+
+        Ok(())
+    }
+
+    fn playlists(&self) -> impl Iterator<Item = &Playlist> {
+        self.renditions
+            .iter()
+            .map(|rendition| &rendition.playlist)
+            .chain(self.subtitles.iter().map(|(_, playlist)| playlist))
+    }
+
+    fn reset_history(&mut self) -> Result<()> {
+        let mut sequence = 0;
+
+        for playlist in self.playlists() {
+            sequence = sequence.max(playlist.last_discontinuity_sequence()?);
+        }
+
+        for rendition in &mut self.renditions {
+            rendition.playlist.reset_history(sequence);
+            rendition.resumed_last_sequence = None;
+        }
+        if let Some((_, playlist)) = &mut self.subtitles {
+            playlist.reset_history(sequence);
+        }
+        self.discontinuity = true;
+
+        Ok(())
+    }
+
     pub fn write(&mut self, packet: MediaPacket<T>) -> Result<()> {
+        self.write_with_clock(packet, Timestamp::now)
+    }
+
+    pub(super) fn write_with_clock(
+        &mut self,
+        packet: MediaPacket<T>,
+        now: impl FnOnce() -> Timestamp,
+    ) -> Result<()> {
         ensure!(!self.finished, "native HLS output has finished");
 
         let stream = packet.stream;
@@ -438,6 +488,16 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             });
 
             if let Some((start, cuts)) = common {
+                let next_target = start
+                    .div_euclid(self.segment_us)
+                    .checked_add(1)
+                    .and_then(|slot| slot.checked_mul(self.segment_us))
+                    .context("HLS target timestamp overflow")?;
+
+                if self.program_date_time {
+                    self.anchor_program_date_time(start, now())?;
+                }
+
                 // Reconnects may first encounter different scene-cut keyframes.
                 // Join the first common keyframe and discard preceding media.
                 self.packets.retain(|packet| {
@@ -449,14 +509,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                 });
                 self.bytes = self.packets.iter().map(|packet| packet.bytes).sum();
                 self.start = Some(start);
-                self.next_target = Some(
-                    start
-                        .div_euclid(self.segment_us)
-                        .checked_add(1)
-                        .and_then(|slot| slot.checked_mul(self.segment_us))
-                        .context("HLS target timestamp overflow")?,
-                );
-                self.wall_anchor = Some((start, Timestamp::now()));
+                self.next_target = Some(next_target);
             }
         }
 
@@ -648,21 +701,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             }
 
             if replace {
-                for rendition in &mut self.renditions {
-                    let playlist = &mut rendition.playlist;
-                    let sequence = playlist.discontinuity_sequence
-                        + playlist
-                            .segments
-                            .iter()
-                            .filter(|segment| segment.discontinuity)
-                            .count() as u64;
-                    playlist.reset_history(sequence);
-                    rendition.resumed_last_sequence = None;
-                }
-                if let Some((_, playlist)) = &mut self.subtitles {
-                    let sequence = self.renditions[0].playlist.discontinuity_sequence;
-                    playlist.reset_history(sequence);
-                }
+                self.reset_history()?;
             }
         }
 
