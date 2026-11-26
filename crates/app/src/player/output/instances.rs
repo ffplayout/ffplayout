@@ -175,11 +175,12 @@ pub(super) fn configure_destinations(
                     .processing
                     .hls_subtitle()
                     .map_err(ServiceError::Conflict)?;
-                let variants = if subtitle.is_some() || variants.len() > 1 {
-                    variants
-                } else {
-                    Vec::new()
-                };
+                let variants =
+                    if subtitle.is_some() || variants.len() > 1 || output.hls_shared_audio() {
+                        variants
+                    } else {
+                        Vec::new()
+                    };
 
                 ff_engine::OutputTarget::Hls {
                     playlist: hls_playlist_path(&scoped)?.to_string_lossy().into_owned(),
@@ -258,6 +259,7 @@ mod tests {
         config.output.id = 1;
         config.output.enabled = true;
         config.output.mode = OutputMode::HLS;
+        config.output.muxer_options.clear();
         let mut program = OutputConfig::new(160, 90, 25, 48_000);
         let mut attachments = Vec::new();
 

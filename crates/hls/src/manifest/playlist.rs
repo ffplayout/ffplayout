@@ -282,7 +282,7 @@ impl Playlist {
         Ok(())
     }
 
-    pub fn append(&mut self, segment: Segment, limit: usize) -> Result<()> {
+    pub fn append(&mut self, segment: Segment) -> Result<()> {
         self.validate_duration(segment.duration)?;
         if let Some(uri) = &segment.initialization
             && self
@@ -303,36 +303,39 @@ impl Playlist {
         }
         self.segments.push_back(segment);
 
-        let mut window_duration: f64 = self.segments.iter().map(|segment| segment.duration).sum();
-        let minimum_window = self.target_duration as f64 * 3.0;
-
-        // A count limit must not shrink a live window below three target durations.
-        // Keep extra entries until removing the oldest still leaves enough media.
-        while self.segments.len() > limit {
-            let oldest = self
-                .segments
-                .front()
-                .expect("playlist exceeds nonzero limit");
-
-            if window_duration - oldest.duration + 0.000_001 < minimum_window {
-                break;
-            }
-
-            window_duration -= oldest.duration;
-
-            let old = self
-                .segments
-                .pop_front()
-                .expect("playlist exceeds nonzero limit");
-
-            self.discontinuity_sequence += u64::from(old.discontinuity);
-            self.retired.push_back(self.parent().join(old.uri));
-        }
-
         Ok(())
     }
 
-    pub fn publish(&mut self) -> Result<()> {
+    pub fn trim_start(&self, limit: usize) -> Option<u64> {
+        let mut window_duration: f64 = self.segments.iter().map(|segment| segment.duration).sum();
+        let minimum_window = self.target_duration as f64 * 3.0;
+        let mut remaining = self.segments.iter();
+
+        // A count limit must not shrink a live window below three target durations.
+        while let Some(oldest) = remaining.next() {
+            if remaining.len() < limit {
+                return Some(oldest.sequence);
+            }
+            if window_duration - oldest.duration + 0.000_001 < minimum_window {
+                return Some(oldest.sequence);
+            }
+            window_duration -= oldest.duration;
+        }
+
+        None
+    }
+
+    pub fn trim_before(&mut self, first: u64) {
+        while let Some(old) = self
+            .segments
+            .pop_front_if(|segment| segment.sequence < first)
+        {
+            self.discontinuity_sequence += u64::from(old.discontinuity);
+            self.retired.push_back(self.parent().join(old.uri));
+        }
+    }
+
+    pub fn publish(&mut self, shared_audio: bool) -> Result<()> {
         let sequence = self.segments.front().map_or(0, |segment| segment.sequence);
         let version = if self
             .segments
@@ -350,6 +353,10 @@ impl Playlist {
             "#EXTM3U\n# ffplayout-packager: native\n#EXT-X-VERSION:{version}\n#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:{sequence}\n#EXT-X-DISCONTINUITY-SEQUENCE:{}\n",
             self.target_duration, self.discontinuity_sequence
         )?;
+
+        if shared_audio {
+            writeln!(text, "{}", crate::SHARED_AUDIO_MARKER)?;
+        }
 
         let mut initialization = None;
         for segment in &self.segments {

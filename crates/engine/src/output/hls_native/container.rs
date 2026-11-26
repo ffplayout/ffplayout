@@ -16,6 +16,7 @@ pub(super) struct ContainerWriter {
     tracks: Vec<[Track; 2]>,
     fragments: Option<Vec<fmp4::Initialization>>,
     offset_us: Option<i64>,
+    shared_audio: bool,
     replacement: Option<HlsReplacement>,
 }
 
@@ -23,10 +24,11 @@ impl ContainerWriter {
     pub fn new(
         tracks: Vec<[Track; 2]>,
         fragmented: bool,
+        shared_audio: bool,
         replacement: Option<HlsReplacement>,
     ) -> Self {
         let fragments = fragmented.then(|| {
-            (0..tracks.len())
+            (0..tracks.len() + usize::from(shared_audio))
                 .map(|_| fmp4::Initialization::default())
                 .collect()
         });
@@ -34,6 +36,7 @@ impl ContainerWriter {
             tracks,
             fragments,
             offset_us: None,
+            shared_audio,
             replacement,
         }
     }
@@ -123,7 +126,14 @@ impl SegmentWriter<Packet> for ContainerWriter {
         } else {
             0
         };
-        let tracks = &self.tracks[rendition];
+        let audio_only = self.shared_audio && rendition == self.tracks.len();
+        let tracks = if audio_only {
+            &self.tracks[0][1..]
+        } else if self.shared_audio {
+            &self.tracks[rendition][..1]
+        } else {
+            &self.tracks[rendition][..]
+        };
         ensure!(
             !path.exists(),
             "refusing to overwrite HLS segment {}",
@@ -183,11 +193,19 @@ impl SegmentWriter<Packet> for ContainerWriter {
             );
             drop(unused);
 
-            for packet in packets
-                .iter()
-                .filter(|packet| packet.stream / 2 == rendition)
-            {
-                let index = packet.stream % 2;
+            for packet in packets.iter().filter(|packet| {
+                if audio_only {
+                    packet.stream == 1
+                } else {
+                    packet.stream / 2 == rendition
+                        && (!self.shared_audio || packet.stream.is_multiple_of(2))
+                }
+            }) {
+                let index = if self.shared_audio {
+                    0
+                } else {
+                    packet.stream % 2
+                };
                 let mut packet = reference_packet(&packet.payload)?;
                 let time_base = output
                     .stream(index)
@@ -216,7 +234,12 @@ impl SegmentWriter<Packet> for ContainerWriter {
 
             drop(output);
             if let Some(initializations) = &mut self.fragments {
-                initializations[rendition].publish(&temp, path, &tracks[1].parameters)?;
+                let audio = if audio_only {
+                    Some(&tracks[0].parameters)
+                } else {
+                    tracks.get(1).map(|track| &track.parameters)
+                };
+                initializations[rendition].publish(&temp, path, !audio_only, audio)?;
             } else {
                 fs::rename(&temp, path)
                     .with_context(|| format!("publishing {}", path.display()))?;

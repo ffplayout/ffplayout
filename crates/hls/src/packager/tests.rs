@@ -46,6 +46,7 @@ impl Fixture {
             list_size,
             delete_threshold: 1,
             program_date_time: false,
+            shared_audio: false,
         }
     }
 }
@@ -1013,6 +1014,122 @@ fn missing_keyframes_fail_before_publishing_an_overlong_segment() {
     assert!(!fixture.0.join("v00.vtt").exists());
     assert!(!fixture.0.join("v0.m3u8").exists());
     assert!(!fixture.0.join("master.m3u8").exists());
+}
+
+struct SharedWriter;
+
+impl SegmentWriter<()> for SharedWriter {
+    fn write_segment(
+        &mut self,
+        path: &Path,
+        packets: &[MediaPacket<()>],
+        rendition: usize,
+    ) -> Result<()> {
+        assert!(packets.iter().any(|packet| packet.stream == rendition));
+        fs::write(path, b"media")?;
+
+        Ok(())
+    }
+}
+
+#[test]
+fn shared_audio_skips_a_cut_before_the_first_aac_packet_and_rejoins_the_grid() {
+    let fixture = Fixture::new();
+    let mut config = fixture.config(1, 3);
+    config.shared_audio = true;
+    let mut packager = Packager::new(config, SharedWriter).unwrap();
+    let video_path = fixture.0.join("v0.m3u8");
+
+    for pts in (980_000..=3_000_000).step_by(20_000) {
+        let mut video = packet(0, pts, pts == 980_000 || pts % 1_000_000 == 0);
+        video.duration_us = 20_000;
+
+        packager.write(video).unwrap();
+    }
+
+    let mut first_audio = packet(1, 1_002_667, false);
+    first_audio.duration_us = 21_333;
+    packager.write(first_audio).unwrap();
+    assert!(!video_path.exists());
+
+    for frame in 1..=94 {
+        let pts = 1_002_667 + frame * 64_000 / 3;
+        let mut audio = packet(1, pts, false);
+        audio.duration_us = 1_002_667 + (frame + 1) * 64_000 / 3 - pts;
+
+        packager.write(audio).unwrap();
+    }
+
+    let video = fs::read_to_string(video_path).unwrap();
+    let audio =
+        fs::read_to_string(fixture.0.join(format!("{}.m3u8", crate::SHARED_AUDIO_NAME))).unwrap();
+
+    assert!(video.contains("#EXTINF:1.020000,\n"));
+    assert!(video.contains("#EXTINF:1.000000,\n"));
+    assert_eq!(video.matches("#EXTINF:").count(), 2);
+    assert_eq!(audio.matches("#EXTINF:").count(), 2);
+}
+
+#[test]
+fn shared_audio_and_video_trim_at_the_same_sequence_with_unequal_durations() {
+    let fixture = Fixture::new();
+    let open = || {
+        let mut config = fixture.config(1, 3);
+        config.shared_audio = true;
+
+        Packager::new(config, SharedWriter).unwrap()
+    };
+    let mut packager = open();
+
+    for second in 0..4 {
+        let mut video = packet(0, second * 1_000_000, true);
+        video.duration_us = if second == 3 { 999_000 } else { 1_000_000 };
+        packager.write(video).unwrap();
+    }
+    for frame in 0..188 {
+        let pts = frame * 64_000 / 3;
+        let mut audio = packet(1, pts, true);
+        audio.duration_us = (frame + 1) * 64_000 / 3 - pts;
+        packager.write(audio).unwrap();
+    }
+    packager.finish().unwrap();
+    drop(packager);
+
+    let audio_path = fixture.0.join(format!("{}.m3u8", crate::SHARED_AUDIO_NAME));
+    let video_path = fixture.0.join("v0.m3u8");
+    let captions_path = fixture.0.join("v0_vtt.m3u8");
+    let audio = fs::read_to_string(&audio_path).unwrap();
+    let video = fs::read_to_string(&video_path).unwrap();
+    let captions = fs::read_to_string(&captions_path).unwrap();
+    let last_three = |manifest: &str| -> f64 {
+        manifest
+            .lines()
+            .filter_map(|line| line.strip_prefix("#EXTINF:"))
+            .map(|value| value.trim_end_matches(',').parse::<f64>().unwrap())
+            .skip(1)
+            .sum()
+    };
+
+    assert!((last_three(&video) - 2.999).abs() < 0.000_001);
+    assert!((last_three(&audio) - 3.008).abs() < 0.000_001);
+    for manifest in [&audio, &video, &captions] {
+        assert!(manifest.contains("#EXT-X-MEDIA-SEQUENCE:0\n"));
+        assert_eq!(manifest.matches("#EXTINF:").count(), 4);
+    }
+
+    // Simulate a restart with only the video and subtitle histories available.
+    fs::remove_file(&audio_path).unwrap();
+    let mut resumed = open();
+    assert_eq!(fs::read_to_string(&video_path).unwrap(), video);
+    feed(&mut resumed, 1, 0, 25).unwrap();
+    resumed.finish().unwrap();
+
+    for path in [audio_path, video_path, captions_path] {
+        let manifest = fs::read_to_string(path).unwrap();
+        assert!(manifest.contains("#EXT-X-MEDIA-SEQUENCE:4\n"));
+        assert_eq!(manifest.matches("#EXTINF:").count(), 1);
+    }
+    assert!(fixture.0.join("v0_0.ts").is_file());
 }
 
 #[test]

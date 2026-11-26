@@ -1,5 +1,5 @@
-/** Apply defaults only when explicitly switching to the native packager. */
-export function selectHlsPackager(options: Record<string, string>, packager: string): Record<string, string> {
+/** Apply native defaults on selection and clear the packager when leaving HLS. */
+export function selectHlsPackager(options: Record<string, string>, packager?: string): Record<string, string> {
     const updated = { ...options }
     const previous = options.ffplayout_packager ?? 'ffmpeg'
 
@@ -9,8 +9,12 @@ export function selectHlsPackager(options: Record<string, string>, packager: str
             updated.hls_flags = 'program_date_time'
         }
     } else {
-        delete updated.ffplayout_packager
-        if (previous === 'native') delete updated.hls_segment_type
+        if (packager === 'ffmpeg') updated.ffplayout_packager = packager
+        else delete updated.ffplayout_packager
+        if (previous === 'native') {
+            delete updated.hls_segment_type
+            delete updated.hls_shared_audio
+        }
     }
 
     return updated

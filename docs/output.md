@@ -250,7 +250,19 @@ to `live/` below the configured channel public directory. The built-in preview
 URL is `/public/{channel-id}/live/{playlist}`; for example,
 `/public/1/live/master.m3u8`.
 
-The base stream is configured directly in the output settings. Additional HLS variants can be configured as adaptive renditions; they extend the base stream instead of replacing it. A master playlist is generated only when WebVTT subtitles are enabled or when additional variants are configured.
+The base stream is configured directly in the output settings. Additional HLS
+variants extend the base stream as adaptive renditions. A master playlist is
+generated when additional variants, WebVTT subtitles, or shared audio are enabled.
+
+By default, each video rendition contains muxed audio. Renditions with matching
+audio settings reuse one encoder and mux its packets into each rendition.
+
+To publish one AAC playlist shared by all video renditions, select **Native**
+and enable **Shared audio track** in the HLS settings. Use the same audio
+bitrate in all variants. This works with MPEG-TS (H.264) and fMP4. For API
+configuration, the switch is stored as `hls_shared_audio=1` in the muxer
+options. Changing the switch starts a fresh live window. Use the master
+playlist for playback with shared audio.
 
 **It is recommended to serve the HLS stream with nginx or another web server,
 and not with ffplayout (which is more meant for previewing).**
@@ -259,7 +271,7 @@ The integrated MoQ output provides a public player at `/moq/player?channel=1`
 when public access is explicitly enabled for that output (off by default).
 See [Experimental MoQ preview](moq.md) for configuration and transport.
 
-### Experimental native packager
+### Native packager
 
 For live subtitles with hls.js or Video.js 10 using hls.js, use the native
 packager with `hls_flags=program_date_time` to write matching
@@ -268,28 +280,35 @@ FFmpeg currently omits these timestamps from the subtitle playlist, which can
 cause subtitles to disappear during continued playback. See
 [live subtitle compatibility](closed_captions.md#live-subtitle-compatibility).
 
-Selecting the native packager in the web interface adds
-`hls_flags=program_date_time` by default unless `hls_flags` is already configured.
-Existing native configurations remain unchanged. Remove this muxer option to
-disable the timestamps; API clients must set it explicitly.
+New HLS outputs store `ffplayout_packager=native` by default. Existing
+outputs without an explicit selection continue to use FFmpeg. Select
+**Native** or **FFmpeg** in the HLS settings, or set `ffplayout_packager`
+to `native` or `ffmpeg` through the API.
 
-HLS settings offer **FFmpeg** (default) and **Native (experimental)**. The native
-backend supports local MPEG-TS with H.264/AAC, adaptive variants and WebVTT with
-`X-TIMESTAMP-MAP`. Selecting a different backend recreates only that output.
-The selection is stored with existing output options and survives restart.
+The default native settings include `hls_flags=program_date_time`. The web
+interface also adds this flag when switching to Native unless flags are
+already configured. Remove the option to disable the timestamps.
+
+The native backend supports local MPEG-TS with H.264/AAC and fMP4 with H.264, HEVC or AV1
+with AAC. Both containers support adaptive variants and WebVTT with
+`X-TIMESTAMP-MAP`. The native backend defaults to MPEG-TS for H.264 and fMP4
+for HEVC and AV1. Use `hls_segment_type=fmp4` to select fMP4 for H.264.
+Selecting a different backend recreates only that output. The selection is
+stored with existing output options and survives restart.
 
 The engine supports A/B comparisons in separate directories using the same
 encoding source; integration tests cover this. Application configuration still
 allows one enabled HLS output per channel. Use the selector for sequential
 comparisons in the web interface. Never run two writers against the same playlists.
 
-The initial native backend supports segment durations of 1–60 seconds and
+The native backend supports segment durations of 1–60 seconds and
 playlist sizes of 1–10000. Unsupported codec/container options are rejected.
-It remains experimental pending player and long-running qualification. See
-[architecture and limitations](development/hls-packager.md).
+See [architecture and limitations](development/hls-packager.md).
 
-Switching between packagers clears this output’s HLS playlists and segments and
-starts fresh. Restarting with the same packager retains normal resume behavior.
+Switching packagers starts a fresh window. The old playlists remain available
+until the replacement has media for all renditions, and their referenced files
+remain available for the retention period. Restarting with the same packager
+can resume a compatible window.
 
 ## Multiple output instances
 

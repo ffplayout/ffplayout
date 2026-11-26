@@ -6,6 +6,7 @@ import { useConfig } from '@/stores/config'
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
 import { authFetch } from '@/composables/authFetch'
+import { selectHlsPackager } from '@/composables/outputHls'
 import { useOutputLabels } from '@/composables/useOutputLabels'
 import OutputEditor from './OutputEditor.vue'
 import GenericModal from '@/components/utils/GenericModal.vue'
@@ -53,7 +54,7 @@ function addOutput() {
         public_moq: false,
         mode: newMode.value,
         protocol_options: {},
-        muxer_options: {},
+        muxer_options: newMode.value === 'hls' ? selectHlsPackager({}, 'native') : {},
         metadata_options: {},
         audio_options: {},
         hls_variants: [],

@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, ensure};
 use ffmpeg::{Packet, codec, format, frame, util::rational::Rational};
 use ffmpeg_next as ffmpeg;
 
@@ -258,6 +258,26 @@ impl EncodedOutput {
         } else {
             None
         };
+        let shared_audio = native_hls
+            && cfg
+                .muxer_options
+                .get("hls_shared_audio")
+                .is_some_and(|value| value == "1");
+        if shared_audio {
+            ensure!(
+                !hls_variants.is_empty()
+                    && hls_variants
+                        .iter()
+                        .all(|variant| variant.name != ff_hls::SHARED_AUDIO_NAME),
+                "shared HLS audio requires named video variants with distinct playlist names"
+            );
+            ensure!(
+                hls_variants
+                    .windows(2)
+                    .all(|pair| pair[0].audio_bitrate == pair[1].audio_bitrate),
+                "shared HLS audio requires the same audio bitrate for all variants"
+            );
+        }
         let vtt_subtitles = hls_subtitle.is_some();
         hls::validate_variants(hls_variants)?;
 
@@ -310,8 +330,14 @@ impl EncodedOutput {
         }
 
         let hls_session = if matches!(output_format, EncodedFormat::Hls { .. }) {
-            let resume_playlists =
+            let mut resume_playlists =
                 hls_resume_playlist_paths(path, &hls_playlist_path, hls_variants)?;
+            if shared_audio {
+                resume_playlists.push(hls::resolved_variant_playlist_path(
+                    path,
+                    ff_hls::SHARED_AUDIO_NAME,
+                )?);
+            }
             let master_playlist = uses_var_stream_map.then(|| {
                 hls::master_playlist_path(path)
                     .to_string_lossy()
@@ -331,7 +357,7 @@ impl EncodedOutput {
         let mut staged_hls = None;
         let mut hls_start_number = None;
         if let Some(session) = &hls_session {
-            if session.requires_replacement(native_format)? {
+            if session.requires_replacement(native_format, shared_audio)? {
                 let previous = session.replacement(vtt_subtitles)?;
                 if native_hls {
                     replacement = Some(previous);

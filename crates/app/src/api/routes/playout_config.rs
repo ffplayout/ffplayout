@@ -567,8 +567,10 @@ pub async fn update_playout_config(
     {
         std::mem::swap(&mut data.output, &mut data.outputs[index]);
     }
-    if let Some(program) = &data.program {
-        for output in std::iter::once(&mut data.output).chain(data.outputs.iter_mut()) {
+    for output in std::iter::once(&mut data.output).chain(data.outputs.iter_mut()) {
+        output.apply_creation_defaults();
+
+        if let Some(program) = &data.program {
             output.fps = program.fps;
             if output.inherit_resolution {
                 output.width = program.width;

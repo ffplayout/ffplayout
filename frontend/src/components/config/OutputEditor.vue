@@ -62,9 +62,18 @@ const hlsSegmentType = computed({
         else removeMuxerOption('hls_segment_type')
     },
 })
+const hlsSharedAudio = computed({
+    get: () => editedOutput.value.muxer_options.hls_shared_audio === '1',
+    set(enabled: boolean) {
+        if (enabled) setMuxerOption('hls_shared_audio', '1')
+        else removeMuxerOption('hls_shared_audio')
+    },
+})
 const visibleMuxerOptions = computed(() =>
     Object.entries(editedOutput.value.muxer_options).filter(
-        ([key]) => key !== 'ffplayout_packager' && !(hlsPackager.value === 'native' && key === 'hls_segment_type'),
+        ([key]) =>
+            key !== 'ffplayout_packager' &&
+            !(hlsPackager.value === 'native' && (key === 'hls_segment_type' || key === 'hls_shared_audio')),
     ),
 )
 
@@ -310,7 +319,7 @@ function eventValue(event: Event): string {
 }
 
 watch(output, (mode) => {
-    if (mode !== 'hls') hlsPackager.value = 'ffmpeg'
+    if (mode !== 'hls') editedOutput.value.muxer_options = selectHlsPackager(editedOutput.value.muxer_options)
 })
 
 watch(
@@ -797,6 +806,13 @@ function updateHlsVariant(index: number, field: keyof HlsVariantRow, value: stri
                     <option value="mpegts">MPEG-TS (H.264)</option>
                     <option value="fmp4">fMP4 (H.264, HEVC, AV1)</option>
                 </select>
+            </label>
+            <label v-if="hlsPackager === 'native'" class="fieldset">
+                <span class="flex items-center gap-2">
+                    <input v-model="hlsSharedAudio" type="checkbox" class="toggle toggle-primary toggle-sm" />
+                    <span>{{ t('config.hlsSharedAudio') }}</span>
+                </span>
+                <span class="fieldset-label">{{ t('config.hlsSharedAudioHelp') }}</span>
             </label>
             <div class="grid gap-3 sm:grid-cols-3">
                 <label class="fieldset">

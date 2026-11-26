@@ -5,14 +5,14 @@ use std::{
 };
 
 use ffmpeg_next::{
-    ChannelLayout,
+    ChannelLayout, Rescale,
     format::{Sample, pixel::Pixel, sample::Type},
 };
 use jiff::{SignedDuration, Timestamp};
 
 use super::*;
 
-struct Fixture(PathBuf);
+struct Fixture(PathBuf, bool);
 
 impl Fixture {
     fn new() -> Self {
@@ -36,7 +36,7 @@ impl Fixture {
         }
         fs::write(directory.join("source.vtt"), captions).unwrap();
 
-        Self(directory)
+        Self(directory, false)
     }
 
     fn open(&self) -> EncodedOutput {
@@ -92,6 +92,12 @@ impl Fixture {
             config
                 .muxer_options
                 .insert("hls_flags".into(), "program_date_time".into());
+        }
+
+        if self.1 {
+            config
+                .muxer_options
+                .insert("hls_shared_audio".into(), "1".into());
         }
 
         let mut output = EncodedOutput::open(
@@ -400,7 +406,7 @@ fn fresh_hls_resume_preserves_published_segments_and_unrelated_files() {
         hls::HlsSession::acquire(&[playlist.to_string_lossy().into_owned()], None, false).unwrap();
 
     // FFmpeg append_list derives the next segment from this existing sequence.
-    assert!(!session.requires_replacement(None).unwrap());
+    assert!(!session.requires_replacement(None, false).unwrap());
     assert_eq!(session.resume_start_number().unwrap(), Some(7));
     assert_eq!(fs::read_to_string(playlist).unwrap(), contents);
     assert_eq!(
@@ -985,6 +991,19 @@ fn native_hls_vtt_mapping_matches_actual_pes_presentation_time() {
     }
 }
 
+fn media_range(playlist: &[u8]) -> std::ops::Range<u64> {
+    let playlist = std::str::from_utf8(playlist).unwrap();
+    let sequence: u64 = playlist
+        .lines()
+        .find_map(|line| line.strip_prefix("#EXT-X-MEDIA-SEQUENCE:"))
+        .unwrap()
+        .parse()
+        .unwrap();
+    let count = playlist.matches("#EXTINF:").count() as u64;
+
+    sequence..sequence + count
+}
+
 #[test]
 fn native_and_ffmpeg_switches_keep_published_media_until_replacement_is_ready() {
     let fixture = Fixture::new();
@@ -996,18 +1015,6 @@ fn native_and_ffmpeg_switches_keep_published_media_until_replacement_is_ready() 
         "high_vtt.m3u8",
     ];
     let read = || playlists.map(|name| fs::read(fixture.0.join(name)).unwrap());
-    let media_range = |playlist: &[u8]| {
-        let playlist = std::str::from_utf8(playlist).unwrap();
-        let sequence: u64 = playlist
-            .lines()
-            .find_map(|line| line.strip_prefix("#EXT-X-MEDIA-SEQUENCE:"))
-            .unwrap()
-            .parse()
-            .unwrap();
-        let count = playlist.matches("#EXTINF:").count() as u64;
-
-        sequence..sequence + count
-    };
     let mut output = fixture.try_open_packager("master.m3u8", false).unwrap();
     write_frames(&mut output, 0..100, &mut 0);
     output.finish().unwrap();
@@ -1220,6 +1227,246 @@ fn native_hls_preserves_all_b_frames_including_the_short_final_segment() {
         timestamps.into_iter().collect::<Vec<_>>(),
         (0..100).collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn native_fmp4_shared_audio_has_one_playlist_on_the_video_clock() {
+    check_native_shared_audio("fmp4");
+}
+
+#[test]
+fn native_mpegts_shared_audio_has_one_playlist_on_the_video_clock() {
+    check_native_shared_audio("mpegts");
+}
+
+#[test]
+fn native_mpegts_switches_from_shared_audio_after_losing_the_master_playlist() {
+    let mut fixture = Fixture::new();
+    fixture.1 = true;
+    let open = |fixture: &Fixture| {
+        fixture
+            .try_open_container("master.m3u8", true, [96_000; 3], Some("mpegts"), false)
+            .unwrap()
+    };
+    let mut output = open(&fixture);
+    let master_path = fixture.0.join("master.m3u8");
+    let video_path = fixture.0.join("high.m3u8");
+    let audio_path = fixture
+        .0
+        .join(format!("{}.m3u8", ff_hls::SHARED_AUDIO_NAME));
+
+    write_frames(&mut output, 0..100, &mut 0);
+    output.finish().unwrap();
+
+    let previous = fs::read_to_string(&video_path).unwrap();
+    let video_segment = previous.lines().last().unwrap();
+    let audio = fs::read_to_string(&audio_path).unwrap();
+    let audio_segment = audio.lines().last().unwrap();
+
+    assert_eq!(open_ts(&fixture.0.join(video_segment)).nb_streams(), 1);
+    fs::remove_file(&master_path).unwrap();
+
+    fixture.1 = false;
+    let mut output = open(&fixture);
+
+    assert!(audio_path.is_file());
+    write_frames(&mut output, 0..25, &mut 0);
+    output.finish().unwrap();
+
+    let current = fs::read_to_string(video_path).unwrap();
+    let master = fs::read_to_string(master_path).unwrap();
+
+    assert!(media_range(current.as_bytes()).start >= media_range(previous.as_bytes()).end);
+    assert!(!current.lines().any(|line| line == video_segment));
+    assert!(!master.contains("TYPE=AUDIO"));
+    assert!(!audio_path.exists());
+    assert!(fixture.0.join(video_segment).is_file());
+    assert!(fixture.0.join(audio_segment).is_file());
+    assert_eq!(
+        open_ts(&fixture.0.join(current.lines().last().unwrap())).nb_streams(),
+        2
+    );
+}
+
+fn check_native_shared_audio(container: &str) {
+    let mut fixture = Fixture::new();
+    fixture.1 = true;
+    let fragmented = container == "fmp4";
+    let open = |fixture: &Fixture| {
+        fixture
+            .try_open_container("master.m3u8", true, [96_000; 3], Some(container), false)
+            .unwrap()
+    };
+    let mut output = open(&fixture);
+
+    assert_eq!(output.audio_streams.len(), 1);
+    write_frames(&mut output, 0..100, &mut 0);
+    output.finish().unwrap();
+
+    let master_path = fixture.0.join("master.m3u8");
+    let audio_name = format!("{}.m3u8", ff_hls::SHARED_AUDIO_NAME);
+    let master = fs::read_to_string(&master_path).unwrap();
+
+    assert_eq!(master.matches("#EXT-X-MEDIA:TYPE=AUDIO,").count(), 1);
+    assert_eq!(master.matches("AUDIO=\"program-audio\"").count(), 3);
+    assert_eq!(master.matches(",mp4a.40.2\"").count(), 3);
+    assert!(master.contains(&format!("URI=\"{audio_name}\"")));
+    fixture.check_references();
+
+    let inspect = |playlist: &str, medium| {
+        let manifest = fs::read_to_string(fixture.0.join(playlist)).unwrap();
+        let mut init = None;
+        let mut timestamps = Vec::new();
+        let mut audio_packets = Vec::new();
+
+        for line in manifest.lines() {
+            if let Some(uri) = line
+                .strip_prefix("#EXT-X-MAP:URI=\"")
+                .and_then(|uri| uri.strip_suffix('"'))
+            {
+                init = Some(fs::read(fixture.0.join(uri)).unwrap());
+            } else if !line.is_empty() && !line.starts_with('#') {
+                let path = fixture.0.join(line);
+                let probe = if fragmented {
+                    let mut bytes = init.clone().unwrap();
+                    bytes.extend(fs::read(path).unwrap());
+                    let probe = fixture.0.join("probe.mp4");
+                    fs::write(&probe, bytes).unwrap();
+                    probe
+                } else {
+                    assert!(init.is_none());
+                    path
+                };
+                let mut input = format::input(&probe).unwrap();
+                assert_eq!(input.nb_streams(), 1);
+                let stream = input.stream(0).unwrap();
+                assert_eq!(stream.parameters().medium(), medium);
+                if !fragmented {
+                    let pid = u16::try_from(stream.id()).unwrap();
+                    let bytes = fs::read(probe).unwrap();
+                    assert!(
+                        bytes.as_chunks::<188>().0.iter().any(|packet| {
+                            let packet_pid = u16::from_be_bytes([packet[1] & 0x1f, packet[2]]);
+                            packet[0] == 0x47
+                                && packet_pid == pid
+                                && packet[3] & 0x20 != 0
+                                && packet[4] >= 7
+                                && packet[5] & 0x10 != 0
+                        }),
+                        "missing PCR on the only media PID in {line}"
+                    );
+                }
+                let mut packets = input.packets().map(|(stream, packet)| {
+                    packet
+                        .pts()
+                        .unwrap()
+                        .rescale(stream.time_base(), ffmpeg::rescale::TIME_BASE)
+                });
+                let first = packets.next().unwrap();
+                timestamps.push(first);
+                if medium == ffmpeg::media::Type::Audio {
+                    audio_packets.push(first);
+                    audio_packets.extend(packets);
+                }
+            }
+        }
+        assert!(
+            audio_packets
+                .windows(2)
+                .all(|pair| (21_333..=21_334).contains(&(pair[1] - pair[0])))
+        );
+        timestamps
+    };
+    let audio = inspect(&audio_name, ffmpeg::media::Type::Audio);
+
+    assert!(audio.len() >= 3);
+    for name in ["high.m3u8", "mid.m3u8", "low.m3u8"] {
+        let video = inspect(name, ffmpeg::media::Type::Video);
+        assert_eq!(video.len(), audio.len());
+        assert!(
+            audio
+                .iter()
+                .zip(video)
+                .all(|(&a, v)| (a - v).abs() <= 21_334)
+        );
+    }
+
+    // Open a finite copy so probing the master never waits for a live reload.
+    let mut finite_master = master;
+    for name in [
+        &*audio_name,
+        "high.m3u8",
+        "mid.m3u8",
+        "low.m3u8",
+        "high_vtt.m3u8",
+    ] {
+        let finite_name = format!("finite-{name}");
+        let manifest = fs::read_to_string(fixture.0.join(name)).unwrap();
+        fs::write(
+            fixture.0.join(&finite_name),
+            format!("{manifest}#EXT-X-ENDLIST\n"),
+        )
+        .unwrap();
+        finite_master = finite_master.replace(name, &finite_name);
+    }
+    let finite_path = fixture.0.join("finite-master.m3u8");
+    fs::write(&finite_path, finite_master).unwrap();
+    let mut input = format::input(&finite_path).unwrap();
+    assert_eq!(
+        input
+            .streams()
+            .filter(|stream| stream.parameters().medium() == ffmpeg::media::Type::Audio)
+            .count(),
+        1
+    );
+    assert_eq!(
+        input
+            .streams()
+            .filter(|stream| stream.parameters().medium() == ffmpeg::media::Type::Video)
+            .count(),
+        3
+    );
+    let mut received_audio = false;
+    let mut received_video = false;
+    for (stream, _) in input.packets() {
+        match stream.parameters().medium() {
+            ffmpeg::media::Type::Audio => received_audio = true,
+            ffmpeg::media::Type::Video => received_video = true,
+            _ => {}
+        }
+        if received_audio && received_video {
+            break;
+        }
+    }
+    assert!(received_audio && received_video);
+
+    let before = fs::read_to_string(fixture.0.join(&audio_name)).unwrap();
+    let last = before.lines().last().unwrap();
+    let mut output = open(&fixture);
+    write_frames(&mut output, 0..25, &mut 0);
+    output.finish().unwrap();
+    let resumed = fs::read_to_string(fixture.0.join(&audio_name)).unwrap();
+    assert!(resumed.lines().any(|line| line == last));
+    assert!(resumed.contains("#EXT-X-DISCONTINUITY\n"));
+    assert_eq!(
+        fs::read_to_string(&master_path)
+            .unwrap()
+            .matches(",mp4a.40.2\"")
+            .count(),
+        3
+    );
+
+    fixture.1 = false;
+    let mut output = open(&fixture);
+    write_frames(&mut output, 0..25, &mut 0);
+    output.finish().unwrap();
+    assert!(
+        !fs::read_to_string(&master_path)
+            .unwrap()
+            .contains("TYPE=AUDIO")
+    );
+    assert!(!fixture.0.join(&audio_name).exists());
+    assert!(fixture.0.join(last).is_file());
 }
 
 #[test]

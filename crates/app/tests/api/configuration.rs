@@ -688,6 +688,59 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
 
 #[tokio::test]
 #[serial]
+async fn new_hls_output_uses_native_options_before_validation() {
+    let fixture = security_fixture().await;
+    let pool = &fixture.state.pool;
+    let admin = access_token(&fixture.state, 2).await;
+    let mut config = PlayoutConfig::new(pool, 1, None).await.unwrap();
+    let mut new_output = config.output.clone();
+
+    config.output.enabled = false;
+    config.output.muxer_options.clear();
+    new_output.id = 0;
+    new_output.hls_playlist_name = "new_hls".into();
+    new_output.muxer_options = [("hls_segment_type".into(), "fmp4".into())].into();
+    config.outputs.push(new_output);
+
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/playout/config/1")
+                .header("authorization", format!("Bearer {admin}"))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&config).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+
+    let stored = PlayoutConfig::new(pool, 1, None).await.unwrap();
+    let previous = stored
+        .outputs
+        .iter()
+        .find(|output| output.id == config.output.id)
+        .unwrap();
+    let new_channel = PlayoutConfig::new(pool, 2, None).await.unwrap();
+
+    assert!(previous.muxer_options.is_empty());
+    assert_eq!(stored.output.hls_playlist_name, "new_hls");
+    assert_eq!(stored.output.muxer_options["ffplayout_packager"], "native");
+    assert_eq!(stored.output.muxer_options["hls_segment_type"], "fmp4");
+    assert_eq!(
+        new_channel.output.muxer_options["ffplayout_packager"],
+        "native"
+    );
+}
+
+#[tokio::test]
+#[serial]
 async fn unwritable_channel_and_recording_paths_are_rejected_before_database_changes() {
     let fixture = security_fixture().await;
     let admin = access_token(&fixture.state, 2).await;

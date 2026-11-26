@@ -1,4 +1,4 @@
-# Experimental native HLS packager
+# Native HLS packager
 
 ## Architecture decision
 
@@ -31,10 +31,11 @@ new encoders or copy uncompressed program frames.
 
 ## Selection and rollout
 
-FFmpeg remains the default backend. Each HLS output can select **Native
-(experimental)** in its HLS settings. The selection is stored in the existing
-output muxer options as `ffplayout_packager: native`, so no database migration
-is needed. This application-owned key is consumed before calling FFmpeg.
+New HLS outputs default to **Native**. HLS outputs with no saved backend
+selection use **FFmpeg**. Both backends are selectable in the HLS settings.
+The application stores the selection in the existing muxer options as
+`ffplayout_packager: native` or `ffplayout_packager: ffmpeg`, and consumes
+this key before calling FFmpeg.
 
 Changing the selection recreates that destination through normal output
 reconciliation, without restarting the channel. Unsupported options are rejected.
@@ -135,3 +136,10 @@ rendition audio bitrates create additional encoders. Encoded packets are referen
 into each rendition's existing audio stream, preserving multiplexed TS playlists,
 recording selection and outputs that reuse a rendition. Both packager backends and
 the direct/threaded encoding paths use this behavior.
+
+With native MPEG-TS or fMP4 and `hls_shared_audio=1`, the packager writes the first
+rendition's AAC packets to one audio-only playlist and refers to it from all
+video variants. Each segment set uses the common video keyframe cut. The audio
+playlist uses the actual AAC sample start and duration, and all fragments and
+WebVTT use the same presentation-clock offset. A layout change starts a new
+window under the same output ownership locks.

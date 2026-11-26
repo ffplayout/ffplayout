@@ -51,6 +51,8 @@ pub trait SegmentWriter<T> {
 
     /// Write, close, then atomically publish a new segment. Never overwrite an
     /// existing resource. All packets retain their common presentation clock.
+    /// With shared audio, the index after the video renditions writes stream 1
+    /// as audio-only. The video rendition indices write only their even stream.
     fn write_segment(
         &mut self,
         path: &Path,
@@ -87,6 +89,8 @@ pub struct Config {
     pub directory: PathBuf,
     pub renditions: Vec<RenditionConfig>,
     pub subtitle: Option<Subtitle>,
+    /// Publish audio from stream 1 once as an external rendition.
+    pub shared_audio: bool,
     pub master_playlist: Option<String>,
     pub segment_seconds: u32,
     pub list_size: u32,

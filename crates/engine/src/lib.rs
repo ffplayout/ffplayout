@@ -45,6 +45,7 @@ pub use audio_mixer::{
 };
 pub use control_live::{LiveIngestControl, LiveInputStatus};
 pub use control_playback::{LiveSession, NavigationBlocked, PlaybackControl, PlaylistNavigation};
+pub use ff_hls::SHARED_AUDIO_NAME as HLS_SHARED_AUDIO_NAME;
 pub use graphics::clip::{ClipGraphics, ClipGraphicsPreparation};
 pub use graphics::logo_control::LogoControl;
 pub use graphics::manual::{ManualChange, ManualGraphics};

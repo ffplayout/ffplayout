@@ -348,6 +348,7 @@ pub fn validate_muxer_options(
                     "hls_flags" => value.split('+').all(|flag| flag == "program_date_time"),
                     "hls_delete_threshold" => value.parse::<i32>().is_ok_and(|value| value >= 1),
                     "hls_segment_type" => matches!(value.as_str(), "mpegts" | "fmp4"),
+                    "hls_shared_audio" => matches!(value.as_str(), "0" | "1"),
                     _ => false,
                 };
 

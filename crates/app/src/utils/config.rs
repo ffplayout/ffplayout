@@ -25,6 +25,13 @@ use crate::{
 pub const DUMMY_LEN: f64 = 60.0;
 pub(crate) const ENGINE_AUDIO_SAMPLE_RATE: u32 = 48_000;
 
+pub(crate) fn new_hls_muxer_options() -> BTreeMap<String, String> {
+    BTreeMap::from([
+        ("ffplayout_packager".into(), "native".into()),
+        ("hls_flags".into(), "program_date_time".into()),
+    ])
+}
+
 #[derive(Debug, Clone, Default, Eq, PartialEq, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 #[serde(rename_all = "lowercase")]
@@ -1118,6 +1125,17 @@ impl Default for Output {
 }
 
 impl Output {
+    pub(crate) fn apply_creation_defaults(&mut self) {
+        if self.id == 0
+            && self.mode == OutputMode::HLS
+            && !self.muxer_options.contains_key("ffplayout_packager")
+        {
+            for (name, value) in new_hls_muxer_options() {
+                self.muxer_options.entry(name).or_insert(value);
+            }
+        }
+    }
+
     fn encoder_video_options(&self) -> BTreeMap<String, String> {
         let mut options = self.video_options.clone();
         if self.mode == OutputMode::Moq && self.video_codec == "libx264" {
@@ -1242,6 +1260,12 @@ impl Output {
 
     /// Returns all HLS renditions, with the configured base output first and
     /// additional variants appended.
+    pub(crate) fn hls_shared_audio(&self) -> bool {
+        self.muxer_options
+            .get("hls_shared_audio")
+            .is_some_and(|value| value == "1")
+    }
+
     pub fn hls_streams(&self) -> Result<Vec<ff_engine::HlsVariant>, String> {
         let base = ff_engine::HlsVariant {
             name: self.hls_playlist_name.trim().to_string(),
@@ -1492,8 +1516,26 @@ impl Output {
             self.muxer_options
                 .get("hls_segment_type")
                 .map(String::as_str),
-        )
-        .map(|_| ())
+        )?;
+        if self.hls_shared_audio() {
+            let variants = self.hls_streams()?;
+            if variants
+                .iter()
+                .any(|variant| variant.name == ff_engine::HLS_SHARED_AUDIO_NAME)
+            {
+                return Err("HLS variant name is reserved for shared audio".into());
+            }
+            if variants
+                .windows(2)
+                .any(|pair| pair[0].audio_bitrate != pair[1].audio_bitrate)
+            {
+                return Err(
+                    "shared HLS audio requires the same audio bitrate for all variants".into(),
+                );
+            }
+        }
+
+        Ok(())
     }
 
     fn video_maxrate(&self) -> u64 {
@@ -2553,6 +2595,35 @@ mod output_tests {
         output.audio_codec = "pcm_s16le".to_string();
         output.audio_bitrate = 0;
 
+        assert!(output.validate().is_ok());
+    }
+
+    #[test]
+    fn shared_hls_audio_requires_native_and_one_audio_bitrate() {
+        let mut output = output(OutputMode::HLS);
+        output.audio_bitrate = 96;
+        output
+            .muxer_options
+            .insert("hls_shared_audio".into(), "1".into());
+
+        assert!(output.validate().is_err());
+        output
+            .muxer_options
+            .insert("ffplayout_packager".into(), "native".into());
+        assert!(output.validate().is_ok());
+
+        output
+            .muxer_options
+            .insert("hls_segment_type".into(), "fmp4".into());
+        assert!(output.validate().is_ok());
+        output.hls_variants = vec!["small:320x180:600k:64k".into()];
+        assert!(
+            output
+                .validate()
+                .unwrap_err()
+                .contains("same audio bitrate")
+        );
+        output.hls_variants = vec!["small:320x180:600k:96k".into()];
         assert!(output.validate().is_ok());
     }
 

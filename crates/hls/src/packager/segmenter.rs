@@ -10,7 +10,10 @@ use std::{
 use anyhow::{Context, Result, ensure};
 use jiff::{RoundMode, SignedDuration, Timestamp, TimestampRound, Unit};
 
-use crate::manifest::{Playlist, Segment, atomic_write, load_codecs, safe_name};
+use crate::{
+    SHARED_AUDIO_NAME,
+    manifest::{Playlist, Segment, atomic_write, load_codecs, safe_name},
+};
 
 use super::{Config, Cue, MediaPacket, RenditionConfig, SegmentWriter, Subtitle};
 
@@ -36,6 +39,7 @@ pub struct Packager<T, W> {
     writer: W,
     renditions: Vec<Rendition>,
     subtitles: Option<(Subtitle, Playlist)>,
+    audio: Option<Playlist>,
     master: Option<PathBuf>,
     packets: Vec<MediaPacket<T>>,
     completed: Vec<MediaPacket<T>>,
@@ -103,6 +107,11 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         ensure!(
             (1..=i32::MAX as u32).contains(&config.delete_threshold),
             "native HLS delete threshold must be 1–2147483647"
+        );
+
+        ensure!(
+            !config.shared_audio || config.master_playlist.is_some(),
+            "shared HLS audio requires a master playlist"
         );
 
         let parent = &config.directory;
@@ -208,6 +217,31 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             )?;
         }
 
+        let mut audio = if config.shared_audio {
+            let name = format!("{SHARED_AUDIO_NAME}.m3u8");
+            ensure!(
+                !names.contains(SHARED_AUDIO_NAME)
+                    && config.master_playlist.as_deref() != Some(&name),
+                "HLS audio and video playlist names collide"
+            );
+            let path = parent.join(name);
+            let mut playlist = if replace {
+                Playlist::empty(path)
+            } else {
+                Playlist::load(path)?
+            };
+            playlist.configure(
+                config.segment_seconds,
+                config.delete_threshold,
+                &format!("{SHARED_AUDIO_NAME}_"),
+                extension,
+                replace,
+            )?;
+            Some(playlist)
+        } else {
+            None
+        };
+
         // Native variants share one file counter. Two manifests assigning
         // different media sequences to that same last set indicate corruption.
         let mut last_files = HashMap::new();
@@ -225,7 +259,8 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         let histories = renditions
             .iter()
             .map(|r| &r.playlist)
-            .chain(subtitles.iter().map(|(_, playlist)| playlist));
+            .chain(subtitles.iter().map(|(_, playlist)| playlist))
+            .chain(audio.iter());
         let mut latest = None;
         let (mut sequence, mut discontinuity_sequence) = replacement_sequence.unwrap_or_default();
         for playlist in histories {
@@ -240,27 +275,48 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             sequence = last.checked_add(1).context("HLS sequence overflow")?;
         }
         let discontinuity = has_history || sequence > 0;
+        let range = |playlist: &Playlist| {
+            playlist
+                .segments
+                .front()
+                .zip(playlist.segments.back())
+                .map(|(first, last)| (first.sequence, last.sequence))
+        };
+        let incomplete_audio_group = audio.as_ref().is_some_and(|audio| {
+            let audio_range = range(audio);
+            renditions
+                .iter()
+                .any(|rendition| range(&rendition.playlist) != audio_range)
+        });
         // A process may have published only part of the last rendition set.
         // Keep the advanced windows and let lagging tracks rejoin at the next
-        // unused sequence. Their on-disk playlists stay live until publication.
+        // unused sequence. With shared audio, an incomplete group starts fresh
+        // so retained video cannot refer to a missing part of the audio window.
         for rendition in &mut renditions {
             let playlist = &mut rendition.playlist;
-            if playlist
-                .segments
-                .back()
-                .is_none_or(|s| Some(s.sequence) != latest)
+            if incomplete_audio_group
+                || playlist
+                    .segments
+                    .back()
+                    .is_none_or(|s| Some(s.sequence) != latest)
             {
                 playlist.reset_history(discontinuity_sequence);
                 rendition.resumed_last_sequence = None;
             }
         }
-        if let Some((_, playlist)) = &mut subtitles
-            && playlist
-                .segments
-                .back()
-                .is_none_or(|s| Some(s.sequence) != latest)
+        for playlist in subtitles
+            .iter_mut()
+            .map(|(_, playlist)| playlist)
+            .chain(audio.iter_mut())
         {
-            playlist.reset_history(discontinuity_sequence);
+            if incomplete_audio_group
+                || playlist
+                    .segments
+                    .back()
+                    .is_none_or(|s| Some(s.sequence) != latest)
+            {
+                playlist.reset_history(discontinuity_sequence);
+            }
         }
 
         let mut file_number = if has_history {
@@ -274,6 +330,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         let prefixes: Vec<_> = renditions
             .iter()
             .map(|rendition| format!("{}_", rendition.name))
+            .chain(audio.iter().map(|_| format!("{SHARED_AUDIO_NAME}_")))
             .collect();
 
         for entry in fs::read_dir(parent)? {
@@ -327,6 +384,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             writer,
             renditions,
             subtitles,
+            audio,
             master: config.master_playlist.map(|name| parent.join(name)),
             packets: Vec::new(),
             completed: Vec::new(),
@@ -407,6 +465,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             .iter()
             .map(|rendition| &rendition.playlist)
             .chain(self.subtitles.iter().map(|(_, playlist)| playlist))
+            .chain(self.audio.iter())
     }
 
     fn reset_history(&mut self) -> Result<()> {
@@ -420,7 +479,12 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             rendition.playlist.reset_history(sequence);
             rendition.resumed_last_sequence = None;
         }
-        if let Some((_, playlist)) = &mut self.subtitles {
+        for playlist in self
+            .subtitles
+            .iter_mut()
+            .map(|(_, playlist)| playlist)
+            .chain(self.audio.iter_mut())
+        {
             playlist.reset_history(sequence);
         }
         self.discontinuity = true;
@@ -449,6 +513,10 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             "native HLS packet stream is out of range"
         );
         ensure!(packet.duration_us >= 0, "negative packet duration");
+
+        if self.audio.is_some() && stream > 1 && !stream.is_multiple_of(2) {
+            return Ok(());
+        }
 
         let rendition = &mut self.renditions[stream / 2];
 
@@ -488,11 +556,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             });
 
             if let Some((start, cuts)) = common {
-                let next_target = start
-                    .div_euclid(self.segment_us)
-                    .checked_add(1)
-                    .and_then(|slot| slot.checked_mul(self.segment_us))
-                    .context("HLS target timestamp overflow")?;
+                let next_target = self.target_after(start)?;
 
                 if self.program_date_time {
                     self.anchor_program_date_time(start, now())?;
@@ -523,11 +587,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             if (stream % 2 == 1 || packet_keyframe)
                 && let Some((end, cuts)) = self.next_boundary(start)
             {
-                let next_target = self
-                    .next_target
-                    .context("HLS segment target missing")?
-                    .checked_add(self.segment_us)
-                    .context("HLS target timestamp overflow")?;
+                let next_target = self.target_after(end)?;
 
                 self.publish(end, Some(&cuts))?;
                 self.start = Some(end);
@@ -542,6 +602,13 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         Ok(())
     }
 
+    fn target_after(&self, pts: i64) -> Result<i64> {
+        pts.div_euclid(self.segment_us)
+            .checked_add(1)
+            .and_then(|slot| slot.checked_mul(self.segment_us))
+            .context("HLS target timestamp overflow")
+    }
+
     fn next_boundary(&self, start: i64) -> Option<(i64, Vec<i64>)> {
         let target = self.next_target?;
 
@@ -552,10 +619,27 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                 continue;
             }
 
+            let audio_tracks = if self.audio.is_some() {
+                1
+            } else {
+                self.renditions.len()
+            };
             if !self
                 .renditions
                 .iter()
+                .take(audio_tracks)
                 .all(|rendition| rendition.latest_audio.is_some_and(|audio| audio >= pts))
+            {
+                continue;
+            }
+
+            // After joining near a grid boundary the first AAC frame can
+            // belong to the next segment. Wait for a cut with audio on both sides.
+            if self.audio.is_some()
+                && !self
+                    .packets
+                    .iter()
+                    .any(|packet| packet.stream == 1 && (start..pts).contains(&packet.pts_us))
             {
                 continue;
             }
@@ -588,25 +672,11 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         let duration = (end - start) as f64 / 1_000_000.0;
 
         // Reject an out-of-bound cut before writing any media or manifests.
-        for rendition in &self.renditions {
-            rendition.playlist.validate_duration(duration)?;
-        }
-
-        if let Some((_, playlist)) = &self.subtitles {
+        for playlist in self.playlists() {
             playlist.validate_duration(duration)?;
         }
 
-        let date = if self.program_date_time {
-            let (anchor, date) = self
-                .wall_anchor
-                .context("native HLS wall clock anchor missing")?;
-            let offset = SignedDuration::from_micros_i128(i128::from(start) - i128::from(anchor));
-            let date = date.checked_add(offset)?;
-
-            Some(date.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
-        } else {
-            None
-        };
+        let date = self.program_date(start)?;
 
         // Keep the completed segment in its existing storage. Move only
         // the packets beyond the cut into the buffer for the next segment.
@@ -629,6 +699,23 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         self.completed.sort_by_key(|packet| packet.dts_us);
         self.bytes = self.packets.iter().map(|packet| packet.bytes).sum();
 
+        let audio_timing = if let Some(playlist) = &self.audio {
+            let mut packets = self.completed.iter().filter(|packet| packet.stream == 1);
+            let first = packets
+                .next()
+                .context("native HLS segment has no shared audio")?;
+            let last = packets.last().unwrap_or(first);
+            let audio_end = last.pts_us.saturating_add(last.duration_us);
+            let audio_duration =
+                (i128::from(audio_end) - i128::from(first.pts_us)) as f64 / 1_000_000.0;
+
+            playlist.validate_duration(audio_duration)?;
+
+            Some((audio_duration, self.program_date(first.pts_us)?))
+        } else {
+            None
+        };
+
         // All media resources are complete before any playlist can expose them.
         let media_result = self
             .renditions
@@ -649,8 +736,20 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                 )
             });
 
-        self.completed.clear();
         media_result?;
+        if let Some(playlist) = &self.audio {
+            let uri = format!(
+                "{SHARED_AUDIO_NAME}_{}.{}",
+                self.file_number,
+                self.writer.extension()
+            );
+            self.writer.write_segment(
+                &playlist.parent().join(uri),
+                &self.completed,
+                self.renditions.len(),
+            )?;
+        }
+        self.completed.clear();
 
         if let Some((_, playlist)) = &self.subtitles {
             let uri = format!("{}{}.vtt", self.renditions[0].name, self.file_number);
@@ -688,14 +787,19 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         if !self.published {
             self.writer.before_first_publication()?;
             let mut replace = false;
-            for (index, rendition) in self.renditions.iter().enumerate() {
-                if let Some(uri) = rendition
-                    .playlist
+            for (index, playlist) in self
+                .renditions
+                .iter()
+                .map(|r| &r.playlist)
+                .chain(self.audio.iter())
+                .enumerate()
+            {
+                if let Some(uri) = playlist
                     .segments
                     .back()
                     .and_then(|segment| segment.initialization.as_ref())
                 {
-                    let previous = rendition.playlist.parent().join(uri);
+                    let previous = playlist.parent().join(uri);
                     replace |= !self.writer.initialization_matches(index, &previous)?;
                 }
             }
@@ -711,41 +815,77 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             {
                 rendition.codecs = codecs.to_owned();
             }
-            rendition.playlist.append(
-                Segment {
-                    sequence: self.sequence,
-                    uri: format!(
-                        "{}_{}.{}",
-                        rendition.name,
-                        self.file_number,
-                        self.writer.extension()
-                    ),
-                    initialization: self.writer.initialization(index).map(str::to_owned),
-                    duration,
-                    discontinuity: self.discontinuity,
-                    date: date.clone(),
-                },
-                self.list_size,
-            )?;
+            rendition.playlist.append(Segment {
+                sequence: self.sequence,
+                uri: format!(
+                    "{}_{}.{}",
+                    rendition.name,
+                    self.file_number,
+                    self.writer.extension()
+                ),
+                initialization: self.writer.initialization(index).map(str::to_owned),
+                duration,
+                discontinuity: self.discontinuity,
+                date: date.clone(),
+            })?;
+        }
+
+        if let Some(playlist) = &mut self.audio
+            && let Some((duration, audio_date)) = audio_timing
+        {
+            playlist.append(Segment {
+                sequence: self.sequence,
+                uri: format!(
+                    "{SHARED_AUDIO_NAME}_{}.{}",
+                    self.file_number,
+                    self.writer.extension()
+                ),
+                initialization: self
+                    .writer
+                    .initialization(self.renditions.len())
+                    .map(str::to_owned),
+                duration,
+                discontinuity: self.discontinuity,
+                date: audio_date,
+            })?;
         }
 
         if let Some((_, playlist)) = &mut self.subtitles {
-            playlist.append(
-                Segment {
-                    sequence: self.sequence,
-                    uri: format!("{}{}.vtt", self.renditions[0].name, self.file_number),
-                    initialization: None,
-                    duration,
-                    discontinuity: self.discontinuity,
-                    date,
-                },
-                self.list_size,
-            )?;
-            playlist.publish()?;
+            playlist.append(Segment {
+                sequence: self.sequence,
+                uri: format!("{}{}.vtt", self.renditions[0].name, self.file_number),
+                initialization: None,
+                duration,
+                discontinuity: self.discontinuity,
+                date,
+            })?;
         }
 
-        for rendition in &mut self.renditions {
-            rendition.playlist.publish()?;
+        // AAC frame boundaries can make the audio window slightly longer or
+        // shorter. Keep every track from the earliest required media sequence.
+        let list_size = self.list_size;
+        let shared_audio = self.audio.is_some();
+        let common_start = if shared_audio {
+            self.playlists()
+                .filter_map(|playlist| playlist.trim_start(list_size))
+                .min()
+        } else {
+            None
+        };
+        for playlist in self
+            .audio
+            .iter_mut()
+            .chain(self.subtitles.iter_mut().map(|(_, playlist)| playlist))
+            .chain(
+                self.renditions
+                    .iter_mut()
+                    .map(|rendition| &mut rendition.playlist),
+            )
+        {
+            if let Some(first) = common_start.or_else(|| playlist.trim_start(list_size)) {
+                playlist.trim_before(first);
+            }
+            playlist.publish(shared_audio)?;
         }
 
         self.publish_master()?;
@@ -754,7 +894,12 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         for rendition in &mut self.renditions {
             rendition.playlist.retire()?;
         }
-        if let Some((_, playlist)) = &mut self.subtitles {
+        for playlist in self
+            .subtitles
+            .iter_mut()
+            .map(|(_, playlist)| playlist)
+            .chain(self.audio.iter_mut())
+        {
             playlist.retire()?;
         }
         self.cues.retain(|cue| cue.end_ms > end / 1000);
@@ -770,6 +915,16 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         self.discontinuity = false;
 
         Ok(())
+    }
+
+    fn program_date(&self, pts: i64) -> Result<Option<String>> {
+        let Some((anchor, date)) = self.wall_anchor else {
+            return Ok(None);
+        };
+        let offset = SignedDuration::from_micros_i128(i128::from(pts) - i128::from(anchor));
+        let date = date.checked_add(offset)?;
+
+        Ok(Some(date.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()))
     }
 
     fn publish_master(&self) -> Result<()> {
@@ -799,6 +954,16 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             )?;
         }
 
+        let audio_codec = if self.audio.is_some() {
+            writeln!(
+                text,
+                "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"program-audio\",NAME=\"Program audio\",DEFAULT=YES,AUTOSELECT=YES,URI=\"{SHARED_AUDIO_NAME}.m3u8\""
+            )?;
+            self.writer.codecs(self.renditions.len())
+        } else {
+            None
+        };
+
         for rendition in &self.renditions {
             write!(
                 text,
@@ -816,11 +981,24 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                     .front()
                     .is_some_and(|segment| segment.sequence <= last)
             });
-            let compatible_history =
-                rendition.resumed_codecs.as_deref() == Some(rendition.codecs.as_str());
+            let codecs = match audio_codec {
+                Some(audio) => format!("{},{audio}", rendition.codecs).into(),
+                None => std::borrow::Cow::Borrowed(rendition.codecs.as_str()),
+            };
+            let compatible_history = rendition.resumed_codecs.as_deref() == Some(codecs.as_ref());
 
-            if !rendition.codecs.is_empty() && (!retained_history || compatible_history) {
-                write!(text, ",CODECS=\"{}\"", rendition.codecs)?;
+            // The MPEG-TS adapter supplies the combined video/AAC declaration.
+            // The fMP4 writer reports the codecs from each separate init file.
+            if !rendition.codecs.is_empty()
+                && (self.audio.is_none()
+                    || self.writer.extension() == "ts"
+                    || audio_codec.is_some())
+                && (!retained_history || compatible_history)
+            {
+                write!(text, ",CODECS=\"{codecs}\"")?;
+            }
+            if self.audio.is_some() {
+                text.push_str(",AUDIO=\"program-audio\"");
             }
 
             if self.subtitles.is_some() {
@@ -847,7 +1025,11 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                 .max()
                 .unwrap_or(start);
 
-            if end > start {
+            // At shutdown a final sub-AAC-frame video tail can have no new
+            // audio samples. Keep the last complete set in the live window.
+            let has_audio =
+                self.audio.is_none() || self.packets.iter().any(|packet| packet.stream == 1);
+            if end > start && has_audio {
                 self.publish(end, None)?;
             }
         }

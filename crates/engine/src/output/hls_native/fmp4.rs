@@ -39,7 +39,8 @@ impl Initialization {
         &mut self,
         source: &Path,
         fragment: &Path,
-        audio: &codec::Parameters,
+        has_video: bool,
+        audio: Option<&codec::Parameters>,
     ) -> Result<()> {
         let mut input = File::open(source)?;
         let end = input.metadata()?.len();
@@ -62,10 +63,18 @@ impl Initialization {
         input.read_exact(&mut initialization)?;
 
         if self.uri.is_none() {
-            let video =
-                video_codec(&initialization).context("invalid native fMP4 video configuration")?;
-            let audio =
-                codecs::aac_codec(audio).context("invalid native fMP4 AAC configuration")?;
+            let mut identifiers = Vec::new();
+            if has_video {
+                identifiers.push(
+                    video_codec(&initialization)
+                        .context("invalid native fMP4 video configuration")?,
+                );
+            }
+            if let Some(audio) = audio {
+                identifiers.push(
+                    codecs::aac_codec(audio).context("invalid native fMP4 AAC configuration")?,
+                );
+            }
             let init = fragment.with_extension("init.mp4");
             let uri = init
                 .file_name()
@@ -76,7 +85,7 @@ impl Initialization {
                 file.write_all(&initialization)?;
                 Ok(())
             })?;
-            self.codecs = Some(format!("{video},{audio}"));
+            self.codecs = Some(identifiers.join(","));
             self.uri = Some(uri.to_owned());
             self.bytes = initialization;
         } else {

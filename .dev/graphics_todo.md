@@ -51,6 +51,10 @@ browser-based rendering, GPU acceleration and additional color formats.
   channel. Authenticated commands check the observed revision. The Program Logo
   reloads in the background and keeps its last ready pixels during preparation.
   [Graphics control](../docs/graphics_control.md)
+- **Schedules.** Saved manual layers support one-off and weekly appointments in
+  the channel's time zone. Schedules apply during playlist and live playback.
+  Explicit manual playback takes priority for the same layer.
+  [Schedule behavior](../docs/graphics_control.md#graphics-schedules)
 - **Verification.** Tests cover worker cancellation, resource release,
   mixed-resolution composition, cached and streamed timing, and independent
   numerical references for prepared YUVA. Benchmarks cover 0, 3 and 8 layers
@@ -635,6 +639,9 @@ playout configuration updates.
 - [x] Require observed revisions for manual HTTP commands; reject intervening changes/preparation completions with conflicts.
 - [x] Define current worker cancellation/join/restart exclusion, clock-epoch reset and clip-occurrence disposal.
 - [x] Persist manual layer settings/names and requested running/visibility state per channel; release runtime resources at stop and restore visible active layers in the background. Hidden/stopped layers prepare lazily; fade/source phase is not persisted. Templates remain separate.
+- [x] Configure saved-layer appointments through the graphics API and editor.
+  Test changes during playback, local-time and overnight rules, adjacent
+  appointments and interaction with manual controls.
 - [x] Keep current controllers, preparation services, budgets and playlist file containment per channel; controller isolation is tested.
 - [x] Test manual graphics authorization/channel isolation, revision conflicts, failed sources, and scoped administrator-only logo saves through HTTP routes.
 

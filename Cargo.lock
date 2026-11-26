@@ -1972,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "ff-audio"
-version = "2.10.0-alpha.3"
+version = "2.10.0-beta.1"
 dependencies = [
  "anyhow",
  "ebur128-stream",
@@ -1981,7 +1981,7 @@ dependencies = [
 
 [[package]]
 name = "ff-engine"
-version = "2.10.0-alpha.3"
+version = "2.10.0-beta.1"
 dependencies = [
  "anyhow",
  "block2 0.6.2",
@@ -2019,7 +2019,7 @@ dependencies = [
 
 [[package]]
 name = "ff-graphics"
-version = "2.10.0-alpha.3"
+version = "2.10.0-beta.1"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -2039,7 +2039,7 @@ dependencies = [
 
 [[package]]
 name = "ff-hls"
-version = "2.10.0-alpha.3"
+version = "2.10.0-beta.1"
 dependencies = [
  "anyhow",
  "jiff 1.0.3",
@@ -2072,7 +2072,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "2.10.0-alpha.3"
+version = "2.10.0-beta.1"
 dependencies = [
  "anyhow",
  "argon2",

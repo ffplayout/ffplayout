@@ -134,9 +134,21 @@ impl HlsSession {
             let path = Path::new(playlist);
             let stem = path.file_stem().context("HLS playlist has no file stem")?;
             let subtitle_path = path.with_file_name(format!("{}_vtt.m3u8", stem.to_string_lossy()));
+            let audio_path = resolved_variant_playlist_path(playlist, ff_hls::SHARED_AUDIO_NAME)?;
 
             if subtitles || subtitle_path.exists() {
                 paths.push(subtitle_path.to_string_lossy().into_owned());
+            }
+
+            // A crash can leave the media playlists ahead of the master.
+            // Only claim the audio playlist if it belongs to these renditions.
+            if !paths.contains(&audio_path) && Path::new(&audio_path).try_exists()? {
+                for path in media_playlists {
+                    if read_media_playlist(path)?.is_some_and(|text| has_shared_audio(&text)) {
+                        paths.push(audio_path);
+                        break;
+                    }
+                }
             }
         }
 
@@ -230,7 +242,11 @@ impl HlsSession {
         Ok(())
     }
 
-    pub(super) fn requires_replacement(&self, native: Option<bool>) -> Result<bool> {
+    pub(super) fn requires_replacement(
+        &self,
+        native: Option<bool>,
+        shared_audio: bool,
+    ) -> Result<bool> {
         if self.master_playlist.is_none()
             && self.owned_playlists.iter().any(|path| {
                 !self.media_playlists.contains(path)
@@ -244,20 +260,27 @@ impl HlsSession {
         let mut latest = None;
 
         for path in &self.owned_playlists {
-            let content = match fs::read_to_string(path) {
-                Ok(content) => content,
-                Err(error) if error.kind() == ErrorKind::NotFound => continue,
-                Err(error) => {
-                    return Err(error).with_context(|| format!("reading HLS playlist {path}"));
-                }
+            let Some(content) = read_media_playlist(path)? else {
+                continue;
             };
-            if self.master_playlist.is_none()
-                && self.media_playlists.contains(path)
-                && content
-                    .lines()
-                    .any(|line| line.starts_with("#EXT-X-STREAM-INF:"))
+            if content
+                .lines()
+                .any(|line| line.starts_with("#EXT-X-STREAM-INF:"))
             {
-                return Ok(true);
+                if self.master_playlist.is_none() && self.media_playlists.contains(path) {
+                    return Ok(true);
+                }
+                if self.master_playlist.as_ref() == Some(path) {
+                    let audio_playlist = format!("{}.m3u8", ff_hls::SHARED_AUDIO_NAME);
+                    let master_has_shared_audio = content.lines().any(|line| {
+                        line.starts_with("#EXT-X-MEDIA:TYPE=AUDIO,")
+                            && playlist_attribute_uri(line, "URI") == Some(audio_playlist.as_str())
+                    });
+
+                    if master_has_shared_audio != shared_audio {
+                        return Ok(true);
+                    }
+                }
             }
             latest = latest.max(fresh_playlist_modified_time(path)?);
             if !content.lines().any(|line| line.starts_with("#EXTINF:")) {
@@ -267,6 +290,9 @@ impl HlsSession {
                 .lines()
                 .any(|line| line == "# ffplayout-packager: native");
             if was_native != native.is_some() {
+                return Ok(true);
+            }
+            if self.media_playlists.contains(path) && has_shared_audio(&content) != shared_audio {
                 return Ok(true);
             }
             if let Some(fragmented) = native
@@ -777,6 +803,20 @@ impl Drop for StagedHls {
 fn staged_path(path: &Path, prefix: &str) -> PathBuf {
     let name = path.file_name().unwrap_or_default().to_string_lossy();
     path.with_file_name(format!("{prefix}{name}"))
+}
+
+fn read_media_playlist(path: &str) -> Result<Option<String>> {
+    match fs::read_to_string(path) {
+        Ok(content) => Ok(Some(content)),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("reading HLS playlist {path}")),
+    }
+}
+
+fn has_shared_audio(playlist: &str) -> bool {
+    playlist
+        .lines()
+        .any(|line| line == ff_hls::SHARED_AUDIO_MARKER)
 }
 
 fn cleanup_playlist_paths(
@@ -1302,7 +1342,7 @@ mod tests {
         let paths = [playlist.to_string_lossy().into_owned()];
         let session = HlsSession::acquire(&paths, None, false).unwrap();
 
-        assert!(session.requires_replacement(None).unwrap());
+        assert!(session.requires_replacement(None, false).unwrap());
         let mut replacement = session.replacement(false).unwrap();
 
         assert!(playlist.exists());
@@ -1367,7 +1407,7 @@ mod packager_switch_tests {
 
         let session =
             HlsSession::acquire(&[path.to_string_lossy().into_owned()], None, false).unwrap();
-        assert!(session.requires_replacement(Some(false)).unwrap());
+        assert!(session.requires_replacement(Some(false), false).unwrap());
         let mut replacement = session.replacement(false).unwrap();
         assert!(path.exists());
         assert!(owned.iter().all(|name| directory.join(name).exists()));
@@ -1462,7 +1502,7 @@ mod packager_switch_tests {
         let path = directory.join("stream.m3u8").to_string_lossy().into_owned();
         let session = HlsSession::acquire(&[path], None, false).unwrap();
 
-        assert!(session.requires_replacement(None).unwrap());
+        assert!(session.requires_replacement(None, false).unwrap());
         let mut replacement = session.replacement(false).unwrap();
         assert!(directory.join("stream_vtt.m3u8").exists());
         assert!(directory.join("stream_1.ts").exists());

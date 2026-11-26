@@ -14,7 +14,7 @@ mod config_dump;
 use crate::{
     db::handles,
     utils::{
-        config::{OutputMode, PlayoutConfig},
+        config::{OutputMode, PlayoutConfig, new_hls_muxer_options},
         time_machine::{
             default_channel_timezone, deserialize_channel_timezone, parse_channel_timezone,
         },
@@ -755,7 +755,11 @@ impl Output {
                 Default::default()
             },
             protocol_options: "{}".to_string(),
-            muxer_options: "{}".to_string(),
+            muxer_options: if mode == OutputMode::HLS {
+                serde_json::json!(new_hls_muxer_options()).to_string()
+            } else {
+                "{}".to_string()
+            },
             metadata_options: "{}".to_string(),
             audio_codec: encoded.then(|| "aac".to_string()),
             audio_options: "{}".to_string(),

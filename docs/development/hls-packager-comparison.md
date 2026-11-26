@@ -101,10 +101,9 @@ comparison for the short windows.
   in either direction, same-backend resume, restarting delivery without restarting
   shared encoders, re-enabled subtitles and different initial scene-cut keyframes.
 
-Native remains experimental. Its initial supported scope is local MPEG-TS with
-H.264/AAC and optional WebVTT; most custom FFmpeg muxer options are rejected.
-Full browser/player qualification, a long real-time soak, Linux engine measurements
-and large-bitrate buffer behavior remain required before making it the default.
+This initial comparison covered local MPEG-TS with H.264/AAC and optional WebVTT.
+See the later measurements below and the
+[current packager scope and rollout](hls-packager.md).
 
 ## Boundary and platform regressions
 

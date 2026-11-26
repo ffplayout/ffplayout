@@ -415,7 +415,10 @@ async fn open_playout(
                 .processing
                 .hls_subtitle()
                 .map_err(ServiceError::Conflict)?;
-            let hls_muxer_streams = if hls_subtitle.is_some() || hls_streams.len() > 1 {
+            let hls_muxer_streams = if hls_subtitle.is_some()
+                || hls_streams.len() > 1
+                || config.output.hls_shared_audio()
+            {
                 hls_streams
             } else {
                 Vec::new()

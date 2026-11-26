@@ -181,6 +181,7 @@ pub async fn save_outputs_on(
         .await?;
 
     for output in std::iter::once(&mut config.output).chain(config.outputs.iter_mut()) {
+        output.apply_creation_defaults();
         output.share_encoding = output.encoding_source_id.is_some();
         let record = Output {
             id: output.id,
@@ -375,6 +376,63 @@ mod tests {
         assert!(!stored.enabled);
         assert_eq!(stored.forward_listener_id, Some(listener));
         assert_eq!(stored.forward_mode, ff_engine::ForwardMode::Copy);
+    }
+
+    #[tokio::test]
+    async fn new_hls_outputs_store_native_by_default_and_allow_explicit_ffmpeg() {
+        use crate::utils::config::{Output as ConfigOutput, PlayoutConfig};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+
+        db_migrate(&pool).await.unwrap();
+
+        let primary = select_outputs(&pool, 1)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|output| output.active)
+            .map(ConfigOutput::from_record)
+            .unwrap();
+        let mut implicit = ConfigOutput::default();
+        implicit.muxer_options.clear();
+        let mut explicit = implicit.clone();
+        explicit
+            .muxer_options
+            .insert("ffplayout_packager".into(), "ffmpeg".into());
+        let mut config = PlayoutConfig {
+            output: primary,
+            outputs: vec![implicit, explicit],
+            ..Default::default()
+        };
+        config.output.muxer_options.clear();
+
+        let mut transaction = pool.begin().await.unwrap();
+
+        save_outputs_on(&mut transaction, 1, &mut config)
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+
+        let stored = select_outputs(&pool, 1).await.unwrap();
+        let options = |id| {
+            let record = stored.iter().find(|output| output.id == id).unwrap();
+
+            serde_json::from_str::<serde_json::Value>(&record.muxer_options).unwrap()
+        };
+
+        assert_eq!(options(config.output.id), serde_json::json!({}));
+        assert_eq!(
+            options(config.outputs[0].id),
+            serde_json::json!({"ffplayout_packager": "native", "hls_flags": "program_date_time"})
+        );
+        assert_eq!(
+            options(config.outputs[1].id),
+            serde_json::json!({"ffplayout_packager": "ffmpeg"})
+        );
     }
 
     #[tokio::test]

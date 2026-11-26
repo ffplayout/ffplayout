@@ -130,6 +130,10 @@ impl NativeHls {
         let count = renditions.len();
         let config = Config {
             directory: parent.to_owned(),
+            shared_audio: config
+                .muxer_options
+                .get("hls_shared_audio")
+                .is_some_and(|value| value == "1"),
             renditions,
             subtitle: subtitle.map(|subtitle| Subtitle {
                 name: subtitle.name.clone(),
@@ -155,7 +159,12 @@ impl NativeHls {
         let counters = replacement
             .as_ref()
             .map(|previous| (previous.next_sequence, previous.discontinuity_sequence));
-        let writer = ContainerWriter::new(tracks, fragmented.unwrap_or_default(), replacement);
+        let writer = ContainerWriter::new(
+            tracks,
+            fragmented.unwrap_or_default(),
+            config.shared_audio,
+            replacement,
+        );
         let packager = if let Some((next, discontinuities)) = counters {
             Packager::new_replacing(config, writer, next, discontinuities)?
         } else {

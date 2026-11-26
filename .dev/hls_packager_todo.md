@@ -1,21 +1,19 @@
 # HLS packager backlog
 
 Native orchestration of HLS segments, playlists and WebVTT, with timed
-advertising events planned separately. The opt-in implementation lives in `crates/hls`;
-see [Development Notes](README.md). Keep the existing FFmpeg HLS path available
-until a replacement passes compatibility and long-running tests.
+advertising events planned separately. The implementation lives in `crates/hls`;
+see [Development Notes](README.md). FFmpeg remains available as an alternate
+packager.
 
-Status reconciled on 2026-11-17. Checked items describe implemented behavior or
-explicitly recorded qualification evidence, not unrestricted production approval.
-The current core suite has 29 tests. The historical Linux comparison used the
-earlier 17-test suite; the current failure tests were run locally on macOS.
+Checked items describe implemented behavior or explicitly recorded qualification
+evidence. The historical Linux comparison used the earlier 17-test suite.
 See the release qualification notes below for real-stream and browser evidence.
 
 ## Initial implementation status
 
 - [x] Add the FFmpeg-independent `ff-hls` crate and the engine's MPEG-TS adapter.
-- [x] Add per-output FFmpeg/native selection, defaulting to FFmpeg, using existing
-  persisted muxer options. A change recreates only that output.
+- [x] Add per-output FFmpeg/native selection using existing persisted muxer
+  options. A change recreates only that output.
 - [x] Prototype aligned H.264/AAC variants, WebVTT with X-TIMESTAMP-MAP, atomic
   individual playlist publication and bounded packet storage.
 - [x] Test real encoders, resume, fresh starts on backend switches and sharing
@@ -36,13 +34,13 @@ See the release qualification notes below for real-stream and browser evidence.
   retained media. Allow `_vtt` rendition suffixes when subtitles are disabled.
 - [x] Write consistent optional PROGRAM-DATE-TIME across video and subtitle
   playlists; test enabled/disabled output and preservation of retained dates on resume.
-- [x] Default to `hls_flags=program_date_time` when explicitly selecting Native in
-  the web interface without existing `hls_flags`. Keep existing native settings
-  unchanged and allow removal of the option. API clients set it explicitly.
+- [x] Default to `hls_flags=program_date_time` with the new native HLS defaults
+  or when selecting Native in the web interface without existing `hls_flags`.
+  Allow removal of this option from saved configurations.
 - [x] Document FFmpeg's missing subtitle PROGRAM-DATE-TIME and the reproduced
   hls.js 1.7.3/1.7.4 live-subtitle alignment issue. Distinguish this investigation
   from qualification of a real native HLS stream.
-- [ ] Qualify production playback and long-running behavior before promotion.
+- [ ] Extend production playback and long-running coverage as listed below.
 - [x] Add native fMP4 segments for H.264/AAC, HEVC/AAC and AV1/AAC. Publish
   generation-specific init files, retain their fragment references on resume,
   and keep WebVTT on the video presentation clock.
@@ -53,6 +51,17 @@ unchecked items below cover broader qualification and capabilities beyond the
 initial local MPEG-TS prototype.
 
 ## Scope and architecture
+
+Both packagers mux audio into each video rendition by default. Matching audio
+settings allow encoder reuse while the encoded packets are still muxed into
+each rendition.
+
+- [x] Add opt-in native MPEG-TS and fMP4 output with one shared AAC playlist
+  and video-only variants. Use the program timeline for segment cuts and
+  report the audio sample times in the audio playlist. Exercise real encoders,
+  MPEG-TS PCR, master playlist demuxing and a restart.
+- [ ] Exercise shared-audio playback in target players across rendition switches,
+  live takeover and return.
 
 - [x] Write a short architecture decision before implementation: ffplayout owns
   segment boundaries, timeline mapping, playlist publication and retention;
@@ -231,10 +240,10 @@ evaluations are deferred extension work, not prerequisites for that prototype.
   `hlsjs-video` media component in Firefox 160 and native HLS in Safari 27.2.
 - [ ] Verify another independent player and the complete frontend controls.
   Test advertising/interstitial consumers separately when implemented.
-- [x] Keep rollout opt-in, FFmpeg as default, unsupported configurations explicit,
-  and backend rollback documented without simultaneous writers to one target.
+- [x] Default new HLS outputs to Native, preserve the backend on existing
+  outputs and document switching between Native and FFmpeg.
 - [ ] Complete parity/failure-isolation qualification and I/O/end-to-end latency
-  measurements before promoting the native backend beyond experimental status.
+  measurements.
 
 **First milestone implemented:** a prototype that consumes existing encoded renditions,
 produces aligned MPEG-TS segments and atomically published playlists/WebVTT with
@@ -346,9 +355,8 @@ separate follow-up work after broader shared-timeline validation.
   test artifacts are local under
   `tmp/hls-browser-*.json`; the test page is `tmp/hls-browser-qualification.html`.
   This exercises the media component, not the complete Vue application/skin.
-- The tests run muted: packet timing and visible captions are checked, but
-  perceptual audio quality/lip sync still requires listening. Neither browser
-  smoke tests nor the successful soak promote Native to the default backend.
+- The tests run muted. Packet timing and visible captions are checked.
+  Perceptual audio quality and lip sync still require listening.
 
 ## Protocol references
 
