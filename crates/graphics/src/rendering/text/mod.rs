@@ -107,9 +107,16 @@ fn render_text_bitmap(
         return Err(anyhow!("text bitmap input is empty"));
     }
 
-    if !font_size.is_finite() || font_size <= 0.0 {
+    anyhow::ensure!(text.len() <= 64 * 1024, "text exceeds 64 KiB");
+
+    if !font_size.is_finite() || font_size <= 0.0 || font_size > 8192.0 {
         return Err(anyhow!("text font size must be a positive number"));
     }
+
+    anyhow::ensure!(
+        max_width.is_none_or(|width| width <= 8192),
+        "text width exceeds 8192 pixels"
+    );
 
     let estimated_width = (text.chars().count() as f32 * font_size * 0.75).ceil() as u32 + 8;
     let width = max_width
@@ -119,7 +126,15 @@ fn render_text_bitmap(
     let line_height = font_size * 1.25;
     let estimated_lines =
         ((estimated_width as f32 / width as f32).ceil() as u32).max(text.lines().count() as u32);
-    let height = ((line_height * estimated_lines as f32).ceil() as u32 + 4).max(2);
+    let estimated_height = (f64::from(line_height) * f64::from(estimated_lines)).ceil() + 4.0;
+    let max_height = (64 * 1024 * 1024_u32) / (width * 4);
+
+    anyhow::ensure!(
+        estimated_height <= f64::from(max_height),
+        "text bitmap exceeds 64 MiB"
+    );
+
+    let height = estimated_height as u32;
     let mut rgba = vec![0_u8; width as usize * height as usize * 4];
     let mut renderer = renderer().lock().unwrap_or_else(PoisonError::into_inner);
     let TextRenderer {
@@ -515,5 +530,24 @@ mod raster_tests {
                 .is_err()
             );
         }
+    }
+
+    #[test]
+    fn bitmap_rendering_rejects_oversized_requests_instead_of_allocating() {
+        let render = |text: &str, size: f32, width: u32| {
+            render_wrapped_text_bitmap(
+                text,
+                size,
+                TextWeight::Normal,
+                RgbaColor::opaque(255, 255, 255),
+                width,
+            )
+        };
+
+        assert!(render(&"x".repeat(64 * 1024 + 1), 32.0, 800).is_err());
+        assert!(render("Text", 9000.0, 800).is_err());
+        assert!(render("Text", 32.0, 9000).is_err());
+        assert!(render(&"x ".repeat(30_000), 8000.0, 8192).is_err());
+        assert!(render(&"x".repeat(1_000), 8192.0, 2).is_err());
     }
 }

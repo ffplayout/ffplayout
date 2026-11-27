@@ -83,8 +83,6 @@ impl SimdOp for BlendPlane<'_> {
             };
 
             if generic_fallback {
-                // rten-simd 0.25's GenericIsa narrowing indexes beyond its
-                // source vectors, so unsupported CPUs use the scalar fallback.
                 blend_scalar(destination, source, alpha, self.opacity);
                 continue;
             }
@@ -180,7 +178,6 @@ fn mul_alpha(source_alpha: u8, opacity: u8) -> u8 {
 }
 
 #[cfg(test)]
-#[allow(dead_code)]
 mod tests {
     use super::*;
 
