@@ -110,8 +110,8 @@ The streaming output can be used for classic FFmpeg output URLs such as **RTMP**
 
 **Remember that you need a streaming server as a destination if you want to use this mode.**
 
-For a browser preview using Media over QUIC with WebTransport/WebSocket, see
-[MoQ output and player](moq.md). MoQ is built in and supports packet reuse or
+For the integrated Player’s program preview over WebTransport or WebSocket,
+see [MoQ program preview](moq.md). MoQ is built in and supports packet reuse or
 separate encoding. Internal and public playback share one Vue component.
 
 Custom FFmpeg output formats and codec combinations, including hardware devices
@@ -269,9 +269,10 @@ playlist for playback with shared audio. The audio playlist is named
 **It is recommended to serve the HLS stream with nginx or another web server,
 and not with ffplayout (which is more meant for previewing).**
 
-The integrated MoQ output provides a public player at `/moq/player?channel=1`
+The integrated MoQ output supplies the program preview on the **Player** page.
+It also provides a public preview at `/moq/player?channel=1`
 when public access is explicitly enabled for that output (off by default).
-See [Experimental MoQ preview](moq.md) for configuration and transport.
+See [MoQ program preview](moq.md) for configuration and transport.
 
 ### Native packager
 
@@ -304,7 +305,10 @@ allows one enabled HLS output per channel. Use the selector for sequential
 comparisons in the web interface. Never run two writers against the same playlists.
 
 The native backend supports segment durations of 1–60 seconds and
-playlist sizes of 1–10000. Unsupported codec/container options are rejected.
+playlist sizes of 1–10000. Segments removed from the live playlist remain
+available for their duration plus the longest observed playlist window.
+`hls_delete_threshold` also sets a minimum reserve of unreferenced segments.
+Unsupported codec/container options are rejected.
 See [architecture and limitations](development/hls-packager.md).
 
 Switching packagers starts a fresh window. The old playlists remain available
@@ -417,8 +421,9 @@ HLS playlists and segments retain the `live/` directory beneath the channel's
 public directory. Recording copy sources refer to their enabled output instance;
 dedicated recording remains a separate feature.
 
-MoQ is always available as mode `moq`. It can be the only output and publishes to
-the `/moq/player?channel=ID` browser player. It currently supports one
+MoQ is always available as mode `moq`. It can be the only output and supplies
+the program preview on the **Player** page. When public access is enabled, the
+same preview is available at `/moq/player?channel=ID`. ffplayout supports one
 MoQ instance per channel, H.264, HEVC, or AV1 with AAC, and requires `--listen` to start
 the relay. Encoder names are unrestricted in the database; runtime codec
 capabilities advertise the combinations validated for direct frame publication.
@@ -428,7 +433,7 @@ Private MoQ publication starts on Player demand and stops three minutes after th
 last authenticated relay connection ends. Public MoQ publishes continuously while
 enabled. Sleeping MoQ releases its delivery/publisher and unneeded encoder group;
 other outputs and recording retain any shared encoding they still need. See
-[demand-based publication](moq.md#experimental-demand-based-publication).
+[demand-based publication](moq.md#demand-based-publication).
 
 The existing outputs API includes `runtime_status` and `runtime_error` per
 instance. The editor displays these separately from persisted settings. A
@@ -471,7 +476,6 @@ desktop runtime keeps an empty parallel output branch available, so its first
 encoded output, including demand-based private MoQ, can start without a restart.
 The empty branch creates no encoder or delivery workers. Desktop is selectable
 only when the backend includes `desktop` or `desktop-cpu`.
-Live output changes remain experimental and need sustained server validation.
 
 ### Choosing an encoding source
 

@@ -83,7 +83,7 @@ impl Server {
                 _ = token.cancelled() => { trigger.start(); if let Err(error) = run.await { log::warn!(target: Target::Console.as_str(), "MoQ relay shutdown: {error}"); } }
             }
         });
-        log::info!(target: Target::Console.as_str(), "Experimental MoQ relay listening on {bind} (TCP/UDP)");
+        log::info!(target: Target::Console.as_str(), "MoQ relay listening on {bind} (TCP/UDP)");
 
         Ok(Self { stopped, task })
     }

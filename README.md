@@ -39,8 +39,8 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
   - fit target resolution
   - add silence if audio duration is too short
   - hold the last frame if video duration is too short
-- [output](/docs/output.md): **stream**, **desktop**, **HLS**, and experimental **MoQ**
-- RTMP/SRT [live ingest](/docs/live_ingest.md)
+- [output](/docs/output.md): **stream**, **desktop**, **HLS**, and **MoQ**
+- RTMP/SRT [live ingest](/docs/live_ingest.md) with optional [direct forwarding](docs/output.md#forwarding-a-live-ingest) (**experimental** for forwarding)
 - image source (will loop until out duration is reached)
 - import playlist from text or m3u file, with CLI or frontend
 - generate playlist based on [template](/docs/playlist_gen.md)
@@ -48,14 +48,12 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - During playlist import, all video clips are validated and, if desired, checked to ensure that the audio track is not completely muted.
 - run multiple channels
 - WebVTT [subtitles](/docs/closed_captions.md) in HLS mode
-- multiple simultaneous [outputs](/docs/output.md) per channel, with individual resolutions and a shared program frame rate (experimental *)
-- explicit encoding sharing between compatible outputs, including selection of an HLS rendition as the encoding source (experimental *)
-- built-in [MoQ playback](/docs/moq.md) in the frontend: private publication starts on demand with a three-minute grace period; the optional public player publishes continuously and is disabled by default; it is intended for testing and small previews rather than serving many viewers (experimental *)
-- independent output reconnection: automatic retries every 15 seconds for up to three minutes, followed by a manual retry option; successful media delivery resets the retry window (experimental *)
+- multiple simultaneous [outputs](/docs/output.md) per channel, with individual resolutions and a shared program frame rate
+- explicit encoding sharing between compatible outputs, including selection of an HLS rendition as the encoding source
+- built-in [program preview over MoQ](/docs/moq.md) on the **Player** page. The private preview starts on demand and stays available for three minutes after the last viewer leaves. An optional public preview publishes continuously and is disabled by default.
+- independent output reconnection: automatic retries every 15 seconds for up to three minutes, followed by a manual retry option; successful media delivery resets the retry window
 
-**\* Experimental features do not guarantee the same stability and may fail under unusual circumstances. Code and configuration options may change in the future.**
-
-Configure the new output instances in **Settings → Outputs**. HLS, Stream and MoQ outputs support experimental live configuration and activation changes. Program format, desktop and recording changes still require a channel restart. Reconnection uses the running configuration and keeps other outputs running. Multi-output, shared encoding, MoQ playback and reconnection still need sustained testing with real streaming destinations and browser playback before production use.
+Configure output instances in **Settings → Outputs**. HLS, Stream and MoQ outputs support live configuration and activation changes. Program format, desktop and recording changes require a channel restart. When an output reconnects, other outputs continue running.
 
 ### Requirements
 

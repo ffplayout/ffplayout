@@ -24,6 +24,7 @@ ffmpeg-device = ["ffmpeg-next/device"]
 transcription-example = ["dep:transcribe-rs", "dep:ort"]
 
 [dependencies]
+tempfile = "3"
 ff-graphics = { path = "../graphics", features = ["ffmpeg"] }
 anyhow = "1"
 bytes = "1"

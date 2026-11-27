@@ -59,7 +59,7 @@ Supported image/video sources, alpha handling, timing and resource limits.
 
 ### **[MoQ Playback](moq.md)**
 
-Experimental browser preview and optional public test player.
+Program preview on the integrated Player page and an optional public test player.
 
 ### **[Frontend Screenshots](images/README.md)**
 

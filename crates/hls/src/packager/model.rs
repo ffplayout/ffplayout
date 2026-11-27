@@ -93,6 +93,8 @@ pub struct Config {
     pub shared_audio: bool,
     pub master_playlist: Option<String>,
     pub segment_seconds: u32,
+    /// Nominal video frames per second per rendition for packet budgeting.
+    pub video_fps: u32,
     pub list_size: u32,
     /// Number of unreferenced segments retained per track; normally 1.
     pub delete_threshold: u32,

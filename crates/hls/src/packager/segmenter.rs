@@ -1,4 +1,4 @@
-//! Experimental local HLS orchestration with a caller-provided container writer.
+//! Local HLS orchestration with a caller-provided container writer.
 //! One destination worker owns all renditions and publishes only closed files.
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -12,14 +12,43 @@ use jiff::{RoundMode, SignedDuration, Timestamp, TimestampRound, Unit};
 
 use crate::{
     SHARED_AUDIO_NAME,
-    manifest::{Playlist, Segment, atomic_write, load_codecs, safe_name},
+    manifest::{Playlist, Segment, StagedFile, load_codecs, safe_name},
 };
 
 use super::{Config, Cue, MediaPacket, RenditionConfig, SegmentWriter, Subtitle};
 
-const MAX_BUFFER_BYTES: usize = 64 * 1024 * 1024;
-const MAX_PACKETS: usize = 32_768;
+const MIN_BUFFER_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_BUFFER_BYTES: u64 = 256 * 1024 * 1024;
+const MIN_PACKETS: u64 = 32_768;
+const MAX_PACKETS: u64 = 262_144;
+// Native HLS uses AAC. Allow more than the ordinary 47 AAC packets/s at 48 kHz.
+const AUDIO_PACKETS_PER_SECOND: u64 = 96;
 const MPEGTS_WRAP: i64 = 1 << 33;
+
+struct BufferBudget {
+    bytes: usize,
+    packets: usize,
+}
+
+impl BufferBudget {
+    fn from_config(config: &Config) -> Self {
+        let video_tracks = config.renditions.len() as u64;
+        let audio_tracks = if config.shared_audio { 1 } else { video_tracks };
+        let bandwidth = config.renditions.iter().fold(0_u64, |total, rendition| {
+            total.saturating_add(rendition.bandwidth)
+        });
+        // Include headroom for bitrate bursts and a delayed common keyframe.
+        let seconds = u64::from(config.segment_seconds) * 2;
+        let packets_per_second =
+            video_tracks * u64::from(config.video_fps) + audio_tracks * AUDIO_PACKETS_PER_SECOND;
+
+        Self {
+            bytes: (bandwidth.saturating_mul(seconds).div_ceil(8))
+                .clamp(MIN_BUFFER_BYTES, MAX_BUFFER_BYTES) as usize,
+            packets: (packets_per_second * seconds).clamp(MIN_PACKETS, MAX_PACKETS) as usize,
+        }
+    }
+}
 
 struct Rendition {
     playlist: Playlist,
@@ -44,6 +73,7 @@ pub struct Packager<T, W> {
     packets: Vec<MediaPacket<T>>,
     completed: Vec<MediaPacket<T>>,
     bytes: usize,
+    buffer_budget: BufferBudget,
     cues: VecDeque<Cue>,
     cue_bytes: usize,
     segment_us: i64,
@@ -56,6 +86,8 @@ pub struct Packager<T, W> {
     wall_anchor: Option<(i64, Timestamp)>,
     program_date_time: bool,
     finished: bool,
+    failed: bool,
+    cleanup_failed: bool,
     published: bool,
 }
 
@@ -114,6 +146,12 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             "shared HLS audio requires a master playlist"
         );
 
+        ensure!(
+            config.video_fps > 0,
+            "native HLS video frame rate must be positive"
+        );
+
+        let buffer_budget = BufferBudget::from_config(&config);
         let parent = &config.directory;
         let previous_codecs = config
             .master_playlist
@@ -262,8 +300,11 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             .chain(subtitles.iter().map(|(_, playlist)| playlist))
             .chain(audio.iter());
         let mut latest = None;
+        let mut missing_resources = false;
         let (mut sequence, mut discontinuity_sequence) = replacement_sequence.unwrap_or_default();
         for playlist in histories {
+            missing_resources |= playlist.missing_resources;
+
             if let Some(last) = playlist.segments.back() {
                 latest = Some(latest.unwrap_or(0).max(last.sequence));
                 discontinuity_sequence =
@@ -294,7 +335,8 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         // so retained video cannot refer to a missing part of the audio window.
         for rendition in &mut renditions {
             let playlist = &mut rendition.playlist;
-            if incomplete_audio_group
+            if missing_resources
+                || incomplete_audio_group
                 || playlist
                     .segments
                     .back()
@@ -309,7 +351,8 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             .map(|(_, playlist)| playlist)
             .chain(audio.iter_mut())
         {
-            if incomplete_audio_group
+            if missing_resources
+                || incomplete_audio_group
                 || playlist
                     .segments
                     .back()
@@ -389,6 +432,7 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             packets: Vec::new(),
             completed: Vec::new(),
             bytes: 0,
+            buffer_budget,
             cues: VecDeque::new(),
             cue_bytes: 0,
             segment_us: i64::from(config.segment_seconds) * 1_000_000,
@@ -401,6 +445,8 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             wall_anchor: None,
             program_date_time: config.program_date_time,
             finished: false,
+            failed: false,
+            cleanup_failed: false,
             published: false,
         })
     }
@@ -502,7 +548,17 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         now: impl FnOnce() -> Timestamp,
     ) -> Result<()> {
         ensure!(!self.finished, "native HLS output has finished");
+        ensure!(
+            !self.failed,
+            "native HLS output must be reopened after an error"
+        );
+        let result = self.ingest(packet, now);
+        self.failed = result.is_err();
 
+        result
+    }
+
+    fn ingest(&mut self, packet: MediaPacket<T>, now: impl FnOnce() -> Timestamp) -> Result<()> {
         let stream = packet.stream;
         let pts = packet.pts_us;
         let dts = packet.dts_us;
@@ -533,8 +589,11 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
 
         self.bytes = self.bytes.saturating_add(packet.bytes);
         ensure!(
-            self.bytes <= MAX_BUFFER_BYTES && self.packets.len() < MAX_PACKETS,
-            "native HLS segment buffer exceeded bounded capacity"
+            self.bytes <= self.buffer_budget.bytes
+                && self.packets.len() < self.buffer_budget.packets,
+            "native HLS segment buffer exceeded bounded capacity ({} bytes / {} packets)",
+            self.buffer_budget.bytes,
+            self.buffer_budget.packets
         );
         self.packets.push(packet);
 
@@ -770,18 +829,13 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
                     "{} --> {}\n{}\n\n",
                     timestamp(cue.start_ms),
                     timestamp(cue.end_ms),
-                    cue.text
+                    cue_payload(&cue.text)
                 )?;
             }
 
             let path = playlist.parent().join(uri);
 
-            ensure!(
-                !path.exists(),
-                "refusing to overwrite HLS subtitle segment {}",
-                path.display()
-            );
-            atomic_write(&path, text.as_bytes())?;
+            StagedFile::new(&path, text.as_bytes())?.publish(false)?;
         }
 
         if !self.published {
@@ -872,6 +926,8 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         } else {
             None
         };
+        let mut manifests = Vec::new();
+
         for playlist in self
             .audio
             .iter_mut()
@@ -885,23 +941,16 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             if let Some(first) = common_start.or_else(|| playlist.trim_start(list_size)) {
                 playlist.trim_before(first);
             }
-            playlist.publish(shared_audio)?;
+            manifests.push(playlist.stage(shared_audio)?);
         }
 
-        self.publish_master()?;
+        manifests.extend(self.stage_master()?);
+
+        for manifest in manifests {
+            manifest.publish(true)?;
+        }
+
         self.published = true;
-        self.writer.after_publication()?;
-        for rendition in &mut self.renditions {
-            rendition.playlist.retire()?;
-        }
-        for playlist in self
-            .subtitles
-            .iter_mut()
-            .map(|(_, playlist)| playlist)
-            .chain(self.audio.iter_mut())
-        {
-            playlist.retire()?;
-        }
         self.cues.retain(|cue| cue.end_ms > end / 1000);
         self.cue_bytes = self.cues.iter().map(|cue| cue.text.len()).sum();
         self.sequence = self
@@ -913,6 +962,28 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             .checked_add(1)
             .context("native HLS filename overflow")?;
         self.discontinuity = false;
+
+        let cleanup = self.writer.after_publication();
+
+        if let Err(error) = &cleanup
+            && !self.cleanup_failed
+        {
+            log::warn!("Could not clean up replaced HLS resources: {error:#}");
+        }
+
+        self.cleanup_failed = cleanup.is_err();
+
+        for playlist in self
+            .renditions
+            .iter_mut()
+            .map(|rendition| &mut rendition.playlist)
+            .chain(self.subtitles.iter_mut().map(|(_, playlist)| playlist))
+            .chain(self.audio.iter_mut())
+        {
+            playlist.committed();
+
+            playlist.retire();
+        }
 
         Ok(())
     }
@@ -927,9 +998,9 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
         Ok(Some(date.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()))
     }
 
-    fn publish_master(&self) -> Result<()> {
+    fn stage_master(&self) -> Result<Option<StagedFile>> {
         let Some(path) = &self.master else {
-            return Ok(());
+            return Ok(None);
         };
         let mut text = "#EXTM3U\n#EXT-X-VERSION:3\n".to_owned();
 
@@ -1008,11 +1079,11 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             write!(text, "\n{}.m3u8\n", rendition.name)?;
         }
 
-        atomic_write(path, text.as_bytes())
+        StagedFile::new(path, text.as_bytes()).map(Some)
     }
 
     pub fn finish(&mut self) -> Result<()> {
-        if self.finished {
+        if self.finished || self.failed {
             return Ok(());
         }
 
@@ -1030,7 +1101,9 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
             let has_audio =
                 self.audio.is_none() || self.packets.iter().any(|packet| packet.stream == 1);
             if end > start && has_audio {
-                self.publish(end, None)?;
+                let result = self.publish(end, None);
+                self.failed = result.is_err();
+                result?;
             }
         }
 
@@ -1038,6 +1111,17 @@ impl<T, W: SegmentWriter<T>> Packager<T, W> {
 
         Ok(())
     }
+}
+
+// A blank line ends a cue. Its payload may still use standard WebVTT markup.
+fn cue_payload(text: &str) -> String {
+    text.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .split('\n')
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.replace("-->", "--&gt;"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn timestamp(milliseconds: i64) -> String {

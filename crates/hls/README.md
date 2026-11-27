@@ -1,6 +1,6 @@
 # ff-hls
 
-Experimental HLS orchestration with no FFmpeg dependency. The library owns
+HLS orchestration with no FFmpeg dependency. The library owns
 aligned segment boundaries, media/master playlists, WebVTT timestamp mapping,
 live-window retention and resume state. Encoders and container muxing belong to
 the caller.
@@ -9,14 +9,19 @@ the caller.
 timeline and a `SegmentWriter<T>`. Each rendition has adjacent video/audio
 indices. The writer must retain that presentation clock in the container,
 close and publish each segment before returning, and refuse to overwrite
-existing files. The engine supplies the MPEG-TS adapter and exclusive output
+existing files. The engine supplies the MPEG-TS and fMP4 adapters and exclusive output
 locks. Calling the crate directly requires equivalent exclusive ownership.
 
 The initial implementation:
 
 - Finds common video keyframes across renditions, then waits for matching audio.
-- Holds at most 64 MiB / 32768 compressed packets per destination. Subtitle
-  storage is limited to 8 MiB / 10000 cues. An unmatched boundary fails the output.
+- Derives the compressed packet budget per destination from segment duration,
+  aggregate rendition bandwidth, frame rate and audio track count. Budgets range
+  from 64 to 256 MiB and 32768 to 262144 packets. These are limits on queued
+  payload and packet count. Packet metadata and muxer memory are additional,
+  and the budgets of concurrent destinations add up. Subtitle storage is
+  limited to 8 MiB / 10000 cues. The budget targets two segment durations and
+  may be exhausted before the independent missing-boundary check triggers.
 - Writes media first and atomically replaces each playlist. Multiple playlists
   are not a filesystem transaction; a crash between replacements can leave
   different last sequences. On restart, lagging tracks rejoin at the next unused
@@ -44,13 +49,19 @@ The initial implementation:
   reduced. An increase requiring a larger target is rejected without deleting
   existing media; it requires an explicitly fresh HLS history.
 - Resumes existing local playlists, adds a discontinuity for the new generation,
-  and avoids reusing even orphaned segment filenames. Unreferenced resources are retained up to
-  `delete_threshold` per track (normally 1), then deleted after playlist publication.
+  and avoids reusing even orphaned segment filenames. If a referenced file is
+  missing, a complete new segment set replaces the old history with a discontinuity.
+  Evicted media remain available for their segment duration plus the longest
+  observed playlist window. The `delete_threshold` also keeps a minimum reserve
+  of unreferenced segments per track. Cleanup errors are reported separately
+  from publication and retried on subsequent segments.
 - Leaves playlists live when finishing. The engine owns stale-playlist policy.
 
-The engine's initial adapter supports local MPEG-TS, H.264/AAC and up to 16
-renditions. fMP4/CMAF, LL-HLS, encryption, advertising markers and remote upload
-are follow-ups. Unsupported options are rejected. FFmpeg remains the default.
+The engine supports local MPEG-TS with H.264/AAC and local fMP4 with H.264,
+HEVC, or AV1 and AAC, with up to 16 renditions. LL-HLS, encryption, advertising
+markers and remote upload are follow-ups. Unsupported options are rejected.
+New HLS outputs default to Native. Existing outputs without an explicit
+packager selection continue to use FFmpeg.
 
 Run `cargo test -p ff-hls` for container-independent tests. Engine integration
 tests prefixed with `native_hls` exercise real encoders, PES timestamps, variants,

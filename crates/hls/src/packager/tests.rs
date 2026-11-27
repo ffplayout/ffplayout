@@ -43,6 +43,7 @@ impl Fixture {
             }),
             master_playlist: Some("master.m3u8".into()),
             segment_seconds: 1,
+            video_fps: 25,
             list_size,
             delete_threshold: 1,
             program_date_time: false,
@@ -139,7 +140,7 @@ fn fmp4_initialization_survives_resume_and_retires_with_its_last_fragment() {
 
     let retired = fs::read_to_string(playlist).unwrap();
     assert_eq!(retired.matches("#EXT-X-MAP:").count(), 1);
-    assert!(!first_init.exists());
+    assert!(first_init.exists());
     assert!(fixture.0.join("v0_4.init.mp4").exists());
 }
 
@@ -484,7 +485,7 @@ fn timestamp_map_wraps_on_the_33_bit_clock() {
 }
 
 #[test]
-fn live_window_keeps_only_the_default_extra_segment() {
+fn live_window_keeps_evicted_segments_until_their_grace_expires() {
     let fixture = Fixture::new();
     let mut packager = Packager::new(
         fixture.config(1, 2),
@@ -501,8 +502,21 @@ fn live_window_keeps_only_the_default_extra_segment() {
 
     assert!(playlist.contains("#EXT-X-MEDIA-SEQUENCE:8"));
     assert!(!playlist.contains("v0_0.ts"));
-    assert!(!fixture.0.join("v0_0.ts").exists());
-    assert!(!fixture.0.join("v00.vtt").exists());
+    let video = fixture.0.join("v0_0.ts");
+    let subtitle = fixture.0.join("v00.vtt");
+
+    for path in [video, subtitle] {
+        assert!(path.is_file());
+        assert!(!crate::retention::remove(&path, std::time::SystemTime::now()).unwrap());
+        assert!(
+            crate::retention::remove(
+                &path,
+                std::time::SystemTime::now() + std::time::Duration::from_secs(6)
+            )
+            .unwrap()
+        );
+    }
+
     assert!(fixture.0.join("v0_7.ts").exists());
     assert!(fixture.0.join("v07.vtt").exists());
 }
@@ -530,6 +544,19 @@ fn rejects_invalid_layout_and_bounds_packet_and_cue_storage() {
         },
     )
     .unwrap();
+    let mut zero_fps = fixture.config(1, 2);
+    zero_fps.video_fps = 0;
+
+    assert!(
+        Packager::new(
+            zero_fps,
+            Writer {
+                fail_rendition: None
+            }
+        )
+        .is_err()
+    );
+
     let mut oversized = packet(0, 0, true);
 
     oversized.bytes = 65 * 1024 * 1024;
@@ -679,14 +706,18 @@ fn custom_delete_threshold_applies_to_video_and_subtitles_with_a_one_hour_window
     packager.finish().unwrap();
 
     for number in 0..5 {
-        assert_eq!(
-            fixture.0.join(format!("v0_{number}.ts")).exists(),
-            number >= 2
-        );
-        assert_eq!(
-            fixture.0.join(format!("v0{number}.vtt")).exists(),
-            number >= 2
-        );
+        for name in [format!("v0_{number}.ts"), format!("v0{number}.vtt")] {
+            let path = fixture.0.join(name);
+            let marker = fs::metadata(path.with_added_extension("hls-retain")).unwrap();
+            let remaining = marker
+                .modified()
+                .unwrap()
+                .duration_since(std::time::SystemTime::now())
+                .unwrap();
+
+            assert!(path.is_file());
+            assert!(remaining >= std::time::Duration::from_secs(3600));
+        }
     }
 
     let playlist = fs::read_to_string(fixture.0.join("v0.m3u8")).unwrap();
@@ -1556,7 +1587,9 @@ impl SegmentWriter<()> for PublicationFault {
             if rendition == 1
                 && let Some(name) = self.temporary_playlist
             {
-                fs::create_dir(path.parent().unwrap().join(name))?;
+                let blocked = path.parent().unwrap().join(name);
+                fs::rename(&blocked, blocked.with_added_extension("backup"))?;
+                fs::create_dir(blocked)?;
             }
         }
 
@@ -1617,7 +1650,7 @@ fn storage_full_preserves_playable_history_and_resume_skips_orphans() {
 fn publication_failure_after_media_preserves_history_and_never_reuses_orphans() {
     let fixture = Fixture::new();
     let config = fixture.config(2, 3);
-    let blocked = ".v0_vtt.m3u8.native.tmp";
+    let blocked = "v0_vtt.m3u8";
     let mut packager = Packager::new(
         fixture.config(2, 3),
         PublicationFault {
@@ -1639,7 +1672,9 @@ fn publication_failure_after_media_preserves_history_and_never_reuses_orphans() 
 
     let orphan = fs::read(fixture.0.join("v0_1.ts")).unwrap();
 
-    fs::remove_dir(fixture.0.join(blocked)).unwrap();
+    let blocked = fixture.0.join(blocked);
+    fs::remove_dir(&blocked).unwrap();
+    fs::rename(blocked.with_added_extension("backup"), &blocked).unwrap();
 
     let mut resumed = Packager::new(
         config,
@@ -1657,7 +1692,7 @@ fn publication_failure_after_media_preserves_history_and_never_reuses_orphans() 
 #[test]
 fn interrupted_variant_publication_resumes_beyond_all_published_sequences() {
     const CHILD_DIRECTORY: &str = "FF_HLS_PARTIAL_MANIFEST_FIXTURE";
-    let blocked = ".v1.m3u8.native.tmp";
+    let blocked = "v1.m3u8";
     if let Some(directory) = std::env::var_os(CHILD_DIRECTORY) {
         let fixture = Fixture(PathBuf::from(directory));
         let mut packager = Packager::new(
@@ -1684,12 +1719,11 @@ fn interrupted_variant_publication_resumes_beyond_all_published_sequences() {
             .unwrap()
             .contains("v0_1.ts")
     );
-    assert!(
-        !fs::read_to_string(fixture.0.join("v1.m3u8"))
-            .unwrap()
-            .contains("v1_1.ts")
-    );
-    fs::remove_dir(fixture.0.join(blocked)).unwrap();
+    let blocked = fixture.0.join(blocked);
+    fs::remove_dir(&blocked).unwrap();
+    fs::rename(blocked.with_added_extension("backup"), &blocked).unwrap();
+
+    assert!(!fs::read_to_string(&blocked).unwrap().contains("v1_1.ts"));
 
     let snapshot: Vec<_> = fs::read_dir(&fixture.0)
         .unwrap()
@@ -1779,4 +1813,224 @@ fn abrupt_process_exit_after_media_resumes_without_overwriting_history() {
     assert_eq!(fs::read(fixture.0.join("v0_0.ts")).unwrap(), history);
     assert_eq!(fs::read(fixture.0.join("v0_1.ts")).unwrap(), orphan);
     assert!(fixture.0.join("v0_2.ts").is_file());
+}
+
+#[test]
+fn cleanup_failure_keeps_publishing_with_new_numbers() {
+    struct CleanupFault(Writer);
+
+    impl SegmentWriter<()> for CleanupFault {
+        fn write_segment(
+            &mut self,
+            path: &Path,
+            packets: &[MediaPacket<()>],
+            rendition: usize,
+        ) -> Result<()> {
+            self.0.write_segment(path, packets, rendition)
+        }
+
+        fn after_publication(&mut self) -> Result<()> {
+            anyhow::bail!("simulated cleanup failure")
+        }
+    }
+
+    let fixture = Fixture::new();
+    let mut packager = Packager::new(
+        fixture.config(1, 3),
+        CleanupFault(Writer {
+            fail_rendition: None,
+        }),
+    )
+    .unwrap();
+
+    feed(&mut packager, 1, 0, 81).unwrap();
+
+    let manifest = fs::read_to_string(fixture.0.join("v0.m3u8")).unwrap();
+
+    assert!(manifest.contains("v0_0.ts"));
+    assert!(manifest.contains("v0_1.ts"));
+    assert!(manifest.contains("v0_2.ts"));
+}
+
+#[test]
+fn missing_resume_resource_starts_a_fresh_window_after_media_is_ready() {
+    let fixture = Fixture::new();
+    let writer = || Writer {
+        fail_rendition: None,
+    };
+    let mut packager = Packager::new(fixture.config(2, 3), writer()).unwrap();
+
+    feed(&mut packager, 2, 0, 51).unwrap();
+    drop(packager);
+
+    let video = fixture.0.join("v0.m3u8");
+    let previous = fs::read(&video).unwrap();
+
+    fs::remove_file(fixture.0.join("v0_0.ts")).unwrap();
+
+    let mut resumed = Packager::new(fixture.config(2, 3), writer()).unwrap();
+
+    assert_eq!(fs::read(&video).unwrap(), previous);
+
+    feed(&mut resumed, 2, 4_000_000, 26).unwrap();
+
+    for name in ["v0", "v1", "v0_vtt"] {
+        let manifest = fs::read_to_string(fixture.0.join(format!("{name}.m3u8"))).unwrap();
+
+        assert!(manifest.contains("#EXT-X-MEDIA-SEQUENCE:2\n"));
+        assert!(manifest.contains("#EXT-X-DISCONTINUITY\n"));
+        assert_eq!(manifest.matches("#EXTINF:").count(), 1);
+    }
+}
+
+#[test]
+fn cue_payload_cannot_end_its_cue_and_keeps_webvtt_markup() {
+    let fixture = Fixture::new();
+    let mut packager = Packager::new(
+        fixture.config(1, 3),
+        Writer {
+            fail_rendition: None,
+        },
+    )
+    .unwrap();
+
+    packager
+        .write_cue(Cue {
+            start_ms: 0,
+            end_ms: 500,
+            text: "<i>Hello &amp; goodbye</i>\r\n\t\r\n00:01.000 --> 00:02.000\r\nExample".into(),
+        })
+        .unwrap();
+    feed(&mut packager, 1, 0, 26).unwrap();
+
+    let subtitles = fs::read_to_string(fixture.0.join("v00.vtt")).unwrap();
+
+    assert_eq!(subtitles.matches("-->").count(), 1);
+    assert!(subtitles.contains("<i>Hello &amp; goodbye</i>\n00:01.000 --&gt; 00:02.000\nExample"));
+}
+
+#[test]
+fn stalled_audio_keeps_last_complete_set_and_can_resume_after_reopen() {
+    let fixture = Fixture::new();
+    let mut config = fixture.config(1, 3);
+    config.shared_audio = true;
+    let mut packager = Packager::new(config, SharedWriter).unwrap();
+
+    feed(&mut packager, 1, 0, 26).unwrap();
+
+    let video = fixture.0.join("v0.m3u8");
+    let audio = fixture.0.join("audio.m3u8");
+    let previous = [fs::read(&video).unwrap(), fs::read(&audio).unwrap()];
+    let error = packager.write(packet(0, 10_000_000, true)).unwrap_err();
+
+    assert!(error.to_string().contains("aligned segment boundaries"));
+    assert!(
+        packager
+            .write(packet(1, 10_000_000, false))
+            .unwrap_err()
+            .to_string()
+            .contains("reopened")
+    );
+    packager.finish().unwrap();
+
+    assert_eq!(
+        [fs::read(&video).unwrap(), fs::read(&audio).unwrap()],
+        previous
+    );
+
+    let mut config = fixture.config(1, 3);
+    config.shared_audio = true;
+    let mut resumed = Packager::new(config, SharedWriter).unwrap();
+
+    feed(&mut resumed, 1, 10_000_000, 26).unwrap();
+
+    for path in [video, audio] {
+        let manifest = fs::read_to_string(path).unwrap();
+
+        assert!(manifest.contains("#EXT-X-DISCONTINUITY\n"));
+        assert_eq!(manifest.matches("#EXTINF:").count(), 2);
+    }
+}
+
+#[test]
+fn invalid_resume_manifest_leaves_other_tracks_intact_until_repaired() {
+    let fixture = Fixture::new();
+    let writer = || Writer {
+        fail_rendition: None,
+    };
+    let mut packager = Packager::new(fixture.config(2, 3), writer()).unwrap();
+
+    feed(&mut packager, 2, 0, 26).unwrap();
+    drop(packager);
+
+    let first = fixture.0.join("v0.m3u8");
+    let second = fixture.0.join("v1.m3u8");
+    let first_before = fs::read(&first).unwrap();
+    let second_before = fs::read(&second).unwrap();
+
+    fs::write(&second, "#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:invalid\n").unwrap();
+
+    assert!(Packager::new(fixture.config(2, 3), writer()).is_err());
+    assert_eq!(fs::read(&first).unwrap(), first_before);
+
+    fs::write(&second, second_before).unwrap();
+
+    let mut resumed = Packager::new(fixture.config(2, 3), writer()).unwrap();
+
+    feed(&mut resumed, 2, 3_000_000, 26).unwrap();
+
+    assert!(
+        fs::read_to_string(&first)
+            .unwrap()
+            .contains("#EXT-X-DISCONTINUITY\n")
+    );
+    assert!(fs::read_to_string(&second).unwrap().contains("v1_1.ts"));
+}
+
+#[test]
+fn long_multi_rendition_segments_can_exceed_the_previous_buffer_limits() {
+    let fixture = Fixture::new();
+    let mut config = fixture.config(16, 10);
+    config.segment_seconds = 60;
+    config.video_fps = 50;
+
+    for rendition in &mut config.renditions {
+        rendition.bandwidth = 2_000_000;
+    }
+
+    let mut packager = Packager::new(
+        config,
+        Writer {
+            fail_rendition: None,
+        },
+    )
+    .unwrap();
+
+    for frame in 0..=3_000 {
+        let pts = frame * 20_000;
+
+        for rendition in 0..16 {
+            let mut video = packet(rendition * 2, pts, frame % 100 == 0);
+            video.bytes = 2_048;
+
+            packager.write(video).unwrap();
+            packager
+                .write(packet(rendition * 2 + 1, pts, false))
+                .unwrap();
+        }
+    }
+
+    let manifest = fs::read_to_string(fixture.0.join("v15.m3u8")).unwrap();
+
+    assert!(manifest.contains("#EXTINF:60.000000,"));
+
+    let mut oversized = packet(0, 60_020_000, false);
+    oversized.bytes = 257 * 1024 * 1024;
+    let error = packager.write(oversized).unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("bounded capacity (268435456 bytes")
+    );
 }

@@ -304,7 +304,7 @@ Add `audio_meter=true` to a playout event URL to request audio-meter updates.
 
 The UUID expires after 30 minutes and is bound to the request IP address.
 
-## MoQ preview (experimental)
+## MoQ preview
 
 | Method | Endpoint | Access | Description |
 | --- | --- | --- | --- |
@@ -316,7 +316,7 @@ The UUID expires after 30 minutes and is bound to the request IP address.
 Bootstrap responses contain `broadcast`, `relay_url`, `relay_port`, `delay_ms`
 and `ticket` (`null` for public playback). An unavailable relay returns HTTP
 503. Private bootstrap responses must not be cached; obtain a fresh ticket
-when reconnecting. See [MoQ output and browser preview](moq.md) for output
+when reconnecting. See [MoQ program preview](moq.md) for output
 configuration, relay transports and access control.
 
 ## Public HLS files

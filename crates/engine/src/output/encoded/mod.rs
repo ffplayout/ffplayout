@@ -936,7 +936,7 @@ impl EncodedOutput {
         }
 
         if let Some(session) = &mut self.hls_session {
-            session.retire_pending_media()?;
+            session.retire_pending_media();
         }
         let stream_time_base = self.mux.time_base(stream_index)?;
 

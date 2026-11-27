@@ -14,3 +14,8 @@ workspace = true
 [dependencies]
 anyhow = "1"
 jiff = { version = "1", default-features = false, features = ["std"] }
+log = "0.4"
+tempfile = "3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

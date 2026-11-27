@@ -26,8 +26,16 @@ references share pixel buffers; forcing picture metadata does not copy pixels.
 
 Existing encoding groups, destination workers and bounded queues are reused.
 A slow or failed native destination retains existing output failure isolation.
-The native packager adds a bounded compressed segment buffer; it does not start
+The native packager sizes its compressed segment buffer from the rendition bandwidth,
+packet rate and segment duration, up to 256 MiB and 262144 packets per output; it does not start
 new encoders or copy uncompressed program frames.
+
+Each native HLS output can buffer up to 256 MiB of compressed packet payload
+and 262144 packets. Concurrent outputs contribute independently, and packet
+metadata, subtitles, and muxer allocations add to this memory. The estimate
+uses two segment durations. At sustained high bitrate, a delayed common keyframe
+can exhaust the budget before the separate boundary timeout (three segment
+durations plus five seconds of media time).
 
 ## Selection and rollout
 
@@ -68,11 +76,12 @@ across resume, including an existing target of eight seconds from older builds. 
 increasing it beyond the existing target is rejected without
 removing media and requires an explicitly fresh HLS history. The native
 backend accepts `hls_flags=program_date_time` and `hls_delete_threshold`
-(default 1, minimum 1). The latter keeps that many extra media segments per
-track outside the playlist, including after resume; larger windows do not add a
-second time-based retention period. Excess files are deleted only after a fresh
-playlist has been published. Other custom HLS options and
-container metadata are currently rejected.
+(default 1, minimum 1). The threshold keeps a minimum reserve of unreferenced
+media segments per track. An evicted segment also gets a grace period based on
+its duration and the longest observed playlist window. Retention markers carry
+the expiry across restarts. Expired media are eligible for deletion after a
+successful publication. Other custom HLS options and container metadata are
+currently rejected.
 
 The native fMP4 writer publishes a separate init file per rendition and
 generation. Media playlists attach it to fragments through `EXT-X-MAP`
@@ -80,14 +89,19 @@ and retain it while those fragments remain available. WebVTT stays in
 separate `.vtt` segments and follows the presentation timeline in either
 container.
 
-All media files in a new segment group and its subtitle file are published before
-updating their playlists. Each playlist replacement is atomic; the group of
-playlist replacements is not. The master is published last. New renditions and
+The packager publishes the complete media set, then stages all manifests before
+replacing any of them. Each manifest has its own atomic replacement, with the
+master published last. A process interruption between replacements can leave
+different tracks at different sequences. Cleanup failures are logged and retried
+without interrupting publication. When a filesystem does not support directory
+sync, publication continues with a warning. File sync and other I/O failures
+still fail the write. New renditions and
 subtitle tracks join at the next media sequence and the current discontinuity
 sequence. A re-enabled subtitle track starts a new window if video has advanced;
-its stale resources are retired after publication using the configured reserve.
-Existing video tracks retain their historical window; conflicting video sequence
-endpoints still require deliberate recovery.
+its stale resources are retired subject to the grace period and reserve.
+When a manifest references missing media, the packager publishes a fresh
+window with a discontinuity once a complete new segment set is ready.
+Conflicting sequence assignments or invalid manifests still require recovery.
 
 The minimal playlist serializer handles the initial scope only. General HLS tag
 libraries remain to be evaluated before extending serialization to timed events,

@@ -103,12 +103,18 @@ struct Playlist {
     stop: Arc<AtomicBool>,
     clips: Arc<AtomicUsize>,
     control: LiveIngestControl,
+    playback: crate::PlaybackControl,
     worker: Option<JoinHandle<()>>,
 }
 
 #[cfg(target_os = "linux")]
 impl Playlist {
-    fn start(config: OutputConfig, input: LiveListenerConfig, clip: PathBuf) -> Self {
+    fn start(
+        config: OutputConfig,
+        input: LiveListenerConfig,
+        clip: PathBuf,
+        automatic: bool,
+    ) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let clips = Arc::new(AtomicUsize::new(0));
         let (ready, control) = std::sync::mpsc::sync_channel(1);
@@ -120,7 +126,7 @@ impl Playlist {
                 let mut playout = Playout::open_parallel(config.clone(), 0.1).unwrap();
                 let control = playout.playback_control.live_ingest();
 
-                control.set_automatic(input.id, false);
+                control.set_automatic(input.id, automatic);
 
                 let mut live = Some(crate::input::live::spawn_controlled_live_listeners(
                     vec![input],
@@ -128,16 +134,19 @@ impl Playlist {
                     control.clone(),
                 ));
 
-                ready.send(control).unwrap();
+                ready.send(playout.playback_control.clone()).unwrap();
 
                 while !stop.load(Ordering::Acquire) {
-                    assert_eq!(
-                        playout
-                            .play_with_live(clip.to_str().unwrap(), None, &mut live)
-                            .unwrap(),
-                        ClipResult::Played
-                    );
-                    clips.fetch_add(1, Ordering::Release);
+                    match playout
+                        .play_with_live(clip.to_str().unwrap(), None, &mut live)
+                        .unwrap()
+                    {
+                        ClipResult::Played => {
+                            clips.fetch_add(1, Ordering::Release);
+                        }
+                        ClipResult::LiveEnded => {}
+                        result => panic!("unexpected clip result: {result:?}"),
+                    }
                 }
 
                 drop(live);
@@ -145,10 +154,13 @@ impl Playlist {
             }
         });
 
+        let playback = control.recv().unwrap();
+
         Self {
             stop,
             clips,
-            control: control.recv().unwrap(),
+            control: playback.live_ingest(),
+            playback,
             worker: Some(worker),
         }
     }
@@ -277,7 +289,7 @@ fn forwarding_during_playlist_survives_slow_destination_and_releases_workers() {
         .insert("tune".into(), "zerolatency".into());
     config.destinations = vec![program_cfg.clone()];
 
-    let playlist = Playlist::start(config.clone(), ingress, clip);
+    let playlist = Playlist::start(config.clone(), ingress, clip, false);
     let status = &config.output_status;
 
     wait_until(Duration::from_secs(6), "playlist output", || {
@@ -935,4 +947,392 @@ fn incompatible_copy_route_does_not_activate_packet_forwarding() {
     drop(session);
 
     assert_eq!(status.snapshot()[&1].phase, "waiting_input");
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+#[ignore = "requires FFmpeg CLI and a local SRT socket"]
+fn native_shared_audio_hls_and_parallel_stream_keep_publishing_during_live_audio_dropout() {
+    check_native_hls_during_live_dropout(false, false);
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+#[ignore = "requires FFmpeg CLI and a local SRT socket"]
+fn native_shared_audio_hls_and_parallel_stream_survive_complete_live_signal_loss() {
+    check_native_hls_during_live_dropout(true, false);
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+#[ignore = "requires FFmpeg CLI and a local SRT socket"]
+fn native_shared_audio_hls_and_parallel_stream_resume_live_with_automatic_takeover() {
+    check_native_hls_during_live_dropout(true, true);
+}
+
+#[cfg(target_os = "linux")]
+fn check_native_hls_during_live_dropout(lose_video: bool, automatic: bool) {
+    use crate::utils::config::HlsVariant;
+
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    let _native = native_lock();
+    let scratch = Scratch::new();
+    let clip = scratch.0.join("playlist.ts");
+    let source = scratch.0.join("dropout.ts");
+    let video_playlist = scratch.0.join("program.m3u8");
+    let audio_playlist = scratch.0.join("audio.m3u8");
+    let parallel = scratch.0.join("parallel.ts");
+
+    assert!(
+        generate_av(clip.to_str().unwrap(), "160x90", 3, "libx264", 25)
+            .status()
+            .unwrap()
+            .success()
+    );
+    const TRANSPORT_RATE: u64 = 1_000_000;
+    assert!(
+        ffmpeg()
+            .args([
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=160x90:rate=25",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=sample_rate=48000",
+                "-t",
+                "23",
+                "-af",
+                r"aselect=not(between(t\,4\,16))",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-tune",
+                "zerolatency",
+                "-g",
+                "25",
+                "-c:a",
+                "aac",
+                "-ac",
+                "2",
+                "-max_interleave_delta",
+                "100000",
+                "-muxrate",
+                &TRANSPORT_RATE.to_string(),
+                "-f",
+                "mpegts",
+            ])
+            .arg(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let mut input = format::input(&source).unwrap();
+    let audio_pts: Vec<_> = input
+        .packets()
+        .filter_map(|(stream, packet)| {
+            (stream.parameters().medium() == media::Type::Audio)
+                .then(|| {
+                    packet
+                        .pts()
+                        .map(|pts| pts.rescale(stream.time_base(), rescale::TIME_BASE))
+                })
+                .flatten()
+        })
+        .collect();
+
+    assert!(
+        audio_pts
+            .windows(2)
+            .any(|pair| pair[1] - pair[0] >= 11_900_000)
+    );
+    drop(input);
+
+    let ingress = srt_listener(port());
+
+    ingress
+        .idle_timeout
+        .set_millis(if lose_video { 4_000 } else { 20_000 })
+        .unwrap();
+
+    let caller = format!("{}?mode=caller", ingress.url);
+    let mut config = OutputConfig::new(160, 90, 25, 48_000);
+    config
+        .video_options
+        .insert("preset".into(), "ultrafast".into());
+    config
+        .video_options
+        .insert("tune".into(), "zerolatency".into());
+
+    let mut hls = config.clone();
+    hls.muxer_options
+        .insert("ffplayout_packager".into(), "native".into());
+    hls.muxer_options
+        .insert("hls_shared_audio".into(), "1".into());
+    let mut stream = config.clone();
+    stream.stream_type = StreamType::Custom;
+    stream.stream_format = "mpegts".into();
+    config.destinations = vec![
+        OutputDestination {
+            id: 1,
+            config: hls,
+            target: OutputTarget::Hls {
+                playlist: video_playlist.to_string_lossy().into_owned(),
+                variants: vec![HlsVariant {
+                    name: "program".into(),
+                    width: 160,
+                    height: 90,
+                    video_bitrate: 350_000,
+                    audio_bitrate: 128_000,
+                }],
+                subtitle: None,
+                segment_seconds: 1,
+                list_size: 6,
+            },
+        },
+        OutputDestination {
+            id: 2,
+            config: stream,
+            target: OutputTarget::Stream {
+                url: parallel.to_string_lossy().into_owned(),
+            },
+        },
+    ];
+
+    let status = config.output_status.clone();
+    let playlist = Playlist::start(config, ingress, clip, automatic);
+    let start_publisher = || {
+        Process(
+            ffmpeg()
+                .args([
+                    "-f",
+                    "data",
+                    "-raw_packet_size",
+                    "1316",
+                    "-i",
+                    "pipe:0",
+                    "-map",
+                    "0:0",
+                    "-c",
+                    "copy",
+                    "-flush_packets",
+                    "1",
+                    "-f",
+                    "data",
+                    &caller,
+                ])
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+                .unwrap(),
+        )
+    };
+    let mut publisher = start_publisher();
+
+    // Pace the complete MPEG-TS transport instead of asking FFmpeg to pace
+    // each selected elementary stream. The latter can stall video at an audio gap.
+    let send_transport = |publisher: &mut Process,
+                          started: Instant,
+                          stop_sender: Arc<AtomicBool>| {
+        let mut pipe = publisher.0.stdin.take().unwrap();
+        let transport = fs::read(&source).unwrap();
+
+        thread::spawn(move || {
+            use std::io::Write;
+
+            for (index, chunk) in transport.chunks(1316).enumerate() {
+                let at = Duration::from_micros(index as u64 * 1316 * 8_000_000 / TRANSPORT_RATE);
+                thread::sleep(at.saturating_sub(started.elapsed()));
+
+                if stop_sender.load(Ordering::Acquire) {
+                    // Stop all packets while keeping the transport open past the
+                    // listener's timeout, so fallback also has to fill the gap.
+                    thread::sleep(Duration::from_secs(6));
+                    break;
+                }
+
+                if pipe.write_all(chunk).is_err() {
+                    break;
+                }
+            }
+        })
+    };
+    let started = Instant::now();
+    let stop_transport = Arc::new(AtomicBool::new(false));
+    let mut sender = send_transport(&mut publisher, started, stop_transport.clone());
+
+    wait_until(
+        Duration::from_secs(5),
+        "live readiness before the audio gap",
+        || playlist.control.snapshot().iter().any(|input| input.ready),
+    );
+    let session = playlist.control.snapshot()[0].session.clone();
+
+    if !automatic {
+        playlist.control.select(1, &session, true).unwrap();
+    }
+
+    let next_sequence = |path: &Path| {
+        let manifest = fs::read_to_string(path).unwrap();
+        let first: u64 = manifest
+            .lines()
+            .find_map(|line| line.strip_prefix("#EXT-X-MEDIA-SEQUENCE:"))
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        first
+            + manifest
+                .lines()
+                .filter(|line| line.starts_with("#EXTINF:"))
+                .count() as u64
+    };
+    let check = || {
+        let snapshot = status.snapshot();
+
+        assert_eq!(snapshot[&1].phase, "running", "{snapshot:?}");
+        assert_eq!(snapshot[&2].phase, "running", "{snapshot:?}");
+
+        [
+            next_sequence(&video_playlist),
+            next_sequence(&audio_playlist),
+            fs::metadata(&parallel).unwrap().len(),
+        ]
+    };
+    let mut previous: Option<[u64; 3]> = None;
+    let mut stalls = Vec::new();
+
+    let sample_times: &[u64] = if lose_video {
+        &[5, 9, 17, 24]
+    } else {
+        &[5, 9, 13, 17, 21]
+    };
+
+    for (index, &second) in sample_times.iter().enumerate() {
+        thread::sleep(Duration::from_secs(second).saturating_sub(started.elapsed()));
+        let current = check();
+
+        let selected = playlist.playback.live_active();
+
+        eprintln!(
+            "t={:.2}s sample={index} next_video_sequence={} next_audio_sequence={} parallel_bytes={} live_selected={selected}",
+            started.elapsed().as_secs_f64(),
+            current[0],
+            current[1],
+            current[2]
+        );
+
+        assert_eq!(
+            selected,
+            !lose_video || second != 17,
+            "unexpected source at {second}s"
+        );
+
+        if lose_video && second == 9 {
+            stop_transport.store(true, Ordering::Release);
+        }
+
+        if lose_video && second == 17 {
+            let _ = publisher.0.kill();
+            sender.join().unwrap();
+
+            let connected_at = Instant::now();
+
+            publisher = start_publisher();
+            sender = send_transport(&mut publisher, connected_at, Arc::default());
+
+            wait_until(
+                Duration::from_secs(5),
+                "reconnected SRT source ready",
+                || {
+                    playlist
+                        .control
+                        .snapshot()
+                        .iter()
+                        .any(|input| input.ready && input.session != session)
+                },
+            );
+
+            if !automatic {
+                let fresh = playlist.control.snapshot()[0].session.clone();
+
+                playlist.control.select(1, &fresh, true).unwrap();
+            }
+
+            wait_until(
+                Duration::from_secs(3),
+                "reconnected SRT source on air",
+                || playlist.playback.live_status() == (true, Some(1)),
+            );
+            eprintln!(
+                "SRT reconnect to on air: {:.2}s",
+                connected_at.elapsed().as_secs_f64()
+            );
+        }
+
+        if let Some([video, audio, bytes]) = previous
+            && (current[0] < video + 2 || current[1] < audio + 2 || current[2] < bytes)
+        {
+            stalls.push(second);
+        }
+
+        previous = Some(current);
+    }
+
+    playlist.stop.store(true, Ordering::Release);
+    let _ = publisher.0.kill();
+    sender.join().unwrap();
+
+    playlist.finish();
+
+    assert!(
+        stalls.is_empty(),
+        "publication stalled at samples taken at {stalls:?} seconds"
+    );
+    assert_continuous_av(&parallel, if lose_video { 21 } else { 18 });
+
+    if !lose_video {
+        let audio_peak = |start: &str| {
+            let output = ffmpeg()
+                .args(["-ss", start, "-i"])
+                .arg(&parallel)
+                .args([
+                    "-map",
+                    "0:a:0",
+                    "-t",
+                    "1",
+                    "-ac",
+                    "1",
+                    "-c:a",
+                    "pcm_s16le",
+                    "-f",
+                    "s16le",
+                    "pipe:1",
+                ])
+                .stdout(std::process::Stdio::piped())
+                .output()
+                .unwrap();
+
+            assert!(output.status.success());
+            assert!(output.stdout.len() >= 80_000);
+
+            output
+                .stdout
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|sample| i16::from_le_bytes(*sample).unsigned_abs())
+                .max()
+                .unwrap()
+        };
+        let during = audio_peak("11");
+        let resumed = audio_peak("19");
+
+        eprintln!("PCM peak during dropout={during}, after recovery={resumed}");
+
+        assert!(during < 50 && resumed > 500);
+    }
 }

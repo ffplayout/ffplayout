@@ -104,7 +104,7 @@ counters do not include allocations made by the alternative allocator.
 
 ### Alpine / musl static build
 
-`docker/musl.Dockerfile` provides a separate, experimental Alpine 3.23 builder
+`docker/musl.Dockerfile` provides a separate Alpine 3.23 builder
 for `x86_64-unknown-linux-musl`. Use it through the same build script:
 
 ```bash

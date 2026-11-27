@@ -1287,6 +1287,152 @@ mod tests {
         std::fs::remove_dir_all(directory).unwrap();
     }
 
+    #[test]
+    #[ignore = "exercises the production 15-second retry interval"]
+    fn native_hls_reopens_after_encoded_audio_loss_while_parallel_stream_continues() {
+        use ffmpeg_next::{Packet, Rescale, rescale};
+
+        let directory = tempfile::tempdir().unwrap();
+        let video = directory.path().join("program.m3u8");
+        let audio = directory.path().join("audio.m3u8");
+        let parallel = directory.path().join("parallel.ts");
+        let hls = Fixture::configured(String::new(), RETRY_INTERVAL, RETRY_WINDOW, |destination| {
+            destination
+                .config
+                .muxer_options
+                .insert("ffplayout_packager".into(), "native".into());
+            destination
+                .config
+                .muxer_options
+                .insert("hls_shared_audio".into(), "1".into());
+            destination.target = crate::output::parallel::OutputTarget::Hls {
+                playlist: video.to_string_lossy().into_owned(),
+                variants: vec![crate::utils::config::HlsVariant {
+                    name: "program".into(),
+                    width: 160,
+                    height: 90,
+                    video_bitrate: 350_000,
+                    audio_bitrate: 128_000,
+                }],
+                subtitle: None,
+                segment_seconds: 1,
+                list_size: 12,
+            };
+        });
+        let healthy = Fixture::new(
+            parallel.to_string_lossy().into_owned(),
+            RETRY_INTERVAL,
+            RETRY_WINDOW,
+        );
+        let send = |target: &Fixture, number: i64, drop_audio: bool| {
+            for original in &hls.packets {
+                if drop_audio && original.stream == 1 {
+                    continue;
+                }
+
+                let mut packet: Packet =
+                    crate::utils::ffmpeg::reference_packet(&original.packet).unwrap();
+                let offset = (number * 400_000).rescale(rescale::TIME_BASE, original.time_base);
+                packet.set_pts(packet.pts().map(|value| value + offset));
+                packet.set_dts(packet.dts().map(|value| value + offset));
+                target
+                    .queue
+                    .send(
+                        Delivery::Packet(EncodedPacket {
+                            packet,
+                            stream: original.stream,
+                            time_base: original.time_base,
+                        }),
+                        0,
+                        None,
+                    )
+                    .unwrap();
+            }
+        };
+        hls.wait_connected();
+        healthy.wait_connected();
+
+        for chunk in 0..6 {
+            send(&hls, chunk, false);
+            send(&healthy, chunk, false);
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !video.is_file() || !audio.is_file() {
+            assert!(
+                Instant::now() < deadline,
+                "initial HLS manifests did not publish"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        for chunk in 6..31 {
+            send(&hls, chunk, true);
+            send(&healthy, chunk, false);
+        }
+        hls.wait("retrying");
+
+        let failed_at = Instant::now();
+        let error = hls.status.snapshot()[&1].error.clone().unwrap();
+        let during_failure = [
+            std::fs::read(&video).unwrap(),
+            std::fs::read(&audio).unwrap(),
+        ];
+        assert!(
+            error.contains("aligned segment boundaries") || error.contains("fixed target duration"),
+            "{error}"
+        );
+
+        let previous_bytes = std::fs::metadata(&parallel).unwrap().len();
+        let mut chunk = 31;
+        loop {
+            send(&hls, chunk, false);
+            send(&healthy, chunk, false);
+            chunk += 1;
+            let snapshot = hls.status.snapshot();
+            assert_eq!(healthy.status.snapshot()[&1].phase, "running");
+            assert!(
+                failed_at.elapsed() < RETRY_INTERVAL + Duration::from_secs(6),
+                "{snapshot:?}"
+            );
+
+            if std::fs::read(&video).unwrap() != during_failure[0]
+                && std::fs::read(&audio).unwrap() != during_failure[1]
+            {
+                break;
+            }
+
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        let recovered = failed_at.elapsed();
+        eprintln!(
+            "native HLS republished audio and video {recovered:.2?} after retrying ({error})"
+        );
+
+        assert!(recovered >= RETRY_INTERVAL.saturating_sub(Duration::from_millis(100)));
+        assert!(std::fs::metadata(&parallel).unwrap().len() > previous_bytes);
+        assert!(
+            std::fs::read_to_string(&video)
+                .unwrap()
+                .contains("#EXT-X-DISCONTINUITY\n")
+        );
+        assert!(
+            std::fs::read_to_string(&audio)
+                .unwrap()
+                .contains("#EXT-X-DISCONTINUITY\n")
+        );
+        hls.finish();
+        healthy.finish();
+
+        let mut input = ffmpeg_next::format::input(&parallel).unwrap();
+        let video_packets = input
+            .packets()
+            .filter(|(stream, _)| stream.parameters().medium() == ffmpeg_next::media::Type::Video)
+            .count();
+        assert_eq!(video_packets, chunk as usize * 10);
+    }
+
     fn uuid_for_test() -> u128 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

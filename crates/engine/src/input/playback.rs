@@ -339,6 +339,9 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             .map(reference_video_frame)
             .transpose()?;
         let frame_size = self.output.audio_frame_size().max(1) as i64;
+        let video_start = self.live.video_pts;
+        let audio_start = self.live.audio_pts;
+        let catch_up_start = self.output.playout_clock().map(|_| Instant::now());
 
         if last_video_frame.is_none() {
             self.live.video_pts = video_end;
@@ -355,6 +358,20 @@ impl<'a, O: FrameOutput> LiveOverrideOutput<'a, O> {
             );
             let send_video = self.live.video_pts < video_end
                 && (self.live.audio_pts >= audio_end || video_sample <= self.live.audio_pts);
+
+            if let Some(started) = catch_up_start {
+                let seconds = if send_video {
+                    video_seconds(self.live.fps, self.live.video_pts - video_start)
+                } else {
+                    audio_seconds(self.live.sample_rate, self.live.audio_pts - audio_start)
+                };
+                // After an outage the timestamps are already due on the program
+                // clock. Limit filler catch-up to twice realtime so one encoder
+                // cannot lose its branch to a multi-second burst.
+                let deadline = Duration::from_secs_f64(seconds / 2.0);
+
+                thread::sleep(deadline.saturating_sub(started.elapsed()));
+            }
 
             if send_video {
                 if let Some(last_video_frame) = &last_video_frame {

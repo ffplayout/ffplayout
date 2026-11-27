@@ -104,6 +104,7 @@ pub(super) struct HlsSession {
     master_playlist: Option<String>,
     pending_media: Vec<PathBuf>,
     next_retirement: Instant,
+    retirement_failed: bool,
 }
 
 impl HlsSession {
@@ -223,6 +224,7 @@ impl HlsSession {
         Ok(Self {
             pending_media,
             next_retirement: Instant::now(),
+            retirement_failed: false,
             _locks: locks,
             media_playlists: media_playlists.to_vec(),
             owned_playlists,
@@ -230,16 +232,23 @@ impl HlsSession {
         })
     }
 
-    pub fn retire_pending_media(&mut self) -> Result<()> {
-        if self.pending_media.is_empty() {
-            return Ok(());
-        }
+    pub fn retire_pending_media(&mut self) {
         let now = Instant::now();
-        if now >= self.next_retirement {
-            self.next_retirement = now + Duration::from_secs(1);
-            retire_media(&mut self.pending_media, SystemTime::now())?;
+
+        if self.pending_media.is_empty() || now < self.next_retirement {
+            return;
         }
-        Ok(())
+
+        self.next_retirement = now + Duration::from_secs(1);
+        let result = retire_media(&mut self.pending_media, SystemTime::now());
+
+        if let Err(error) = &result
+            && !self.retirement_failed
+        {
+            log::warn!("Could not retire old HLS media: {error:#}");
+        }
+
+        self.retirement_failed = result.is_err();
     }
 
     pub(super) fn requires_replacement(
@@ -487,15 +496,23 @@ impl HlsReplacement {
 }
 
 fn retire_media(paths: &mut Vec<PathBuf>, now: SystemTime) -> Result<()> {
-    let mut i = 0;
-    while i < paths.len() {
-        if ff_hls::retention::remove(&paths[i], now)? {
-            paths.swap_remove(i);
-        } else {
-            i += 1;
+    let mut index = 0;
+    let mut first_error = None;
+
+    while index < paths.len() {
+        match ff_hls::retention::remove(&paths[index], now) {
+            Ok(true) => {
+                paths.swap_remove(index);
+            }
+            Ok(false) => index += 1,
+            Err(error) => {
+                first_error.get_or_insert(error);
+                index += 1;
+            }
         }
     }
-    Ok(())
+
+    first_error.map_or(Ok(()), |error| Err(error.into()))
 }
 
 // FFmpeg updates individual manifests as it closes renditions. On replacement

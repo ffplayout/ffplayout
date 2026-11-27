@@ -2,7 +2,7 @@ use std::{
     collections::{HashSet, VecDeque},
     fmt::Write,
     fs,
-    io::ErrorKind,
+    io::{ErrorKind, Write as _},
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
@@ -27,6 +27,10 @@ pub(crate) struct Playlist {
     target_duration: u64,
     retired: VecDeque<PathBuf>,
     delete_threshold: usize,
+    pub missing_resources: bool,
+    longest_window: f64,
+    evicted: Vec<Segment>,
+    cleanup_failed: bool,
     initialization_files: Vec<(u64, PathBuf)>,
     replaced_resources: Option<(Duration, HashSet<PathBuf>)>,
 }
@@ -40,6 +44,10 @@ impl Playlist {
             target_duration: 1,
             retired: VecDeque::new(),
             delete_threshold: 1,
+            missing_resources: false,
+            longest_window: 0.0,
+            evicted: Vec::new(),
+            cleanup_failed: false,
             initialization_files: Vec::new(),
             replaced_resources: None,
         }
@@ -86,10 +94,8 @@ impl Playlist {
                     .strip_prefix("URI=\"")
                     .and_then(|value| value.strip_suffix('"'))
                     .context("invalid native HLS initialization map")?;
-                ensure!(
-                    safe_name(uri) && playlist.parent().join(uri).is_file(),
-                    "HLS initialization resource is invalid or missing: {uri}"
-                );
+                ensure!(safe_name(uri), "invalid HLS initialization resource: {uri}");
+                playlist.check_resource(uri)?;
                 initialization = Some(uri.to_owned());
             } else if let Some(value) = line.strip_prefix("#EXT-X-PROGRAM-DATE-TIME:") {
                 date = Some(value.to_owned());
@@ -110,10 +116,7 @@ impl Playlist {
                     playlist.segments.len() < 10_000,
                     "too many HLS resume segments"
                 );
-                ensure!(
-                    playlist.parent().join(line).is_file(),
-                    "HLS resume segment is missing: {line}"
-                );
+                playlist.check_resource(line)?;
                 playlist.segments.push_back(Segment {
                     sequence,
                     uri: line.to_owned(),
@@ -127,7 +130,25 @@ impl Playlist {
             }
         }
 
+        playlist.longest_window = playlist
+            .segments
+            .iter()
+            .map(|segment| segment.duration)
+            .sum();
+
         Ok(playlist)
+    }
+
+    fn check_resource(&mut self, uri: &str) -> Result<()> {
+        let path = self.parent().join(uri);
+        match fs::metadata(&path) {
+            Ok(metadata) if metadata.is_file() => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => self.missing_resources = true,
+            Ok(_) => anyhow::bail!("invalid HLS resume resource: {}", path.display()),
+            Err(error) => return Err(error).with_context(|| format!("reading {}", path.display())),
+        }
+
+        Ok(())
     }
 
     pub fn parent(&self) -> &Path {
@@ -331,11 +352,12 @@ impl Playlist {
             .pop_front_if(|segment| segment.sequence < first)
         {
             self.discontinuity_sequence += u64::from(old.discontinuity);
-            self.retired.push_back(self.parent().join(old.uri));
+            self.retired.push_back(self.parent().join(&old.uri));
+            self.evicted.push(old);
         }
     }
 
-    pub fn publish(&mut self, shared_audio: bool) -> Result<()> {
+    pub fn stage(&mut self, shared_audio: bool) -> Result<StagedFile> {
         let sequence = self.segments.front().map_or(0, |segment| segment.sequence);
         let version = if self
             .segments
@@ -383,18 +405,67 @@ impl Playlist {
                 crate::retention::protect(resource, until, &self.path)?;
             }
         }
-        atomic_write(&self.path, text.as_bytes())?;
-        self.replaced_resources = None;
-        Ok(())
+        let now = SystemTime::now();
+
+        for segment in &self.evicted {
+            let grace = Duration::from_secs_f64(self.longest_window + segment.duration);
+            let until = now
+                .checked_add(grace)
+                .context("invalid HLS retention deadline")?;
+
+            crate::retention::protect(&self.parent().join(&segment.uri), until, &self.path)?;
+
+            if let Some(initialization) = &segment.initialization {
+                crate::retention::protect(&self.parent().join(initialization), until, &self.path)?;
+            }
+        }
+
+        StagedFile::new(&self.path, text.as_bytes())
     }
 
-    pub fn retire(&mut self) -> Result<()> {
-        while self.retired.len() > self.delete_threshold {
-            let path = self.retired.pop_front().expect("checked retirement queue");
+    pub fn committed(&mut self) {
+        let duration = self
+            .segments
+            .iter()
+            .map(|segment| segment.duration)
+            .sum::<f64>();
+        self.longest_window = self.longest_window.max(duration);
+        self.replaced_resources = None;
+        self.evicted.clear();
+    }
 
-            if !crate::retention::remove(&path, SystemTime::now())? {
-                self.retired.push_front(path);
-                break;
+    pub fn retire(&mut self) {
+        let result = self.retire_resources();
+
+        if let Err(error) = &result
+            && !self.cleanup_failed
+        {
+            log::warn!(
+                "Could not retire HLS resources for {}: {error:#}",
+                self.path.display()
+            );
+        }
+
+        self.cleanup_failed = result.is_err();
+    }
+
+    fn retire_resources(&mut self) -> Result<()> {
+        let mut index = 0;
+        let mut first_error = None;
+        let now = SystemTime::now();
+
+        while self.retired.len() > index + self.delete_threshold {
+            let path = &self.retired[index];
+
+            match crate::retention::remove(path, now) {
+                Ok(true) => {
+                    self.retired.remove(index);
+                }
+                Ok(false) => break,
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                    index += 1;
+                }
             }
         }
 
@@ -417,21 +488,26 @@ impl Playlist {
                 .filter(|number| *number <= oldest)
                 .max()
         {
-            let mut files = std::mem::take(&mut self.initialization_files);
-            for (number, path) in files.drain(..) {
-                if number < keep_from
-                    && !self.segments.iter().any(|segment| {
-                        segment.initialization.as_deref()
-                            == path.file_name().and_then(|name| name.to_str())
-                    })
+            let mut index = 0;
+            while let Some((number, path)) = self.initialization_files.get(index) {
+                let still_referenced = self.segments.iter().any(|segment| {
+                    segment.initialization.as_deref()
+                        == path.file_name().and_then(|name| name.to_str())
+                });
+
+                if *number < keep_from
+                    && !still_referenced
+                    && crate::retention::remove(path, SystemTime::now())?
                 {
-                    if !crate::retention::remove(&path, SystemTime::now())? {
-                        self.initialization_files.push((number, path));
-                    }
+                    self.initialization_files.swap_remove(index);
                 } else {
-                    self.initialization_files.push((number, path));
+                    index += 1;
                 }
             }
+        }
+
+        if let Some(error) = first_error {
+            return Err(error.into());
         }
 
         Ok(())
@@ -461,15 +537,54 @@ pub(crate) fn safe_name(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
 }
 
-pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<()> {
-    let name = path
-        .file_name()
-        .context("HLS resource has no filename")?
-        .to_string_lossy();
-    let temp = path.with_file_name(format!(".{name}.native.tmp"));
+pub(crate) struct StagedFile {
+    target: PathBuf,
+    temporary: tempfile::NamedTempFile,
+}
 
-    fs::write(&temp, contents).with_context(|| format!("writing {}", temp.display()))?;
-    fs::rename(&temp, path).with_context(|| format!("publishing {}", path.display()))?;
+impl StagedFile {
+    pub fn new(path: &Path, contents: &[u8]) -> Result<Self> {
+        let parent = path.parent().context("HLS resource has no directory")?;
+        let mut builder = tempfile::Builder::new();
+        builder.prefix(".hls-");
 
-    Ok(())
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            builder.permissions(fs::Permissions::from_mode(0o666));
+        }
+
+        let mut temporary = builder
+            .tempfile_in(parent)
+            .with_context(|| format!("staging {}", path.display()))?;
+
+        temporary.write_all(contents)?;
+        temporary.as_file().sync_all()?;
+
+        Ok(Self {
+            target: path.to_owned(),
+            temporary,
+        })
+    }
+
+    pub fn publish(self, replace: bool) -> Result<()> {
+        let result = if replace {
+            self.temporary.persist(&self.target)
+        } else {
+            self.temporary.persist_noclobber(&self.target)
+        };
+
+        result.with_context(|| format!("publishing {}", self.target.display()))?;
+
+        let directory = self
+            .target
+            .parent()
+            .context("HLS resource has no directory")?;
+
+        crate::sync_directory(directory)
+            .with_context(|| format!("synchronizing HLS directory {}", directory.display()))?;
+
+        Ok(())
+    }
 }

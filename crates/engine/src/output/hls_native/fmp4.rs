@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::File,
     io::{self, Read, Seek, SeekFrom, Write as _},
     path::Path,
 };
@@ -105,29 +105,42 @@ impl Initialization {
     }
 }
 
-fn publish_file(path: &Path, write: impl FnOnce(&mut File) -> Result<()>) -> Result<()> {
-    ensure!(!path.exists(), "refusing to overwrite {}", path.display());
-    let name = path
-        .file_name()
-        .context("native HLS resource has no filename")?
-        .to_string_lossy();
-    let temp = path.with_file_name(format!(".{name}.native.tmp"));
-    let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&temp)?;
-        write(&mut file)?;
-        file.flush()?;
-        drop(file);
-        fs::rename(&temp, path).with_context(|| format!("publishing {}", path.display()))
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(temp);
+pub(super) fn temporary_media(path: &Path) -> Result<tempfile::NamedTempFile> {
+    let parent = path.parent().context("HLS media has no directory")?;
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".hls-");
+
+    #[cfg(unix)]
+    {
+        use std::{fs::Permissions, os::unix::fs::PermissionsExt};
+
+        builder.permissions(Permissions::from_mode(0o666));
     }
 
-    result
+    builder
+        .tempfile_in(parent)
+        .with_context(|| format!("staging {}", path.display()))
+}
+
+pub(super) fn publish_media(temp: tempfile::NamedTempFile, path: &Path) -> Result<()> {
+    temp.as_file().sync_all()?;
+    temp.persist_noclobber(path)
+        .with_context(|| format!("publishing {}", path.display()))?;
+
+    let directory = path.parent().context("HLS media has no directory")?;
+
+    ff_hls::sync_directory(directory)
+        .with_context(|| format!("synchronizing HLS directory {}", directory.display()))?;
+
+    Ok(())
+}
+
+fn publish_file(path: &Path, write: impl FnOnce(&mut File) -> Result<()>) -> Result<()> {
+    let mut file = temporary_media(path)?;
+
+    write(file.as_file_mut())?;
+
+    publish_media(file, path)
 }
 
 fn read_box(input: &mut (impl Read + Seek), end: u64) -> Result<([u8; 4], u64)> {

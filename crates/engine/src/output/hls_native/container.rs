@@ -1,4 +1,4 @@
-use std::{fs, path::Path, time::SystemTime};
+use std::{path::Path, time::SystemTime};
 
 use anyhow::{Context, Result, ensure};
 use ff_hls::{MediaPacket, SegmentWriter};
@@ -140,9 +140,10 @@ impl SegmentWriter<Packet> for ContainerWriter {
             path.display()
         );
 
-        let temp = path.with_extension(format!("{}.native.tmp", self.extension()));
-        let result = (|| -> Result<()> {
-            let mut output = format::output_as(&temp, if fragmented { "mp4" } else { "mpegts" })?;
+        let temp = fmp4::temporary_media(path)?;
+        {
+            let mut output =
+                format::output_as(temp.path(), if fragmented { "mp4" } else { "mpegts" })?;
 
             // Preserve the shared presentation clock exactly, including the 33-bit
             // wrap in PES headers. WebVTT maps to this same clock, without muxdelay.
@@ -239,19 +240,12 @@ impl SegmentWriter<Packet> for ContainerWriter {
                 } else {
                     tracks.get(1).map(|track| &track.parameters)
                 };
-                initializations[rendition].publish(&temp, path, !audio_only, audio)?;
+                initializations[rendition].publish(temp.path(), path, !audio_only, audio)?;
             } else {
-                fs::rename(&temp, path)
-                    .with_context(|| format!("publishing {}", path.display()))?;
+                fmp4::publish_media(temp, path)?;
             }
-
-            Ok(())
-        })();
-
-        if fragmented || result.is_err() {
-            let _ = fs::remove_file(temp);
         }
 
-        result
+        Ok(())
     }
 }

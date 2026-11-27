@@ -1,4 +1,8 @@
-# MoQ output and browser preview
+# MoQ program preview
+
+The MoQ output is designed to provide a preview of the channel’s program on
+the frontend’s **Player** page. The optional public player uses the same
+preview for testing or small audiences.
 
 MoQ is included in every application build; no additional Cargo feature is needed.
 MoQ receives encoded frames directly from the common output pipeline through the
@@ -22,7 +26,7 @@ See [output instances](output.md#multiple-output-instances) for queues and failu
 
 MoQ settings are stored as ordinary `config_output` rows with `name = 'moq'`.
 There is no `config_preview` or `config_moq` table and no separate preview
-configuration. The MoQ output also supplies the main Player window's preview.
+configuration.
 
 ## Codecs
 
@@ -44,7 +48,7 @@ and bytes rather than an audio/video timestamp span, so encoder delay alone does
 not cause a queue-capacity failure. A genuinely blocked destination can still
 exhaust those bounds and reconnect independently.
 
-## Experimental demand-based publication
+## Demand-based publication
 
 An enabled private MoQ output starts when the internal Player opens its MoQ
 preview. It stays active while at least one authenticated relay connection exists,

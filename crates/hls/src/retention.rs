@@ -1,6 +1,6 @@
 //! Expiry markers survive writer restarts without changing the served media.
 use std::{
-    fs::{self, File},
+    fs,
     io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
@@ -28,26 +28,48 @@ pub fn grace(durations: impl Iterator<Item = f64>) -> Duration {
 
 pub fn protect(path: &Path, until: SystemTime, owner: &Path) -> io::Result<()> {
     let marker = marker(path);
-    let mut file = File::options()
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(marker)?;
-    let deadline = file.metadata()?.modified()?.max(until);
+    let deadline = match fs::symlink_metadata(&marker) {
+        Ok(metadata) if metadata.is_file() => metadata.modified()?.max(until),
+        Ok(_) => {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "invalid HLS retention marker",
+            ));
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => until,
+        Err(error) => return Err(error),
+    };
     let name = owner
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or(ErrorKind::InvalidInput)?;
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".hls-retention-");
+
+    #[cfg(unix)]
+    {
+        use std::{fs::Permissions, os::unix::fs::PermissionsExt};
+
+        builder.permissions(Permissions::from_mode(0o666));
+    }
+    let mut file = builder.tempfile_in(marker.parent().ok_or(ErrorKind::InvalidInput)?)?;
     file.write_all(name.as_bytes())?;
-    file.set_len(name.len() as u64)?;
-    file.set_modified(deadline)?;
+    file.as_file().set_modified(deadline)?;
+    file.as_file().sync_all()?;
+    file.persist(marker).map_err(|error| error.error)?;
     Ok(())
 }
 
 /// Returns false while an old playlist can still refer to this resource.
 pub fn remove(path: &Path, now: SystemTime) -> io::Result<bool> {
     let marker = marker(path);
-    match fs::metadata(&marker) {
+    match fs::symlink_metadata(&marker) {
+        Ok(metadata) if !metadata.is_file() => {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "invalid HLS retention marker",
+            ));
+        }
         Ok(metadata) if metadata.modified()? > now => return Ok(false),
         Ok(_) => {}
         Err(error) if error.kind() == ErrorKind::NotFound => return unlink(path).map(|()| true),

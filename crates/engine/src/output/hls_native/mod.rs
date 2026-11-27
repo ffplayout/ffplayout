@@ -143,6 +143,7 @@ impl NativeHls {
             master_playlist: (!variants.is_empty() || subtitle.is_some())
                 .then(|| "master.m3u8".to_owned()),
             segment_seconds,
+            video_fps: config.fps,
             list_size,
             delete_threshold: config
                 .muxer_options
