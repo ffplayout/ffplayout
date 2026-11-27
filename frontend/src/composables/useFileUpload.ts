@@ -2,6 +2,7 @@ import { ref } from 'vue'
 
 import { authFetch, authFetchRaw } from '@/composables/authFetch'
 import { useHelper } from '@/composables/helper'
+import { randomId } from '@/composables/randomId'
 
 interface UploadRequestOptions {
     url: string
@@ -107,7 +108,7 @@ export const useFileUpload = () => {
         const batchCount = request.batchCount || 1
         const fileSize = Number(file.size)
         const uploadKey = `${request.url}\0${file.name}\0${fileSize}\0${file.lastModified}`
-        const batchId = request.batchId || uploadBatches.get(uploadKey) || crypto.randomUUID()
+        const batchId = request.batchId || uploadBatches.get(uploadKey) || randomId()
         uploadBatches.set(uploadKey, batchId)
         const status = await getUploadStatus(file, request, batchId)
 
