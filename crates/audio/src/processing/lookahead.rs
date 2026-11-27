@@ -1,4 +1,10 @@
-use std::time::Duration;
+use std::{any::type_name, time::Duration};
+
+use rten_simd::{
+    Isa, SimdOp,
+    isa::GenericIsa,
+    ops::{BitOps, FloatOps, NumOps},
+};
 
 use crate::buffer::StereoBuffer;
 
@@ -12,75 +18,77 @@ const PEAK_HEADROOM_DB: f64 = 0.2;
 
 // ITU-R BS.1770 Annex 2, four polyphase filters with twelve taps each.
 // https://www.itu.int/rec/R-REC-BS.1770
-const COEFFS: [[f64; 12]; 4] = [
+const COEFFS: [[f32; 12]; 4] = [
     // phase 0
     [
         0.001_708_984_4,
-        0.010_986_328_0,
-        -0.019_653_320_0,
-        0.033_203_125_0,
-        -0.059_448_242_0,
-        0.137_329_100_0,
-        0.972_167_970_0,
-        -0.102_294_920_0,
-        0.047_607_422_0,
-        -0.026_611_328_0,
-        0.014_892_578_0,
-        -0.008_300_781_3,
+        0.010_986_328,
+        -0.019_653_32,
+        0.033_203_125,
+        -0.059_448_242,
+        0.137_329_1,
+        0.972_167_97,
+        -0.102_294_92,
+        0.047_607_422,
+        -0.026_611_328,
+        0.014_892_578,
+        -0.008_300_781,
     ],
     // phase 1
     [
-        -0.029_174_805_0,
-        0.029_296_875_0,
-        -0.051_757_812_0,
-        0.089_111_328_0,
-        -0.166_503_910_0,
-        0.465_087_890_0,
-        0.779_785_160_0,
-        -0.200_317_380_0,
-        0.101_562_500_0,
-        -0.058_227_540_0,
-        0.033_081_055_0,
-        -0.018_920_898_0,
+        -0.029_174_805,
+        0.029_296_875,
+        -0.051_757_813,
+        0.089_111_33,
+        -0.166_503_9,
+        0.465_087_9,
+        0.779_785_16,
+        -0.200_317_38,
+        0.101_562_5,
+        -0.058_227_54,
+        0.033_081_055,
+        -0.018_920_898,
     ],
     // phase 2 (= phase 1 reversed by symmetry)
     [
-        -0.018_920_898_0,
-        0.033_081_055_0,
-        -0.058_227_540_0,
-        0.101_562_500_0,
-        -0.200_317_380_0,
-        0.779_785_160_0,
-        0.465_087_890_0,
-        -0.166_503_910_0,
-        0.089_111_328_0,
-        -0.051_757_812_0,
-        0.029_296_875_0,
-        -0.029_174_805_0,
+        -0.018_920_898,
+        0.033_081_055,
+        -0.058_227_54,
+        0.101_562_5,
+        -0.200_317_38,
+        0.779_785_16,
+        0.465_087_9,
+        -0.166_503_9,
+        0.089_111_33,
+        -0.051_757_813,
+        0.029_296_875,
+        -0.029_174_805,
     ],
     // phase 3 (= phase 0 reversed by symmetry)
     [
-        -0.008_300_781_3,
-        0.014_892_578_0,
-        -0.026_611_328_0,
-        0.047_607_422_0,
-        -0.102_294_920_0,
-        0.972_167_970_0,
-        0.137_329_100_0,
-        -0.059_448_242_0,
-        0.033_203_125_0,
-        -0.019_653_320_0,
-        0.010_986_328_0,
+        -0.008_300_781,
+        0.014_892_578,
+        -0.026_611_328,
+        0.047_607_422,
+        -0.102_294_92,
+        0.972_167_97,
+        0.137_329_1,
+        -0.059_448_242,
+        0.033_203_125,
+        -0.019_653_32,
+        0.010_986_328,
         0.001_708_984_4,
     ],
 ];
 
 pub(crate) struct LookaheadLimiter {
-    history: [[f64; 2]; HISTORY_SAMPLES],
+    history: [[f32; 2]; HISTORY_SAMPLES],
     gain: f64,
     release: f64,
     lookahead: usize,
-    signal: Vec<[f64; 2]>,
+    left: Vec<f32>,
+    right: Vec<f32>,
+    peaks: Vec<f32>,
     envelope: Vec<f64>,
 }
 
@@ -91,7 +99,9 @@ impl LookaheadLimiter {
             gain: 1.0,
             release: 1.0 - (-1.0 / (RELEASE_SECONDS * f64::from(sample_rate))).exp(),
             lookahead: lookahead_samples(sample_rate),
-            signal: Vec::new(),
+            left: Vec::new(),
+            right: Vec::new(),
+            peaks: Vec::new(),
             envelope: Vec::new(),
         }
     }
@@ -107,36 +117,42 @@ impl LookaheadLimiter {
     ) -> f64 {
         let samples = frame.samples();
         let preview_len = self.lookahead + TRUE_PEAK_FUTURE_SAMPLES;
-        let signal = &mut self.signal;
-        signal.clear();
-        signal.extend_from_slice(&self.history);
-
-        signal.extend(
-            frame
-                .plane(0)
-                .iter()
-                .zip(frame.plane(1))
-                .map(|(&left, &right)| [f64::from(left), f64::from(right)]),
-        );
+        let (left, right) = (&mut self.left, &mut self.right);
+        left.clear();
+        right.clear();
+        left.extend(self.history.iter().map(|sample| sample[0]));
+        right.extend(self.history.iter().map(|sample| sample[1]));
+        left.extend_from_slice(frame.plane(0));
+        right.extend_from_slice(frame.plane(1));
 
         for sample in future.iter().take(preview_len) {
-            signal.push(sample.map(|value| {
+            let [future_left, future_right] = sample.map(|value| {
                 if value.is_finite() {
-                    f64::from(value) * future_gain
+                    (f64::from(value) * future_gain) as f32
                 } else {
                     0.0
                 }
-            }));
+            });
+
+            left.push(future_left);
+            right.push(future_right);
         }
 
         // At end of stream, gaps and forced dropout recovery, absent future
         // audio is silence. History still bridges the previous packet boundary.
-        signal.resize(HISTORY_SAMPLES + samples + preview_len, [0.0; 2]);
-        self.history
-            .copy_from_slice(&signal[samples..samples + HISTORY_SAMPLES]);
+        left.resize(HISTORY_SAMPLES + samples + preview_len, 0.0);
+        right.resize(HISTORY_SAMPLES + samples + preview_len, 0.0);
+
+        for (index, sample) in self.history.iter_mut().enumerate() {
+            *sample = [left[samples + index], right[samples + index]];
+        }
+
+        let peaks = &mut self.peaks;
+        peaks.resize(samples + self.lookahead, 0.0);
+        true_peaks(left, right, peaks);
         let envelope = &mut self.envelope;
-        envelope.resize(samples + self.lookahead, 0.0);
-        true_peaks(signal, envelope);
+        envelope.clear();
+        envelope.extend(peaks.iter().map(|&peak| f64::from(peak)));
 
         let ceiling = 10.0_f64.powf((ceiling_db - PEAK_HEADROOM_DB) / 20.0);
         // Propagate every peak's gain requirement backwards. A later, larger
@@ -179,9 +195,8 @@ impl LookaheadLimiter {
             };
             self.gain = released.min(required);
 
-            let sample_peak = signal[HISTORY_SAMPLES + index][0]
-                .abs()
-                .max(signal[HISTORY_SAMPLES + index][1].abs());
+            let sample_peak = f64::from(left[HISTORY_SAMPLES + index].abs())
+                .max(f64::from(right[HISTORY_SAMPLES + index].abs()));
 
             if sample_peak * self.gain > ceiling {
                 self.gain = ceiling / sample_peak;
@@ -192,11 +207,11 @@ impl LookaheadLimiter {
             envelope[index] = self.gain;
         }
 
-        for channel in [0, 1] {
+        for (channel, signal) in [(0, &*left), (1, &*right)] {
             let output = frame.plane_mut(channel);
 
             for (index, sample) in output.iter_mut().enumerate() {
-                *sample = (signal[HISTORY_SAMPLES + index][channel] * envelope[index]) as f32;
+                *sample = (f64::from(signal[HISTORY_SAMPLES + index]) * envelope[index]) as f32;
             }
         }
 
@@ -204,89 +219,89 @@ impl LookaheadLimiter {
     }
 }
 
-/// Four interpolation phases for both channels. Retain scalar summation order
-/// and f64 precision; SIMD runs across adjacent samples rather than reducing taps.
-fn true_peaks(signal: &[[f64; 2]], peaks: &mut [f64]) {
-    assert!(signal.len() >= peaks.len() + HISTORY_SAMPLES + TRUE_PEAK_FUTURE_SAMPLES);
+/// Four interpolation phases for both channels. The scalar and SIMD paths use
+/// identical `f32` operations in identical order (no fused multiply-add), so
+/// every ISA returns the same peaks. SIMD lanes run across adjacent samples.
+fn true_peaks(left: &[f32], right: &[f32], peaks: &mut [f32]) {
+    assert!(left.len() == right.len());
+    assert!(left.len() >= peaks.len() + HISTORY_SAMPLES + TRUE_PEAK_FUTURE_SAMPLES);
 
-    #[cfg(target_arch = "x86_64")]
-    if std::arch::is_x86_feature_detected!("avx") {
-        // SAFETY: Runtime detection ensures AVX is available. The length check
-        // above guarantees a complete 12-tap window for each output sample.
-        unsafe {
-            true_peaks_avx(signal, peaks);
-        }
-        return;
-    }
-
-    true_peaks_scalar(signal, peaks);
+    TruePeaks { left, right, peaks }.dispatch();
 }
 
-fn true_peaks_scalar(signal: &[[f64; 2]], peaks: &mut [f64]) {
-    for (index, peak) in peaks.iter_mut().enumerate() {
-        let window = &signal[index..index + 12];
-        *peak = window[HISTORY_SAMPLES][0]
-            .abs()
-            .max(window[HISTORY_SAMPLES][1].abs());
+struct TruePeaks<'a> {
+    left: &'a [f32],
+    right: &'a [f32],
+    peaks: &'a mut [f32],
+}
 
-        for coefficients in COEFFS {
-            let mut reconstructed = [0.0_f64; 2];
+impl SimdOp for TruePeaks<'_> {
+    type Output = ();
 
-            for (tap, coefficient) in coefficients.iter().enumerate() {
-                for channel in 0..2 {
-                    reconstructed[channel] += coefficient * window[11 - tap][channel];
+    #[inline(always)]
+    fn eval<I: Isa>(self, isa: I) {
+        if type_name::<I>() == type_name::<GenericIsa>() {
+            true_peaks_scalar(self.left, self.right, self.peaks);
+            return;
+        }
+
+        let ops = isa.f32();
+        let lanes = ops.len();
+        let end = self.peaks.len() / lanes * lanes;
+
+        for index in (0..end).step_by(lanes) {
+            let mut peak = ops.zero();
+
+            for channel in [self.left, self.right] {
+                peak = ops.max(peak, ops.abs(ops.load(&channel[index + HISTORY_SAMPLES..])));
+
+                for coefficients in COEFFS {
+                    let mut reconstructed = ops.zero();
+
+                    for (tap, coefficient) in coefficients.iter().enumerate() {
+                        let values = ops.load(&channel[index + 11 - tap..]);
+
+                        reconstructed =
+                            ops.add(reconstructed, ops.mul(ops.splat(*coefficient), values));
+                    }
+
+                    peak = ops.max(peak, ops.abs(reconstructed));
                 }
             }
 
-            *peak = peak.max(reconstructed[0].abs()).max(reconstructed[1].abs());
+            ops.store(peak, &mut self.peaks[index..]);
         }
+
+        true_peaks_scalar_from(self.left, self.right, self.peaks, end);
     }
 }
 
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx")]
-unsafe fn true_peaks_avx(signal: &[[f64; 2]], peaks: &mut [f64]) {
-    use std::arch::x86_64::{
-        _mm256_add_pd, _mm256_andnot_pd, _mm256_loadu_pd, _mm256_max_pd, _mm256_mul_pd,
-        _mm256_set1_pd, _mm256_setzero_pd, _mm256_storeu_pd,
-    };
+fn true_peaks_scalar(left: &[f32], right: &[f32], peaks: &mut [f32]) {
+    true_peaks_scalar_from(left, right, peaks, 0);
+}
 
-    let paired = peaks.len() / 2 * 2;
-    let sign = _mm256_set1_pd(-0.0);
+fn true_peaks_scalar_from(left: &[f32], right: &[f32], peaks: &mut [f32], first: usize) {
+    for (index, peak) in peaks.iter_mut().enumerate().skip(first) {
+        let mut maximum = 0.0_f32;
 
-    for index in (0..paired).step_by(2) {
-        // A 13-frame window covers two adjacent 12-tap convolutions. Each
-        // unaligned load reads two consecutive stereo frames (four f64 lanes).
-        let window = &signal[index..index + 13];
-        // SAFETY: All loads read two frames inside this checked window. Array
-        // elements are contiguous and loads require no additional alignment.
-        let mut peak = unsafe { _mm256_loadu_pd(window[HISTORY_SAMPLES].as_ptr()) };
-        peak = _mm256_andnot_pd(sign, peak);
+        for channel in [left, right] {
+            let window = &channel[index..index + 12];
 
-        for coefficients in COEFFS {
-            let mut reconstructed = _mm256_setzero_pd();
+            maximum = maximum.max(window[HISTORY_SAMPLES].abs());
 
-            for (tap, coefficient) in coefficients.iter().enumerate() {
-                let values = unsafe { _mm256_loadu_pd(window[11 - tap].as_ptr()) };
-                reconstructed = _mm256_add_pd(
-                    reconstructed,
-                    _mm256_mul_pd(_mm256_set1_pd(*coefficient), values),
-                );
+            for coefficients in COEFFS {
+                let mut reconstructed = 0.0_f32;
+
+                for (tap, coefficient) in coefficients.iter().enumerate() {
+                    reconstructed += coefficient * window[11 - tap];
+                }
+
+                maximum = maximum.max(reconstructed.abs());
             }
-
-            peak = _mm256_max_pd(peak, _mm256_andnot_pd(sign, reconstructed));
         }
 
-        let mut lanes = [0.0; 4];
-        // SAFETY: The local array has space for all four lanes.
-        unsafe {
-            _mm256_storeu_pd(lanes.as_mut_ptr(), peak);
-        }
-        peaks[index] = lanes[0].max(lanes[1]);
-        peaks[index + 1] = lanes[2].max(lanes[3]);
+        *peak = maximum;
     }
-
-    true_peaks_scalar(&signal[paired..], &mut peaks[paired..]);
 }
 
 pub fn lookahead_samples(sample_rate: u32) -> usize {
@@ -342,18 +357,19 @@ mod tests {
     #[test]
     fn dispatched_true_peaks_match_scalar_for_odd_sizes_and_stereo_transients() {
         for count in [0, 1, 2, 3, 17, 1024, 1505] {
-            let signal: Vec<_> = (0..count + HISTORY_SAMPLES + TRUE_PEAK_FUTURE_SAMPLES)
-                .map(|index| {
-                    let left = ((index as f64 * 0.713).sin() * 3.0)
-                        + if index % 7 == 0 { 2.0 } else { 0.0 };
-                    let right = (index as f64 * 2.931).cos() * 0.01;
-                    [left, right]
-                })
-                .collect();
+            let (left, right): (Vec<f32>, Vec<f32>) =
+                (0..count + HISTORY_SAMPLES + TRUE_PEAK_FUTURE_SAMPLES)
+                    .map(|index| {
+                        let left = ((index as f64 * 0.713).sin() * 3.0)
+                            + if index % 7 == 0 { 2.0 } else { 0.0 };
+                        let right = (index as f64 * 2.931).cos() * 0.01;
+                        (left as f32, right as f32)
+                    })
+                    .unzip();
             let mut scalar = vec![0.0; count];
             let mut dispatched = vec![0.0; count];
-            true_peaks_scalar(&signal, &mut scalar);
-            true_peaks(&signal, &mut dispatched);
+            true_peaks_scalar(&left, &right, &mut scalar);
+            true_peaks(&left, &right, &mut dispatched);
             assert_eq!(
                 scalar, dispatched,
                 "SIMD changed a true peak for {count} samples"

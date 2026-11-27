@@ -11,6 +11,8 @@ pub struct AudioLevel {
     pub timestamp_us: Option<i64>,
 }
 
+/// The callback runs synchronously on the audio processing path and must
+/// return quickly; hand slow work (I/O, locks held elsewhere) to another thread.
 #[derive(Clone)]
 pub struct AudioLevelCallback {
     callback: Arc<dyn Fn(AudioLevel) + Send + Sync>,
@@ -62,18 +64,14 @@ impl AudioLevelMeter {
             return;
         }
 
-        if left.len() != right.len() {
-            return;
-        }
-
-        for (index, (left, right)) in left.iter().zip(right).take(left.len()).enumerate() {
+        // Measure each channel separately: a mono downmix would hide
+        // anti-phase content and under-report the peak.
+        for (index, (left, right)) in left.iter().zip(right).enumerate() {
             let left = finite_sample(*left);
             let right = finite_sample(*right);
-            let mono = (left + right) * 0.5;
-            let abs = mono.abs();
 
-            self.sum_squares += f64::from(mono * mono);
-            self.peak = self.peak.max(abs);
+            self.sum_squares += (f64::from(left).powi(2) + f64::from(right).powi(2)) * 0.5;
+            self.peak = self.peak.max(left.abs()).max(right.abs());
             self.samples += 1;
 
             if self.samples >= self.interval_samples {
@@ -117,5 +115,56 @@ fn amplitude_to_db(amplitude: f32) -> f32 {
         MIN_DBFS
     } else {
         (20.0 * amplitude.log10()).max(MIN_DBFS)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::*;
+
+    fn measure(left: &[f32], right: &[f32]) -> AudioLevel {
+        let levels = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&levels);
+        let mut meter = AudioLevelMeter::new(
+            4_000,
+            Some(AudioLevelCallback::new(move |level| {
+                sink.lock().unwrap().push(level);
+            })),
+        );
+
+        meter.process_samples(left, right, Some(0));
+
+        let levels = levels.lock().unwrap();
+        assert_eq!(levels.len(), 1);
+        levels[0]
+    }
+
+    #[test]
+    fn anti_phase_signal_is_not_measured_as_silence() {
+        let left = vec![0.5; 1_000];
+        let right = vec![-0.5; 1_000];
+        let level = measure(&left, &right);
+
+        assert!((level.peak_db - 20.0 * 0.5_f32.log10()).abs() < 0.01);
+        assert!((level.rms_db - 20.0 * 0.5_f32.log10()).abs() < 0.01);
+    }
+
+    #[test]
+    fn peak_follows_the_louder_channel() {
+        let left = vec![0.25; 1_000];
+        let mut right = vec![0.0; 1_000];
+        right[10] = -1.0;
+        let level = measure(&left, &right);
+
+        assert!(level.peak_db.abs() < 0.01);
+    }
+
+    #[test]
+    fn mismatched_plane_lengths_measure_the_common_prefix() {
+        let level = measure(&vec![0.5; 1_200], &vec![0.5; 1_000]);
+
+        assert!((level.peak_db - 20.0 * 0.5_f32.log10()).abs() < 0.01);
     }
 }

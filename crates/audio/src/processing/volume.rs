@@ -77,8 +77,7 @@ impl AudioEffect for GainEffect {
         }
 
         self.gain_buffer.clear();
-        self.gain_buffer
-            .reserve(samples.saturating_sub(self.gain_buffer.capacity()));
+        self.gain_buffer.reserve(samples);
 
         for _ in 0..samples {
             let gain = self.next_gain();

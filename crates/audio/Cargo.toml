@@ -13,8 +13,9 @@ workspace = true
 
 [dependencies]
 anyhow = "1"
-ebur128-stream = "=0.2.0"
+ebur128-stream = "0.2"
 smallvec = "1"
+rten-simd = "0.28"
 
 [[bench]]
 name = "audio_dynamics"

@@ -59,6 +59,105 @@ pub struct LiveLoudnessConfig {
     pub true_peak_ceiling_dbtp: f64,
 }
 
+impl LiveLoudnessConfig {
+    /// Checks that every value is finite and within the range the processors
+    /// are designed for. Apply it before handing untrusted settings to a
+    /// processor or `LiveLoudnessControl`.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        let ranges = [
+            ("compressor_ratio", self.compressor_ratio, 1.0..=10.0),
+            (
+                "compressor_attack_ms",
+                self.compressor_attack_ms,
+                0.1..=50.0,
+            ),
+            ("compressor_hold_ms", self.compressor_hold_ms, 0.0..=2000.0),
+            (
+                "compressor_release_ms",
+                self.compressor_release_ms,
+                10.0..=10000.0,
+            ),
+            (
+                "compressor_strong_release_ms",
+                self.compressor_strong_release_ms,
+                10.0..=10000.0,
+            ),
+            ("compressor_knee_db", self.compressor_knee_db, 0.0..=24.0),
+            ("pause_hold_ms", self.pause_hold_ms, 0.0..=5000.0),
+            (
+                "pause_return_delay_ms",
+                self.pause_return_delay_ms,
+                0.0..=30000.0,
+            ),
+            (
+                "output_max_correction_db",
+                self.output_max_correction_db,
+                0.0..=12.0,
+            ),
+            (
+                "output_gain_up_db_per_second",
+                self.output_gain_up_db_per_second,
+                0.0..=5.0,
+            ),
+            (
+                "output_gain_down_db_per_second",
+                self.output_gain_down_db_per_second,
+                0.0..=5.0,
+            ),
+            (
+                "compressor_threshold_dbfs",
+                self.compressor_threshold_dbfs,
+                -60.0..=0.0,
+            ),
+            (
+                "pause_threshold_dbfs",
+                self.pause_threshold_dbfs,
+                -90.0..=-20.0,
+            ),
+            ("target_lufs", self.target_lufs, f64::MIN..=f64::MAX),
+            ("dead_band_lu", self.dead_band_lu, 0.0..=f64::MAX),
+            ("max_gain_db", self.max_gain_db, 0.0..=f64::MAX),
+            (
+                "max_attenuation_db",
+                self.max_attenuation_db,
+                f64::MIN..=0.0,
+            ),
+            (
+                "gain_up_db_per_second",
+                self.gain_up_db_per_second,
+                0.0..=f64::MAX,
+            ),
+            (
+                "gain_down_db_per_second",
+                self.gain_down_db_per_second,
+                0.0..=f64::MAX,
+            ),
+            (
+                "silence_gate_lufs",
+                self.silence_gate_lufs,
+                f64::MIN..=f64::MAX,
+            ),
+            (
+                "true_peak_ceiling_dbtp",
+                self.true_peak_ceiling_dbtp,
+                f64::MIN..=0.0,
+            ),
+        ];
+
+        for (name, value, range) in ranges {
+            if !value.is_finite() || !range.contains(&value) {
+                return Err(name);
+            }
+        }
+
+        if self.pause_return_delay_ms < self.pause_hold_ms {
+            return Err("pause_return_delay_ms");
+        }
+
+        Ok(())
+    }
+}
+
 impl Default for LiveLoudnessConfig {
     fn default() -> Self {
         Self {
@@ -206,7 +305,7 @@ impl LiveLoudnessProcessor {
             target_gain_db: 0.0,
             fast_attenuation: false,
             gain_limit_ramp_remaining: 0,
-            samples_until_analysis: sample_rate as usize / 10,
+            samples_until_analysis: (sample_rate as usize / 10).max(1),
             lookahead: LookaheadLimiter::new(sample_rate),
             limiter_gain: 1.0,
             limiter_release: 1.0
@@ -392,7 +491,7 @@ impl LiveLoudnessProcessor {
             offset = end;
 
             if self.samples_until_analysis == 0 {
-                self.samples_until_analysis = self.sample_rate as usize / 10;
+                self.samples_until_analysis = (self.sample_rate as usize / 10).max(1);
                 // Apply a completed measurement to subsequent samples only,
                 // so control timing is independent of input packet boundaries.
                 self.analysis_control_metrics = self.metrics;
@@ -578,6 +677,36 @@ mod tests {
     use super::*;
 
     const SAMPLE_RATE: u32 = 48_000;
+
+    #[test]
+    fn config_validation_accepts_defaults_and_rejects_bad_values() {
+        assert_eq!(LiveLoudnessConfig::default().validate(), Ok(()));
+
+        let quiet_ceiling = LiveLoudnessConfig {
+            true_peak_ceiling_dbtp: -24.0,
+            ..LiveLoudnessConfig::default()
+        };
+        assert_eq!(quiet_ceiling.validate(), Ok(()));
+
+        let nan = LiveLoudnessConfig {
+            compressor_knee_db: f64::NAN,
+            ..LiveLoudnessConfig::default()
+        };
+        assert_eq!(nan.validate(), Err("compressor_knee_db"));
+
+        let ratio = LiveLoudnessConfig {
+            compressor_ratio: 0.5,
+            ..LiveLoudnessConfig::default()
+        };
+        assert_eq!(ratio.validate(), Err("compressor_ratio"));
+
+        let delay = LiveLoudnessConfig {
+            pause_return_delay_ms: 100.0,
+            pause_hold_ms: 300.0,
+            ..LiveLoudnessConfig::default()
+        };
+        assert_eq!(delay.validate(), Err("pause_return_delay_ms"));
+    }
 
     fn stereo_frame(left: &[f32], right: &[f32]) -> TestAudio {
         let mut frame = TestAudio::new(left.len());

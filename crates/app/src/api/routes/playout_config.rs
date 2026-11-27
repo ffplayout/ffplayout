@@ -729,67 +729,17 @@ pub async fn update_playout_config(
 }
 
 fn validate_loudness(processing: &crate::utils::config::Audio) -> Result<(), ServiceError> {
-    if !matches!(processing.loudness_scope.as_str(), "all" | "live" | "off")
-        || !processing.compressor_ratio.is_finite()
-        || !(1.0..=10.0).contains(&processing.compressor_ratio)
-        || !processing.compressor_threshold_dbfs.is_finite()
-        || !(-60.0..=0.0).contains(&processing.compressor_threshold_dbfs)
-        || !processing.pause_threshold_dbfs.is_finite()
-        || !(-90.0..=-20.0).contains(&processing.pause_threshold_dbfs)
-    {
+    if !matches!(processing.loudness_scope.as_str(), "all" | "live" | "off") {
         return Err(ServiceError::BadRequest(
             "Invalid audio dynamics settings".to_string(),
         ));
     }
 
-    let dynamics_ranges = [
-        (processing.compressor_attack_ms, 0.1..=50.0),
-        (processing.compressor_hold_ms, 0.0..=2000.0),
-        (processing.compressor_release_ms, 10.0..=10000.0),
-        (processing.compressor_strong_release_ms, 10.0..=10000.0),
-        (processing.compressor_knee_db, 0.0..=24.0),
-        (processing.pause_hold_ms, 0.0..=5000.0),
-        (processing.pause_return_delay_ms, 0.0..=30000.0),
-        (processing.loudness_output_max_correction_db, 0.0..=12.0),
-        (processing.loudness_output_gain_up_db_per_second, 0.0..=5.0),
-        (
-            processing.loudness_output_gain_down_db_per_second,
-            0.0..=5.0,
-        ),
-    ];
-    if dynamics_ranges
-        .iter()
-        .any(|(value, range)| !value.is_finite() || !range.contains(value))
-        || processing.pause_return_delay_ms < processing.pause_hold_ms
-    {
-        return Err(ServiceError::BadRequest(
-            "Invalid audio timing or output correction settings".to_string(),
-        ));
-    }
-
-    let values = [
-        processing.loudness_target_lufs,
-        processing.loudness_dead_band_lu,
-        processing.loudness_max_gain_db,
-        processing.loudness_max_attenuation_db,
-        processing.loudness_gain_up_db_per_second,
-        processing.loudness_gain_down_db_per_second,
-        processing.loudness_silence_gate_lufs,
-        processing.loudness_true_peak_ceiling_dbtp,
-    ];
-    if values.iter().any(|value| !value.is_finite())
-        || processing.loudness_dead_band_lu < 0.0
-        || processing.loudness_max_gain_db < 0.0
-        || processing.loudness_max_attenuation_db > 0.0
-        || processing.loudness_gain_up_db_per_second < 0.0
-        || processing.loudness_gain_down_db_per_second < 0.0
-        || processing.loudness_true_peak_ceiling_dbtp > 0.0
-    {
-        return Err(ServiceError::BadRequest(
-            "invalid live loudness settings".to_string(),
-        ));
-    }
-    Ok(())
+    crate::player::controller::loudness_config(processing)
+        .validate()
+        .map_err(|field| {
+            ServiceError::BadRequest(format!("Invalid audio dynamics setting: {field}"))
+        })
 }
 
 /// **Get Output**
