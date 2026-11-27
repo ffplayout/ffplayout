@@ -234,6 +234,8 @@ fn default_true() -> bool {
 pub struct User {
     #[serde(skip_deserializing)]
     pub id: i32,
+    #[serde(skip)]
+    pub access_version: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mail: Option<String>,
     pub username: String,
@@ -251,6 +253,7 @@ impl FromRow<'_, SqliteRow> for User {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
         Ok(Self {
             id: row.try_get("id").unwrap_or_default(),
+            access_version: row.try_get("access_version").unwrap_or_default(),
             mail: row.try_get("mail").ok(),
             username: row.try_get("username").unwrap_or_default(),
             password: row.try_get("password").unwrap_or_default(),

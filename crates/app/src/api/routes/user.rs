@@ -11,7 +11,6 @@ use tokio::task;
 
 use crate::{
     api::{
-        auth::revoke_access_tokens,
         routes::{AuthUser, ensure_any_authority},
         state::AppState,
     },
@@ -190,12 +189,7 @@ pub async fn update_user(
     .await?;
 
     if let Some(revoked) = revoked {
-        revoke_access_tokens(id);
         info!("Password of user {id} changed, revoked {revoked} sessions");
-    } else if update_channels && user.id != id {
-        // The channels of an access token are fixed when it is issued. The
-        // client refreshes it and continues with the current assignments.
-        revoke_access_tokens(id);
     }
 
     Ok("Update Success")
@@ -248,12 +242,7 @@ pub async fn remove_user(
     ensure_any_authority(&details, &[&Role::GlobalAdmin])?;
 
     match handles::delete_user(&state.pool, id).await {
-        Ok(_) => {
-            // The account is gone, but its access token would still be valid.
-            revoke_access_tokens(id);
-
-            Ok("Delete user success")
-        }
+        Ok(_) => Ok("Delete user success"),
         Err(e) => {
             error!("{e}");
             Err(ServiceError::InternalServerError)

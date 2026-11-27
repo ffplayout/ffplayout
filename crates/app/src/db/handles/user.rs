@@ -19,7 +19,7 @@ pub async fn select_role(pool: &SqlitePool, id: &i32) -> Result<Role, ProcessErr
 
 pub async fn select_login(pool: &SqlitePool, user: &str) -> Result<User, ProcessError> {
     const QUERY: &str =
-        "SELECT u.id, u.mail, u.username, u.password, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM auth_user u
+        "SELECT u.id, u.access_version, u.mail, u.username, u.password, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM auth_user u
         left join auth_user_channels uc on uc.user_id = u.id
     WHERE u.username = $1
     GROUP BY u.id";
@@ -30,7 +30,7 @@ pub async fn select_login(pool: &SqlitePool, user: &str) -> Result<User, Process
 }
 
 pub async fn select_user(pool: &SqlitePool, id: i32) -> Result<User, ProcessError> {
-    const QUERY: &str = "SELECT u.id, u.mail, u.username, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM auth_user u
+    const QUERY: &str = "SELECT u.id, u.access_version, u.mail, u.username, u.role_id, u.two_factor, group_concat(uc.channel_id, ',') as channel_ids FROM auth_user u
         left join auth_user_channels uc on uc.user_id = u.id
     WHERE u.id = $1
     GROUP BY u.id";
@@ -38,6 +38,18 @@ pub async fn select_user(pool: &SqlitePool, id: i32) -> Result<User, ProcessErro
     let result = sqlx::query_as(QUERY).bind(id).fetch_one(pool).await?;
 
     Ok(result)
+}
+
+pub async fn select_access_version(
+    pool: &SqlitePool,
+    id: i32,
+) -> Result<Option<i64>, ProcessError> {
+    Ok(
+        sqlx::query_scalar("SELECT access_version FROM auth_user WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?,
+    )
 }
 
 pub async fn select_user_password_hash(pool: &SqlitePool, id: i32) -> Result<String, ProcessError> {
@@ -99,7 +111,7 @@ pub async fn insert_or_update_user(pool: &SqlitePool, user: User) -> Result<(), 
 
     const QUERY: &str = "INSERT INTO auth_user (mail, username, password, role_id, two_factor) VALUES($1, $2, $3, $4, $5)
             ON CONFLICT(username) DO UPDATE SET
-                mail = excluded.mail, username = excluded.username, password = excluded.password, role_id = excluded.role_id, two_factor = excluded.two_factor
+                mail = excluded.mail, username = excluded.username, password = excluded.password, role_id = excluded.role_id, two_factor = excluded.two_factor, access_version = random()
         RETURNING id";
 
     let mut transaction = pool.begin().await?;
@@ -118,6 +130,9 @@ pub async fn insert_or_update_user(pool: &SqlitePool, user: User) -> Result<(), 
         insert_user_channel(&mut transaction, user_id, channel_ids).await?;
     }
 
+    let now = jiff::Timestamp::now().as_second();
+
+    super::refresh_token::revoke_user_refresh_tokens(&mut transaction, user_id, now).await?;
     transaction.commit().await?;
 
     Ok(())
@@ -178,12 +193,20 @@ pub async fn update_user_with_channels(
     channel_ids: Option<Vec<i32>>,
 ) -> Result<Option<u64>, ProcessError> {
     let password_changed = password_hash.is_some();
+    let invalidate_access = password_changed || channel_ids.is_some();
     let mut transaction = pool.begin().await?;
     update_user(&mut *transaction, id, two_factor, mail, password_hash).await?;
 
     if let Some(channel_ids) = channel_ids {
         delete_user_channels(&mut *transaction, id).await?;
         insert_user_channel(&mut transaction, id, channel_ids).await?;
+    }
+
+    if invalidate_access {
+        sqlx::query("UPDATE auth_user SET access_version = random() WHERE id = $1")
+            .bind(id)
+            .execute(&mut *transaction)
+            .await?;
     }
 
     let revoked = if password_changed {
@@ -394,6 +417,7 @@ mod tests {
             .await
             .unwrap();
         let user = User {
+            access_version: 0,
             mail: Some("rollback@example.org".to_string()),
             username: "rollback-user".to_string(),
             password: "test-password".to_string(),

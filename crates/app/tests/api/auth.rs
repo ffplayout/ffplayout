@@ -44,9 +44,9 @@ async fn test_login() {
     let access = tokens["access"].as_str().unwrap();
     let refresh_token = tokens["refresh"].as_str().unwrap();
 
-    assert!(decode_jwt(access).await.is_ok());
+    assert!(decode_jwt(&pool, access).await.is_ok());
     assert!(decode_refresh_jwt(refresh_token).await.is_ok());
-    assert!(decode_jwt(refresh_token).await.is_err());
+    assert!(decode_jwt(&pool, refresh_token).await.is_err());
     assert!(decode_refresh_jwt(access).await.is_err());
 
     let res = app
@@ -82,7 +82,7 @@ async fn test_login() {
     assert!(res.status().is_success());
     let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
     let refreshed: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let claims = decode_jwt(refreshed["access"].as_str().unwrap())
+    let claims = decode_jwt(&pool, refreshed["access"].as_str().unwrap())
         .await
         .unwrap();
     assert_eq!(claims.role, Role::User);
@@ -237,7 +237,11 @@ async fn verification_rejects_wrong_expired_and_replayed_codes() {
     assert_eq!(response.status(), StatusCode::OK);
     let value: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
-    assert!(decode_jwt(value["access"].as_str().unwrap()).await.is_ok());
+    assert!(
+        decode_jwt(&fixture.state.pool, value["access"].as_str().unwrap())
+            .await
+            .is_ok()
+    );
     let response = fixture
         .app
         .clone()
@@ -300,7 +304,9 @@ async fn verification_uses_current_rights_and_rejects_deleted_users() {
     assert_eq!(response.status(), StatusCode::OK);
     let value: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
-    let claims = decode_jwt(value["access"].as_str().unwrap()).await.unwrap();
+    let claims = decode_jwt(&fixture.state.pool, value["access"].as_str().unwrap())
+        .await
+        .unwrap();
 
     assert_eq!(claims.role, Role::User);
     assert!(!claims.channels.contains(&1));

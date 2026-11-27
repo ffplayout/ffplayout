@@ -65,6 +65,7 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager, Pool<Sqlite>) {
         .execute(&pool).await.unwrap();
 
     let user = User {
+        access_version: 0,
         id: 0,
         mail: Some("admin@mail.com".to_string()),
         username: "admin".to_string(),
@@ -180,7 +181,8 @@ async fn security_fixture() -> SecurityFixture {
     };
     let app = path::routes()
         .with_state(state.clone())
-        .layer(GrantsLayer::with_extractor(extract));
+        .layer(GrantsLayer::with_extractor(extract))
+        .layer(axum::Extension(state.pool.clone()));
 
     SecurityFixture { app, state, root }
 }
@@ -206,6 +208,7 @@ async fn access_token(state: &AppState, id: i32) -> String {
     let now = jiff::Timestamp::now().as_second();
     let claims = serde_json::from_value(serde_json::json!({
         "id": user.id,
+        "access_version": user.access_version,
         "channels": user.channel_ids.unwrap_or_default(),
         "username": user.username,
         "role": role,

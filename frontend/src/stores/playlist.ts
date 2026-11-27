@@ -66,8 +66,8 @@ export const usePlaylist = defineStore('playlist', {
     },
     actions: {
         /** Remember the current playlist as the state stored on the server. */
-        markSaved() {
-            this.savedContent = editedContent(this.playlist)
+        markSaved(playlist?: PlaylistItem[]) {
+            this.savedContent = editedContent(playlist ?? this.playlist)
         },
 
         async getPlaylist(date: string) {
@@ -106,7 +106,6 @@ export const usePlaylist = defineStore('playlist', {
 
                         if (this.playlist[0]?.date !== date) {
                             this.playlist = []
-                            this.markSaved()
                             this.markSaved()
                         }
                     } else if (

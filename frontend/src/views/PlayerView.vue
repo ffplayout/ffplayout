@@ -441,22 +441,30 @@ async function savePlaylist(save: boolean) {
             return
         }
 
-        const saveList = processPlaylist(listDate.value, cloneDeep(playlistStore.playlist), true)
+        const channel = configStore.channels[configStore.i]
+        const date = targetDate.value
+        const editorDate = listDate.value
+        const snapshot = cloneDeep(playlistStore.playlist)
+        const saveList = processPlaylist(editorDate, cloneDeep(snapshot), true)
 
-        await authFetch<any>(`/api/playlist/${configStore.channels[configStore.i]?.id}`, {
+        await authFetch<any>(`/api/playlist/${channel?.id}`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({
-                channel: configStore.channels[configStore.i]?.name,
-                date: targetDate.value,
+                channel: channel?.name,
+                date,
                 program: saveList,
             }),
         })
             .then((response: any) => {
                 indexStore.msgAlert('success', response, 2)
 
-                if (targetDate.value === listDate.value) {
-                    playlistStore.markSaved()
+                if (
+                    date === editorDate &&
+                    listDate.value === editorDate &&
+                    configStore.channels[configStore.i]?.id === channel?.id
+                ) {
+                    playlistStore.markSaved(snapshot)
                 }
             })
             .catch((e: any) => {

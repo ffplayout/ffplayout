@@ -311,9 +311,6 @@ async fn removed_users_lose_their_access_token_immediately() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Token times have a resolution of one second.
-    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
-
     let response = fixture
         .app
         .clone()

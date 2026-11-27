@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
     process, ptr,
     sync::atomic::{AtomicU64, Ordering},
+    thread::{self, JoinHandle},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -58,6 +59,51 @@ impl RecordingRetry {
     /// A new attempt to open the recording may start at `now`.
     pub(super) fn due(&self, now: Instant) -> bool {
         self.next.is_none_or(|next| now >= next)
+    }
+}
+
+/// Own one reopen attempt without making the encoding thread wait for it.
+pub(super) struct RecordingReopen<T>(Option<JoinHandle<Result<T>>>);
+
+impl<T> Default for RecordingReopen<T> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+impl<T: Send + 'static> RecordingReopen<T> {
+    pub(super) fn poll<F: FnOnce() -> Result<T> + Send + 'static>(
+        &mut self,
+        retry: &RecordingRetry,
+        prepare: impl FnOnce() -> F,
+    ) -> Result<Option<T>> {
+        if self.0.as_ref().is_some_and(JoinHandle::is_finished) {
+            return self
+                .0
+                .take()
+                .expect("finished recording reopen")
+                .join()
+                .map_err(|_| anyhow!("recording reopen worker panicked"))?
+                .map(Some);
+        }
+
+        if self.0.is_none() && retry.due(Instant::now()) {
+            self.0 = Some(
+                thread::Builder::new()
+                    .name("recording-reopen".into())
+                    .spawn(prepare())?,
+            );
+        }
+
+        Ok(None)
+    }
+}
+
+impl<T> Drop for RecordingReopen<T> {
+    fn drop(&mut self) {
+        if let Some(worker) = self.0.take() {
+            let _ = worker.join();
+        }
     }
 }
 

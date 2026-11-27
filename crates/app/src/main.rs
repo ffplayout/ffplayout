@@ -215,6 +215,7 @@ async fn async_main() -> Result<(), ProcessError> {
             .merge(api::path::routes())
             .with_state(app_state.clone())
             .layer(GrantsLayer::with_extractor(extract))
+            .layer(axum::Extension(app_state.pool.clone()))
             .layer(middleware::from_fn(log_middleware))
             .layer(middleware::from_fn(rate_limit))
             // Added last, so it runs first: the layers above need the client IP.

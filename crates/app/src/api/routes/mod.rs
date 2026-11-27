@@ -260,7 +260,13 @@ where
             ));
         };
 
-        let claims = decode_jwt(token).await.map_err(|e| {
+        let pool = parts.extensions.get::<sqlx::SqlitePool>().ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "detail": "Missing authentication database" })),
+            )
+        })?;
+        let claims = decode_jwt(pool, token).await.map_err(|e| {
             (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({ "detail": e.to_string() })),

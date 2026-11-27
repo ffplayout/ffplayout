@@ -511,6 +511,7 @@ pub async fn init_args(pool: &Pool<Sqlite>) -> Result<bool, ProcessError> {
         let chl: Vec<i32> = channels.clone().iter().map(|c| c.id).collect();
 
         let ff_user = User {
+            access_version: 0,
             id: 0,
             mail: Some(args.mail.unwrap()),
             username: username.clone(),

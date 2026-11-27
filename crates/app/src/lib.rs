@@ -67,7 +67,11 @@ pub async fn extract(req: &mut Request) -> Result<HashSet<Role>, Response> {
         return Err(ServiceError::Unauthorized("Unauthorized".to_string()).into_response());
     }
 
-    match auth::decode_jwt(token).await {
+    let Some(pool) = req.extensions().get::<sqlx::SqlitePool>() else {
+        return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response());
+    };
+
+    match auth::decode_jwt(pool, token).await {
         Ok(claims) => {
             let mut authorities = HashSet::with_capacity(1);
             authorities.insert(claims.role.clone());

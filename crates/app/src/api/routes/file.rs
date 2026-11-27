@@ -343,7 +343,7 @@ pub async fn get_file(
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
     {
-        let claims = decode_jwt(token).await?;
+        let claims = decode_jwt(&state.pool, token).await?;
         let auth = AuthUser {
             id: claims.id,
             channels: claims.channels,

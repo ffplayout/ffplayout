@@ -26,7 +26,7 @@ use super::{
     encoded::EncodedOutput,
     encoding::{EncodedPacket, EncodingProfile, video::hls_gop_size},
     parallel::{Message, OutputDestination, OutputStatus, OutputTarget},
-    recording::{RecordingMuxer, RecordingRetry},
+    recording::{RecordingMuxer, RecordingReopen, RecordingRetry},
 };
 
 /// Sources are resolved by the application; each group owns exactly one set of renditions.
@@ -308,6 +308,7 @@ struct CopyRecording {
     audio: codec::Parameters,
     mux: Option<RecordingMuxer>,
     retry: RecordingRetry,
+    reopen: RecordingReopen<RecordingMuxer>,
     // Only the first failure of an outage is an error; retries stay quiet.
     reported: bool,
 }
@@ -340,14 +341,26 @@ impl CopyRecording {
     }
 
     fn write(&mut self, program: &OutputConfig, channel: i32, packet: &EncodedPacket) {
-        // A disabled recording can only continue with a video keyframe.
-        if self.mux.is_none()
-            && packet.stream == 0
-            && packet.packet.is_key()
-            && self.retry.due(Instant::now())
-            && self.open(program, channel)
-        {
-            log::info!(channel = channel; "Recording resumed");
+        // Pick up the reopened muxer only at a video keyframe.
+        if self.mux.is_none() && packet.stream == 0 && packet.packet.is_key() {
+            match self.reopen.poll(&self.retry, || {
+                let config = self.config.clone();
+                let video = (self.video.clone(), program.video_time_base);
+                let audio = (self.audio.clone(), program.audio_time_base);
+
+                move || RecordingMuxer::open_parameters(&config, video, audio)
+            }) {
+                Ok(Some(mux)) => {
+                    log::info!(channel = channel; "Recording resumed");
+                    self.mux = Some(mux);
+                    self.reported = false;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    self.retry.failed(Instant::now());
+                    log::debug!(channel = channel; "Recording still disabled: {error:#}");
+                }
+            }
         }
 
         let Some(mux) = &mut self.mux else {
@@ -431,6 +444,7 @@ pub(super) fn run(
         .find(|recording| recording.encode.is_some())
         .cloned();
     let mut recording_retry = RecordingRetry::default();
+    let mut recording_reopen = RecordingReopen::default();
     let mut recording = recording_config.as_ref().and_then(|config| {
         match EncodedOutput::open_recording(program, config) {
             Ok(output) => Some(output),
@@ -464,6 +478,7 @@ pub(super) fn run(
                 audio: audio.clone(),
                 mux: None,
                 retry: RecordingRetry::default(),
+                reopen: RecordingReopen::default(),
                 reported: false,
             };
 
@@ -580,17 +595,20 @@ pub(super) fn run(
                 context.position = frame.source.pts().map(|pts| {
                     pts.rescale(program.video_time_base, ffmpeg_next::Rational(1, 1_000))
                 });
-                // Reopen a disabled recording on a video frame, so that its
-                // new file starts with picture and sound together.
                 if recording.is_none()
                     && let Some(config) = &recording_config
-                    && recording_retry.due(Instant::now())
                 {
-                    match EncodedOutput::open_recording(program, config) {
-                        Ok(output) => {
+                    match recording_reopen.poll(&recording_retry, || {
+                        let config = config.clone();
+                        let program = program.clone();
+
+                        move || EncodedOutput::open_recording(&program, &config)
+                    }) {
+                        Ok(Some(output)) => {
                             log::info!(channel = channel; "Recording resumed");
                             recording = Some(output);
                         }
+                        Ok(None) => {}
                         Err(error) => {
                             recording_retry.failed(Instant::now());
                             log::debug!(channel = channel; "Recording still disabled: {error:#}");

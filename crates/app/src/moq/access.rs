@@ -67,7 +67,7 @@ pub(super) async fn allowed(pool: &SqlitePool, channel: i32, bearer: Option<&str
         return false;
     };
     if let Some(bearer) = bearer {
-        let Ok(claims) = decode_jwt(bearer).await else {
+        let Ok(claims) = decode_jwt(pool, bearer).await else {
             return false;
         };
         let user = AuthUser {
@@ -173,7 +173,7 @@ pub(super) fn run(
 mod tests {
     use super::*;
 
-    pub(super) async fn bearer(channels: &[i32]) -> String {
+    pub(super) async fn bearer(channels: &[i32], access_version: i64) -> String {
         use crate::{
             api::auth::{Claims, encode_jwt},
             db::{GLOBAL_SETTINGS, models::GlobalSettings},
@@ -184,7 +184,7 @@ mod tests {
         });
         let now = jiff::Timestamp::now().as_second();
         let claims: Claims = serde_json::from_value(serde_json::json!({
-            "id": 1, "channels": channels, "username": "viewer", "role": "user",
+            "id": 1, "access_version": access_version, "channels": channels, "username": "viewer", "role": "user",
             "token_type": "access", "iat": now, "exp": now + 60
         }))
         .unwrap();
@@ -229,9 +229,18 @@ mod tests {
             .await
             .unwrap();
         assert!(auth.admit(request(1)).await.is_err());
-        let good = bearer(&[1]).await;
+        sqlx::query("INSERT INTO auth_user (id, username, mail, password, role_id) VALUES (1, 'viewer', 'viewer@example.org', '', 3)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let version = handles::select_access_version(&pool, 1)
+            .await
+            .unwrap()
+            .unwrap();
+        let good = bearer(&[1], version).await;
         assert!(allowed(&pool, 1, Some(&good)).await);
-        assert!(!allowed(&pool, 1, Some(&bearer(&[2]).await)).await);
+        assert!(!allowed(&pool, 1, Some(&bearer(&[2], version).await)).await);
         let key = tickets.issue(1, good).unwrap();
         let mut private = request(1);
         private.query = Some(format!("channel=1&ticket={key}"));

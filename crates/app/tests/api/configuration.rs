@@ -45,7 +45,8 @@ async fn configuration_output_and_preset_routes_cover_crud_and_permissions() {
     let admin_token = login_json["access"].as_str().unwrap().to_string();
     let app = path::routes()
         .with_state(app_state.clone())
-        .layer(GrantsLayer::with_extractor(extract));
+        .layer(GrantsLayer::with_extractor(extract))
+        .layer(axum::Extension(app_state.pool.clone()));
 
     let unauthorized = app
         .clone()

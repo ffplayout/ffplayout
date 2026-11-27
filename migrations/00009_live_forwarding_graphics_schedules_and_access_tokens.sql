@@ -13,3 +13,11 @@ CREATE TABLE config_graphics_schedule (
     FOREIGN KEY (channel_id, layer_id)
         REFERENCES config_graphics(channel_id, layer_id) ON DELETE CASCADE
 );
+
+ALTER TABLE auth_user ADD COLUMN access_version INTEGER NOT NULL DEFAULT 0;
+
+CREATE TRIGGER auth_user_access_version_on_insert
+AFTER INSERT ON auth_user
+BEGIN
+    UPDATE auth_user SET access_version = random() WHERE id = NEW.id;
+END;
