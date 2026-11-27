@@ -93,10 +93,24 @@ async fn restores_every_persistent_table_with_sparse_ids_and_relationships() {
     let dump = export(&source).await.unwrap();
 
     let serialized = serde_json::to_vec(&dump).unwrap();
-    let imported = serde_json::from_slice(&serialized).unwrap();
+    let mut imported: ConfigDump = serde_json::from_slice(&serialized).unwrap();
+
+    assert!(!dump.tables["auth_user"][0].contains_key("access_version"));
+
+    let user = &mut imported.tables.get_mut("auth_user").unwrap()[0];
+
+    user.insert("access_version".into(), Value::from(0));
 
     restore(&target, imported).await.unwrap();
+
     assert_eq!(export(&target).await.unwrap(), dump);
+    assert_ne!(
+        sqlx::query_scalar::<_, i64>("SELECT access_version FROM auth_user")
+            .fetch_one(&target)
+            .await
+            .unwrap(),
+        0
+    );
     assert!(
         super::super::select_global(&target)
             .await

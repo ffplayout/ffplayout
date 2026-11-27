@@ -29,6 +29,8 @@ pub(super) const TABLES: &[&str] = &[
 pub(super) fn omitted(table: &str, column: &str) -> bool {
     matches!(
         (table, column),
-        ("config_global", "secret") | ("channels", "last_date" | "time_shift")
+        ("config_global", "secret")
+            | ("channels", "last_date" | "time_shift")
+            | ("auth_user", "access_version")
     )
 }

@@ -52,6 +52,13 @@ pub async fn restore(pool: &SqlitePool, mut dump: ConfigDump) -> Result<(), Proc
     let pristine = export(&baseline).await?;
     let mut transaction = pool.begin_with("BEGIN IMMEDIATE").await?;
 
+    if let Some(users) = dump.tables.get_mut("auth_user") {
+        for user in users {
+            // Older dumps could include this session value. SQLite initializes it on insert.
+            user.remove("access_version");
+        }
+    }
+
     if let Some(outputs) = dump.tables.get_mut("config_output") {
         for output in outputs {
             // Dumps created before forwarding contain neither column.
