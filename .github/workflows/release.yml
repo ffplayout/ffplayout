@@ -72,7 +72,7 @@ jobs:
       MACOS_ARCHIVE: ffplayout-${{ github.ref_name }}_${{ matrix.variant }}_${{ matrix.platform }}.zip
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Validate macOS signing settings
         if: runner.os == 'macOS'
@@ -86,7 +86,7 @@ jobs:
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: bash scripts/sign-macos.sh check
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
