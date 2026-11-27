@@ -1,7 +1,10 @@
 //! Destination reconnection keeps encoders and the program clock running.
 use std::{
     collections::{BTreeMap, VecDeque},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -13,7 +16,7 @@ use crate::utils::pipeline_queue::{PipelineControl, PipelineQueue};
 use super::{
     encoded::EncodedOutput,
     encoding::EncodedPacket,
-    mux::MuxOutput,
+    mux::{MuxOutput, NetworkShutdown},
     parallel::{Message, OutputDestination, destination_mux},
     shared::Delivery,
 };
@@ -27,6 +30,7 @@ impl DestinationOutput {
     fn open(
         destination: &OutputDestination,
         parameters: &[(codec::Parameters, codec::Parameters)],
+        network_shutdown: Arc<NetworkShutdown>,
     ) -> Result<Self> {
         if let Some(endpoint) = &destination.config.stream_endpoint {
             let streams = parameters
@@ -65,6 +69,7 @@ impl DestinationOutput {
             &destination.config,
             format,
             parameters.to_vec(),
+            network_shutdown,
         )?)))
     }
 
@@ -281,8 +286,8 @@ impl Keyframes {
 pub(super) fn deliver(
     destination: OutputDestination,
     parameters: Vec<(codec::Parameters, codec::Parameters)>,
-    queue: &PipelineQueue<Delivery>,
-    control: &PipelineControl,
+    queue: &Arc<PipelineQueue<Delivery>>,
+    control: &Arc<PipelineControl>,
     interrupted: &AtomicBool,
 ) -> Result<()> {
     struct Disconnect(Option<std::sync::Arc<dyn super::parallel::OutputEndpoint>>);
@@ -308,8 +313,8 @@ pub(super) fn deliver(
 fn deliver_with_retry(
     destination: OutputDestination,
     parameters: Vec<(codec::Parameters, codec::Parameters)>,
-    queue: &PipelineQueue<Delivery>,
-    control: &PipelineControl,
+    queue: &Arc<PipelineQueue<Delivery>>,
+    control: &Arc<PipelineControl>,
     interrupted: &AtomicBool,
     mut retry: Retry,
 ) -> Result<()> {
@@ -347,7 +352,12 @@ fn deliver_with_retry(
         } else if output.is_none() && retry.due(Instant::now()) && !queue.closed() {
             status.set(id, "starting", error.clone());
             let opened = (|| -> Result<DestinationOutput> {
-                let mut opened = DestinationOutput::open(&destination, &parameters)?;
+                let pending_queue = queue.clone();
+                let pending_control = control.clone();
+                let shutdown = Arc::new(NetworkShutdown::during_open(move || {
+                    pending_control.cancelled() || pending_queue.closed()
+                }));
+                let mut opened = DestinationOutput::open(&destination, &parameters, shutdown)?;
                 opened.set_playout_rate(rate);
                 if let Some((ref path, start, source, end)) = subtitles {
                     opened.write_vtt_subtitles(path, start, source, end)?;
@@ -370,6 +380,7 @@ fn deliver_with_retry(
                     ready = false;
                     output = Some(opened);
                 }
+                Err(_) if control.cancelled() || queue.closed() => break,
                 Err(reason) => {
                     retry.failed(Instant::now());
                     error = Some(format!("{reason:#}"));
@@ -1011,6 +1022,46 @@ mod tests {
                 })
         );
         std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn closing_delivery_interrupts_a_stalled_rtmp_handshake() {
+        use std::{io::Read, net::TcpListener, thread};
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+
+        listener.set_nonblocking(true).unwrap();
+
+        let fixture = Fixture::configured(
+            format!("rtmp://{address}/live/stream"),
+            Duration::from_millis(80),
+            Duration::from_secs(2),
+            |destination| destination.config.stream_type = crate::StreamType::Rtmp,
+        );
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut peer = loop {
+            match listener.accept() {
+                Ok((peer, _)) => break peer,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "RTMP connection did not start");
+                    thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => panic!("{error}"),
+            }
+        };
+
+        peer.set_nonblocking(false).unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        peer.read_exact(&mut [0]).unwrap();
+
+        let started = Instant::now();
+
+        // Leave the peer connected without replying to the handshake.
+        fixture.finish();
+
+        assert!(started.elapsed() < Duration::from_secs(3));
+        drop(peer);
     }
 
     #[test]

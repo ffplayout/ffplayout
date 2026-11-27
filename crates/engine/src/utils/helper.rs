@@ -53,6 +53,7 @@ pub(crate) fn network_output_options(
 
 /// Opens AVIO separately so unused user options are checked and every failure
 /// frees both the output context and any opened connection.
+#[cfg(test)]
 pub(crate) fn open_network_output(
     path: &str,
     muxer: Option<&str>,
@@ -64,11 +65,11 @@ pub(crate) fn open_network_output(
 /// If supplied, the interrupt callback must remain valid until the output is dropped.
 pub(crate) unsafe fn open_network_output_with_callback(
     path: &str,
-    muxer: &str,
+    muxer: Option<&str>,
     options: &BTreeMap<String, String>,
     interrupt: ffi::AVIOInterruptCB,
 ) -> anyhow::Result<format::context::Output> {
-    open_network_output_interruptible(path, Some(muxer), options, Some(interrupt))
+    open_network_output_interruptible(path, muxer, options, Some(interrupt))
 }
 
 fn open_network_output_interruptible(

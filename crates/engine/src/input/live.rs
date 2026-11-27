@@ -236,6 +236,10 @@ pub struct LiveReceiver {
     pub(super) idle_timeout: LiveIdleTimeout,
     pub(super) listener_idle_timeouts: HashMap<i32, LiveIdleTimeout>,
     pub(super) loudness: Option<LiveLoudnessProcessor>,
+    #[cfg_attr(
+        not(any(feature = "tokio", feature = "desktop-base")),
+        allow(dead_code)
+    )]
     pub(super) benchmark: Arc<Mutex<Option<BenchHandle>>>,
 }
 
@@ -874,6 +878,10 @@ impl Drop for LiveReceiver {
 }
 
 impl LiveReceiver {
+    #[cfg_attr(
+        not(any(feature = "tokio", feature = "desktop-base")),
+        allow(dead_code)
+    )]
     pub(crate) fn set_benchmark(&self, benchmark: Option<BenchHandle>) {
         *self
             .benchmark
@@ -1326,6 +1334,12 @@ pub(super) fn open_live_listener(
         LiveInputBackend::Rtmp => "rtmp",
         LiveInputBackend::Srt => "srt",
     };
+    anyhow::ensure!(
+        url.split_once("://")
+            .is_some_and(|(actual, _)| actual == scheme),
+        "live listener URL must use {scheme}://"
+    );
+
     validate_input_protocol_options(scheme, user_options).map_err(anyhow::Error::msg)?;
     validate_live_demuxer_options(scheme, demuxer_options).map_err(anyhow::Error::msg)?;
 
@@ -1533,6 +1547,22 @@ mod tests {
     use std::time::Duration;
 
     use super::LiveIdleTimeout;
+
+    #[test]
+    fn live_listener_rejects_a_url_for_a_different_backend() {
+        let error = super::open_live_listener(
+            super::LiveInputBackend::Srt,
+            "rtmp://127.0.0.1:1936/live/stream",
+            &Default::default(),
+            &Default::default(),
+            Default::default(),
+            Default::default(),
+        )
+        .err()
+        .expect("mismatched URL scheme must fail before opening input");
+
+        assert_eq!(error.to_string(), "live listener URL must use srt://");
+    }
 
     #[test]
     fn idle_timeout_updates_are_shared_and_reject_zero() {

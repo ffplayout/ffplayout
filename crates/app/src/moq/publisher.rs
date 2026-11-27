@@ -960,7 +960,7 @@ mod tests {
         });
         // Exercise the actual encoder -> paced delivery -> native MoQ tracks mapping.
         // The meter must name the same timeline as the imported AAC, not process uptime.
-        tokio::time::timeout(Duration::from_secs(6), async {
+        let observation = tokio::spawn(tokio::time::timeout(Duration::from_secs(6), async move {
             let broadcast = loop {
                 if let Ok(broadcast) = observer
                     .request_broadcast("channels/channel--98770.hang")
@@ -1002,14 +1002,6 @@ mod tests {
                 .subscribe(None)
                 .await
                 .unwrap();
-            let mut audio_group = audio.recv_group().await.unwrap().unwrap();
-            let first_audio = audio_group
-                .read_frame()
-                .await
-                .unwrap()
-                .unwrap()
-                .timestamp
-                .as_micros();
             let mut loudness = broadcast
                 .track(LOUDNESS_TRACK)
                 .unwrap()
@@ -1030,8 +1022,27 @@ mod tests {
                     break timestamp;
                 }
             };
-            assert!(u128::from(timestamp) >= first_audio);
-            assert!(u128::from(timestamp) - first_audio < 1_000_000);
+            // The meter publishes the latest measurement; the subscription
+            // can start in an earlier AAC group. Match against that position
+            // in the media, independently of when the observer was scheduled.
+            let timestamp = u128::from(timestamp);
+            let matching_audio = 'audio: loop {
+                let mut group = audio.recv_group().await.unwrap().unwrap();
+
+                while let Some(frame) = group.read_frame().await.unwrap() {
+                    let pts = frame.timestamp.as_micros();
+
+                    if pts >= timestamp {
+                        break 'audio pts;
+                    }
+                }
+            };
+
+            assert!(
+                matching_audio - timestamp <= 100_000,
+                "meter PTS {timestamp} µs, next AAC PTS {matching_audio} µs"
+            );
+
             loop {
                 let mut group = loudness.recv_group().await.unwrap().unwrap();
                 let frame = group.read_frame().await.unwrap().unwrap();
@@ -1040,12 +1051,16 @@ mod tests {
                     break;
                 }
             }
-        })
-        .await
-        .expect("synchronized audio meter was not published");
-        worker.await.unwrap();
+        }));
+        let observation = observation.await;
+        let delivery = worker.await;
+
         driver.abort();
         std::fs::remove_dir_all(directory).unwrap();
+        observation
+            .unwrap()
+            .expect("synchronized audio meter was not published");
+        delivery.unwrap();
     }
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn shared_hls_and_moq_write_media_after_seeking_inside_a_subtitle() {

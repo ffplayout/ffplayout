@@ -142,7 +142,7 @@ impl ManualGraphics {
             .layers
             .sort_by_key(|slot| (slot.scene.layers[0].spec.z, slot.id));
         state.snapshots.retain(|frame| Arc::strong_count(frame) > 1);
-        state.revision += 1;
+        state.revision = state.revision.wrapping_add(1);
 
         Ok(state.revision)
     }
@@ -240,7 +240,7 @@ impl ManualGraphics {
             .layers
             .sort_by_key(|slot| (slot.scene.layers[0].spec.z, slot.id));
         state.snapshots.retain(|frame| Arc::strong_count(frame) > 1);
-        state.revision += 1;
+        state.revision = state.revision.wrapping_add(1);
 
         Ok(state.revision)
     }
@@ -249,7 +249,7 @@ impl ManualGraphics {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         state.layers.clear();
         state.snapshots.clear();
-        state.revision += 1;
+        state.revision = state.revision.wrapping_add(1);
     }
 
     pub(crate) fn frame_at(&self, now: i64) -> Result<Option<Arc<ManualFrame>>, ()> {

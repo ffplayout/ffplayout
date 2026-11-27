@@ -432,6 +432,12 @@ impl VideoEncoderBackend {
                 if tune != "none" {
                     options.set("tune", tune);
                 }
+                if self == Self::X265 {
+                    // x265 embeds its log level in the stream headers. Keep it
+                    // independent of the process-wide FFmpeg level so the
+                    // initialization data stays identical across restarts.
+                    options.set("x265-params", "log-level=warning");
+                }
                 options.set("maxrate", &maxrate.to_string());
                 options.set("bufsize", &maxrate.saturating_mul(2).to_string());
 

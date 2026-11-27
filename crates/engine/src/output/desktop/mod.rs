@@ -2471,7 +2471,20 @@ mod tests {
             blend_logo(&mut expected, &logo, opacity);
             for plane in 0..source.planes() {
                 assert_eq!(desktop.data(plane).as_ptr(), recording.data(plane).as_ptr());
-                assert_eq!(desktop.data(plane), expected.data(plane));
+                let width = expected.plane_width(plane) as usize;
+                let height = expected.plane_height(plane) as usize;
+                let actual_rows = desktop.data(plane).chunks_exact(desktop.stride(plane));
+                let expected_rows = expected.data(plane).chunks_exact(expected.stride(plane));
+
+                for (row, (actual, expected)) in
+                    actual_rows.zip(expected_rows).take(height).enumerate()
+                {
+                    assert_eq!(
+                        &actual[..width],
+                        &expected[..width],
+                        "plane {plane}, row {row}"
+                    );
+                }
             }
             assert_eq!(desktop.pts(), source.pts());
             assert_eq!(desktop.data(0)[40], 220);

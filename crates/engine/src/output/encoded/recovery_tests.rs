@@ -359,6 +359,20 @@ fn concurrent_resume_cleanup_is_rejected_without_removing_live_segments() {
     fixture.check_references();
 }
 
+/// Another test may fork a child process while this one holds a lock. The
+/// child keeps the inherited descriptor, and thus the lock, until it execs.
+fn acquire_after_release(paths: &[String]) -> hls::HlsSession {
+    let deadline = Instant::now() + Duration::from_secs(5);
+
+    loop {
+        match hls::HlsSession::acquire(paths, None, false) {
+            Ok(session) => return session,
+            Err(error) if Instant::now() >= deadline => panic!("lock was not released: {error:#}"),
+            Err(_) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
+}
+
 #[test]
 fn hls_session_locks_are_released_on_drop_and_failed_acquisition() {
     let fixture = Fixture::new();
@@ -367,12 +381,12 @@ fn hls_session_locks_are_released_on_drop_and_failed_acquisition() {
 
     assert!(hls::HlsSession::acquire(&[path("a.m3u8"), path("b.m3u8")], None, false).is_err());
 
-    let first = hls::HlsSession::acquire(&[path("a.m3u8"), path("./a.m3u8")], None, false).unwrap();
+    let first = acquire_after_release(&[path("a.m3u8"), path("./a.m3u8")]);
 
     assert!(hls::HlsSession::acquire(&[path("a.m3u8")], None, false).is_err());
     drop(first);
     drop(second);
-    hls::HlsSession::acquire(&[path("a.m3u8"), path("b.m3u8")], None, false).unwrap();
+    acquire_after_release(&[path("a.m3u8"), path("b.m3u8")]);
 }
 
 #[test]

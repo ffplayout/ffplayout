@@ -197,6 +197,7 @@ fn compare_hls_packagers() -> Result<()> {
         None,
         false,
         Some(sample.parameters.clone()),
+        None,
     )?;
 
     if subtitles {
@@ -279,6 +280,7 @@ fn compare_hls_packagers() -> Result<()> {
         None,
         false,
         Some(sample.parameters.clone()),
+        None,
     )?;
     let reopen_ms = reopen_started.elapsed().as_secs_f64() * 1000.0;
 

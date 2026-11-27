@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex, PoisonError, Weak},
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 #[cfg(feature = "desktop-gpu")]
 use ffmpeg_next::util::color;
 use ffmpeg_next::{frame, software::scaling, util::format::pixel::Pixel};
@@ -123,9 +123,10 @@ impl DesktopFrameConverter {
         let width = frame.width();
         let height = frame.height();
 
-        if width == 0 || height == 0 {
-            return Err(anyhow!("desktop video frame has zero dimensions"));
-        }
+        anyhow::ensure!(
+            (1..=8192).contains(&width) && (1..=8192).contains(&height),
+            "desktop video frame dimensions must be within 1..=8192"
+        );
 
         let reconfigure = self.scaler.as_ref().is_none_or(|scaler| {
             let input = scaler.input();

@@ -4,10 +4,7 @@ use std::{
 };
 
 #[cfg(feature = "tokio")]
-use std::{
-    sync::mpsc,
-    thread::{self, JoinHandle},
-};
+use std::thread::{self, JoinHandle};
 
 use anyhow::{Context, Result, anyhow};
 
@@ -20,7 +17,7 @@ use softbuffer as _;
 use transcribe_rs as _;
 
 #[cfg(feature = "tokio")]
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
 mod analysis;
 mod audio_mixer;
@@ -82,7 +79,7 @@ pub use utils::{
     },
     helper::is_live_input,
     logging,
-    logging::set_ingest_log_level,
+    logging::{clear_channel_ingest_log_level, set_ingest_log_level},
     media_info::{
         AudioStream as EngineAudioStream, MediaInfo, MediaProbe as EngineMediaProbe, ProbeFormat,
         SilenceDetection, VideoStream as EngineVideoStream, detect_audio_silence,
@@ -265,7 +262,7 @@ impl AsyncPlayout {
     where
         F: FnOnce() -> Result<Playout> + Send + 'static,
     {
-        let (commands, command_rx) = mpsc::channel();
+        let (commands, command_rx) = mpsc::channel(2);
         let (ready_tx, ready_rx) = oneshot::channel();
         let playback_control = PlaybackControl::default();
         let worker_playback_control = playback_control.clone();
@@ -325,6 +322,7 @@ impl AsyncPlayout {
                 graphics: None,
                 response,
             })
+            .await
             .map_err(|_| anyhow!("playout worker stopped"))?;
 
         result.await.context("playout worker stopped during play")?
@@ -424,6 +422,7 @@ impl AsyncPlayout {
                 graphics,
                 response,
             })
+            .await
             .map_err(|_| anyhow!("playout worker stopped"))?;
 
         result.await.context("playout worker stopped during play")?
@@ -434,6 +433,8 @@ impl AsyncPlayout {
         inputs: Vec<LiveListenerConfig>,
         config: OutputConfig,
     ) -> Result<()> {
+        validate_playout_rates(&config)?;
+
         for input in &inputs {
             if !live_protocol_available(input.backend) {
                 return Err(anyhow!(
@@ -450,6 +451,7 @@ impl AsyncPlayout {
                 config: Box::new(config),
                 response,
             })
+            .await
             .map_err(|_| anyhow!("playout worker stopped"))?;
 
         result
@@ -462,6 +464,7 @@ impl AsyncPlayout {
         let (response, result) = oneshot::channel();
         self.commands
             .send(AsyncCommand::Finish { response })
+            .await
             .map_err(|_| anyhow!("playout worker stopped"))?;
 
         let finish_result = result
@@ -484,8 +487,6 @@ impl Drop for AsyncPlayout {
     fn drop(&mut self) {
         if self.completion.is_some() {
             self.playback_control.request_shutdown();
-            let (response, _) = oneshot::channel();
-            let _ = self.commands.send(AsyncCommand::Finish { response });
         }
     }
 }
@@ -514,11 +515,11 @@ enum AsyncCommand {
 }
 
 #[cfg(feature = "tokio")]
-fn run_async_playout_worker(mut playout: Playout, commands: mpsc::Receiver<AsyncCommand>) {
+fn run_async_playout_worker(mut playout: Playout, mut commands: mpsc::Receiver<AsyncCommand>) {
     let mut live = None;
     let mut finish_response = None;
 
-    while let Ok(command) = commands.recv() {
+    while let Some(command) = commands.blocking_recv() {
         if playout.playback_control.is_shutdown() && !matches!(command, AsyncCommand::Finish { .. })
         {
             continue;
@@ -981,7 +982,22 @@ impl Playout {
     }
 }
 
+fn validate_playout_rates(config: &OutputConfig) -> Result<()> {
+    anyhow::ensure!(
+        (1..=i32::MAX as u32).contains(&config.fps),
+        "playout frame rate must be a positive FFmpeg frame rate"
+    );
+    anyhow::ensure!(
+        (1..=i32::MAX as u32).contains(&config.sample_rate),
+        "playout sample rate must be a positive FFmpeg sample rate"
+    );
+
+    Ok(())
+}
+
 fn init_ffmpeg(config: &OutputConfig) -> Result<()> {
+    validate_playout_rates(config)?;
+
     graphics::text_adapter::init();
     ffmpeg_next::init().context("failed to initialize FFmpeg")?;
     logging::init(
@@ -1336,9 +1352,9 @@ mod tests {
         let path = directory.join("output.mkv");
         let playback_control = PlaybackControl::default();
         let worker_control = playback_control.clone();
-        let (commands, command_rx) = mpsc::channel();
-        let (release, gate) = mpsc::channel();
-        let (done, finished) = mpsc::channel();
+        let (commands, command_rx) = mpsc::channel(2);
+        let (release, gate) = std::sync::mpsc::channel();
+        let (done, finished) = std::sync::mpsc::channel();
         let worker = thread::spawn(move || {
             // Wait until the caller has dropped its owner with queued work.
             gate.recv().unwrap();
@@ -1364,7 +1380,7 @@ mod tests {
             let (response, result) = oneshot::channel();
             owner
                 .commands
-                .send(AsyncCommand::Play {
+                .try_send(AsyncCommand::Play {
                     path: String::new(),
                     seek_seconds: None,
                     duration_seconds: Some(3600.0),

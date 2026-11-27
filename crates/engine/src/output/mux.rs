@@ -1,11 +1,14 @@
 use std::{
-    sync::{Arc, Condvar, Mutex, OnceLock, PoisonError},
+    sync::{
+        Arc, Condvar, Mutex, OnceLock, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, anyhow};
-use ffmpeg_next::{Packet, Rational, Rescale, format, rescale};
+use ffmpeg_next::{Packet, Rational, Rescale, ffi, format, rescale};
 
 use crate::{
     HlsHealth, OwnedEncodedFrame, PacketSink,
@@ -20,6 +23,51 @@ use super::hls_native::NativeHls;
 const MAX_PACKETS: usize = 512;
 const MAX_BYTES: usize = 32 * 1024 * 1024;
 const IDLE_DRAIN: Duration = Duration::from_millis(20);
+
+const NETWORK_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
+
+#[derive(Default)]
+pub(super) struct NetworkShutdown {
+    abort: AtomicBool,
+    deadline: OnceLock<Instant>,
+    opened: AtomicBool,
+    cancel_open: Option<Box<dyn Fn() -> bool + Send + Sync>>,
+}
+
+impl NetworkShutdown {
+    pub(super) fn during_open(cancel_open: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        Self {
+            cancel_open: Some(Box::new(cancel_open)),
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn mark_opened(&self) {
+        self.opened.store(true, Ordering::Release);
+    }
+
+    pub(super) fn callback(&self) -> ffi::AVIOInterruptCB {
+        ffi::AVIOInterruptCB {
+            callback: Some(interrupt_network_shutdown),
+            opaque: std::ptr::from_ref(self).cast_mut().cast(),
+        }
+    }
+
+    fn interrupted(&self) -> bool {
+        self.abort.load(Ordering::Acquire)
+            || (!self.opened.load(Ordering::Acquire)
+                && self.cancel_open.as_ref().is_some_and(|cancel| cancel()))
+            || self
+                .deadline
+                .get()
+                .is_some_and(|deadline| Instant::now() >= *deadline)
+    }
+}
+
+unsafe extern "C" fn interrupt_network_shutdown(opaque: *mut std::ffi::c_void) -> std::ffi::c_int {
+    // SAFETY: the encoded output retains the state until AVIO has closed.
+    i32::from(unsafe { &*opaque.cast::<NetworkShutdown>() }.interrupted())
+}
 
 enum PacketWriter {
     Container(format::context::Output, Option<Box<super::hls::StagedHls>>),
@@ -69,6 +117,7 @@ struct Queue {
     bytes: usize,
     last_input: Instant,
     finished: bool,
+    finish_deadline: Option<Instant>,
     aborted: bool,
     error: Option<String>,
     delivered: bool,
@@ -102,6 +151,7 @@ pub(super) struct MuxOutput {
     rate: f64,
     health: Option<HlsHealth>,
     clock: SharedPlayoutClock,
+    pub(super) network_shutdown: Option<Arc<NetworkShutdown>>,
 }
 
 impl MuxOutput {
@@ -140,6 +190,7 @@ impl MuxOutput {
             rate: 1.0,
             health,
             clock: Arc::new(Mutex::new(PlayoutClock::new())),
+            network_shutdown: None,
         };
 
         if threaded {
@@ -191,6 +242,7 @@ impl MuxOutput {
             rate: 1.0,
             health: None,
             clock: Arc::new(Mutex::new(PlayoutClock::new())),
+            network_shutdown: None,
         };
         mux.start(
             PacketWriter::Native(sink),
@@ -249,6 +301,7 @@ impl MuxOutput {
                 bytes: 0,
                 last_input: Instant::now(),
                 finished: false,
+                finish_deadline: None,
                 aborted: false,
                 error: None,
                 delivered: false,
@@ -400,14 +453,20 @@ impl MuxOutput {
     }
 
     pub(super) fn finish(&mut self) -> Result<()> {
+        let deadline = self.network_shutdown.as_ref().map(|shutdown| {
+            *shutdown
+                .deadline
+                .get_or_init(|| Instant::now() + NETWORK_SHUTDOWN_GRACE)
+        });
+
         if let Some(shared) = &self.shared {
-            shared
-                .queue
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .finished = true;
+            let mut queue = shared.queue.lock().unwrap_or_else(PoisonError::into_inner);
+
+            queue.finished = true;
+            queue.finish_deadline = deadline;
             shared.changed.notify_all();
         }
+
         if let Some(worker) = self.worker.take() {
             worker
                 .join()
@@ -430,6 +489,10 @@ impl MuxOutput {
 
 impl Drop for MuxOutput {
     fn drop(&mut self) {
+        if let Some(shutdown) = &self.network_shutdown {
+            shutdown.abort.store(true, Ordering::Release);
+        }
+
         if let Some(shared) = &self.shared {
             shared
                 .queue
@@ -465,6 +528,13 @@ fn run(
                 if queue.aborted {
                     return Ok(());
                 }
+                if queue
+                    .finish_deadline
+                    .is_some_and(|deadline| Instant::now() >= deadline)
+                {
+                    anyhow::bail!("timed out finishing network mux output");
+                }
+
                 if let Some((index, first)) = queue
                     .packets
                     .iter()
@@ -498,6 +568,10 @@ fn run(
                             Duration::ZERO
                         };
                         if shared.pace_packets && !delay.is_zero() {
+                            let delay = queue.finish_deadline.map_or(delay, |deadline| {
+                                delay.min(deadline.saturating_duration_since(Instant::now()))
+                            });
+
                             let (next, _) = shared
                                 .changed
                                 .wait_timeout(queue, delay)
@@ -511,6 +585,7 @@ fn run(
                         break pending;
                     }
                 } else if queue.finished {
+                    drop(queue);
                     output.finish()?;
 
                     return Ok(());
@@ -634,6 +709,64 @@ mod tests {
     use crate::EncodedFrame;
 
     use super::*;
+
+    #[test]
+    fn network_shutdown_interrupts_a_stalled_tcp_write() {
+        use std::{collections::BTreeMap, net::TcpListener, sync::mpsc};
+
+        use crate::utils::helper::open_network_output_with_callback;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("tcp://{}", listener.local_addr().unwrap());
+        let shutdown = Arc::new(NetworkShutdown::default());
+        let writer_shutdown = shutdown.clone();
+        let (writing, started) = mpsc::channel();
+
+        let writer = thread::spawn(move || {
+            // SAFETY: the state stays alive until the context closes.
+            let mut output = unsafe {
+                open_network_output_with_callback(
+                    &url,
+                    Some("mpegts"),
+                    &BTreeMap::new(),
+                    writer_shutdown.callback(),
+                )
+            }
+            .unwrap();
+            let data = vec![0_u8; 64 * 1024];
+
+            writing.send(()).unwrap();
+
+            // SAFETY: this thread exclusively owns the open AVIO context.
+            unsafe {
+                let io = (*output.as_mut_ptr()).pb;
+
+                for _ in 0..512 {
+                    ffi::avio_write(io, data.as_ptr(), data.len() as i32);
+                    ffi::avio_flush(io);
+
+                    if (*io).error < 0 {
+                        return (*io).error;
+                    }
+                }
+            }
+
+            0
+        });
+        started.recv_timeout(Duration::from_secs(2)).unwrap();
+        let (peer, _) = listener.accept().unwrap();
+        thread::sleep(Duration::from_millis(100));
+        assert!(!writer.is_finished());
+
+        let started = Instant::now();
+
+        shutdown.abort.store(true, Ordering::Release);
+        let error = writer.join().unwrap();
+
+        assert_eq!(error, ffi::AVERROR_EXIT);
+        assert!(started.elapsed() < Duration::from_secs(3));
+        drop(peer);
+    }
 
     #[test]
     fn native_sink_can_keep_the_original_payload_after_mux_shutdown() {

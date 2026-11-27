@@ -303,6 +303,19 @@ fn update_ingest_log_level(channel_id: i32, level: FfmpegLevel) {
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
     levels.insert(channel_id, level_value(level));
+    refresh_ffmpeg_log_level(&levels);
+}
+
+pub fn clear_channel_ingest_log_level(channel_id: i32) {
+    let mut levels = CHANNEL_INGEST_LOG_LEVELS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+
+    levels.remove(&channel_id);
+    refresh_ffmpeg_log_level(&levels);
+}
+
+fn refresh_ffmpeg_log_level(levels: &BTreeMap<i32, c_int>) {
     let maximum = levels
         .values()
         .copied()

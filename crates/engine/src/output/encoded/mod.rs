@@ -26,14 +26,14 @@ use crate::{
             validate_output_protocol_options,
         },
         ffmpeg_capabilities::validate_muxer_options,
-        helper::{is_network_url, open_network_output},
+        helper::{is_network_url, open_network_output_with_callback},
         pipeline_queue::PipelineActivity,
     },
 };
 
 use super::{
     hls,
-    mux::MuxOutput,
+    mux::{MuxOutput, NetworkShutdown},
     recording::{self, RecordingMonitor, RecordingMuxer},
     vtt,
 };
@@ -147,7 +147,7 @@ impl EncodedOutput {
         output_format: EncodedFormat,
         hls_health: Option<HlsHealth>,
     ) -> Result<Self> {
-        Self::open_internal(path, cfg, output_format, hls_health, true, None)
+        Self::open_internal(path, cfg, output_format, hls_health, true, None, None)
     }
 
     pub(super) fn delivery_state(&self) -> (bool, Option<String>) {
@@ -163,10 +163,19 @@ impl EncodedOutput {
         cfg: &OutputConfig,
         output_format: EncodedFormat,
         parameters: Vec<(codec::Parameters, codec::Parameters)>,
+        network_shutdown: Arc<NetworkShutdown>,
     ) -> Result<Self> {
         let health = matches!(output_format, EncodedFormat::Hls { .. }).then(HlsHealth::new);
 
-        Self::open_internal(path, cfg, output_format, health, true, Some(parameters))
+        Self::open_internal(
+            path,
+            cfg,
+            output_format,
+            health,
+            true,
+            Some(parameters),
+            Some(network_shutdown),
+        )
     }
 
     fn open_internal(
@@ -176,6 +185,7 @@ impl EncodedOutput {
         hls_health: Option<HlsHealth>,
         paced: bool,
         parameters: Option<Vec<(codec::Parameters, codec::Parameters)>>,
+        network_shutdown: Option<Arc<NetworkShutdown>>,
     ) -> Result<Self> {
         validate_output_metadata(&cfg.metadata_options).map_err(anyhow::Error::msg)?;
 
@@ -372,8 +382,24 @@ impl EncodedOutput {
             }
         }
 
-        // Network outputs get a write timeout so a stalled TCP connection
-        // surfaces as an error instead of blocking the playout worker forever.
+        let network_shutdown = is_network_url(path)
+            .then(|| network_shutdown.unwrap_or_else(|| Arc::new(NetworkShutdown::default())));
+        let open_network = |muxer| {
+            let shutdown = network_shutdown
+                .as_ref()
+                .context("missing network shutdown state")?;
+
+            // SAFETY: the callback state survives context creation and is
+            // transferred to the mux, which joins its worker before dropping it.
+            unsafe {
+                open_network_output_with_callback(
+                    path,
+                    muxer,
+                    &cfg.protocol_options,
+                    shutdown.callback(),
+                )
+            }
+        };
         let mut octx = match output_format {
             // The HLS muxer opens its playlists and segments itself. Avoid
             // preopening the output path because that truncates a standalone
@@ -386,16 +412,14 @@ impl EncodedOutput {
                 hls::output_context(&path)?
             }
             EncodedFormat::Stream { ref muxer } if is_network_url(path) => {
-                open_network_output(path, Some(muxer), &cfg.protocol_options)?
+                open_network(Some(muxer))?
             }
             EncodedFormat::Stream { ref muxer } => format::output_as(path, muxer)?,
             EncodedFormat::Recording { .. } => recording::segment_output_context(Path::new(path))?,
             EncodedFormat::Auto if path.starts_with("rtmp://") || path.starts_with("rtmps://") => {
-                open_network_output(path, Some("flv"), &cfg.protocol_options)?
+                open_network(Some("flv"))?
             }
-            EncodedFormat::Auto if is_network_url(path) => {
-                open_network_output(path, None, &cfg.protocol_options)?
-            }
+            EncodedFormat::Auto if is_network_url(path) => open_network(None)?,
             EncodedFormat::Auto => format::output(path)?,
         };
 
@@ -567,7 +591,7 @@ impl EncodedOutput {
             }
         }
 
-        let mux = if native_hls {
+        let mut mux = if native_hls {
             let EncodedFormat::Hls {
                 segment_seconds,
                 list_size,
@@ -596,6 +620,12 @@ impl EncodedOutput {
                 staged_hls,
             )?
         };
+
+        if let Some(shutdown) = &network_shutdown {
+            shutdown.mark_opened();
+        }
+
+        mux.network_shutdown = network_shutdown;
 
         let recording_video_stream_index = cfg
             .recording

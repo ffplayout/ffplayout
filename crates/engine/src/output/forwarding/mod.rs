@@ -633,7 +633,12 @@ impl Mux {
         };
         // SAFETY: only deliver calls this method. Its Stop outlives every Mux.
         let mut output = unsafe {
-            open_network_output_with_callback(&route.url, &route.muxer, &route.protocol, callback)
+            open_network_output_with_callback(
+                &route.url,
+                Some(&route.muxer),
+                &route.protocol,
+                callback,
+            )
         }
         .context("opening forwarding destination")?;
 

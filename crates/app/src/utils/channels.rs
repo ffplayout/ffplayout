@@ -130,6 +130,7 @@ pub async fn delete_channel(
     }
 
     handles::delete_channel(conn, &channel.id).await?;
+    ff_engine::clear_channel_ingest_log_level(id);
     controllers.write().await.remove(id);
     let mut queue_guard = queue.lock().await;
     let mut new_queue = Vec::with_capacity(queue_guard.len());
