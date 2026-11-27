@@ -5,8 +5,10 @@ use super::*;
 async fn self_updates_cannot_grant_privileges_or_modify_another_user() {
     let fixture = security_fixture().await;
     let token = access_token(&fixture.state, 1).await;
+    let hash = hardening::set_password(&fixture.state, 1, "current-password").await;
     let response = fixture.app.clone().oneshot(json_request("PUT", "/api/user/1", Some(&token), json!({
-        "username":"administrator", "mail":"updated@example.org", "role_id":1, "channel_ids":[1,2], "two_factor":false
+        "username":"administrator", "mail":"updated@example.org", "role_id":1, "channel_ids":[1,2], "two_factor":false,
+        "current_password":"current-password"
     }))).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -18,7 +20,7 @@ async fn self_updates_cannot_grant_privileges_or_modify_another_user() {
     assert_eq!(user.role_id, Some(3));
     assert_eq!(user.channel_ids, Some(vec![1]));
     assert!(user.two_factor);
-    assert_eq!(user.password, "unchanged");
+    assert_eq!(user.password, hash);
     let response = fixture
         .app
         .clone()

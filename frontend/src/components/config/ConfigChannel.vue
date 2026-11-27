@@ -196,7 +196,7 @@ async function deleteChannel() {
                     v-model="channel.name"
                     type="text"
                     name="name"
-                    placeholder="Type here"
+                    :placeholder="t('config.typeHere')"
                     class="input w-full focus:border-base-content/30 focus:outline-base-content/30"
                     @keyup="isChanged"
                     :disabled="authStore.role === 'user'"

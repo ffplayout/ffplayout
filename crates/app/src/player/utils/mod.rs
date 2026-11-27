@@ -640,6 +640,17 @@ pub fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
+/// Seconds by which the UTC offset of `now` differs from the one `window`
+/// earlier, for example `3600.0` after clocks were set forward by an hour.
+///
+/// This tells a daylight-saving transition apart from a playout that is
+/// really out of sync, and also covers zones that shift by less than an hour.
+pub fn utc_offset_change(now: &jiff::ZonedDateTime, window: SignedDuration) -> f64 {
+    let before = now.saturating_sub(window);
+
+    f64::from(now.offset().seconds() - before.offset().seconds())
+}
+
 /// Test if given numbers are close to each other,
 /// with a third number for setting the maximum range.
 pub fn is_close(a: f64, b: f64, to: f64) -> bool {
@@ -1083,5 +1094,40 @@ mod tests {
         assert_eq!(custom_format("{x}", &["foo"]), "{x}");
         assert_eq!(custom_format("{0", &["foo"]), "{0");
         assert_eq!(custom_format("}", &["foo"]), "}");
+    }
+
+    #[test]
+    fn utc_offset_change_detects_daylight_saving_transitions() {
+        let day = jiff::SignedDuration::from_hours(24);
+        let at = |time: &str, zone: &str| {
+            time.parse::<jiff::civil::DateTime>()
+                .unwrap()
+                .to_zoned_datetime(TimeZone::get(zone).unwrap())
+                .unwrap()
+        };
+
+        // Europe/Berlin: forward on 2024-03-31 02:00, back on 2024-10-27 03:00.
+        assert_eq!(
+            super::utc_offset_change(&at("2024-03-31T12:00:00", "Europe/Berlin"), day),
+            3600.0
+        );
+        assert_eq!(
+            super::utc_offset_change(&at("2024-10-27T12:00:00", "Europe/Berlin"), day),
+            -3600.0
+        );
+        assert_eq!(
+            super::utc_offset_change(&at("2024-04-02T12:00:00", "Europe/Berlin"), day),
+            0.0
+        );
+        // Lord Howe Island shifts by half an hour.
+        assert_eq!(
+            super::utc_offset_change(&at("2024-10-06T12:00:00", "Australia/Lord_Howe"), day),
+            1800.0
+        );
+        // No daylight saving time since 2019.
+        assert_eq!(
+            super::utc_offset_change(&at("2024-11-03T12:00:00", "America/Sao_Paulo"), day),
+            0.0
+        );
     }
 }

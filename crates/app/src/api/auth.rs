@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, Mutex as StdMutex, PoisonError},
 };
 
 use argon2::{Argon2, PasswordHasher, PasswordVerifier, password_hash::phc::PasswordHash};
@@ -29,6 +29,10 @@ const ACCESS_LIFETIME_SECONDS: i64 = ACCESS_LIFETIME_MINUTES * 60;
 const REFRESH_LIFETIME_SECONDS: i64 = REFRESH_LIFETIME_DAYS * 86_400;
 
 const MAX_VERIFICATION_ATTEMPTS: u8 = 5;
+
+/// Users whose access tokens issued before the stored time are rejected.
+static REVOKED_ACCESS: LazyLock<StdMutex<HashMap<i32, i64>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
 
 // Global storage for verification codes
 pub static VERIFICATION_CODES: LazyLock<Arc<Mutex<HashMap<String, VerificationCode>>>> =
@@ -187,6 +191,11 @@ fn decode_jwt_with_type(token: &str, expected: TokenType) -> Result<Claims, Serv
             "Access token lifetime exceeds the allowed maximum".into(),
         ));
     }
+    if expected == TokenType::Access && access_revoked(claims.id, claims.iat) {
+        return Err(ServiceError::Unauthorized(
+            "Access token was revoked".into(),
+        ));
+    }
     if expected == TokenType::Refresh && claims.jti.is_none() {
         return Err(ServiceError::Unauthorized(
             "Refresh token has no identifier".into(),
@@ -194,6 +203,29 @@ fn decode_jwt_with_type(token: &str, expected: TokenType) -> Result<Claims, Serv
     }
 
     Ok(claims)
+}
+
+fn access_revoked(user_id: i32, issued_at: i64) -> bool {
+    REVOKED_ACCESS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&user_id)
+        .is_some_and(|revoked_at| issued_at < *revoked_at)
+}
+
+/// Reject the access tokens that were issued to a user before now.
+///
+/// Access tokens carry the role and channels of a user and are not checked
+/// against the database, so a removed or changed account would keep its old
+/// rights until the token expires. Entries are only needed that long.
+pub fn revoke_access_tokens(user_id: i32) {
+    let now = Timestamp::now().as_second();
+    let mut revoked = REVOKED_ACCESS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+
+    revoked.retain(|_, revoked_at| now - *revoked_at <= ACCESS_LIFETIME_SECONDS);
+    revoked.insert(user_id, now);
 }
 
 /// Decode an access token used to authorize API requests.

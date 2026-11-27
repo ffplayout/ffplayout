@@ -94,6 +94,28 @@ watch([width], () => {
     }
 })
 
+// A folder can hold tens of thousands of clips. Render the rows in steps
+// while scrolling instead of all at once.
+const FILE_ROWS_STEP = 300
+const fileRowLimit = ref(FILE_ROWS_STEP)
+const visibleFiles = computed(() => (mediaStore.folderTree.files ?? []).slice(0, fileRowLimit.value))
+
+watch(
+    () => mediaStore.folderTree.source,
+    () => {
+        fileRowLimit.value = FILE_ROWS_STEP
+    },
+)
+
+function showMoreFiles(event: Event) {
+    const list = event.target as HTMLElement
+    const total = mediaStore.folderTree.files?.length ?? 0
+
+    if (fileRowLimit.value < total && list.scrollTop + list.clientHeight >= list.scrollHeight - 600) {
+        fileRowLimit.value += FILE_ROWS_STEP
+    }
+}
+
 watch([i], () => {
     mediaStore.getTree('')
 })
@@ -334,7 +356,7 @@ async function uploadFiles(upl: boolean) {
             indexStore.msgAlert('error', err.message || t('media.folderError'), 3)
         }
 
-        uploadTask.value = 'Done...'
+        uploadTask.value = t('media.uploadDone')
         mediaStore.getTree(lastPath.value)
 
         setTimeout(() => {
@@ -434,7 +456,7 @@ async function uploadFiles(upl: boolean) {
                         </div>
                     </Pane>
                     <Pane class="h-full bg-base-300!" :class="horizontal ? 'rounded-b' : 'rounded-e'">
-                        <div class="relative h-full overflow-y-auto">
+                        <div class="relative h-full overflow-y-auto" @scroll.passive="showMoreFiles">
                             <table
                                 v-if="mediaStore.folderTree.parent"
                                 class="table table-zebra table-fixed"
@@ -493,7 +515,7 @@ async function uploadFiles(upl: boolean) {
                                         </td>
                                     </tr>
                                     <tr
-                                        v-for="(element, index) in mediaStore.folderTree.files"
+                                        v-for="(element, index) in visibleFiles"
                                         :id="`file_${index}`"
                                         :key="element.name"
                                         class="grid grid-cols-[auto_170px] border-b border-base-content/20"

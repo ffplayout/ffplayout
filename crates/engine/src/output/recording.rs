@@ -24,6 +24,43 @@ pub(super) struct RecordingMuxer {
     monitor: RecordingMonitor,
 }
 
+#[cfg(not(test))]
+const RECORDING_RETRY_INTERVAL: Duration = Duration::from_secs(60);
+// Tests recover a recording without waiting a minute.
+#[cfg(test)]
+const RECORDING_RETRY_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Schedule for reopening a recording that was disabled by an error.
+///
+/// A full disk or an unreachable mount stops the recording, not the channel.
+/// Retention or an operator frees the space later, and nobody restarts a
+/// 24/7 channel for that, so the recording is opened again periodically.
+pub(super) struct RecordingRetry {
+    interval: Duration,
+    next: Option<Instant>,
+}
+
+impl Default for RecordingRetry {
+    fn default() -> Self {
+        Self {
+            interval: RECORDING_RETRY_INTERVAL,
+            next: None,
+        }
+    }
+}
+
+impl RecordingRetry {
+    /// The recording stopped or could not be opened at `now`.
+    pub(super) fn failed(&mut self, now: Instant) {
+        self.next = Some(now + self.interval);
+    }
+
+    /// A new attempt to open the recording may start at `now`.
+    pub(super) fn due(&self, now: Instant) -> bool {
+        self.next.is_none_or(|next| now >= next)
+    }
+}
+
 pub(super) struct RecordingMonitor {
     directory: PathBuf,
     channel_id: Option<i32>,
@@ -181,11 +218,16 @@ pub(super) fn prepare_recording(config: &RecordingConfig) -> Result<(PathBuf, Re
             directory.display()
         )
     })?;
-    remove_expired_segments(
+    // As in the periodic check: one segment that cannot be removed is no
+    // reason to record nothing at all.
+    if let Err(error) = remove_expired_segments(
         directory,
         config.retention_days,
         config.channel_id.unwrap_or_default(),
-    )?;
+    ) {
+        log::error!(channel = config.channel_id.unwrap_or_default(); "Failed to remove expired recording segments in {}: {error}", directory.display());
+    }
+
     ensure_minimum_free_space(directory, config.minimum_free_space_gb)?;
     let channel_id = config.channel_id.unwrap_or_default();
     let sequence = RECORDING_SEQUENCE.fetch_add(1, Ordering::Relaxed);
@@ -549,6 +591,25 @@ mod tests {
 
         assert!(!legacy.exists());
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn disabled_recording_is_retried_once_per_interval() {
+        let interval = super::RECORDING_RETRY_INTERVAL;
+        let start = std::time::Instant::now();
+        let mut retry = super::RecordingRetry::default();
+
+        assert!(retry.due(start));
+
+        retry.failed(start);
+
+        assert!(!retry.due(start + interval - std::time::Duration::from_millis(1)));
+        assert!(retry.due(start + interval));
+
+        retry.failed(start + interval);
+
+        assert!(!retry.due(start + interval * 2 - std::time::Duration::from_millis(1)));
+        assert!(retry.due(start + interval * 2));
     }
 
     #[test]

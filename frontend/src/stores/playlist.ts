@@ -20,9 +20,26 @@ dayjs.extend(timezone)
 
 const { processPlaylist } = playlistOperations()
 
+/** The fields an operator edits; ids and computed times do not count as changes. */
+function editedContent(playlist: PlaylistItem[]): string {
+    return JSON.stringify(
+        playlist.map((item) => [
+            item.source,
+            item.in,
+            item.out,
+            item.duration,
+            item.audio ?? '',
+            item.title ?? '',
+            item.ad ?? false,
+            item.graphics ?? null,
+        ]),
+    )
+}
+
 export const usePlaylist = defineStore('playlist', {
     state: () => ({
         playlist: [] as PlaylistItem[],
+        savedContent: editedContent([]),
         isLoading: true,
         listDate: dayjs().format('YYYY-MM-DD'),
         progressValue: 0,
@@ -43,8 +60,16 @@ export const usePlaylist = defineStore('playlist', {
         scrollToItem: false,
     }),
 
-    getters: {},
+    getters: {
+        /** The playlist differs from what was last loaded from or saved to the server. */
+        hasUnsavedChanges: (state) => editedContent(state.playlist) !== state.savedContent,
+    },
     actions: {
+        /** Remember the current playlist as the state stored on the server. */
+        markSaved() {
+            this.savedContent = editedContent(this.playlist)
+        },
+
         async getPlaylist(date: string) {
             const authStore = useAuth()
             const configStore = useConfig()
@@ -71,6 +96,7 @@ export const usePlaylist = defineStore('playlist', {
                             indexStore.msgAlert('warning', i18n.t('player.unsavedProgram'), 3)
                         } else {
                             this.playlist = programData ?? []
+                            this.markSaved()
                         }
                     }
                 })
@@ -80,6 +106,8 @@ export const usePlaylist = defineStore('playlist', {
 
                         if (this.playlist[0]?.date !== date) {
                             this.playlist = []
+                            this.markSaved()
+                            this.markSaved()
                         }
                     } else if (
                         channel === this.last_channel &&
@@ -89,6 +117,7 @@ export const usePlaylist = defineStore('playlist', {
                         indexStore.msgAlert('warning', i18n.t('player.unsavedProgram'), 3)
                     } else {
                         this.playlist = []
+                        this.markSaved()
                     }
                 })
 

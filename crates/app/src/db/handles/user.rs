@@ -40,6 +40,15 @@ pub async fn select_user(pool: &SqlitePool, id: i32) -> Result<User, ProcessErro
     Ok(result)
 }
 
+pub async fn select_user_password_hash(pool: &SqlitePool, id: i32) -> Result<String, ProcessError> {
+    let hash = sqlx::query_scalar("SELECT password FROM auth_user WHERE id = $1")
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+
+    Ok(hash)
+}
+
 pub async fn select_users(pool: &SqlitePool) -> Result<Vec<User>, ProcessError> {
     const QUERY: &str = "SELECT id, username FROM auth_user";
 

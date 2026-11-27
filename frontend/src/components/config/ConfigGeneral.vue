@@ -132,7 +132,7 @@ async function onSubmitPlayout() {
                     </div>
                 </label>
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Stop Threshold</legend>
+                    <legend class="fieldset-legend">{{ t('config.stopThresholdLabel') }}</legend>
                     <input
                         v-model="configStore.playout.general.stop_threshold"
                         type="number"
@@ -154,7 +154,7 @@ async function onSubmitPlayout() {
                         </div>
                     </label>
                     <fieldset class="fieldset">
-                        <legend class="fieldset-legend">Subject</legend>
+                        <legend class="fieldset-legend">{{ t('config.mailSubject') }}</legend>
                         <input
                             v-model="configStore.playout.mail.subject"
                             type="text"
@@ -163,7 +163,7 @@ async function onSubmitPlayout() {
                         />
                     </fieldset>
                     <fieldset class="fieldset">
-                        <legend class="fieldset-legend">Recipient</legend>
+                        <legend class="fieldset-legend">{{ t('config.mailRecipient') }}</legend>
                         <input
                             v-model="configStore.playout.mail.recipient"
                             type="text"
@@ -172,13 +172,13 @@ async function onSubmitPlayout() {
                         />
                     </fieldset>
                     <fieldset class="fieldset">
-                        <legend class="fieldset-legend">Mail Level</legend>
+                        <legend class="fieldset-legend">{{ t('config.mailLevel') }}</legend>
                         <select v-model="configStore.playout.mail.mail_level" class="select select-sm w-full max-w-xs">
                             <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
                         </select>
                     </fieldset>
                     <fieldset class="fieldset">
-                        <legend class="fieldset-legend">Interval</legend>
+                        <legend class="fieldset-legend">{{ t('config.mailIntervalLabel') }}</legend>
                         <input
                             v-model="configStore.playout.mail.interval"
                             type="number"
@@ -231,7 +231,7 @@ async function onSubmitPlayout() {
                     </div>
                 </label>
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">ffmpeg Level</legend>
+                    <legend class="fieldset-legend">{{ t('config.ffmpegLevel') }}</legend>
                     <select v-model="configStore.playout.logging.ffmpeg_level" class="select select-sm w-full max-w-xs">
                         <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
                     </select>
@@ -245,7 +245,7 @@ async function onSubmitPlayout() {
                     <p class="fieldset-label items-baseline">{{ t('config.logDetect') }}</p>
                 </fieldset>
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Ignore Lines</legend>
+                    <legend class="fieldset-legend">{{ t('config.ignoreLines') }}</legend>
                     <input v-model="formatIgnoreLines" type="text" class="input input-sm w-full max-w-full truncate" />
                     <p class="fieldset-label items-baseline">{{ t('config.logIgnore') }}</p>
                 </fieldset>
@@ -299,7 +299,7 @@ async function onSubmitPlayout() {
                 </fieldset>
 
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">VTT Dummy</legend>
+                    <legend class="fieldset-legend">{{ t('config.vttDummy') }}</legend>
                     <div class="join w-full max-w-lg">
                         <input
                             v-model="configStore.playout.processing.vtt_dummy"
@@ -352,7 +352,7 @@ async function onSubmitPlayout() {
                     </div>
                 </label>
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Day Start</legend>
+                    <legend class="fieldset-legend">{{ t('config.dayStart') }}</legend>
                     <input
                         v-model="configStore.playout.playlist.day_start"
                         type="text"
@@ -363,7 +363,7 @@ async function onSubmitPlayout() {
                     <p class="fieldset-label items-baseline">{{ t('config.playlistDayStart') }}</p>
                 </fieldset>
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Length</legend>
+                    <legend class="fieldset-legend">{{ t('config.playlistLengthLabel') }}</legend>
                     <input
                         v-model="configStore.playout.playlist.length"
                         type="text"
@@ -390,7 +390,7 @@ async function onSubmitPlayout() {
                     </div>
                 </label>
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Filler</legend>
+                    <legend class="fieldset-legend">{{ t('config.filler') }}</legend>
                     <div class="join w-full max-w-lg">
                         <input
                             v-model="configStore.playout.storage.filler"
@@ -411,7 +411,7 @@ async function onSubmitPlayout() {
                     <p class="fieldset-label items-baseline">{{ t('config.storageFiller') }}</p>
                 </fieldset>
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Extensions</legend>
+                    <legend class="fieldset-legend">{{ t('config.extensionsLabel') }}</legend>
                     <input v-model="extensions" type="text" name="extensions" class="input input-sm w-full max-w-lg" />
                     <p class="fieldset-label items-baseline">{{ t('config.storageExtension') }}</p>
                 </fieldset>
@@ -440,7 +440,7 @@ async function onSubmitPlayout() {
                 </fieldset>
 
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Path</legend>
+                    <legend class="fieldset-legend">{{ t('config.taskPathLabel') }}</legend>
                     <div class="join w-full max-w-lg">
                         <input
                             v-model="configStore.playout.task.path"

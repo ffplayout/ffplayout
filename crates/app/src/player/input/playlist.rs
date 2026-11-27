@@ -6,6 +6,7 @@ use std::{
     },
 };
 
+use jiff::SignedDuration;
 use log::*;
 
 use crate::{
@@ -16,10 +17,10 @@ use crate::{
             JsonPlaylist, Media, get_date, get_delta, is_close, is_image_source, is_live_source,
             is_remote,
             json_serializer::{read_json, set_defaults},
-            modified_time, probe_media, time_in_seconds,
+            modified_time, probe_media, time_in_seconds, utc_offset_change,
         },
     },
-    utils::config::PlayoutConfig,
+    utils::{config::PlayoutConfig, time_machine::time_now},
 };
 
 const NEXT_START_THRESHOLD: f64 = 1.5;
@@ -531,14 +532,22 @@ impl CurrentProgram {
             if self.config.general.stop_threshold > 0.0
                 && shifted_delta.abs() > self.config.general.stop_threshold
             {
-                // Handle summer/winter time changes.
-                // It only checks if the time change is one hour backwards or forwards.
-                // Production usage must be shown if this is sufficient, or if a real change needs to be verified.
-                if is_close(
-                    shifted_delta.abs(),
-                    3600.0,
-                    self.config.general.stop_threshold,
-                ) {
+                // Handle summer/winter time changes: the wall clock of the
+                // channel timezone jumped within the last broadcast day, and
+                // the playout is off by exactly that amount.
+                let clock_change = utc_offset_change(
+                    &time_now(&self.config.channel.timezone),
+                    SignedDuration::from_hours(24),
+                )
+                .abs();
+
+                if clock_change > 0.0
+                    && is_close(
+                        shifted_delta.abs(),
+                        clock_change,
+                        self.config.general.stop_threshold,
+                    )
+                {
                     warn!(
                         channel = self.channel_id;
                         "A time change seemed to have occurred, apply time shift: <span class=\"log-number\">{shifted_delta:.3}</span> seconds."

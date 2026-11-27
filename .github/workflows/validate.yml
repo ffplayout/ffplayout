@@ -119,6 +119,8 @@ jobs:
           cargo test -p ff-engine --no-default-features -- --skip input::tests::live_reception_
           cargo test -p ff-engine --no-default-features --lib input::tests::live_reception_ -- --test-threads=1
           cargo clippy --no-default-features --all-targets -- --deny warnings
+          # The release builds use the default features, including the desktop output.
+          cargo clippy --all-targets -- --deny warnings
           cargo fmt --all -- --check
           cargo build --no-default-features --features embed_frontend
 

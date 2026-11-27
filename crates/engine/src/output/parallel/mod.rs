@@ -2354,6 +2354,126 @@ mod tests {
     }
 
     #[test]
+    fn disabled_recordings_resume_when_their_directory_becomes_available() {
+        ffmpeg_next::init().unwrap();
+
+        let directory = TestDirectory(std::env::temp_dir().join(format!(
+            "parallel-recording-resume-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        )));
+
+        std::fs::create_dir(directory.path()).unwrap();
+
+        // A file where the recording directories belong: both recordings fail.
+        let blocker = directory.path().join("blocked");
+
+        std::fs::write(&blocker, b"not a directory").unwrap();
+
+        let copied = blocker.join("copied");
+        let encoded = blocker.join("encoded");
+        let mut config = OutputConfig::new(160, 120, 25, 48_000);
+
+        config.stream_type = crate::StreamType::Custom;
+        config.stream_format = "mpegts".into();
+        config
+            .video_options
+            .insert("preset".into(), "ultrafast".into());
+
+        for (id, name) in [(1, "first.ts"), (2, "second.ts")] {
+            config.destinations.push(OutputDestination {
+                id,
+                config: config.clone(),
+                target: OutputTarget::Stream {
+                    url: directory.path().join(name).to_string_lossy().into_owned(),
+                },
+            });
+            config.destinations[id as usize - 1]
+                .config
+                .destinations
+                .clear();
+        }
+
+        let mut dedicated = crate::RecordingConfig::new(encoded.to_string_lossy(), 60);
+
+        dedicated.encode = Some(crate::EncodingConfig {
+            width: 80,
+            height: 60,
+            video_codec: "libx264".into(),
+            video_options: config.video_options.clone(),
+            audio_codec: "aac".into(),
+            audio_options: BTreeMap::new(),
+            audio_bitrate: 96_000,
+        });
+        config.destinations[0].config.recording =
+            Some(crate::RecordingConfig::new(copied.to_string_lossy(), 60));
+        config.destinations[1].config.recording = Some(dedicated);
+
+        let output = ParallelOutput::start(&config, false).unwrap();
+        let send = |range: std::ops::Range<i64>| {
+            for index in range {
+                let mut video = frame::Video::new(Pixel::YUV420P, 160, 120);
+
+                for plane in 0..video.planes() {
+                    video.data_mut(plane).fill(128);
+                }
+
+                video.set_pts(Some(index));
+                output.encode_video(&video).unwrap();
+
+                let mut audio =
+                    frame::Audio::new(Sample::F32(Type::Planar), 1920, ChannelLayout::STEREO);
+
+                audio.set_rate(48_000);
+                audio.set_pts(Some(index * 1920));
+
+                for channel in 0..2 {
+                    audio.plane_mut::<f32>(channel).fill(0.1);
+                }
+
+                output.encode_audio(&audio).unwrap();
+                // Stay below the raw queue limits of the unpaced test output.
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        };
+
+        send(0..50);
+
+        assert!(blocker.is_file());
+
+        std::fs::remove_file(&blocker).unwrap();
+        // Longer than the retry interval of test builds.
+        std::thread::sleep(Duration::from_millis(250));
+        send(50..150);
+        output.finish().unwrap();
+
+        for path in [copied, encoded] {
+            let files = std::fs::read_dir(&path)
+                .unwrap_or_else(|error| panic!("{} was not resumed: {error}", path.display()))
+                .map(|entry| entry.unwrap().path())
+                .collect::<Vec<_>>();
+
+            assert_eq!(files.len(), 1, "{}", path.display());
+
+            let mut recorded = ffmpeg_next::format::input(&files[0]).unwrap();
+            let video = recorded
+                .packets()
+                .filter(|(stream, _)| {
+                    stream.parameters().medium() == ffmpeg_next::media::Type::Video
+                })
+                .map(|(_, packet)| packet)
+                .collect::<Vec<_>>();
+
+            assert!(video.len() >= 25, "{}: {}", path.display(), video.len());
+            assert!(video.len() < 150, "{} recorded the outage", path.display());
+            assert!(video[0].is_key());
+        }
+    }
+
+    #[test]
     fn hls_variants_feed_stream_and_hls_without_another_encoder() {
         check_hls_variant_reuse(false);
     }

@@ -27,14 +27,20 @@ const sseLoudness = ref<LiveLoudnessMetrics | null>(null)
 const audioLevel = computed(() => (useMoq.value ? moqAudioLevel.value : sseAudioLevel.value))
 const loudness = computed(() => (useMoq.value ? moqLoudness.value : sseLoudness.value))
 const loudnessValue = computed(() => loudness.value?.short_term_lufs ?? loudness.value?.momentary_lufs)
-const loudnessLabel = computed(() => (loudness.value?.short_term_lufs != null ? 'Short-term' : 'Momentary'))
+const loudnessLabel = computed(() =>
+    loudness.value?.short_term_lufs != null ? t('audio.shortTerm') : t('audio.momentary'),
+)
 const streamUrl = computed(() =>
     useMoq.value || channel.value === undefined
         ? undefined
         : `/data/event/${channel.value}?endpoint=playout&audio_meter=true&uuid=${authStore.uuid}`,
 )
 
-const { data, status: sseStatus, close } = useEventSource(streamUrl, [], {
+const {
+    data,
+    status: sseStatus,
+    close,
+} = useEventSource(streamUrl, [], {
     autoReconnect: { retries: -1, delay: 1000 },
 })
 
@@ -101,12 +107,12 @@ async function saveAudio() {
 
 <template>
     <div class="w-full min-w-0 max-w-3xl xs:pe-8">
-        <h2 class="pt-3 text-3xl">Audio</h2>
+        <h2 class="pt-3 text-3xl">{{ t('audio.title') }}</h2>
         <form v-if="configStore.playout" class="mx-auto mt-10 w-full max-w-3xl" @submit.prevent="saveAudio">
-            <section class="grid gap-4 sm:grid-cols-2" aria-label="Program output audio meters">
+            <section class="grid gap-4 sm:grid-cols-2" :aria-label="t('audio.metersLabel')">
                 <div class="min-w-0 rounded-box border border-base-300 bg-base-200 p-4">
                     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                        <h3 class="font-semibold">Volume meter</h3>
+                        <h3 class="font-semibold">{{ t('audio.volumeMeter') }}</h3>
                         <span class="font-mono text-sm">{{ meterValue(audioLevel?.peak_db, 'dBFS') }}</span>
                     </div>
                     <div class="mt-3 h-3 overflow-hidden rounded-full bg-base-300">
@@ -119,7 +125,7 @@ async function saveAudio() {
                 </div>
                 <div class="min-w-0 rounded-box border border-base-300 bg-base-200 p-4">
                     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                        <h3 class="font-semibold">Loudness meter</h3>
+                        <h3 class="font-semibold">{{ t('audio.loudnessMeter') }}</h3>
                         <span class="font-mono text-sm"
                             >{{ loudnessLabel }}: {{ meterValue(loudnessValue, 'LUFS') }}</span
                         >
@@ -131,13 +137,14 @@ async function saveAudio() {
                         />
                     </div>
                     <p class="mt-2 text-sm text-base-content/70">
-                        Integrated: {{ meterValue(loudness?.integrated_lufs, 'LUFS') }} · True peak:
+                        {{ t('audio.integrated') }}: {{ meterValue(loudness?.integrated_lufs, 'LUFS') }} ·
+                        {{ t('audio.truePeak') }}:
                         {{ meterValue(loudness?.true_peak_dbtp, 'dBTP') }}
                     </p>
                 </div>
             </section>
             <fieldset class="fieldset">
-                <legend class="fieldset-legend">Volume</legend>
+                <legend class="fieldset-legend">{{ t('audio.volume') }}</legend>
                 <input
                     v-model.number="configStore.playout.audio.volume"
                     type="number"
@@ -150,15 +157,15 @@ async function saveAudio() {
             </fieldset>
             <fieldset class="fieldset mt-5 rounded-box w-full">
                 <label class="fieldset">
-                    <span class="fieldset-legend">Apply audio normalization to</span>
+                    <span class="fieldset-legend">{{ t('audio.normalizeScope') }}</span>
                     <select v-model="configStore.playout.audio.loudness_scope" class="select w-full">
-                        <option value="all">All sources</option>
-                        <option value="live">Live input only</option>
-                        <option value="off">Off</option>
+                        <option value="all">{{ t('audio.scopeAll') }}</option>
+                        <option value="live">{{ t('audio.scopeLive') }}</option>
+                        <option value="off">{{ t('audio.scopeOff') }}</option>
                     </select>
                 </label>
                 <p class="fieldset-label items-baseline">
-                    Source selection takes effect after restarting playout. Other settings update immediately.
+                    {{ t('audio.scopeHelp') }}
                 </p>
             </fieldset>
             <div
@@ -166,7 +173,7 @@ async function saveAudio() {
                 class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
             >
                 <label class="fieldset"
-                    ><span class="fieldset-legend">Compression ratio</span>
+                    ><span class="fieldset-legend">{{ t('audio.compressionRatio') }}</span>
                     <input
                         v-model.number="configStore.playout.audio.compressor_ratio"
                         type="number"
@@ -178,7 +185,7 @@ async function saveAudio() {
                     <span class="fieldset-label">{{ t('config.audioDefaultValue', { value: '3:1' }) }}</span>
                 </label>
                 <label class="fieldset"
-                    ><span class="fieldset-legend">Pause threshold (RMS dBFS)</span>
+                    ><span class="fieldset-legend">{{ t('audio.pauseThreshold') }}</span>
                     <input
                         v-model.number="configStore.playout.audio.pause_threshold_dbfs"
                         type="number"
@@ -190,7 +197,7 @@ async function saveAudio() {
                     <span class="fieldset-label">{{ t('config.audioDefaultValue', { value: '−55 dBFS' }) }}</span>
                 </label>
                 <label class="fieldset"
-                    ><span class="fieldset-legend">Target LUFS</span
+                    ><span class="fieldset-legend">{{ t('audio.targetLufs') }}</span
                     ><input
                         v-model.number="configStore.playout.audio.loudness_target_lufs"
                         type="number"
@@ -202,7 +209,7 @@ async function saveAudio() {
                     }}</span></label
                 >
                 <label class="fieldset"
-                    ><span class="fieldset-legend">True peak ceiling (dBTP)</span
+                    ><span class="fieldset-legend">{{ t('audio.truePeakCeiling') }}</span
                     ><input
                         v-model.number="configStore.playout.audio.loudness_true_peak_ceiling_dbtp"
                         type="number"
@@ -213,7 +220,7 @@ async function saveAudio() {
                     <span class="fieldset-label">{{ t('config.audioDefaultValue', { value: '−1 dBTP' }) }}</span></label
                 >
                 <label class="fieldset"
-                    ><span class="fieldset-legend">Maximum leveler gain (dB)</span
+                    ><span class="fieldset-legend">{{ t('audio.maxGain') }}</span
                     ><input
                         v-model.number="configStore.playout.audio.loudness_max_gain_db"
                         type="number"
@@ -224,7 +231,7 @@ async function saveAudio() {
                     <span class="fieldset-label">{{ t('config.audioDefaultValue', { value: '+8 dB' }) }}</span></label
                 >
                 <label class="fieldset"
-                    ><span class="fieldset-legend">Maximum leveler attenuation (dB)</span
+                    ><span class="fieldset-legend">{{ t('audio.maxAttenuation') }}</span
                     ><input
                         v-model.number="configStore.playout.audio.loudness_max_attenuation_db"
                         type="number"
@@ -243,7 +250,7 @@ async function saveAudio() {
                 <div class="collapse-content">
                     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         <label class="fieldset"
-                            ><span class="fieldset-legend">Compressor attack (ms)</span>
+                            ><span class="fieldset-legend">{{ t('audio.compressorAttack') }}</span>
                             <input
                                 v-model.number="configStore.playout.audio.compressor_attack_ms"
                                 type="number"
@@ -255,7 +262,7 @@ async function saveAudio() {
                             <span class="fieldset-label">{{ t('config.audioDefaultValue', { value: '5 ms' }) }}</span>
                         </label>
                         <label class="fieldset"
-                            ><span class="fieldset-legend">Compressor hold (ms)</span>
+                            ><span class="fieldset-legend">{{ t('audio.compressorHold') }}</span>
                             <input
                                 v-model.number="configStore.playout.audio.compressor_hold_ms"
                                 type="number"
@@ -267,7 +274,7 @@ async function saveAudio() {
                             <span class="fieldset-label">{{ t('config.audioDefaultValue', { value: '100 ms' }) }}</span>
                         </label>
                         <label class="fieldset"
-                            ><span class="fieldset-legend">Compressor release (ms)</span>
+                            ><span class="fieldset-legend">{{ t('audio.compressorRelease') }}</span>
                             <input
                                 v-model.number="configStore.playout.audio.compressor_release_ms"
                                 type="number"
@@ -281,7 +288,7 @@ async function saveAudio() {
                             }}</span>
                         </label>
                         <label class="fieldset"
-                            ><span class="fieldset-legend">Release above 12 dB reduction (ms)</span>
+                            ><span class="fieldset-legend">{{ t('audio.releaseAbove') }}</span>
                             <input
                                 v-model.number="configStore.playout.audio.compressor_strong_release_ms"
                                 type="number"
@@ -293,7 +300,7 @@ async function saveAudio() {
                             <span class="fieldset-label">{{ t('config.audioDefaultValue', { value: '500 ms' }) }}</span>
                         </label>
                         <label class="fieldset"
-                            ><span class="fieldset-legend">Compressor knee (dB)</span>
+                            ><span class="fieldset-legend">{{ t('audio.compressorKnee') }}</span>
                             <input
                                 v-model.number="configStore.playout.audio.compressor_knee_db"
                                 type="number"

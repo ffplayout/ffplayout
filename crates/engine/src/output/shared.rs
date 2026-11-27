@@ -7,6 +7,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
+    time::Instant,
 };
 
 use anyhow::{Context, Result, anyhow, ensure};
@@ -25,7 +26,7 @@ use super::{
     encoded::EncodedOutput,
     encoding::{EncodedPacket, EncodingProfile, video::hls_gop_size},
     parallel::{Message, OutputDestination, OutputStatus, OutputTarget},
-    recording::RecordingMuxer,
+    recording::{RecordingMuxer, RecordingRetry},
 };
 
 /// Sources are resolved by the application; each group owns exactly one set of renditions.
@@ -299,6 +300,77 @@ pub(super) fn gop_size(destinations: &[OutputDestination]) -> Result<u32> {
         .context("encoding group is empty")
 }
 
+/// A recording that copies the encoded packets of one rendition.
+struct CopyRecording {
+    rendition: usize,
+    config: crate::RecordingConfig,
+    video: codec::Parameters,
+    audio: codec::Parameters,
+    mux: Option<RecordingMuxer>,
+    retry: RecordingRetry,
+    // Only the first failure of an outage is an error; retries stay quiet.
+    reported: bool,
+}
+
+impl CopyRecording {
+    fn open(&mut self, program: &OutputConfig, channel: i32) -> bool {
+        match RecordingMuxer::open_parameters(
+            &self.config,
+            (self.video.clone(), program.video_time_base),
+            (self.audio.clone(), program.audio_time_base),
+        ) {
+            Ok(mux) => {
+                self.mux = Some(mux);
+                self.reported = false;
+
+                true
+            }
+            Err(error) => {
+                self.retry.failed(Instant::now());
+
+                if std::mem::replace(&mut self.reported, true) {
+                    log::debug!(channel = channel; "Recording still disabled: {error:#}");
+                } else {
+                    log::error!(channel = channel; "Recording disabled: {error:#}");
+                }
+
+                false
+            }
+        }
+    }
+
+    fn write(&mut self, program: &OutputConfig, channel: i32, packet: &EncodedPacket) {
+        // A disabled recording can only continue with a video keyframe.
+        if self.mux.is_none()
+            && packet.stream == 0
+            && packet.packet.is_key()
+            && self.retry.due(Instant::now())
+            && self.open(program, channel)
+        {
+            log::info!(channel = channel; "Recording resumed");
+        }
+
+        let Some(mux) = &mut self.mux else {
+            return;
+        };
+        let result = if packet.stream == 0 {
+            mux.write_video(&packet.packet, packet.time_base)
+        } else {
+            mux.write_audio(&packet.packet, packet.time_base)
+        };
+
+        if let Err(error) = result {
+            log::error!(channel = channel; "Recording disabled: {error:#}");
+            self.reported = true;
+            self.retry.failed(Instant::now());
+
+            if let Some(mux) = self.mux.take() {
+                let _ = mux.finish();
+            }
+        }
+    }
+}
+
 pub(super) fn run(
     destinations: Vec<OutputDestination>,
     program: &OutputConfig,
@@ -350,15 +422,25 @@ pub(super) fn run(
         profiles.push(profile);
         parameters.push((video, audio));
     }
-    let mut recording = destinations.iter().filter_map(|destination| destination.config.recording.as_ref())
+    let channel = program.channel_id.unwrap_or_default();
+    // Recording errors disable the recording, never the encoding group. The
+    // configuration is kept so that it can be opened again later.
+    let recording_config = destinations
+        .iter()
+        .filter_map(|destination| destination.config.recording.as_ref())
         .find(|recording| recording.encode.is_some())
-        .and_then(|recording| match EncodedOutput::open_recording(program, recording) {
+        .cloned();
+    let mut recording_retry = RecordingRetry::default();
+    let mut recording = recording_config.as_ref().and_then(|config| {
+        match EncodedOutput::open_recording(program, config) {
             Ok(output) => Some(output),
             Err(error) => {
-                log::error!(channel = program.channel_id.unwrap_or_default(); "Recording disabled: {error:#}");
+                recording_retry.failed(Instant::now());
+                log::error!(channel = channel; "Recording disabled: {error:#}");
                 None
             }
-        });
+        }
+    });
     // Packet-copy recording belongs to the encoding group, not a network session.
     let mut copies = Vec::new();
     for destination in &destinations {
@@ -375,16 +457,18 @@ pub(super) fn run(
             let (video, audio) = parameters
                 .get(index)
                 .context("recording rendition is unavailable")?;
-            match RecordingMuxer::open_parameters(
-                recording,
-                (video.clone(), program.video_time_base),
-                (audio.clone(), program.audio_time_base),
-            ) {
-                Ok(mux) => copies.push((index, Some(mux))),
-                Err(error) => {
-                    log::error!(channel = program.channel_id.unwrap_or_default(); "Recording disabled: {error:#}");
-                }
-            }
+            let mut copy = CopyRecording {
+                rendition: index,
+                config: recording.clone(),
+                video: video.clone(),
+                audio: audio.clone(),
+                mux: None,
+                retry: RecordingRetry::default(),
+                reported: false,
+            };
+
+            copy.open(program, channel);
+            copies.push(copy);
         }
     }
     let sinks = RefCell::new(Vec::new());
@@ -399,22 +483,9 @@ pub(super) fn run(
     )?;
     let mut deliver = |index: usize, packet: EncodedPacket| -> Result<()> {
         let _stage = progress.map(|progress| progress.enter("packet_handoff", Some(index)));
-        for (rendition, recording) in &mut copies {
-            if *rendition != index {
-                continue;
-            }
-            if let Some(mux) = recording {
-                let result = if packet.stream == 0 {
-                    mux.write_video(&packet.packet, packet.time_base)
-                } else {
-                    mux.write_audio(&packet.packet, packet.time_base)
-                };
-                if let Err(error) = result {
-                    log::error!(channel = program.channel_id.unwrap_or_default(); "Recording disabled: {error:#}");
-                    if let Some(mux) = recording.take() {
-                        let _ = mux.finish();
-                    }
-                }
+        for copy in &mut copies {
+            if copy.rendition == index {
+                copy.write(program, channel, &packet);
             }
         }
         let bytes = packet.packet.size();
@@ -509,12 +580,31 @@ pub(super) fn run(
                 context.position = frame.source.pts().map(|pts| {
                     pts.rescale(program.video_time_base, ffmpeg_next::Rational(1, 1_000))
                 });
+                // Reopen a disabled recording on a video frame, so that its
+                // new file starts with picture and sound together.
+                if recording.is_none()
+                    && let Some(config) = &recording_config
+                    && recording_retry.due(Instant::now())
+                {
+                    match EncodedOutput::open_recording(program, config) {
+                        Ok(output) => {
+                            log::info!(channel = channel; "Recording resumed");
+                            recording = Some(output);
+                        }
+                        Err(error) => {
+                            recording_retry.failed(Instant::now());
+                            log::debug!(channel = channel; "Recording still disabled: {error:#}");
+                        }
+                    }
+                }
+
                 if let Some(output) = &mut recording
                     && let Err(error) = frame
                         .frame(program.width, program.height)
                         .and_then(|frame| output.encode_video(&frame))
                 {
-                    log::error!(channel = program.channel_id.unwrap_or_default(); "Recording disabled: {error:#}");
+                    log::error!(channel = channel; "Recording disabled: {error:#}");
+                    recording_retry.failed(Instant::now());
                     recording = None;
                 }
                 // All renditions scale the same composited image. Compositing
@@ -546,7 +636,8 @@ pub(super) fn run(
                 if let Some(output) = &mut recording
                     && let Err(error) = output.encode_audio(&frame)
                 {
-                    log::error!(channel = program.channel_id.unwrap_or_default(); "Recording disabled: {error:#}");
+                    log::error!(channel = channel; "Recording disabled: {error:#}");
+                    recording_retry.failed(Instant::now());
                     recording = None;
                 }
                 for (index, profile) in profiles.iter_mut().enumerate() {
@@ -594,8 +685,8 @@ pub(super) fn run(
     for (index, profile) in profiles.into_iter().enumerate() {
         profile.finish(|packet| emit(index, packet))?;
     }
-    for (_, recording) in copies {
-        if let Some(mux) = recording
+    for copy in copies {
+        if let Some(mux) = copy.mux
             && let Err(error) = mux.finish()
         {
             log::error!(channel = program.channel_id.unwrap_or_default(); "Recording drain failed: {error:#}");

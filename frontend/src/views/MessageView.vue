@@ -238,7 +238,7 @@ async function submitMessage() {
 
                     <div class="mt-2 grid md:grid-cols-[minmax(0,1fr)_160px_auto_auto] gap-4">
                         <fieldset class="fieldset">
-                            <legend class="fieldset-legend">Font</legend>
+                            <legend class="fieldset-legend">{{ t('message.font') }}</legend>
                             <select v-model="form.font_family" class="select select-sm w-full">
                                 <option
                                     v-if="form.font_family && !fontFamilies.includes(form.font_family)"
@@ -252,11 +252,11 @@ async function submitMessage() {
                             </select>
                         </fieldset>
                         <fieldset class="fieldset">
-                            <legend class="fieldset-legend">Weight</legend>
+                            <legend class="fieldset-legend">{{ t('message.weight') }}</legend>
                             <select v-model="form.font_weight" class="select select-sm w-full">
-                                <option value="normal">Normal</option>
-                                <option value="semibold">Semibold</option>
-                                <option value="bold">Bold</option>
+                                <option value="normal">{{ t('message.weightNormal') }}</option>
+                                <option value="semibold">{{ t('message.weightSemibold') }}</option>
+                                <option value="bold">{{ t('message.weightBold') }}</option>
                             </select>
                         </fieldset>
                         <fieldset class="fieldset rounded-box">
@@ -278,7 +278,7 @@ async function submitMessage() {
                         </fieldset>
                     </div>
                     <fieldset v-if="form.use_filename" class="fieldset">
-                        <legend class="fieldset-legend">Filename regex</legend>
+                        <legend class="fieldset-legend">{{ t('message.filenameRegex') }}</legend>
                         <input v-model="form.filename_regex" type="text" class="input input-sm w-full" />
                     </fieldset>
 
@@ -397,25 +397,25 @@ async function submitMessage() {
 
                     <div class="grid xs:grid-cols-4 gap-4 mt-2">
                         <fieldset class="fieldset">
-                            <legend class="fieldset-legend">Scrolling</legend>
+                            <legend class="fieldset-legend">{{ t('message.scrolling') }}</legend>
                             <select v-model="form.scroll_direction" class="select select-sm w-full">
-                                <option value="none">None</option>
-                                <option value="left_to_right">Left to right</option>
-                                <option value="right_to_left">Right to left</option>
+                                <option value="none">{{ t('message.scrollNone') }}</option>
+                                <option value="left_to_right">{{ t('message.scrollLeftToRight') }}</option>
+                                <option value="right_to_left">{{ t('message.scrollRightToLeft') }}</option>
                             </select>
                         </fieldset>
                         <fieldset class="fieldset">
-                            <legend class="fieldset-legend">Speed (px/s)</legend>
+                            <legend class="fieldset-legend">{{ t('message.speed') }}</legend>
                             <input v-model="form.scroll_speed" type="number" min="1" class="input input-sm w-full" />
                         </fieldset>
                         <fieldset class="fieldset">
-                            <legend class="fieldset-legend">Repeat</legend>
+                            <legend class="fieldset-legend">{{ t('message.repeat') }}</legend>
                             <input v-model="form.scroll_repeat" type="number" min="-1" class="input input-sm w-full" />
                             <p class="label">-1 endless, 0 once</p>
                         </fieldset>
                         <div class="grid grid-cols-2 gap-2">
                             <fieldset class="fieldset">
-                                <legend class="fieldset-legend">Fade in</legend>
+                                <legend class="fieldset-legend">{{ t('message.fadeIn') }}</legend>
                                 <input
                                     v-model="form.fade_in_seconds"
                                     type="number"
@@ -425,7 +425,7 @@ async function submitMessage() {
                                 />
                             </fieldset>
                             <fieldset class="fieldset">
-                                <legend class="fieldset-legend">Fade out</legend>
+                                <legend class="fieldset-legend">{{ t('message.fadeOut') }}</legend>
                                 <input
                                     v-model="form.fade_out_seconds"
                                     type="number"

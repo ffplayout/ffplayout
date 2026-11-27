@@ -4,12 +4,14 @@ use axum::{
 };
 use protect_axum::authorities::AuthDetails;
 
-use argon2::{Argon2, PasswordHasher};
+use argon2::{Argon2, PasswordHasher, PasswordVerifier, password_hash::phc::PasswordHash};
 use log::*;
+use serde::Deserialize;
 use tokio::task;
 
 use crate::{
     api::{
+        auth::revoke_access_tokens,
         routes::{AuthUser, ensure_any_authority},
         state::AppState,
     },
@@ -19,6 +21,35 @@ use crate::{
     },
     utils::errors::ServiceError,
 };
+
+/// A user update, with the current password for changes to the own account.
+#[derive(Debug, Deserialize)]
+pub struct UserUpdate {
+    #[serde(flatten)]
+    user: User,
+    #[serde(default)]
+    current_password: Option<String>,
+}
+
+async fn verify_current_password(
+    state: &AppState,
+    id: i32,
+    current_password: Option<String>,
+) -> Result<(), ServiceError> {
+    let rejected = || ServiceError::Forbidden("Current password is incorrect".to_string());
+    let password = current_password
+        .filter(|password| !password.is_empty())
+        .ok_or_else(rejected)?;
+    let hash = handles::select_user_password_hash(&state.pool, id).await?;
+    let verified = task::spawn_blocking(move || {
+        let hash = PasswordHash::new(&hash)?;
+
+        Argon2::default().verify_password(password.as_bytes(), &hash)
+    })
+    .await?;
+
+    verified.map_err(|_| rejected())
+}
 
 /// From here on all request **must** contain the authorization header:\
 /// `"Authorization: Bearer <TOKEN>"`
@@ -103,13 +134,26 @@ pub async fn update_user(
     Path(id): Path<i32>,
     user: AuthUser,
     details: AuthDetails<Role>,
-    Json(data): Json<User>,
+    Json(update): Json<UserUpdate>,
 ) -> Result<&'static str, ServiceError> {
     ensure_any_authority(
         &details,
         &[&Role::GlobalAdmin, &Role::ChannelAdmin, &Role::User],
     )?;
     user.ensure_self_or_admin(id)?;
+
+    let UserUpdate {
+        user: data,
+        current_password,
+    } = update;
+    let current = handles::select_user(&state.pool, id).await?;
+    let mail_changed = data.mail.is_some() && data.mail != current.mail;
+
+    // Changing the own password or the address that receives the two-factor
+    // codes takes over the account. A stolen session must not be enough.
+    if user.id == id && (!data.password.is_empty() || mail_changed) {
+        verify_current_password(&state, id, current_password).await?;
+    }
 
     // Channel assignments are a privileged operation: a non-admin editing
     // their own account must not be able to grant themselves access to other
@@ -146,7 +190,12 @@ pub async fn update_user(
     .await?;
 
     if let Some(revoked) = revoked {
+        revoke_access_tokens(id);
         info!("Password of user {id} changed, revoked {revoked} sessions");
+    } else if update_channels && user.id != id {
+        // The channels of an access token are fixed when it is issued. The
+        // client refreshes it and continues with the current assignments.
+        revoke_access_tokens(id);
     }
 
     Ok("Update Success")
@@ -199,7 +248,12 @@ pub async fn remove_user(
     ensure_any_authority(&details, &[&Role::GlobalAdmin])?;
 
     match handles::delete_user(&state.pool, id).await {
-        Ok(_) => Ok("Delete user success"),
+        Ok(_) => {
+            // The account is gone, but its access token would still be valid.
+            revoke_access_tokens(id);
+
+            Ok("Delete user success")
+        }
         Err(e) => {
             error!("{e}");
             Err(ServiceError::InternalServerError)

@@ -57,7 +57,9 @@ has reached its DTS. An idle timeout of 20 ms also releases short tails and live
 input without requiring a fixed media lookahead.
 Frame-threaded file decoding is limited to at most four threads (fewer at low
 frame rates), so decoder-held frames cannot consume the entire read-ahead budget.
-Recording keeps its unpaced muxer. Shared encoding owns codecs without opening
+Recording keeps its unpaced muxer. A recording that is disabled by an error, such as
+a full disk or an unreachable mount, does not affect the outputs and is opened again
+once a minute; it resumes with a new file as soon as the directory is usable. Shared encoding owns codecs without opening
 an intermediate destination. Parallel output instances are described below.
 
 The program clock persists across clip boundaries and preserves the existing

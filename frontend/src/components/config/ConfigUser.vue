@@ -24,6 +24,7 @@ const showUserModal = ref(false)
 const showDeleteModal = ref(false)
 const newPass = ref('')
 const confirmPass = ref('')
+const currentPass = ref('')
 
 const user = ref({
     id: 0,
@@ -167,7 +168,9 @@ async function onSubmitUser() {
 
     await authStore.inspectToken()
     try {
-        await configStore.setUserConfig(configStore.configUser)
+        // The server asks for the current password before it changes the
+        // password or the mail address of the own account.
+        await configStore.setUserConfig({ ...configStore.configUser, current_password: currentPass.value })
         indexStore.msgAlert('success', t('user.updateSuccess'), 2)
 
         if (ownPasswordChanged) {
@@ -181,6 +184,7 @@ async function onSubmitUser() {
 
     newPass.value = ''
     confirmPass.value = ''
+    currentPass.value = ''
 }
 </script>
 <template>
@@ -220,6 +224,17 @@ async function onSubmitUser() {
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">{{ t('user.confirmPass') }}</legend>
                 <input v-model="confirmPass" type="password" name="password" class="input w-full" />
+            </fieldset>
+            <fieldset v-if="configStore.configUser.id === configStore.currentUser" class="fieldset">
+                <legend class="fieldset-legend">{{ t('user.currentPass') }}</legend>
+                <input
+                    v-model="currentPass"
+                    type="password"
+                    name="current-password"
+                    autocomplete="current-password"
+                    class="input w-full"
+                />
+                <p class="label whitespace-normal">{{ t('user.currentPassHelp') }}</p>
             </fieldset>
 
             <fieldset v-if="authStore.role === 'global_admin'" class="fieldset mt-2 rounded-box w-full">
