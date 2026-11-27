@@ -18,7 +18,7 @@ export type Notification = { show: boolean, topic: string, level: NotificationLe
 
 export type NotificationLevel = "INFO" | "WARNING" | "ERROR" | "FATAL";
 
-export type Output = { id: number, label: string, enabled: boolean, inherit_resolution: boolean, share_encoding: boolean, encoding_source_id: number | null, forward_listener_id: number | null, forward_mode: "auto" | "copy" | "transcode", encoding_variant: string, public_moq: boolean, mode: OutputMode, stream_url: string, stream_type: StreamType, stream_format: string, hls_playlist_name: string, hls_segment_duration: number, hls_list_size: number, desktop_fullscreen: boolean, width: number, height: number, fps: number, video_codec: string, video_options: { [key in string]: string },
+export type Output = { id: number, label: string, enabled: boolean, inherit_resolution: boolean, share_encoding: boolean, encoding_source_id: number | null, forward_listener_id: number | null, forward_mode: "auto" | "copy" | "transcode", encoding_variant: string, public_moq: boolean, mode: OutputMode, stream_url: string, stream_type: StreamType, stream_format: string, hls_playlist_name: string, hls_segment_duration: number, hls_list_size: number, desktop_fullscreen: boolean, width: number, height: number, fps: number, video_codec: string, video_options: { [key in string]: string }, 
 /**
  * FFmpeg AVIO/protocol options used while opening a network stream.
  */

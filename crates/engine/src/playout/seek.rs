@@ -2,7 +2,7 @@
 use anyhow::{Context, Result, ensure};
 use ffmpeg_next::{Packet, Rational, Rescale, format, media, rescale};
 
-use crate::{PlaybackControl, utils::helper::open_media_input};
+use crate::{PlaybackControl, utils::helper::open_playback_input};
 
 use super::{check_playback_control, seconds_to_microseconds, seek_input_at};
 
@@ -56,8 +56,8 @@ pub(super) fn prepare(
             // Seeking to the first presentation timestamp can itself skip an
             // earlier DTS/keyframe. Reopening preserves the original packet prefix.
             if repositioned {
-                *input =
-                    open_media_input(label).context("reopening TS input for decoder preroll")?;
+                *input = open_playback_input(label, control)
+                    .context("reopening TS input for decoder preroll")?;
             }
 
             return Ok(Vec::new());

@@ -21,7 +21,7 @@ use crate::{
     utils::{
         config::{OutputConfig, TextOverlayState},
         ffmpeg::{make_video_frame_writable, reference_video_frame, trim_audio_start},
-        helper::{even, is_live_input, open_media_input},
+        helper::{even, is_live_input, open_playback_input},
     },
 };
 
@@ -172,8 +172,15 @@ pub(crate) fn play_clip_with_external_audio<O: FrameOutput>(
     let logo_fade_plan = LogoFadePlan::new(timeline.video_pts, duration_seconds, cfg, logo_fade);
     let mut external_audio = external_audio_path
         .map(|audio_path| {
-            ExternalAudioInput::open(audio_path, cfg, timeline, seek_seconds, duration_seconds)
-                .with_context(|| format!("failed to open external audio {audio_path} for {path}"))
+            ExternalAudioInput::open(
+                audio_path,
+                cfg,
+                timeline,
+                seek_seconds,
+                duration_seconds,
+                playback_control,
+            )
+            .with_context(|| format!("failed to open external audio {audio_path} for {path}"))
         })
         .transpose()?;
 
@@ -192,7 +199,7 @@ pub(crate) fn play_clip_with_external_audio<O: FrameOutput>(
             external_audio.as_mut(),
         )
     } else {
-        let ictx = open_media_input(path)?;
+        let ictx = open_playback_input(path, playback_control)?;
         play_opened_input(
             path,
             ictx,
@@ -248,7 +255,7 @@ fn play_looped_clip<O: FrameOutput>(
         check_playback_control(playback_control)?;
         let before_video_pts = timeline.video_pts;
         let before_audio_pts = timeline.audio_pts;
-        let ictx = open_media_input(path)?;
+        let ictx = open_playback_input(path, playback_control)?;
         play_opened_input(
             path,
             ictx,
@@ -1948,8 +1955,9 @@ impl ExternalAudioInput {
         timeline: &Timeline,
         seek_seconds: Option<f64>,
         duration_seconds: Option<f64>,
+        playback_control: &PlaybackControl,
     ) -> Result<Self> {
-        let mut input = open_media_input(path)?;
+        let mut input = open_playback_input(path, playback_control)?;
         let container_duration_us = (input.duration() > 0).then_some(input.duration());
         let seek_seconds = (!is_live_input(path)).then_some(seek_seconds).flatten();
 

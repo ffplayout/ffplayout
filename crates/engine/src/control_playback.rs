@@ -176,6 +176,10 @@ impl PlaybackControl {
         self.skip_current.swap(false, Ordering::SeqCst)
     }
 
+    pub(crate) fn restart_or_shutdown_requested(&self) -> bool {
+        self.is_shutdown() || self.restart.load(Ordering::SeqCst)
+    }
+
     pub(crate) fn take_restart(&self) -> bool {
         self.restart.swap(false, Ordering::SeqCst)
     }

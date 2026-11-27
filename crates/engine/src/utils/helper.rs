@@ -162,6 +162,24 @@ pub(crate) fn open_media_input(path: &str) -> Result<format::context::Input, Ffm
     }
 }
 
+/// Playback-owned network inputs also observe restart while FFmpeg is blocked.
+pub(crate) fn open_playback_input(
+    path: &str,
+    control: &crate::PlaybackControl,
+) -> Result<format::context::Input, FfmpegError> {
+    if !is_network_url(path) {
+        return open_media_input(path);
+    }
+
+    let control = control.clone();
+
+    format::input_with_interrupt_and_dictionary(
+        &path,
+        move || control.restart_or_shutdown_requested(),
+        network_input_options(path),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -181,6 +199,45 @@ mod tests {
         is_live_input, is_network_url, network_input_options, network_output_options,
         open_media_input,
     };
+
+    #[test]
+    fn playback_restart_interrupts_a_stalled_http_input() {
+        use std::io::{ErrorKind, Read};
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/clip.mp4", listener.local_addr().unwrap());
+        let control = crate::PlaybackControl::default();
+        let input_control = control.clone();
+
+        listener.set_nonblocking(true).unwrap();
+
+        let input = thread::spawn(move || {
+            super::open_playback_input(&url, &input_control)
+                .err()
+                .expect("stalled input must fail")
+        });
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut peer = loop {
+            match listener.accept() {
+                Ok((peer, _)) => break peer,
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "HTTP input did not connect");
+                    thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => panic!("{error}"),
+            }
+        };
+
+        peer.set_nonblocking(false).unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        peer.read_exact(&mut [0]).unwrap();
+
+        let interrupted_at = Instant::now();
+
+        control.restart_playout();
+        assert_eq!(input.join().unwrap(), ffmpeg_next::Error::Exit);
+        assert!(interrupted_at.elapsed() < Duration::from_secs(3));
+    }
 
     #[test]
     fn input_receive_timeout_is_only_set_for_udp_and_rtsp() {

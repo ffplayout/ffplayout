@@ -582,8 +582,15 @@ mod tests {
         for chunk in [48_000, 1024] {
             let mut timeline = Timeline::new();
             let mut output = Capture::default();
-            let mut external =
-                ExternalAudioInput::open(path, &cfg, &timeline, None, Some(1.0)).unwrap();
+            let mut external = ExternalAudioInput::open(
+                path,
+                &cfg,
+                &timeline,
+                None,
+                Some(1.0),
+                &crate::PlaybackControl::default(),
+            )
+            .unwrap();
             let mut decoded = 0;
 
             while timeline.audio_pts < 48_000 {

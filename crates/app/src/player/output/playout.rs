@@ -29,6 +29,10 @@ use crate::{
     },
 };
 
+/// Request recovery when an active program stops dispatching video frames.
+const PROGRAM_STALL_TIMEOUT: Duration = Duration::from_secs(60);
+const PROGRAM_STALL_CHECK_INTERVAL: Duration = Duration::from_secs(5);
+
 pub(crate) fn logo_config(config: &PlayoutConfig) -> Option<LogoConfig> {
     config.processing.add_logo.then(|| LogoConfig {
         high_quality: config.processing.logo_high_quality,
@@ -162,6 +166,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         (false, OutputMode::HLS) => {
             play_hls(manager.clone(), &config, &playout, graphics_canvas).await
         }
+        (true, _) => play_watched(manager.clone(), &config, &playout, graphics_canvas).await,
         _ => play_loop(manager.clone(), &config, &playout, None, graphics_canvas).await,
     };
 
@@ -178,6 +183,55 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     }
     result?;
     finish_result
+}
+
+/// Play with a watchdog on the program clock of the parallel outputs.
+async fn play_watched(
+    manager: ChannelManager,
+    config: &PlayoutConfig,
+    playout: &AsyncPlayout,
+    graphics_canvas: (u32, u32),
+) -> Result<(), ServiceError> {
+    let watchdog = program_watchdog(
+        config.general.channel_id,
+        manager.output_status.clone(),
+        PROGRAM_STALL_TIMEOUT,
+        PROGRAM_STALL_CHECK_INTERVAL,
+        playout.playback_control(),
+    );
+
+    tokio::select! {
+        result = watchdog => result,
+        result = play_loop(manager, config, playout, None, graphics_canvas) => result,
+    }
+}
+
+/// Request recovery after the first program frame has armed the watchdog.
+/// The supervisor restarts only after the previous engine worker exits.
+async fn program_watchdog(
+    channel_id: i32,
+    output_status: ff_engine::OutputStatus,
+    timeout: Duration,
+    check_interval: Duration,
+    playback_control: ff_engine::PlaybackControl,
+) -> Result<(), ServiceError> {
+    loop {
+        sleep(check_interval).await;
+
+        let Some(age) = output_status.program_frame_age() else {
+            continue;
+        };
+
+        if age > timeout {
+            error!(channel = channel_id;
+                "Playout produced no frames for <span class=\"log-number\">{:.3}s</span>; requesting playout restart",
+                age.as_secs_f32()
+            );
+            playback_control.restart_playout();
+
+            return Err(ServiceError::Conflict("Playout stalled".to_string()));
+        }
+    }
 }
 
 async fn play_hls(
@@ -871,5 +925,41 @@ mod tests {
         config.recording.source_output_id = Some(2);
 
         assert!(recording_config(&config).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn program_watchdog_waits_for_the_first_frame_and_reports_a_stall() {
+        use std::time::Duration;
+
+        use super::program_watchdog;
+
+        let status = ff_engine::OutputStatus::default();
+        let watchdog = tokio::spawn(program_watchdog(
+            1,
+            status.clone(),
+            Duration::from_millis(60),
+            Duration::from_millis(10),
+            ff_engine::PlaybackControl::default(),
+        ));
+
+        // Not armed: a playout that has not produced a frame yet is starting.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        assert!(!watchdog.is_finished());
+
+        // Frames keep it quiet.
+        for _ in 0..10 {
+            status.mark_program_frame();
+            tokio::time::sleep(Duration::from_millis(15)).await;
+        }
+
+        assert!(!watchdog.is_finished());
+
+        let stalled = tokio::time::timeout(Duration::from_secs(3), watchdog)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(stalled.is_err());
     }
 }

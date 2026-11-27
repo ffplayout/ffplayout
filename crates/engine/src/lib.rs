@@ -1087,6 +1087,10 @@ fn play_to_output<O: FrameOutput>(
         Err(error) if error.downcast_ref::<LiveEnded>().is_some() => Ok(ClipResult::LiveEnded),
         Err(error) if error.downcast_ref::<PlaybackStopped>().is_some() => Ok(ClipResult::Stopped),
         Err(error) => {
+            if playback_control.restart_or_shutdown_requested() {
+                playout::check_playback_control(playback_control)?;
+            }
+
             let reason = format!("{error:#}");
             let (duration, fallback_start) = options
                 .duration_seconds
