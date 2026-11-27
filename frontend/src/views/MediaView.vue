@@ -586,7 +586,7 @@ async function uploadFiles(upl: boolean) {
             :title="`${t('media.delete')} ${
                 extensionsArr.some((suffix) => deleteName.endsWith(suffix)) ? t('media.file') : t('media.folder')
             }`"
-            :text="`${t('media.deleteQuestion')}:<br /><strong>${deleteName}</strong>`"
+            :text="`${t('media.deleteQuestion')}:\n${deleteName}`"
             :modal-action="deleteFileOrFolder"
         >
             <div>

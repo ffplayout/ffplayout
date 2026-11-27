@@ -13,6 +13,10 @@ export class AuthFetchError<T = unknown> extends Error {
     ) {
         super(fetchErrorMessage(response, data))
     }
+
+    get status(): number {
+        return this.response.status
+    }
 }
 
 function fetchErrorMessage(response: Response, data: unknown): string {

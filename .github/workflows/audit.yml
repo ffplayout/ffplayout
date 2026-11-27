@@ -1,0 +1,37 @@
+name: Dependency audit
+
+# Known vulnerabilities appear without any change in this repository, so this
+# runs on a schedule and does not block unrelated pull requests.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - Cargo.lock
+      - package-lock.json
+      - .github/workflows/audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit Rust dependencies
+        run: cargo audit
+
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high

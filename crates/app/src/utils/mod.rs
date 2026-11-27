@@ -69,21 +69,34 @@ pub fn public_path() -> PathBuf {
     public_path
 }
 
+/// Build the log file name of a channel, for an empty or `YYYY-MM-DD` date.
+///
+/// The date comes from the request, so anything else is rejected. This keeps
+/// the name free from path separators and from other channels' log names.
+fn log_file_name(channel_id: i32, date: &str) -> Result<String, ServiceError> {
+    if date.is_empty() {
+        return Ok(format!("ffplayout_{channel_id}.log"));
+    }
+
+    let invalid_date = || ServiceError::BadRequest("Invalid log date; expected YYYY-MM-DD".into());
+    let parsed = Date::strptime("%Y-%m-%d", date).map_err(|_| invalid_date())?;
+    let normalized = parsed.strftime("%Y-%m-%d").to_string();
+
+    if date != normalized {
+        return Err(invalid_date());
+    }
+
+    Ok(format!("ffplayout_{channel_id}_{normalized}.log"))
+}
+
 pub async fn read_log_file(
     channel_id: &i32,
     date: &str,
     timezone: TimeZone,
     download: bool,
 ) -> Result<String, ServiceError> {
-    let date_str = if date.is_empty() {
-        String::new()
-    } else {
-        format!("_{date}")
-    };
-
-    let log_path = log_file_path()
-        .join(format!("ffplayout_{channel_id}{date_str}.log"))
-        .clean();
+    let log_name = log_file_name(*channel_id, date)?;
+    let log_path = log_file_path().join(log_name).clean();
     let file_size = fs::metadata(&log_path).await?.len() as f64;
 
     let log_content = if download || file_size < 5000000.0 {
@@ -162,4 +175,30 @@ pub fn round_to_nearest_ten(num: i64) -> i64 {
 pub fn is_running_in_container() -> bool {
     // Check for Docker or Podman specific files
     Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log_file_name_accepts_only_empty_or_normalized_dates() {
+        assert_eq!(log_file_name(1, "").unwrap(), "ffplayout_1.log");
+        assert_eq!(
+            log_file_name(2, "2024-02-29").unwrap(),
+            "ffplayout_2_2024-02-29.log"
+        );
+
+        for date in [
+            "x/../../../var/log/auth",
+            "x/../ffplayout_2",
+            "/etc/passwd",
+            "2024-2-9",
+            "2023-02-29",
+            "2024-02-29/..",
+            " 2024-02-29",
+        ] {
+            assert!(log_file_name(1, date).is_err(), "{date:?} must be rejected");
+        }
+    }
 }

@@ -6,6 +6,9 @@ on:
       - '**'
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
@@ -101,8 +104,12 @@ jobs:
         run: |
           npm ci
           npm run build
-          npm run test:graphics
-          npm run test:player
+          npm test
+          npm audit --audit-level=high
+
+      - name: Build and packaging script tests
+        if: runner.os == 'Linux'
+        run: python3 -m unittest discover -s scripts/tests
 
       - name: Rust tests and lint on Linux
         if: runner.os == 'Linux'

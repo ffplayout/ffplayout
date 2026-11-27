@@ -93,6 +93,29 @@ impl fmt::Display for ProcessUnit {
 
 use ProcessUnit::*;
 
+/// Marks a channel as busy with a command until the guard is dropped.
+///
+/// Request handlers are futures that the server drops when the client
+/// disconnects. Clearing the flag in `Drop` keeps a cancelled command from
+/// leaving the channel permanently busy.
+#[must_use]
+pub struct ProcessingGuard(Arc<AtomicBool>);
+
+impl ProcessingGuard {
+    /// Returns `None` when another command is already being processed.
+    pub fn acquire(flag: &Arc<AtomicBool>) -> Option<Self> {
+        flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .ok()
+            .map(|_| Self(flag.clone()))
+    }
+}
+
+impl Drop for ProcessingGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ChannelManager {
     pub id: i32,

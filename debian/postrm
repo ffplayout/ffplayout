@@ -4,13 +4,26 @@
 sysUser="ffpu"
 
 case "$1" in
-    abort-install|purge)
+    purge)
         deluser $sysUser
-        rm -rf /usr/share/ffplayout /var/log/ffplayout /var/lib/ffplayout /home/$sysUser
+        # Database, frontend assets and logs belong to the package.
+        rm -rf /usr/share/ffplayout /var/log/ffplayout
+
+        # Media and playlists are the operator's content and can be large and
+        # irreplaceable. Never delete them automatically.
+        if [ -d /var/lib/ffplayout ]; then
+            rmdir --ignore-fail-on-non-empty -p \
+                /var/lib/ffplayout/playlists /var/lib/ffplayout/tv-media 2>/dev/null || true
+
+            if [ -d /var/lib/ffplayout ]; then
+                echo "Media and playlists were kept in /var/lib/ffplayout; remove them manually if they are no longer needed."
+            fi
+        fi
     ;;
 
-    remove)
-        rm -rf /var/log/ffplayout
+    remove|abort-install)
+        # Keep logs and data: the package can be installed again, and a failed
+        # installation must not delete the data of an earlier one.
     ;;
 
     upgrade|failed-upgrade|abort-upgrade|disappear)

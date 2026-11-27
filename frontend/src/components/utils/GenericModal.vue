@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
@@ -31,7 +32,19 @@ const props = defineProps({
     },
 })
 
-document.body.style.overflow = props.show ? 'hidden' : ''
+watch(
+    () => props.show,
+    (show) => {
+        document.body.style.overflow = show ? 'hidden' : ''
+    },
+    { immediate: true },
+)
+
+onBeforeUnmount(() => {
+    if (props.show) {
+        document.body.style.overflow = ''
+    }
+})
 </script>
 <template>
     <div v-if="show" class="z-50 fixed inset-0 flex justify-center bg-black/30 overflow-auto py-5">
@@ -46,7 +59,7 @@ document.body.style.overflow = props.show ? 'hidden' : ''
 
                 <div class="grow mt-3">
                     <slot>
-                        <div v-html="text" />
+                        <div class="whitespace-pre-line wrap-break-word">{{ text }}</div>
                     </slot>
                 </div>
             </div>

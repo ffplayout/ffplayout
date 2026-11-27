@@ -393,11 +393,13 @@ Opening, transport or mux failures disable only the affected destination; other
 destinations keep using the profile. Encoder failure or raw queue overload affects
 the whole encoding group. Compressed queue overload disables that destination
 instead of resuming with a broken GOP. Destination failures retry 15 seconds after
-each failed attempt, for at most three minutes after the first failure. No new
-attempt starts at or after that deadline; blocking network I/O retains its ten-second
-timeout. A successful mux write resets the failure window, so a later outage gets
-a new three-minute window. After exhaustion the output stays failed. **Reconnect**
-starts a fresh round for that destination using its running configuration, without
+each failed attempt, for three minutes after the first failure; blocking network I/O
+retains its ten-second timeout. A successful mux write resets the failure window, so
+a later outage gets a new three-minute window. After that window the output is
+reported as failed, but an unattended channel still recovers on its own: attempts
+continue with a delay that doubles from 30 seconds up to five minutes, for as long as
+the channel runs. **Reconnect** starts a fresh fast round immediately for that
+destination using its running configuration, without
 restarting the channel or other outputs. Output settings use the live update path.
 Encoder failures require recreating the affected encoding group (for example by
 disabling its consumers and enabling them again) or restarting the channel; the button is

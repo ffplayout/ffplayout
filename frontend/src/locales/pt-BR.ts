@@ -667,6 +667,9 @@ export default {
         loadFailed: 'Não foi possível carregar as configurações iniciais.',
         passwordMismatch: 'As senhas não coincidem.',
         saveFailed: 'Não foi possível concluir a configuração.',
+        token: 'Token de configuração',
+        tokenHelp:
+            "Exibido na saída do console do ffplayout no servidor, por exemplo: journalctl -u ffplayout | grep 'Setup token'",
     },
     user: {
         title: 'Configuração de usuário',

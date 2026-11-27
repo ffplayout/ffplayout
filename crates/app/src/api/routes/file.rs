@@ -6,10 +6,12 @@ use axum::{
     http::{HeaderMap, StatusCode, header::AUTHORIZATION},
     response::Response,
 };
+use log::warn;
 use protect_axum::authorities::AuthDetails;
 use real::RealIp;
 use serde::Deserialize;
 use tokio::fs;
+use uuid::Uuid;
 
 use crate::{
     api::{
@@ -24,7 +26,7 @@ use crate::{
         selection::{BrowseRequest, Listing, SelectionMediaInfo},
     },
     player::utils::import::import_file,
-    utils::errors::ServiceError,
+    utils::{errors::ServiceError, playlist::playlist_path},
 };
 
 #[derive(Debug, Deserialize)]
@@ -388,21 +390,24 @@ pub async fn import_playlist(
     .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
     let channel_name = manager.channel.lock().await.name.clone();
-    let playlists = manager.config.read().await.channel.playlists.clone();
-    let file = obj.file.file_name().unwrap_or_default();
-    let path = env::temp_dir().join(file);
-    let path_clone = path.clone();
+    let playlist_file = playlist_path(&*manager.config.read().await, &obj.date)?;
+    let path = env::temp_dir().join(format!("ffplayout-import-{}.tmp", Uuid::new_v4()));
 
-    if let Some(field) = payload.next_field().await? {
-        let bytes = field.bytes().await?;
-        fs::write(&path, &bytes).await?;
-    } else {
+    let Some(field) = payload.next_field().await? else {
         return Err(ServiceError::BadRequest("No file provided".into()));
+    };
+
+    let bytes = field.bytes().await?;
+
+    fs::write(&path, &bytes).await?;
+
+    let response = import_file(&playlist_file, &obj.date, Some(channel_name), &path).await;
+
+    if let Err(e) = fs::remove_file(&path).await {
+        warn!("Remove import file {path:?} failed: {e}");
     }
 
-    let response = import_file(&playlists, &obj.date, Some(channel_name), &path_clone).await?;
-
-    fs::remove_file(path).await?;
+    let response = response?;
 
     Ok(Json(response))
 }

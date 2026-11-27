@@ -1,4 +1,4 @@
-use sqlx::{Row, sqlite::SqlitePool};
+use sqlx::{Row, SqliteConnection, sqlite::SqlitePool};
 
 use crate::utils::errors::ProcessError;
 
@@ -142,6 +142,24 @@ pub async fn revoke_refresh_family(
     .await?;
 
     Ok(result.rows_affected() > 0)
+}
+
+/// Revoke every refresh token of a user, for example after a password change.
+pub(super) async fn revoke_user_refresh_tokens(
+    connection: &mut SqliteConnection,
+    user_id: i32,
+    now: i64,
+) -> Result<u64, ProcessError> {
+    let result = sqlx::query(
+        "UPDATE auth_refresh_tokens SET revoked_at = $1
+         WHERE user_id = $2 AND revoked_at IS NULL",
+    )
+    .bind(now)
+    .bind(user_id)
+    .execute(connection)
+    .await?;
+
+    Ok(result.rows_affected())
 }
 
 #[cfg(test)]

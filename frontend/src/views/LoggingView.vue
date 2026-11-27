@@ -24,6 +24,7 @@ dayjs.extend(timezone)
 dayjs.extend(utc)
 
 import { authFetch, authFetchRaw } from '@/composables/authFetch'
+import { sanitizeLogHtml } from '@/composables/logHtml'
 import { useAuth } from '@/stores/auth'
 import { useConfig } from '@/stores/config'
 import { useIndex } from '@/stores/index'
@@ -98,7 +99,7 @@ function filterLogsBySeverity(logString: string, minSeverity: string): string {
         }
         return true
     })
-    return filteredLogs.join('\n')
+    return sanitizeLogHtml(filteredLogs.join('\n'))
 }
 
 async function getLog() {

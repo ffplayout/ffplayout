@@ -19,7 +19,7 @@ use crate::{
 
 use super::{
     super::parallel::ParallelOutput, ForwardMode, LIMITS, Mailbox, OutputDestination, OutputStatus,
-    OutputTarget, Routes, Session, plan_tracks,
+    OutputTarget, Retry, Routes, Session, plan_tracks,
 };
 
 fn native_lock() -> MutexGuard<'static, ()> {
@@ -189,6 +189,29 @@ fn forwarding_overflow_discards_only_the_affected_mailbox() {
     assert!(slow.queue.try_recv().unwrap().is_none());
     assert!(slow.overflow.load(Ordering::Acquire));
     assert!(!healthy.overflow.load(Ordering::Acquire));
+}
+
+#[test]
+fn forwarding_accepts_media_again_when_a_slow_retry_is_due() {
+    let mailbox = Mailbox::new();
+    let packet = Packet::new(16);
+    let started = Instant::now();
+    let expired = started + Duration::from_secs(180);
+    let mut retry = Retry::default();
+
+    retry.failed(started);
+    retry.failed(expired);
+    mailbox.update_retry_pause(&retry, expired, false);
+    mailbox.send(&packet);
+
+    assert!(mailbox.queue.try_recv().unwrap().is_none());
+
+    let due = retry.deadline(expired).unwrap();
+
+    mailbox.update_retry_pause(&retry, due, false);
+    mailbox.send(&packet);
+
+    assert!(mailbox.queue.try_recv().unwrap().is_some());
 }
 
 #[test]

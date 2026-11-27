@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 
+let alertTimer: ReturnType<typeof setTimeout> | undefined
+
 export const useIndex = defineStore('index', {
     state: () => ({
         darkMode: false,
@@ -23,7 +25,10 @@ export const useIndex = defineStore('index', {
             this.alertMsg = this.stringifyAlertText(text)
             this.showAlert = true
 
-            setTimeout(() => {
+            // A newer alert must not be hidden by the timer of an older one.
+            clearTimeout(alertTimer)
+
+            alertTimer = setTimeout(() => {
                 this.showAlert = false
                 this.alertVariant = 'success'
                 this.alertMsg = ''

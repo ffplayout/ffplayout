@@ -5,7 +5,8 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, LazyLock},
+    time::Duration,
 };
 
 use jiff::{
@@ -23,6 +24,7 @@ use tokio::{
     fs::{File, metadata},
     io::{AsyncReadExt, AsyncWriteExt},
     sync::Semaphore,
+    task,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -45,6 +47,9 @@ pub use json_serializer::{JsonPlaylist, read_json};
 
 pub type MediaProbe = ff_engine::EngineMediaProbe;
 pub type SilenceDetection = ff_engine::SilenceDetection;
+
+const REMOTE_PLAYLIST_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+const REMOTE_PLAYLIST_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Still images have no inherent media duration. Keep this aligned with the
 /// duration assigned by the playlist editor when an image is dropped into it.
@@ -102,7 +107,14 @@ pub(crate) fn is_image_source(source: &str) -> bool {
 
 pub async fn probe_media(input: impl AsRef<std::path::Path>) -> Result<MediaProbe, ProcessError> {
     let path = input.as_ref().to_string_lossy().to_string();
-    ff_engine::probe_media(&path).map_err(|error| ProcessError::Ffprobe(error.to_string()))
+
+    // Opening and probing an input blocks, for remote sources up to the
+    // network timeout. Keep it off the async workers that the API, the event
+    // streams and the play loops of all channels share.
+    task::spawn_blocking(move || ff_engine::probe_media(&path))
+        .await
+        .map_err(|error| ProcessError::Ffprobe(error.to_string()))?
+        .map_err(|error| ProcessError::Ffprobe(error.to_string()))
 }
 
 // Keep the permit inside the blocking task: aborting a validator cannot
@@ -578,7 +590,7 @@ pub fn time_from_header(headers: &header::HeaderMap) -> Option<Timestamp> {
 /// Get file modification time.
 pub async fn modified_time(path: &str) -> Option<String> {
     if is_remote(path) {
-        let response = reqwest::Client::new().head(path).send().await;
+        let response = remote_playlist_client().head(path).send().await;
 
         if let Ok(resp) = response
             && resp.status().is_success()
@@ -679,9 +691,29 @@ pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
 }
 
 pub fn is_remote(path: &str) -> bool {
-    Regex::new(r"^(https?|rtmps?|rts?p|udp|tcp|srt|rist)://.*")
-        .unwrap()
-        .is_match(&path.to_lowercase())
+    static REMOTE_SOURCE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?i)^(https?|rtmps?|rts?p|udp|tcp|srt|rist)://.*")
+            .expect("remote source pattern must be valid")
+    });
+
+    REMOTE_SOURCE.is_match(path)
+}
+
+/// Shared HTTP client for remote playlists.
+///
+/// These requests run between two clips of the play loop. A server that
+/// accepts the connection but never answers must not stall the playout, so
+/// every request has a deadline.
+pub fn remote_playlist_client() -> &'static reqwest::Client {
+    static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+        reqwest::Client::builder()
+            .connect_timeout(REMOTE_PLAYLIST_CONNECT_TIMEOUT)
+            .timeout(REMOTE_PLAYLIST_TIMEOUT)
+            .build()
+            .unwrap_or_default()
+    });
+
+    &CLIENT
 }
 
 /// Check if file can include or has to exclude.

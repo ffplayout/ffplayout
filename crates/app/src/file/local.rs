@@ -10,6 +10,7 @@ use async_walkdir::WalkDir;
 use axum::extract::Multipart;
 use lexical_sort::{PathSort, natural_lexical_cmp};
 use log::*;
+use path_clean::PathClean;
 use rand::seq::SliceRandom;
 use tokio::{
     fs,
@@ -171,6 +172,8 @@ impl LocalStorage {
         let (source_path, _, _) = norm_abs_path(&root, &move_object.source)?;
         let (mut target_path, _, _) = norm_abs_path(&root, &move_object.target)?;
 
+        ensure_not_root(&root, &source_path)?;
+
         if !source_path.exists() {
             return Err(ServiceError::BadRequest("Source does not exist!".into()));
         }
@@ -206,7 +209,10 @@ impl LocalStorage {
     }
 
     pub async fn remove(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError> {
-        let (source, _, _) = norm_abs_path(&self.root.read().await, source_path)?;
+        let root = self.root.read().await.clone();
+        let (source, _, _) = norm_abs_path(&root, source_path)?;
+
+        ensure_not_root(&root, &source)?;
 
         if !source.exists() {
             return Err(ServiceError::BadRequest("Source does not exists!".into()));
@@ -485,6 +491,17 @@ impl LocalStorage {
     }
 }
 
+/// Reject operations that would move or delete the storage root itself.
+fn ensure_not_root(root: &Path, path: &Path) -> Result<(), ServiceError> {
+    if path.clean() == root.clean() {
+        return Err(ServiceError::Forbidden(
+            "The storage root cannot be moved or removed".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 async fn rename_only(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError> {
     match fs::rename(source, target).await {
         Ok(_) => Ok(MoveObject {
@@ -564,6 +581,34 @@ mod tests {
 
         assert!(!base.join("old-name").exists());
         assert!(base.join("new-name").is_dir());
+        fs::remove_dir_all(base).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn storage_root_cannot_be_removed_or_renamed() {
+        let base = std::env::temp_dir().join(format!(
+            "ffplayout-storage-root-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let storage = LocalStorage::new(base.clone(), Vec::new()).await.unwrap();
+
+        fs::write(base.join("clip.mp4"), b"media").await.unwrap();
+
+        for source in ["", "/", "."] {
+            let removed = storage.remove(source, true).await;
+            let renamed = storage
+                .rename(&MoveObject {
+                    source: source.to_string(),
+                    target: "moved".to_string(),
+                })
+                .await;
+
+            assert!(matches!(removed, Err(ServiceError::Forbidden(_))));
+            assert!(matches!(renamed, Err(ServiceError::Forbidden(_))));
+        }
+
+        assert!(base.join("clip.mp4").is_file());
         fs::remove_dir_all(base).await.unwrap();
     }
 

@@ -1,5 +1,8 @@
 /// Import text/m3u file and create a playlist out of it
-use std::{io::Error, path::Path};
+use std::{
+    io::Error,
+    path::{Path, PathBuf},
+};
 
 use tokio::{
     fs::{File, create_dir_all},
@@ -8,8 +11,12 @@ use tokio::{
 
 use crate::player::utils::{Media, json_reader, json_serializer::JsonPlaylist, json_writer};
 
+/// Import a text/m3u file into the playlist file of the given date.
+///
+/// `playlist_file` must already be validated and contained in the playlist
+/// root, see `utils::playlist::playlist_path`.
 pub async fn import_file(
-    playlist_root: &Path,
+    playlist_file: &PathBuf,
     date: &str,
     channel_name: Option<String>,
     path: &Path,
@@ -26,19 +33,9 @@ pub async fn import_file(
         program: vec![],
     };
 
-    if !playlist_root.is_dir() {
-        return Err(Error::other(format!(
-            "Playlist folder <span class=\"log-addr\">{playlist_root:?}</span> not exists!"
-        )));
+    if let Some(playlist_path) = playlist_file.parent() {
+        create_dir_all(playlist_path).await?;
     }
-
-    let d: Vec<&str> = date.split('-').collect();
-    let year = d[0];
-    let month = d[1];
-    let playlist_path = playlist_root.join(year).join(month);
-    let playlist_file = &playlist_path.join(format!("{date}.json"));
-
-    create_dir_all(playlist_path).await?;
 
     let mut lines = reader.lines();
     while let Some(line) = lines.next_line().await? {

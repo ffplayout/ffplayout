@@ -31,8 +31,7 @@ export default {
             '每个素材的最大值，按需分配。默认：128 MiB；范围：32–1024 MiB。频道共享预算仍然适用。更改只作用于新加载的图形；对已有图层请使用切换上播/开始来重新加载。无需重启播出。节目台标会在后台重新加载。',
         unnamedLayer: '图层 {id}',
         untilStop: '直到停止或有限素材结束',
-        repeatHelp:
-            '计数包含首次播放。淡入淡出重复需要有限时长。Z 序只对手动图形组排序。',
+        repeatHelp: '计数包含首次播放。淡入淡出重复需要有限时长。Z 序只对手动图形组排序。',
         title: '图形',
         manualHelp:
             '每个频道最多八个图层，其设置及所请求的播放/可见状态会在片段、直播接入和重启之间保留。清除会删除已保存的图层。',
@@ -91,8 +90,7 @@ export default {
         title: '图形',
         experimental: '实验性功能',
         help: '时间以片段入点之后的秒数计。位置使用节目画面坐标。保存节目单并重新播放片段进行测试；文件预览不显示图形。',
-        unsupported:
-            '此图形数据无法用当前表单编辑。除非您明确移除，否则它会被原样保留。',
+        unsupported: '此图形数据无法用当前表单编辑。除非您明确移除，否则它会被原样保留。',
         preserve: '保存其他片段设置时，已有数据保持不变。',
         beyondEnd: '播放时会忽略位于或晚于片段结束时间的动作。',
         layer: '图层 ID',
@@ -128,8 +126,7 @@ export default {
         sort: '按时间排序',
         clear: '移除所有图形',
         fixErrors: '请先修正图形错误，再应用更改。',
-        splitHelp:
-            '请先拆分片段，再添加图形。带图形的自动拆分不可用，因为每个部分都需要自己的时间线。',
+        splitHelp: '请先拆分片段，再添加图形。带图形的自动拆分不可用，因为每个部分都需要自己的时间线。',
         actions: {
             take: '切换上播',
             update: '更新',
@@ -164,8 +161,7 @@ export default {
         empty: '没有匹配的文件或文件夹。',
         select: '选择文件',
         selectDirectory: '选择当前文件夹',
-        fallback:
-            '之前的路径不可用或超出允许的存储范围。已打开一个可用的文件夹。',
+        fallback: '之前的路径不可用或超出允许的存储范围。已打开一个可用的文件夹。',
     },
     ok: '确定',
     cancel: '取消',
@@ -472,11 +468,9 @@ export default {
         help: '帮助',
         generalHelp:
             '有时文件已损坏但仍可播放，这会导致其后所有文件出现推流错误。这种情况唯一的解决办法是停止 ffplayout 再重新启动。',
-        stopThreshold:
-            '播出重新同步之前允许的最大计划偏差，单位为秒。小于 3 秒的值可能引发意外错误。',
+        stopThreshold: '播出重新同步之前允许的最大计划偏差，单位为秒。小于 3 秒的值可能引发意外错误。',
         mailHelp: `将错误消息发送到邮箱，例如片段缺失、节目单缺失或格式无效等。不需要此功能请将收件人留空。`,
-        mailInterval:
-            '邮件之间的最小间隔，单位为秒。请使用 10 的增量，最小 30 秒。',
+        mailInterval: '邮件之间的最小间隔，单位为秒。请使用 10 的增量，最小 30 秒。',
         logHelp: '调整日志行为。',
         logDetect: '校验过程中若音频声道静音达 15 秒，记录一条错误日志。',
         logIgnore: '忽略包含以下任意字符串的日志行。多个字符串用分号分隔。',
@@ -491,15 +485,13 @@ export default {
             '向处理链添加自定义滤镜。视频滤镜的输出必须以 [c_v_out] 结尾，音频滤镜的输出必须以 [c_a_out] 结尾。',
         processingOverrideFilter:
             '注意：此选项会覆盖所有标准滤镜，即不再进行自动格式校正，命令必须组织为：-filter_complex [0:v]fps=25,scale=1280:-1[vout];[0:a:0]volume=0.5[aout] -map [vout] -map [aout]',
-        processingVTTEnable:
-            'VTT 只能在 HLS 模式下使用，且必须存在与视频文件同名的 *.vtt 文件。',
+        processingVTTEnable: 'VTT 只能在 HLS 模式下使用，且必须存在与视频文件同名的 *.vtt 文件。',
         processingVTTDummy: '没有 vtt 文件时需要一个占位文件。',
         apply: '应用',
         volumeApplied: '音量已应用。',
         volumeApplyFailed: '应用音量失败。',
         ingestAutoTakeover: '自动将此输入切上节目',
-        ingestAutoTakeoverHelp:
-            '禁用时，此输入保持就绪，直到在播放器页面被选中。更改此设置不会中断已存在的接管。',
+        ingestAutoTakeoverHelp: '禁用时，此输入保持就绪，直到在播放器页面被选中。更改此设置不会中断已存在的接管。',
         ingestHelp: `当视频到达时，RTMP 和 SRT 监听器可以接管节目单。可以同时有多个监听器等待；已激活的接管不会被抢占。同一协议的每个监听器请使用不同的端口。`,
         liveListenerEnabled: '已启用',
         liveListenerAdd: '添加监听器',
@@ -520,20 +512,17 @@ export default {
             '可选的 FFmpeg 输入选项。RTMP 可用 format=live_flv 显式选择 live FLV 解复用器；否则 FFmpeg 自动检测格式。SRT 的 MPEG-TS 选项请设置 format=mpegts。',
         ingestCustomFilter: '与处理部分相同的方式，对接入流应用自定义滤镜。',
         playlistHelp: '节目单处理。',
-        playlistDayStart:
-            '节目单的开始时间；若希望节目单总是从头开始播放，请留空。',
+        playlistDayStart: '节目单的开始时间；若希望节目单总是从头开始播放，请留空。',
         playlistLength: '节目单目标时长；留空则不考虑实际时长。',
         playlistInfinit: '无限循环单个节目单文件。',
         storageHelp: '存储设置，位置均相对于频道存储。',
-        storageFiller:
-            '垫片用于替换缺失文件并填充剩余节目时间。指定相对于频道存储的文件或文件夹，需要时会重复播放。',
+        storageFiller: '垫片用于替换缺失文件并填充剩余节目时间。指定相对于频道存储的文件或文件夹，需要时会重复播放。',
         storageExtension: '指定要搜索和使用的文件类型。',
         storageShuffle: '随机挑选文件（文件夹模式和节目单生成时）。',
         textHelp: '由播出引擎渲染的叠加文字。文字可来自文件名或控制 API。',
         textFont: '相对于频道存储的路径。',
         textFromFile: '从文件名中提取文字。',
-        textStyle:
-            '定义文字参数，如位置、颜色、背景框和字号。通过 API 发送的文字会覆盖显示的文字。',
+        textStyle: '定义文字参数，如位置、颜色、背景框和字号。通过 API 发送的文字会覆盖显示的文字。',
         textRegex: '格式化文件名以从中提取标题。',
         taskHelp:
             '针对当前媒体对象运行外部程序。媒体对象为 JSON 格式，包含当前片段的全部信息。外部程序可以是脚本或二进制文件，但只应短暂运行。',
@@ -563,8 +552,7 @@ export default {
         outputName: '输出名称',
         outputRuntime: '运行状态',
         outputSettings: '设置',
-        outputRestartHelp:
-            '受支持的输出更改在保存时即生效。若某更改需要重启本频道，会弹出提示。',
+        outputRestartHelp: '受支持的输出更改在保存时即生效。若某更改需要重启本频道，会弹出提示。',
         outputAtLeastOne: '请至少启用一个输出。',
         encodingOwn: '独立编码',
         encodingSourceUnavailable: '来源不可用或不兼容',
@@ -581,8 +569,7 @@ export default {
         encodingSource: '编码来源',
         outputHelp:
             '在下方最多配置八个输出。每个输出有自己的分辨率、编码器设置和目标。HLS、推流和 MoQ 的更改无需重启频道即可生效。桌面输出需要构建支持。所有输出使用节目帧率。',
-        outputParam:
-            'HLS 播放列表和分段写入 live/<name>.m3u8。目前每个频道只支持一个 HLS 输出。',
+        outputParam: 'HLS 播放列表和分段写入 live/<name>.m3u8。目前每个频道只支持一个 HLS 输出。',
         streamType: '推流类型',
         streamUrl: '推流目标 URL',
         streamFormat: 'FFmpeg 输出格式',
@@ -635,8 +622,7 @@ export default {
         videoMaxrate: '最大视频码率 (kbit/s)',
         audioBitrate: '音频码率 (kbit/s)',
         hlsVariants: 'HLS 档位',
-        hlsVariantsHelp:
-            '在基础输出之外添加自适应码率档位。引用所有流的主播放列表会自动生成。',
+        hlsVariantsHelp: '在基础输出之外添加自适应码率档位。引用所有流的主播放列表会自动生成。',
         addHlsVariant: '添加档位',
         remove: '移除',
         restartTile: '重启播出',
@@ -659,6 +645,8 @@ export default {
         loadFailed: '无法加载初始设置。',
         passwordMismatch: '两次输入的密码不一致。',
         saveFailed: '无法完成设置。',
+        token: '设置令牌',
+        tokenHelp: "显示在服务器上 ffplayout 的控制台输出中，例如：journalctl -u ffplayout | grep 'Setup token'",
     },
     user: {
         title: '用户配置',

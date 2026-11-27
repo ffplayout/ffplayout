@@ -12,8 +12,20 @@ type AuthChannelMessage = { type: 'tokens-updated'; access: string; refresh: str
 
 const AUTH_CHANNEL_NAME = 'ffplayout-auth'
 
+const REFRESH_LOCK_NAME = 'ffplayout-auth-refresh'
+const REJECTED_REFRESH_STATUS = [400, 401, 403]
+
 let refreshRequest: Promise<boolean> | null = null
 let authChannel: BroadcastChannel | null = null
+
+/** Run `task` while holding a lock that is shared by all tabs of this origin. */
+function withRefreshLock(task: () => Promise<boolean>): Promise<boolean> {
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+        return navigator.locks.request(REFRESH_LOCK_NAME, task)
+    }
+
+    return task()
+}
 
 function broadcastAuthMessage(message: AuthChannelMessage) {
     authChannel?.postMessage(message)
@@ -209,7 +221,22 @@ export const useAuth = defineStore('auth', {
                 return refreshRequest
             }
 
-            refreshRequest = (async () => {
+            // Refresh tokens rotate and a reused token revokes the whole session
+            // family, so only one tab may refresh at a time.
+            refreshRequest = withRefreshLock(async () => {
+                const storedAccess = localStorage.getItem('token')
+                const storedRefresh = localStorage.getItem('refresh')
+
+                // Another tab finished a refresh while this one waited.
+                if (storedAccess && storedRefresh && storedRefresh !== this.jwtRefresh) {
+                    try {
+                        this.updateToken(storedAccess, storedRefresh, false)
+                        return true
+                    } catch {
+                        // Fall through and refresh with the token of this tab.
+                    }
+                }
+
                 try {
                     const response = await fetch('/auth/refresh', {
                         method: 'POST',
@@ -217,7 +244,11 @@ export const useAuth = defineStore('auth', {
                         body: JSON.stringify({ refresh: this.jwtRefresh }),
                     })
                     if (!response.ok) {
-                        this.removeToken()
+                        // Only a rejected token ends the session. Proxy and
+                        // server errors are transient and keep the tokens.
+                        if (REJECTED_REFRESH_STATUS.includes(response.status)) {
+                            this.removeToken()
+                        }
                         return false
                     }
 
@@ -230,10 +261,10 @@ export const useAuth = defineStore('auth', {
                     this.updateToken(data.access, data.refresh)
                     return true
                 } catch {
-                    this.removeToken()
+                    // Network failure: keep the session and let the caller retry.
                     return false
                 }
-            })()
+            })
 
             try {
                 return await refreshRequest

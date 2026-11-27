@@ -1,6 +1,5 @@
 import { cloneDeep } from 'es-toolkit/object'
 import { defineStore } from 'pinia'
-import { useRouter } from 'vue-router'
 
 import { authFetch } from '@/composables/authFetch'
 import { useAuth } from './auth'
@@ -56,9 +55,11 @@ export const useConfig = defineStore('config', {
 
         async logout() {
             const authStore = useAuth()
-            const router = useRouter()
-            await authStore.logout()
+            // Stores run outside of component setup, where `useRouter()` has no
+            // injection context. Import lazily: the router imports this store.
+            const { default: router } = await import('@/router')
 
+            await authStore.logout()
             await router.push({ name: 'login' })
         },
 

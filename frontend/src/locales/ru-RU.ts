@@ -669,6 +669,8 @@ export default {
         loadFailed: 'Не удалось загрузить начальные настройки.',
         passwordMismatch: 'Пароли не совпадают.',
         saveFailed: 'Не удалось завершить настройку.',
+        token: 'Токен настройки',
+        tokenHelp: "Выводится в консоль ffplayout на сервере, например: journalctl -u ffplayout | grep 'Setup token'",
     },
     user: {
         title: 'Конфигурация пользователя',

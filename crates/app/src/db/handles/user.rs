@@ -167,7 +167,8 @@ pub async fn update_user_with_channels(
     mail: Option<String>,
     password_hash: Option<String>,
     channel_ids: Option<Vec<i32>>,
-) -> Result<(), ProcessError> {
+) -> Result<Option<u64>, ProcessError> {
+    let password_changed = password_hash.is_some();
     let mut transaction = pool.begin().await?;
     update_user(&mut *transaction, id, two_factor, mail, password_hash).await?;
 
@@ -176,9 +177,17 @@ pub async fn update_user_with_channels(
         insert_user_channel(&mut transaction, id, channel_ids).await?;
     }
 
+    let revoked = if password_changed {
+        let now = jiff::Timestamp::now().as_second();
+
+        Some(super::refresh_token::revoke_user_refresh_tokens(&mut transaction, id, now).await?)
+    } else {
+        None
+    };
+
     transaction.commit().await?;
 
-    Ok(())
+    Ok(revoked)
 }
 
 pub async fn delete_user(pool: &SqlitePool, id: i32) -> Result<SqliteQueryResult, ProcessError> {
@@ -329,6 +338,38 @@ mod tests {
 
         assert_eq!(updated.mail.as_deref(), Some("after@example.org"));
         assert!(!updated.channel_ids.unwrap().contains(&1));
+
+        let now = jiff::Timestamp::now().as_second();
+
+        crate::db::handles::insert_refresh_token(&pool, "old-session", "family", 1, now + 600, now)
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TRIGGER reject_revocation BEFORE UPDATE OF revoked_at ON auth_refresh_tokens
+             BEGIN SELECT RAISE(ABORT, 'revocation failed'); END",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let result =
+            update_user_with_channels(&pool, 1, None, None, Some("new-hash".into()), None).await;
+        let unchanged = select_login(&pool, "update-user").await.unwrap();
+
+        assert!(result.is_err());
+        assert_eq!(unchanged.password, "old-hash");
+
+        sqlx::query("DROP TRIGGER reject_revocation")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let revoked =
+            update_user_with_channels(&pool, 1, None, None, Some("new-hash".into()), None)
+                .await
+                .unwrap();
+
+        assert_eq!(revoked, Some(1));
     }
 
     #[tokio::test]

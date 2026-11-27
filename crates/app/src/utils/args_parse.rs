@@ -19,6 +19,7 @@ use crate::{
         handles,
         models::{Channel, User},
     },
+    middleware::client_ip::TrustedProxy,
     utils::{config::OutputMode, config_dump, errors::ProcessError},
 };
 
@@ -140,6 +141,24 @@ pub struct Args {
         help = "Listen on IP:PORT; defaults to 127.0.0.1:8787 when no arguments are passed"
     )]
     pub listen: Option<String>,
+
+    #[clap(
+        long,
+        env,
+        value_delimiter = ',',
+        value_parser = TrustedProxy::parse,
+        help_heading = Some("General"),
+        help = "Reverse proxy IP or CIDR whose X-Forwarded-For/X-Real-IP headers are trusted; loopback is always trusted"
+    )]
+    pub trusted_proxy: Vec<TrustedProxy>,
+
+    #[clap(
+        long,
+        env,
+        help_heading = Some("General"),
+        help = "Allow initial web setup without a token for loopback clients"
+    )]
+    pub allow_local_setup_without_token: bool,
 
     #[clap(
         long,

@@ -159,8 +159,10 @@ presentation timing.
 The relay cache is bounded to 32 MiB with two seconds of retention. Destination
 I/O and packet queues are independent; a failed MoQ transport does not stop other
 outputs using its encoding profile. Failed destinations retry every 15 seconds for
-up to three minutes; successful media delivery resets that window. After exhaustion,
-use **Reconnect** on the Outputs page to start a new round. Publisher initialization
+up to three minutes; successful media delivery resets that window. After that the
+output is reported as failed while attempts continue with a delay that doubles from
+30 seconds up to five minutes. Use **Reconnect** on the Outputs page to start a new
+fast round immediately. Publisher initialization
 is retried on the same schedule, and a terminated publisher is recreated on the next
 connection attempt. Encoder failures still require a channel restart.
 Endurance tests with browser audio/video

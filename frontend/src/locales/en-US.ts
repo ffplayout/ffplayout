@@ -660,6 +660,9 @@ export default {
         loadFailed: 'Unable to load the initial settings.',
         passwordMismatch: 'Passwords do not match.',
         saveFailed: 'Unable to complete the setup.',
+        token: 'Setup Token',
+        tokenHelp:
+            "Printed in the ffplayout console output on the server, for example: journalctl -u ffplayout | grep 'Setup token'",
     },
     user: {
         title: 'User Configuration',

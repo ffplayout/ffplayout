@@ -28,6 +28,8 @@ const REFRESH_LIFETIME_DAYS: i64 = 14;
 const ACCESS_LIFETIME_SECONDS: i64 = ACCESS_LIFETIME_MINUTES * 60;
 const REFRESH_LIFETIME_SECONDS: i64 = REFRESH_LIFETIME_DAYS * 86_400;
 
+const MAX_VERIFICATION_ATTEMPTS: u8 = 5;
+
 // Global storage for verification codes
 pub static VERIFICATION_CODES: LazyLock<Arc<Mutex<HashMap<String, VerificationCode>>>> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
@@ -47,6 +49,8 @@ pub struct VerificationCode {
     pub user: User,
     pub role: Role,
     pub created_at: Timestamp,
+    /// Wrong codes submitted so far; the code is dropped at the limit.
+    pub failed_attempts: u8,
 }
 
 impl VerificationCode {
@@ -351,6 +355,7 @@ pub async fn login(
                         user,
                         role,
                         created_at: Timestamp::now(),
+                        failed_attempts: 0,
                     };
 
                     {
@@ -455,7 +460,7 @@ pub async fn verify(
     let verification_data = {
         let mut codes = VERIFICATION_CODES.lock().await;
 
-        if let Some(verification) = codes.get(&username) {
+        if let Some(verification) = codes.get_mut(&username) {
             // Check if code is still valid (max 5 minutes)
             if !verification.is_valid_at(Timestamp::now()) {
                 codes.remove(&username);
@@ -470,6 +475,15 @@ pub async fn verify(
 
             // Check if code is correct
             if verification.code != provided_code {
+                verification.failed_attempts += 1;
+
+                // A six-digit code must not be guessable by trying them all.
+                if verification.failed_attempts >= MAX_VERIFICATION_ATTEMPTS {
+                    codes.remove(&username);
+
+                    warn!("{ip} Too many wrong verification codes for {username}");
+                }
+
                 return Ok((
                     StatusCode::FORBIDDEN,
                     AxumJson(serde_json::json!({
@@ -691,6 +705,7 @@ mod tests {
             user: user(),
             role: Role::User,
             created_at: now,
+            failed_attempts: 0,
         };
 
         assert!(verification.is_valid_at(now));

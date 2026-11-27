@@ -1,16 +1,15 @@
 use std::{
     env,
+    net::SocketAddr,
     sync::{Arc, LazyLock, atomic::AtomicBool},
 };
 
-#[cfg(feature = "processing-bench")]
 use std::time::Duration;
 
 use axum::{Router, middleware};
 use lazy_limit::{Duration as LDuration, RuleConfig, init_rate_limiter};
 use log::*;
 use protect_axum::GrantsLayer;
-use real::RealIpLayer;
 use tokio::{
     fs::File,
     io::AsyncReadExt,
@@ -28,7 +27,7 @@ use ffplayout::{
     api::{self, state::AppState},
     db::{db_drop, db_pool, handles, init_globales},
     extract,
-    middleware::governor::rate_limit,
+    middleware::{client_ip::client_ip, governor::rate_limit},
     player::{
         controller::{ChannelController, ChannelManager},
         utils::{JsonPlaylist, get_date, is_remote, json_validate::validate_playlist},
@@ -42,6 +41,7 @@ use ffplayout::{
         logging::{Target, init_logging, log_middleware},
         mail::{self, MailQueue},
         playlist::generate_playlist,
+        setup::setup_token,
         system::SystemStat,
         time_machine::set_mock_time,
     },
@@ -49,6 +49,8 @@ use ffplayout::{
 
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use ffplayout::serve::routes::admin_ui_routes;
+
+const HTTP_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 // Cargo features are additive. Reference only one allocator even in --all-features builds.
 #[cfg(all(
@@ -109,7 +111,29 @@ fn run_async_main() -> Result<(), ProcessError> {
         .block_on(async_main())
 }
 
+/// Write panics to the application log before the process ends.
+///
+/// Release builds abort on panic, which stops every channel at once. Without
+/// this hook the reason only reaches stderr and is missing from the log files
+/// and mail notifications that operators look at.
+fn log_panics() {
+    let default_hook = std::panic::take_hook();
+
+    std::panic::set_hook(Box::new(move |panic| {
+        let thread = std::thread::current();
+
+        error!(
+            "Fatal error in thread {}: {panic}",
+            thread.name().unwrap_or("unnamed")
+        );
+        log::logger().flush();
+        default_hook(panic);
+    }));
+}
+
 async fn async_main() -> Result<(), ProcessError> {
+    log_panics();
+
     ffplayout::api::auth::init_jwt_crypto();
 
     #[cfg(feature = "processing-bench")]
@@ -156,7 +180,13 @@ async fn async_main() -> Result<(), ProcessError> {
 
         let setup_required = !handles::select_global(&pool).await?.setup_completed;
 
-        if !setup_required {
+        if setup_required {
+            info!(
+                target: Target::Console.as_str(),
+                "Initial setup is pending. Setup token: {}",
+                setup_token()
+            );
+        } else {
             initialize_channels(
                 &pool,
                 app_state.controller.clone(),
@@ -184,18 +214,28 @@ async fn async_main() -> Result<(), ProcessError> {
         let app = Router::new()
             .merge(api::path::routes())
             .with_state(app_state.clone())
-            .layer(RealIpLayer::default())
             .layer(GrantsLayer::with_extractor(extract))
             .layer(middleware::from_fn(log_middleware))
-            .layer(middleware::from_fn(rate_limit));
+            .layer(middleware::from_fn(rate_limit))
+            // Added last, so it runs first: the layers above need the client IP.
+            .layer(middleware::from_fn(client_ip));
 
         #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
         let app = app.merge(admin_ui_routes());
 
         info!(target: Target::Console.as_str(), "Running ffplayout, listen on http://{conn}");
 
+        // Peer addresses are needed to decide whether forwarding headers can be trusted.
+        let service = app.into_make_service_with_connect_info::<SocketAddr>();
+        let http_shutdown = CancellationToken::new();
+        let server = axum::serve(listener, service)
+            .with_graceful_shutdown(http_shutdown.clone().cancelled_owned())
+            .into_future();
+
+        tokio::pin!(server);
+
         tokio::select! {
-            result = axum::serve(listener, app) => {
+            result = &mut server => {
                 result.map_err(|e| ProcessError::Custom(e.to_string()))?;
             }
             _ = shutdown_signal() => {}
@@ -203,6 +243,18 @@ async fn async_main() -> Result<(), ProcessError> {
                 info!(target: Target::Console.as_str(), "Shutdown requested by desktop player");
             }
         }
+
+        // Let running requests finish. Event streams never end on their own,
+        // so the wait is bounded.
+        http_shutdown.cancel();
+
+        if tokio::time::timeout(HTTP_SHUTDOWN_TIMEOUT, &mut server)
+            .await
+            .is_err()
+        {
+            debug!("HTTP connections were still open at shutdown");
+        }
+
         if let Some(server) = moq_server {
             server.stop().await;
         }

@@ -10,6 +10,43 @@ ffplayout provides ***.deb** and ***.rpm** packages, which makes it easier to in
 4. Start the service, open **http://[IP ADDRESS]:8787**, and complete the first-time setup in the browser. It creates the global settings and first global admin.
 5. Use a reverse proxy for SSL before exposing ffplayout to the Internet.
 
+The setup page asks for a one-time setup token, including for browsers on the
+same host. Until setup is completed there are no users, so the token proves
+access to the server. The token appears in the console output at startup.
+
+```bash
+# systemd (`systemctl status` only shows the last lines)
+journalctl -u ffplayout -b --no-pager | grep 'Setup token'
+
+# Docker
+docker logs <container> 2>&1 | grep 'Setup token'
+```
+
+The token is only written to the console (stderr), never to the log file. It is
+new on every start and is only valid until the setup is completed. To set it
+yourself, e.g. for automated deployments, use the `SETUP_TOKEN` environment
+variable (at least 16 characters).
+
+For a local-only installation, `--allow-local-setup-without-token` allows
+loopback clients to complete setup without a token. Enable this flag only
+when the listener is restricted to local access and no reverse proxy exposes it.
+
+#### Reverse proxies and client addresses
+
+Login rate limiting, file-access tokens and event-stream tickets are bound to the
+client address. Forwarding headers (`X-Forwarded-For`, `X-Real-IP`) are only
+trusted when the connection comes from a reverse proxy: loopback addresses are
+always trusted, which covers nginx on the same host. For a proxy on another host
+or container network, pass its address or network:
+
+```bash
+ffplayout -l 0.0.0.0:8787 --trusted-proxy 172.18.0.0/16
+```
+
+Several values can be separated by commas, or set with the `TRUSTED_PROXY`
+environment variable. Requests from any other peer use the socket address and
+cannot override it with headers.
+
 The package installation creates a service user named **ffpu**. The configured
 log, playlist, public, and storage directories must be writable by that user.
 

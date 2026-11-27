@@ -24,6 +24,12 @@ pub fn routes() -> Router<AppState> {
             "/api/moq/capabilities",
             get(|| async { axum::Json(serde_json::json!({"available": true})) }),
         )
+        // Liveness probe for load balancers, containers and monitoring. It is
+        // unauthenticated and therefore reports nothing about the channels.
+        .route(
+            "/api/health",
+            get(|| async { axum::Json(serde_json::json!({"status": "ok"})) }),
+        )
         .nest("/auth", auth_routes())
         .nest(
             "/api",

@@ -404,6 +404,20 @@ impl Default for TextPreset {
     }
 }
 
+/// Minimum length of a new account password.
+pub const MIN_PASSWORD_LENGTH: usize = 8;
+
+/// Validate a password that is about to be stored for an account.
+pub fn validate_new_password(password: &str) -> Result<(), String> {
+    if password.chars().count() < MIN_PASSWORD_LENGTH {
+        return Err(format!(
+            "Password must have at least {MIN_PASSWORD_LENGTH} characters"
+        ));
+    }
+
+    Ok(())
+}
+
 impl TextPreset {
     pub fn validate(&self) -> Result<(), String> {
         if self.name.trim().is_empty() {

@@ -73,14 +73,16 @@ RUN git clone --depth 1 "https://github.com/mstorsjo/fdk-aac" && cd fdk-aac && \
     make -j "$(nproc)" && \
     make install
 
-RUN curl --retry 20 --retry-max-time 5 -L -k -f -o "opus-1.6.tar.gz" "https://ftp.osuosl.org/pub/xiph/releases/opus/opus-1.6.tar.gz" && \
+RUN curl --retry 20 --retry-max-time 5 -L -f -o "opus-1.6.tar.gz" "https://ftp.osuosl.org/pub/xiph/releases/opus/opus-1.6.tar.gz" && \
+    echo "b7637334527201fdfd6dd6a02e67aceffb0e5e60155bbd89175647a80301c92c  opus-1.6.tar.gz" | sha256sum -c - && \
     tar xf "opus-1.6.tar.gz" && \
     cd "opus-1.6" && \
     ./configure --prefix="$LOCALDESTDIR" --enable-shared=no --enable-static --disable-doc && \
     make -j "$(nproc)" && \
     make install
 
-RUN curl --retry 20 --retry-max-time 5 -L -k -f -o "openssl-3.5.0.tar.gz" "https://github.com/openssl/openssl/releases/download/openssl-3.5.0/openssl-3.5.0.tar.gz" && \
+RUN curl --retry 20 --retry-max-time 5 -L -f -o "openssl-3.5.0.tar.gz" "https://github.com/openssl/openssl/releases/download/openssl-3.5.0/openssl-3.5.0.tar.gz" && \
+    echo "344d0a79f1a9b08029b0744e2cc401a43f9c90acd1044d09a530b4885a8e9fc0  openssl-3.5.0.tar.gz" | sha256sum -c - && \
     tar xf "openssl-3.5.0.tar.gz" && \
     cd "openssl-3.5.0" && \
     ./Configure linux-x86_64 --prefix="$LOCALDESTDIR" --openssldir="$LOCALDESTDIR" --libdir=lib no-apps no-shared no-docs no-tests zlib -static -mtune=generic && \

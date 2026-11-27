@@ -229,7 +229,7 @@ struct Mailbox {
     control: Arc<PipelineControl>,
     queue: Arc<PipelineQueue<Packet>>,
     overflow: AtomicBool,
-    retry_exhausted: AtomicBool,
+    retry_paused: AtomicBool,
 }
 
 impl Mailbox {
@@ -241,12 +241,12 @@ impl Mailbox {
             control,
             queue,
             overflow: AtomicBool::new(false),
-            retry_exhausted: AtomicBool::new(false),
+            retry_paused: AtomicBool::new(false),
         })
     }
 
     fn send(&self, packet: &Packet) {
-        if self.control.cancelled() || self.retry_exhausted.load(Ordering::Acquire) {
+        if self.control.cancelled() || self.retry_paused.load(Ordering::Acquire) {
             return;
         }
 
@@ -258,6 +258,13 @@ impl Mailbox {
         {
             self.reset();
         }
+    }
+
+    fn update_retry_pause(&self, retry: &Retry, now: Instant, connected: bool) {
+        self.retry_paused.store(
+            !connected && retry.expired(now) && !retry.due(now),
+            Ordering::Release,
+        );
     }
 
     fn reset(&self) {
@@ -392,7 +399,7 @@ impl<'a> Session<'a> {
         self.workers.values().any(|worker| {
             !worker.route.stopped.load(Ordering::Acquire)
                 && !worker.mailbox.control.cancelled()
-                && !worker.mailbox.retry_exhausted.load(Ordering::Acquire)
+                && !worker.mailbox.retry_paused.load(Ordering::Acquire)
         })
     }
 
@@ -888,7 +895,7 @@ fn deliver(
             queue.discard_where(|_| true);
             audio.clear();
             audio_bytes = 0;
-            mailbox.retry_exhausted.store(false, Ordering::Release);
+            mailbox.retry_paused.store(false, Ordering::Release);
         }
 
         if let Some(Err(error)) = &*publication.lock().unwrap_or_else(PoisonError::into_inner) {
@@ -923,9 +930,7 @@ fn deliver(
         }
 
         if let Some(reason) = &failure {
-            mailbox
-                .retry_exhausted
-                .store(retry.expired(now), Ordering::Release);
+            mailbox.update_retry_pause(&retry, now, mux.is_some());
             status.set(id, retry.phase(now), Some(reason.clone()));
         }
 

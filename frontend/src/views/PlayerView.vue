@@ -398,7 +398,7 @@ async function importPlaylist(imp: boolean) {
 
         playlistStore.isLoading = true
         await authFetch<any>(
-            `/api/file/${configStore.channels[configStore.i]?.id}/import?file=${textFile.value[0].name}&date=${
+            `/api/file/${configStore.channels[configStore.i]?.id}/import?file=${encodeURIComponent(textFile.value[0].name)}&date=${
                 listDate.value
             }`,
             {
@@ -444,7 +444,7 @@ async function savePlaylist(save: boolean) {
             })
             .catch((e: any) => {
                 if (e.status === 409) {
-                    indexStore.msgAlert('warning', e.data, 2)
+                    indexStore.msgAlert('warning', e.message, 2)
                 } else {
                     indexStore.msgAlert('error', e, 4)
                 }
@@ -738,7 +738,7 @@ async function deletePlaylist(del: boolean) {
             <input type="file" class="file-input file-input-sm w-full" multiple @change="onFileChange" />
         </GenericModal>
 
-        <GenericModal :show="showDeleteModal" title="Delete Program" :modal-action="deletePlaylist">
+        <GenericModal :show="showDeleteModal" :title="t('player.deletePlaylist')" :modal-action="deletePlaylist">
             <span>
                 {{ t('player.deleteFrom') }} <strong>{{ listDate }}</strong>
             </span>

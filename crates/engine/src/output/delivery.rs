@@ -146,10 +146,22 @@ impl DestinationOutput {
 
 const RETRY_INTERVAL: Duration = Duration::from_secs(15);
 const RETRY_WINDOW: Duration = Duration::from_secs(180);
+const SLOW_RETRY_INTERVAL: Duration = Duration::from_secs(30);
+const SLOW_RETRY_MAX_INTERVAL: Duration = Duration::from_secs(300);
 
+/// Reconnect schedule of one destination.
+///
+/// Failures are retried every `interval` during `window`. After that the
+/// destination is reported as failed, but an unattended channel must come
+/// back on its own once the destination is reachable again. Attempts
+/// therefore continue with a delay that doubles from `slow_interval` up to
+/// `slow_max_interval`.
 pub(super) struct Retry {
     interval: Duration,
     window: Duration,
+    slow_interval: Duration,
+    slow_max_interval: Duration,
+    slow_failures: u32,
     first_failure: Option<Instant>,
     next: Option<Instant>,
 }
@@ -159,6 +171,9 @@ impl Default for Retry {
         Self {
             interval: RETRY_INTERVAL,
             window: RETRY_WINDOW,
+            slow_interval: SLOW_RETRY_INTERVAL,
+            slow_max_interval: SLOW_RETRY_MAX_INTERVAL,
+            slow_failures: 0,
             first_failure: None,
             next: None,
         }
@@ -169,20 +184,51 @@ impl Retry {
     pub(super) fn reset(&mut self) {
         self.first_failure = None;
         self.next = None;
+        self.slow_failures = 0;
     }
 
     pub(super) fn failed(&mut self, now: Instant) {
         self.first_failure.get_or_insert(now);
-        self.next = Some(now + self.interval);
+
+        let delay = if self.expired(now) {
+            let factor = 1_u32.checked_shl(self.slow_failures).unwrap_or(u32::MAX);
+
+            self.slow_failures = self.slow_failures.saturating_add(1);
+            self.slow_interval
+                .saturating_mul(factor)
+                .min(self.slow_max_interval)
+        } else {
+            self.interval
+        };
+
+        self.next = Some(now + delay);
     }
 
+    /// Leave the fast window: the pending fast attempt is replaced by the
+    /// first slow one, so nothing reconnects right after reporting a failure.
+    pub(super) fn exhaust(&mut self, now: Instant) {
+        self.slow_failures = 0;
+        self.failed(now);
+    }
+
+    /// The fast retry window has passed; the destination counts as failed.
     pub(super) fn expired(&self, now: Instant) -> bool {
         self.first_failure
             .is_some_and(|first| now.saturating_duration_since(first) >= self.window)
     }
 
     pub(super) fn due(&self, now: Instant) -> bool {
-        !self.expired(now) && self.next.is_none_or(|next| now >= next)
+        self.next.is_none_or(|next| now >= next)
+    }
+
+    /// Next instant at which the worker has to act without other activity.
+    pub(super) fn deadline(&self, now: Instant) -> Option<Instant> {
+        let window_end = self
+            .first_failure
+            .map(|first| first + self.window)
+            .filter(|_| !self.expired(now));
+
+        self.next.into_iter().chain(window_end).min()
     }
 
     pub(super) fn phase(&self, now: Instant) -> &'static str {
@@ -344,12 +390,18 @@ fn deliver_with_retry(
             exhausted = false;
         }
 
-        if output.is_none() && retry.expired(Instant::now()) {
-            if !exhausted {
-                status.set(id, "failed", error.clone());
-                exhausted = true;
-            }
-        } else if output.is_none() && retry.due(Instant::now()) && !queue.closed() {
+        if output.is_none() && retry.expired(Instant::now()) && !exhausted {
+            retry.exhaust(Instant::now());
+            status.set(id, "failed", error.clone());
+            exhausted = true;
+            log::error!(
+                channel = channel;
+                "Output {id} is still unavailable; retrying with increasing delays up to {} seconds",
+                retry.slow_max_interval.as_secs()
+            );
+        }
+
+        if output.is_none() && retry.due(Instant::now()) && !queue.closed() {
             status.set(id, "starting", error.clone());
             let opened = (|| -> Result<DestinationOutput> {
                 let pending_queue = queue.clone();
@@ -417,12 +469,9 @@ fn deliver_with_retry(
                 break;
             }
             let now = Instant::now();
-            let timeout = if output.is_none() && !retry.expired(now) {
+            let timeout = if output.is_none() {
                 retry
-                    .next
-                    .into_iter()
-                    .chain(retry.first_failure.map(|first| first + retry.window))
-                    .min()
+                    .deadline(now)
                     .map(|deadline| deadline.saturating_duration_since(now))
             } else {
                 None
@@ -670,18 +719,46 @@ mod tests {
     }
 
     #[test]
-    fn retries_are_spaced_and_stop_before_the_three_minute_deadline() {
+    fn retries_are_spaced_then_slow_down_after_the_three_minute_window() {
         let start = Instant::now();
         let mut retry = Retry::default();
+
         retry.failed(start);
+
         for second in (15..180).step_by(15) {
             let now = start + Duration::from_secs(second);
+
             assert!(!retry.due(now - Duration::from_millis(1)));
             assert!(retry.due(now));
+            assert_eq!(retry.phase(now), "retrying");
             retry.failed(now);
         }
-        assert!(!retry.due(start + RETRY_WINDOW));
-        assert!(!retry.due(start + RETRY_WINDOW + RETRY_INTERVAL));
+
+        // The destination is reported as failed, but attempts continue.
+        let mut now = start + RETRY_WINDOW;
+
+        assert!(retry.expired(now));
+        assert_eq!(retry.phase(now), "failed");
+
+        for (attempt, delay) in [30, 60, 120, 240, 300, 300].into_iter().enumerate() {
+            let delay = Duration::from_secs(delay);
+
+            if attempt == 0 {
+                retry.exhaust(now);
+            } else {
+                retry.failed(now);
+            }
+
+            assert!(!retry.due(now + delay - Duration::from_millis(1)));
+            assert_eq!(retry.deadline(now), Some(now + delay));
+            assert!(retry.due(now + delay));
+            now += delay;
+        }
+
+        retry.reset();
+        retry.failed(now);
+
+        assert!(retry.due(now + RETRY_INTERVAL));
     }
 
     #[test]
@@ -720,6 +797,17 @@ mod tests {
             url: String,
             interval: Duration,
             window: Duration,
+            setup: impl FnOnce(&mut OutputDestination),
+        ) -> Self {
+            // Far beyond the test duration: only a manual retry reconnects.
+            Self::with_slow_retry(url, interval, window, Duration::from_secs(600), setup)
+        }
+
+        fn with_slow_retry(
+            url: String,
+            interval: Duration,
+            window: Duration,
+            slow_interval: Duration,
             setup: impl FnOnce(&mut OutputDestination),
         ) -> Self {
             use super::super::encoding::EncodingProfile;
@@ -813,6 +901,7 @@ mod tests {
                     Retry {
                         interval,
                         window,
+                        slow_interval,
                         ..Retry::default()
                     },
                 )
@@ -1169,6 +1258,35 @@ mod tests {
         let recovered = peer.join().unwrap();
         assert!(recovered.len() > 188);
         assert_eq!(recovered[0], 0x47);
+    }
+
+    #[test]
+    fn exhausted_destination_recovers_without_manual_retry() {
+        let directory = std::env::temp_dir().join(format!(
+            "output-slow-retry-{}-{}",
+            std::process::id(),
+            uuid_for_test()
+        ));
+        let path = directory.join("recovered.ts");
+        let fixture = Fixture::with_slow_retry(
+            path.to_string_lossy().into_owned(),
+            Duration::from_millis(30),
+            Duration::from_millis(100),
+            Duration::from_millis(40),
+            |_| {},
+        );
+
+        fixture.wait("failed");
+        std::fs::create_dir_all(&directory).unwrap();
+        // No manual retry: the next slow attempt reopens the destination.
+        fixture.wait("starting");
+        fixture.wait_connected();
+        fixture.send_media();
+        fixture.wait("running");
+        fixture.finish();
+
+        assert!(std::fs::metadata(&path).unwrap().len() > 188);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

@@ -39,5 +39,7 @@ if [ "$new_install" = true ]; then
 
 ffplayout was installed successfully.
 Open http://{IP/Domain}:8787/ in a browser and complete the initial setup.
+The setup asks for a one-time token, shown by:
+    journalctl -u ffplayout | grep 'Setup token'
 EOF
 fi

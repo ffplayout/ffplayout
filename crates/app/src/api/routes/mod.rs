@@ -317,8 +317,6 @@ fn utc_timezone() -> TimeZone {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ImportObj {
     #[serde(default)]
-    file: PathBuf,
-    #[serde(default)]
     date: String,
 }
 

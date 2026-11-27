@@ -327,7 +327,7 @@ async fn verification_uses_current_rights_and_rejects_deleted_users() {
     );
 }
 
-async fn store_verification(state: &AppState, id: i32, age_seconds: i64) -> String {
+pub(super) async fn store_verification(state: &AppState, id: i32, age_seconds: i64) -> String {
     let user = handles::select_user(&state.pool, id).await.unwrap();
     let username = user.username.clone();
     let role = handles::select_role(&state.pool, &user.role_id.unwrap())
@@ -343,6 +343,7 @@ async fn store_verification(state: &AppState, id: i32, age_seconds: i64) -> Stri
                 user,
                 role,
                 created_at: jiff::Timestamp::now() - jiff::SignedDuration::from_secs(age_seconds),
+                failed_attempts: 0,
             },
         );
 

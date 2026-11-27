@@ -16,6 +16,8 @@ use crate::{
     vec_strings,
 };
 
+const MAX_PROGRAM_DAYS: i32 = 366;
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct ProgramObj {
     #[serde(default, deserialize_with = "optional_naive_date_time_from_str")]
@@ -58,6 +60,15 @@ pub async fn build_program(
 
     if after > before {
         before = after.date().to_datetime(end_of_day);
+    }
+
+    // Every day of the range is a playlist lookup; keep the request bounded.
+    let requested_days = (before.date() - after.date()).get_days();
+
+    if requested_days > MAX_PROGRAM_DAYS {
+        return Err(ServiceError::BadRequest(format!(
+            "Program range must not exceed {MAX_PROGRAM_DAYS} days"
+        )));
     }
 
     if start_sec
@@ -105,7 +116,11 @@ pub async fn build_program(
                 .as_ref()
                 .and_then(|regex| regex.captures(&item.source))
             {
-                Some(t) => t[1].to_string(),
+                // A pattern without a capture group selects the whole match.
+                Some(captures) => captures
+                    .get(1)
+                    .or_else(|| captures.get(0))
+                    .map_or_else(|| item.source.clone(), |found| found.as_str().to_string()),
                 None => item.source,
             };
 

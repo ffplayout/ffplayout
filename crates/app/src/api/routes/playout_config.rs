@@ -415,6 +415,14 @@ pub async fn update_playout_config(
         scoped.processing.graphics_cache_mib = data.processing.graphics_cache_mib;
         data = scoped;
     }
+    if !user.is_global_admin() {
+        // Host paths are a global administrator's decision, as for the channel
+        // paths: the task path is executed by the service, and the recording
+        // path is written outside the channel storage.
+        data.task.path.clone_from(&config.task.path);
+        data.recording.path.clone_from(&config.recording.path);
+    }
+
     if !(32..=1024).contains(&data.processing.graphics_cache_mib) {
         return Err(ServiceError::BadRequest(
             "Animation cache must be within 32..1024 MiB".into(),

@@ -76,7 +76,11 @@ export const usePlaylist = defineStore('playlist', {
                 })
                 .catch((e) => {
                     if (e.status >= 400) {
-                        indexStore.msgAlert('error', e.data, 5)
+                        indexStore.msgAlert('error', e.message, 5)
+
+                        if (this.playlist[0]?.date !== date) {
+                            this.playlist = []
+                        }
                     } else if (
                         channel === this.last_channel &&
                         this.playlist.length > 0 &&

@@ -1,14 +1,29 @@
 [Unit]
 Description=Rust and ffmpeg based playout solution
-After=network.target remote-fs.target
+Wants=network-online.target
+After=network-online.target remote-fs.target
+# A 24/7 playout must come back after any number of crashes. Without this,
+# systemd gives up for good once the default start limit is reached.
+StartLimitIntervalSec=0
 
 [Service]
 ExecStart=/usr/bin/ffplayout -l 0.0.0.0:8787
 Restart=always
-StartLimitInterval=20
-RestartSec=1
+RestartSec=2
 KillMode=mixed
 User=ffpu
+LimitNOFILE=65536
+
+# Hardening that does not restrict storage, playlist or device paths.
+# For media on network mounts add: RequiresMountsFor=/path/to/media
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+RestrictRealtime=yes
 
 [Install]
 WantedBy=multi-user.target

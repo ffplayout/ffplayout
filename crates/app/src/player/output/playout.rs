@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     file::norm_abs_path,
     player::{
-        controller::{ChannelManager, loudness_config},
+        controller::{ChannelManager, ProcessingGuard, loudness_config},
         graphics::manual,
         input::source_generator,
         process_diagnostics::ProcessDiagnostics,
@@ -677,15 +677,16 @@ pub(super) fn desktop_control_callback(
             ff_engine::DesktopControlCommand::Reset => PlayerCtl::Reset,
         };
 
-        if manager.is_processing.swap(true, Ordering::SeqCst) {
+        let Some(processing) = ProcessingGuard::acquire(&manager.is_processing) else {
             return;
-        }
+        };
 
         runtime.spawn(async move {
+            let _processing = processing;
+
             if let Err(error) = control_state(&pool, &manager, &control).await {
                 error!(channel = manager.id; "desktop control failed: {error}");
             }
-            manager.is_processing.store(false, Ordering::SeqCst);
         });
     })
 }

@@ -15,7 +15,7 @@ use crate::{
     },
     db::{
         handles,
-        models::{Role, User},
+        models::{Role, User, validate_new_password},
     },
     utils::errors::ServiceError,
 };
@@ -122,6 +122,8 @@ pub async fn update_user(
     let password_hash = if data.password.is_empty() {
         None
     } else {
+        validate_new_password(&data.password).map_err(ServiceError::BadRequest)?;
+
         let password_hash = task::spawn_blocking(move || {
             Argon2::default()
                 .hash_password(data.password.clone().as_bytes())
@@ -133,7 +135,7 @@ pub async fn update_user(
         Some(password_hash)
     };
 
-    handles::update_user_with_channels(
+    let revoked = handles::update_user_with_channels(
         &state.pool,
         id,
         two_factor,
@@ -142,6 +144,10 @@ pub async fn update_user(
         update_channels.then_some(channel_ids),
     )
     .await?;
+
+    if let Some(revoked) = revoked {
+        info!("Password of user {id} changed, revoked {revoked} sessions");
+    }
 
     Ok("Update Success")
 }
@@ -160,6 +166,14 @@ pub async fn add_user(
     Json(data): Json<User>,
 ) -> Result<&'static str, ServiceError> {
     ensure_any_authority(&details, &[&Role::GlobalAdmin])?;
+
+    if data.username.trim().is_empty() {
+        return Err(ServiceError::BadRequest(
+            "Username must not be empty".to_string(),
+        ));
+    }
+
+    validate_new_password(&data.password).map_err(ServiceError::BadRequest)?;
 
     match handles::insert_user(&state.pool, data).await {
         Ok(..) => Ok("Add User Success"),

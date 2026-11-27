@@ -16,7 +16,7 @@ use crate::{
         handles,
         models::{Role, TextPreset},
     },
-    player::utils::get_data_map,
+    player::{controller::ProcessingGuard, utils::get_data_map},
     utils::{
         control::{ControlParams, Process, ProcessCtl, control_state, send_message},
         errors::ServiceError,
@@ -180,22 +180,13 @@ pub async fn control_playout(
     }
     .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
-    if manager.is_processing.load(Ordering::SeqCst) {
-        return Err(ServiceError::Conflict(
-            "A command is already being processed, please wait".to_string(),
-        ));
-    }
+    let _processing = ProcessingGuard::acquire(&manager.is_processing).ok_or_else(|| {
+        ServiceError::Conflict("A command is already being processed, please wait".to_string())
+    })?;
 
-    manager.is_processing.store(true, Ordering::SeqCst);
-
-    let resp = match control_state(&state.pool, &manager, &control.control).await {
-        Ok(res) => Ok(Json(res)),
-        Err(e) => Err(e),
-    };
-
-    manager.is_processing.store(false, Ordering::SeqCst);
-
-    resp
+    control_state(&state.pool, &manager, &control.control)
+        .await
+        .map(Json)
 }
 
 /// **Get current Clip**
@@ -282,23 +273,15 @@ pub async fn process_control(
 
     manager.list_init.store(true, Ordering::SeqCst);
 
-    if manager.is_processing.load(Ordering::SeqCst) {
-        return Err(ServiceError::Conflict(
-            "A command is already being processed, please wait".to_string(),
-        ));
-    }
-
-    manager.is_processing.store(true, Ordering::SeqCst);
-
-    // Run the actual command in a helper so the `is_processing` flag is always
-    // cleared, even when a step returns early with an error. Otherwise a failed
-    // start/restart would leave the channel permanently stuck reporting
+    // The guard clears the busy flag on every exit, including a failed step
+    // and a request that is cancelled because the client disconnected.
+    // Otherwise the channel would stay stuck reporting
     // "A command is already being processed".
-    let result = run_process_command(&manager, proc.command).await;
+    let _processing = ProcessingGuard::acquire(&manager.is_processing).ok_or_else(|| {
+        ServiceError::Conflict("A command is already being processed, please wait".to_string())
+    })?;
 
-    manager.is_processing.store(false, Ordering::SeqCst);
-
-    result
+    run_process_command(&manager, proc.command).await
 }
 
 async fn run_process_command(

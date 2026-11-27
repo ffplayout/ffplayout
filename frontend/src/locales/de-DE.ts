@@ -667,6 +667,9 @@ export default {
         loadFailed: 'Die Anfangseinstellungen konnten nicht geladen werden.',
         passwordMismatch: 'Die Passwörter stimmen nicht überein.',
         saveFailed: 'Die Einrichtung konnte nicht abgeschlossen werden.',
+        token: 'Setup-Token',
+        tokenHelp:
+            "Steht in der Konsolenausgabe von ffplayout auf dem Server, zum Beispiel: journalctl -u ffplayout | grep 'Setup token'",
     },
     user: {
         title: 'Benutzer-Konfiguration',

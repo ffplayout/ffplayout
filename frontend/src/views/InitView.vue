@@ -26,7 +26,9 @@ const form = ref({
     mail: '',
     password: '',
     two_factor: true,
+    setup_token: '',
 })
+const tokenRequired = ref(false)
 
 useHead({ title: t('setup.title') })
 
@@ -43,6 +45,7 @@ async function loadSetup() {
         }
 
         Object.assign(form.value, data.settings)
+        tokenRequired.value = data.token_required === true
     } catch {
         error.value = t('setup.loadFailed')
     } finally {
@@ -155,6 +158,19 @@ async function submit() {
                         <input v-model="form.two_factor" type="checkbox" class="checkbox" />
                         {{ t('user.twoFactor') }}
                     </label>
+                </fieldset>
+
+                <fieldset v-if="tokenRequired" class="fieldset mt-2">
+                    <legend class="fieldset-legend">{{ t('setup.token') }}</legend>
+                    <input
+                        v-model="form.setup_token"
+                        name="setup_token"
+                        type="text"
+                        class="input w-full"
+                        autocomplete="off"
+                        required
+                    />
+                    <p class="label whitespace-normal">{{ t('setup.tokenHelp') }}</p>
                 </fieldset>
 
                 <p v-if="error" class="mt-3 text-error">{{ error }}</p>

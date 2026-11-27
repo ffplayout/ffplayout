@@ -460,7 +460,7 @@ async function submitMessage() {
         <GenericModal
             :show="showDeleteModal"
             :title="t('message.delPreset')"
-            :text="`${t('message.delText')}: <strong> ${selected}</strong>?`"
+            :text="`${t('message.delText')}: ${selected}?`"
             :modal-action="deletePreset"
         />
     </div>

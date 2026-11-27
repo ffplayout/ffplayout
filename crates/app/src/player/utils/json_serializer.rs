@@ -12,7 +12,7 @@ use crate::{
         controller::ChannelManager,
         utils::{
             Media, PlayoutConfig, is_remote, modified_time, normalize_live_source_timing,
-            time_from_header,
+            remote_playlist_client, time_from_header,
         },
     },
     utils::config::DUMMY_LEN,
@@ -137,7 +137,7 @@ pub async fn read_json(
     }
 
     if is_remote(&current_file) {
-        if let Ok(resp) = reqwest::Client::new().get(&current_file).send().await
+        if let Ok(resp) = remote_playlist_client().get(&current_file).send().await
             && resp.status().is_success()
         {
             let headers = resp.headers().clone();
@@ -147,9 +147,18 @@ pub async fn read_json(
                     Ok(p) => p,
                     Err(e) => {
                         error!(channel = id; "Could't read remote json playlist. {e:?}");
-                        JsonPlaylist::new(date, start_sec)
+                        JsonPlaylist::new(date.clone(), start_sec)
                     }
                 };
+
+                // catch empty program list
+                if playlist.program.is_empty() {
+                    error!(
+                        channel = id;
+                        "Remote playlist from <span class=\"log-number\">{date}</span> is empty!"
+                    );
+                    playlist = JsonPlaylist::new(date.clone(), start_sec);
+                }
 
                 playlist.path = Some(current_file);
                 playlist.start_sec = Some(start_sec);
